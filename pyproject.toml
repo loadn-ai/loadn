@@ -1,0 +1,66 @@
+[build-system]
+requires = ["setuptools>=61"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "hahaness"
+version = "0.1.0"
+description = "A self-contained coding agent engine: Claude Code-compatible stream-json CLI, pluggable providers, tools, MCP, subagents, and context compaction."
+readme = "README.md"
+license = { file = "LICENSE" }
+requires-python = ">=3.10"
+authors = [{ name = "hahaness contributors" }]
+keywords = ["agent", "llm", "cli", "coding-agent", "anthropic", "mcp", "claude-code"]
+classifiers = [
+  "Development Status :: 4 - Beta",
+  "Environment :: Console",
+  "Intended Audience :: Developers",
+  "License :: OSI Approved :: Apache Software License",
+  "Operating System :: POSIX :: Linux",
+  "Operating System :: MacOS",
+  "Programming Language :: Python :: 3",
+  "Programming Language :: Python :: 3.10",
+  "Programming Language :: Python :: 3.11",
+  "Programming Language :: Python :: 3.12",
+  "Topic :: Software Development :: Libraries :: Python Modules",
+]
+dependencies = [
+  "httpx>=0.24",
+]
+
+[project.optional-dependencies]
+dev = [
+  "pytest>=8",
+  "pytest-asyncio>=0.23",
+  "ruff>=0.4",
+]
+
+[project.scripts]
+hahaness = "hahaness.cli.main:main"
+
+[tool.setuptools.packages.find]
+include = ["hahaness*"]
+
+[tool.setuptools.package-data]
+hahaness = ["py.typed"]
+
+[tool.pytest.ini_options]
+asyncio_mode = "auto"
+asyncio_default_fixture_loop_scope = "session"
+asyncio_default_test_loop_scope = "session"
+testpaths = ["tests"]
+
+[tool.ruff]
+line-length = 100
+target-version = "py310"
+
+[tool.ruff.lint]
+select = ["E", "F", "W", "I", "UP", "B"]
+ignore = [
+  "E501",  # 长注释（中文宽字符）放宽到行宽检查器处理
+  "UP045", "UP046", "UP047",  # 保持 X | None 而非 Optional —— 全仓统一风格
+  "B008",
+]
+
+[tool.ruff.lint.per-file-ignores]
+"tests/*" = ["B011"]
