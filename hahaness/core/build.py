@@ -10,6 +10,7 @@ from pathlib import Path
 
 from hahaness.core.compactor import Compactor
 from hahaness.core.loop import AgentCore, LoopSettings
+from hahaness.core.plan import TaskPlanner
 from hahaness.core.session import SessionManager
 from hahaness.core.subagent import SubagentManager, TaskTool
 from hahaness.providers import build_provider, provider_config
@@ -33,6 +34,7 @@ async def build_agent(cwd: Path, *, session_id: str | None = None,
                       disallow: list[str] | None = None,
                       permission_mode: str = "bypassPermissions",
                       max_turns: int | None = None, no_compact: bool = False,
+                      no_plan: bool = False,
                       context_window: int | None = None, enable_task: bool = True,
                       enable_mcp: bool = True, cfg: dict | None = None) -> AgentBundle:
     """组装 AgentCore。
@@ -64,6 +66,7 @@ async def build_agent(cwd: Path, *, session_id: str | None = None,
                else SessionManager.create(cwd))
 
     # Task 子代理（子代理自身构建时 enable_task=False——默认禁递归）
+    mgr = None
     if enable_task and "Task" not in disallow:
         mgr = SubagentManager(
             registry=registry, provider_factory=lambda: build_provider(cfg),
@@ -76,7 +79,10 @@ async def build_agent(cwd: Path, *, session_id: str | None = None,
     core = AgentCore(
         provider=provider, tools=tools, session=session, cwd=cwd,
         settings=LoopSettings(max_turns=max_turns, permission_mode=permission_mode,
-                              no_compact=no_compact, context_window=window),
+                              no_compact=no_compact, no_plan=no_plan,
+                              context_window=window),
+        subagents=mgr,
+        planner=(TaskPlanner(provider) if (mgr is not None and not no_plan) else None),
         ctx=ToolContext(cwd=cwd, workspace=cwd, supervisor=supervisor))
     core.compactor = Compactor(provider)
     return AgentBundle(core=core, session=session, registry=registry,

@@ -25,6 +25,7 @@ CONTEXT_BUDGET_TOKENS = 12_000    # ContextAssembler 静态注入预算（约）
 ENV_TREE_MAX_ENTRIES = 100        # 环境块目录树条目上限
 ENV_TREE_DEPTH = 2
 SUBAGENT_CONCURRENCY = 4          # Task 工具信号量
+PLAN_MAX_SUBTASKS = 3             # planner 拆分子任务上限（信号量留余量防限流）
 
 # ---------------------------------------------------------------- Provider
 API_RETRY_MAX = 5                 # 429/529/5xx 重试次数

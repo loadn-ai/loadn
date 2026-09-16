@@ -50,6 +50,8 @@ def build_parser() -> argparse.ArgumentParser:
                     choices=["default", "acceptEdits", "plan", "bypassPermissions"])
     ap.add_argument("--append-system-prompt", default=None)
     ap.add_argument("--no-compact", action="store_true", help="禁用内置上下文压缩")
+    ap.add_argument("--no-plan", action="store_true",
+                    help="禁用并行拆分调度（接到任务不评估拆分，直跑）")
     ap.add_argument("--version", action="version",
                     version=f"hahaness {__version__}")
     ap.add_argument("prompt", nargs="?", default=None)
@@ -149,11 +151,13 @@ async def _run(args, prompt: str | None, cwd: Path, cfg: dict, mode: str) -> int
             bundle = await build_agent(cwd, session_id=sid, cfg=cfg,
                                        permission_mode=mode,
                                        max_turns=args.max_turns,
-                                       no_compact=args.no_compact)
+                                       no_compact=args.no_compact,
+                                       no_plan=args.no_plan)
         else:
             bundle = await build_agent(
                 cwd, session_id=sid, cfg=cfg, permission_mode=mode,
-                max_turns=args.max_turns, no_compact=args.no_compact)
+                max_turns=args.max_turns, no_compact=args.no_compact,
+                no_plan=args.no_plan)
         core, sess = bundle.core, bundle.session
 
         if args.append_system_prompt:

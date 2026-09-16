@@ -84,6 +84,18 @@ class SubagentManager:
             text = text[:TASK_OUTPUT_MAX_CHARS] + "…[截断]"
         return text
 
+    async def gather(self, subtasks: list) -> list[str]:
+        """并行扇出一组子任务（TaskPlanner 调度入口；信号量内部限流）。
+
+        subtasks 是 core.plan.SubTask 列表。单个子代理失败不拖垮整批
+        （task() 内部已把失败转成带标注的文本返回）。
+        """
+        import asyncio as _aio
+
+        return list(await _aio.gather(
+            *(self.task(st.prompt, subagent_type=st.subagent_type,
+                        description=st.prompt[:60]) for st in subtasks)))
+
 
 class _PatchedAssembler:
     """用途 system 附加的薄包装（explore/plan 的只读纪律）。"""

@@ -158,6 +158,7 @@ class LoopSettings:
     max_turns: int | None = MAX_TURNS_DEFAULT   # None/0 = 不限
     permission_mode: str = "bypassPermissions"
     no_compact: bool = False
+    no_plan: bool = False       # True=禁用并行拆分调度（直跑）
     context_window: int = 200_000              # token 窗口（compactor 触发基数）
 
 
@@ -168,7 +169,8 @@ class AgentCore:
                  cwd: Path, settings: LoopSettings | None = None,
                  permissions: PermissionEngine | None = None,
                  hooks: HookRunner | None = None, compactor=None,
-                 ctx: ToolContext | None = None) -> None:
+                 ctx: ToolContext | None = None, subagents=None,
+                 planner=None) -> None:
         from hahaness.core.context import ContextAssembler
         self.provider = provider
         self.tools = tools
@@ -179,6 +181,8 @@ class AgentCore:
             self.cwd, mode=self.settings.permission_mode)
         self.hooks = hooks or HookRunner.load(self.cwd)
         self.compactor = compactor
+        self.subagents = subagents        # SubagentManager（并行扇出入口）
+        self.planner = planner            # TaskPlanner（v0.2 并行拆分调度）
         self.ctx = ctx or ToolContext(cwd=self.cwd)
         self.ctx.extras.setdefault("state", self.session.state)
         self.assembler = ContextAssembler(self.cwd, tools=list(tools))
@@ -193,6 +197,33 @@ class AgentCore:
 
         self.session.append_user(user_msg)
         messages = self.session.messages_for_turn()
+
+        # ---- v0.2 并行拆分调度：可拆任务先扇出子代理，结果注入主循环收敛
+        if (self.planner is not None and not self.settings.no_plan
+                and self.subagents is not None):
+            plan = await self.planner.plan(user_msg)
+            if plan.parallelizable and len(plan.subtasks) >= 2:
+                emit({"type": "plan", "plan": {
+                    "subtasks": [st.prompt[:80] for st in plan.subtasks],
+                    "reason": plan.reason}})
+                results = await self.subagents.gather(plan.subtasks)
+                if stop is not None and stop.requested:
+                    summary.subtype = "error_stopped"
+                    summary.stopped = True
+                    return summary
+                combined = "\n\n".join(
+                    f"### 并行子任务 {i + 1}/{len(plan.subtasks)}\n"
+                    f"任务：{st.prompt[:300]}\n结果：\n{r}"
+                    for i, (st, r) in enumerate(zip(plan.subtasks, results, strict=False)))
+                converge = (
+                    f"【并行子任务已全部完成】原任务：{user_msg[:2000]}\n\n"
+                    f"{combined}\n\n请整合以上子任务结果，验证其一致性，补做必要"
+                    "的收尾与修正（子代理可能有个别错误），然后给出最终交付。"
+                    "若子结果之间有冲突，以可验证的证据为准。")
+                self.session.append_event("user", {
+                    "role": "user", "content": [{"type": "text", "text": converge}]})
+                messages.append(Message(role="user", content=[
+                    TextBlock(text=converge)]))
 
         system = self.assembler.build()
         max_turns = self.settings.max_turns or 0
