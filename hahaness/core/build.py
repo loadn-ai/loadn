@@ -82,7 +82,8 @@ async def build_agent(cwd: Path, *, session_id: str | None = None,
                               no_compact=no_compact, no_plan=no_plan,
                               context_window=window),
         subagents=mgr,
-        planner=(TaskPlanner(provider) if (mgr is not None and not no_plan) else None),
+        planner=(TaskPlanner(_planner_provider(cfg))
+                 if (mgr is not None and not no_plan) else None),
         ctx=ToolContext(cwd=cwd, workspace=cwd, supervisor=supervisor))
     core.compactor = Compactor(provider)
     return AgentBundle(core=core, session=session, registry=registry,
@@ -90,6 +91,13 @@ async def build_agent(cwd: Path, *, session_id: str | None = None,
 
 
 _WINDOW_HINTS = (("[1m]", 1_000_000), ("[2m]", 2_000_000))
+
+
+def _planner_provider(cfg: dict):
+    """planner 专用 provider：temperature=0（拆分判定要确定性，主循环不受影响）。"""
+    cold = dict(cfg)
+    cold["extra"] = {**(cfg.get("extra") or {}), "temperature": 0}
+    return build_provider(cold)
 
 
 def _window_of(model: str) -> int:

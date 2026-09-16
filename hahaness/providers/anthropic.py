@@ -135,6 +135,8 @@ class AnthropicProvider:
         body: dict = {
             "model": self.model,
             "max_tokens": int(self.extra.get("max_tokens", MODEL_MAX_OUTPUT_TOKENS)),
+            **({"temperature": float(self.extra["temperature"])}
+              if self.extra.get("temperature") is not None else {}),
             "messages": [m.to_dict() for m in messages],   # 原生 content blocks 直传
         }
         if stream:

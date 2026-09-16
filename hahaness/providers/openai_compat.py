@@ -107,6 +107,8 @@ class OpenAICompatProvider:
         body: dict = {
             "model": self.model,
             "max_tokens": int(self.extra.get("max_tokens", MODEL_MAX_OUTPUT_TOKENS)),
+            **({"temperature": float(self.extra["temperature"])}
+              if self.extra.get("temperature") is not None else {}),
             "messages": self._to_openai_messages(messages, system),
         }
         if stream:

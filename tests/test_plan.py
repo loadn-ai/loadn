@@ -154,3 +154,31 @@ def test_prompt_has_background_discipline():
     from hahaness.core.context import CORE_PROMPT, TOOL_NOTES
     assert "长命令必后台" in CORE_PROMPT
     assert "run_in_background" in TOOL_NOTES["Bash"]
+
+
+async def test_plan_decision_persisted(tmp_path):
+    """判定可观测：拆与不拆都落 transcript（system/plan 事件）+ plan 对外事件。"""
+    planner_prov = H.ScriptedProvider(
+        [_plan_round({"parallelizable": False, "reason": "单链"})])
+    main_prov = H.ScriptedProvider([H.text_round("ok")])
+    session = SessionManager.create(tmp_path, home=tmp_path)
+    core = AgentCore(provider=main_prov, tools={}, session=session, cwd=tmp_path,
+                     settings=LoopSettings(max_turns=5), subagents=_Recorder([]),
+                     planner=TaskPlanner(planner_prov))
+    events = []
+    await core.run_turn("x", emit=events.append)
+    # plan 事件发射（serial 也发）
+    pe = [e for e in events if e.get("type") == "plan"]
+    assert pe and pe[0]["plan"]["parallelizable"] is False
+    # transcript 落了 system/plan 事件
+    import json as _json
+    types = [e["type"] for e in session.transcript.read_events()]
+    assert "system" in types
+
+
+def test_planner_provider_temperature():
+    """build 的 planner 专用 provider 注入 temperature=0。"""
+    import inspect
+    from hahaness.core import build
+    src = inspect.getsource(build)
+    assert '"temperature": 0' in src

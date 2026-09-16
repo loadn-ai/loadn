@@ -202,10 +202,13 @@ class AgentCore:
         if (self.planner is not None and not self.settings.no_plan
                 and self.subagents is not None):
             plan = await self.planner.plan(user_msg)
+            # 判定可观测：无论拆不拆都落 transcript + plan 事件（debug 依据）
+            plan_rec = {"parallelizable": plan.parallelizable,
+                        "reason": plan.reason,
+                        "subtasks": [st.prompt[:80] for st in plan.subtasks]}
+            self.session.append_event("system", {"subtype": "plan", **plan_rec})
+            await _fire(emit, {"type": "plan", "plan": plan_rec})
             if plan.parallelizable and len(plan.subtasks) >= 2:
-                emit({"type": "plan", "plan": {
-                    "subtasks": [st.prompt[:80] for st in plan.subtasks],
-                    "reason": plan.reason}})
                 results = await self.subagents.gather(plan.subtasks)
                 if stop is not None and stop.requested:
                     summary.subtype = "error_stopped"
