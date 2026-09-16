@@ -89,7 +89,7 @@ async def test_happy_path_full():
     # ---- 请求侧契约
     body = captured["body"]
     assert body["model"] == "glm-5.3"
-    assert body["max_tokens"] == 16384
+    assert body["max_tokens"] == 32768
     assert body["stream"] is True
     assert body["system"] == "你是测试助手"
     assert body["messages"] == [{"role": "user",

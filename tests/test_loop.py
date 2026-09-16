@@ -154,3 +154,41 @@ async def test_result_event_usage_contract(tmp_path):
             "cacheCreationInputTokens"} <= set(mu)
     assert p["num_turns"] == 1 and "duration_ms" in p
     json.dumps(p)   # 可序列化
+
+
+async def test_truncation_nudge_recovers_empty_turn(tmp_path):
+    """aimo 案回归：stop_reason=max_tokens 且零文本零工具 → 注入收敛续轮一次。"""
+    from hahaness.providers import Chunk
+    rounds = [
+        # 第一轮：只有 thinking，撞满 max_tokens（复刻实测事故形态）
+        [Chunk(kind="thinking_delta", text="让我分析这道竞赛题" * 500),
+         Chunk(kind="usage", usage={"input_tokens": 100}, model="fake"),
+         Chunk(kind="stop", usage={"input_tokens": 100, "output_tokens": 16384},
+               stop_reason="max_tokens")],
+        # 续轮：收敛出最终答案
+        H.text_round("最终答案：d=49"),
+    ]
+    core, session = await _core(tmp_path, rounds)
+    summary = await core.run_turn("解这道数学题")
+    assert summary.subtype == "success"
+    assert summary.text == "最终答案：d=49"
+    assert summary.num_turns == 2
+    # 续轮的收敛提示进了上下文（第二次 chat 的 messages 里有）
+    assert any("被输出长度上限截断" in (m.text_parts() or "")
+               for m in core.provider.calls[1])
+
+
+async def test_truncation_nudge_only_once(tmp_path):
+    """连续两次截断空转：只续一次，第二次按空文本终结（不死循环）。"""
+    from hahaness.providers import Chunk
+
+    def trunc():
+        return [Chunk(kind="thinking_delta", text="继续想" * 10),
+                Chunk(kind="stop", usage={"output_tokens": 32000},
+                      stop_reason="max_tokens")]
+
+    core, _ = await _core(tmp_path, [trunc(), trunc()])
+    summary = await core.run_turn("x")
+    assert summary.subtype == "success"  # 第二次截断按空文本终结，不再续
+    assert core.provider.i == 2   # 恰好两次 chat：截断→续（仍截断）→终结
+    assert summary.text == ""

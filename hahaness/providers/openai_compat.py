@@ -28,7 +28,7 @@ from collections.abc import AsyncIterator
 
 import httpx
 
-from hahaness.constants import STREAM_LINE_MAX
+from hahaness.constants import MODEL_MAX_OUTPUT_TOKENS, STREAM_LINE_MAX
 from hahaness.providers import Chunk, api_model_name
 from hahaness.providers.retry import (
     StreamInterrupted,
@@ -106,7 +106,7 @@ class OpenAICompatProvider:
               system: str, *, stream: bool) -> dict:
         body: dict = {
             "model": self.model,
-            "max_tokens": int(self.extra.get("max_tokens", 16384)),
+            "max_tokens": int(self.extra.get("max_tokens", MODEL_MAX_OUTPUT_TOKENS)),
             "messages": self._to_openai_messages(messages, system),
         }
         if stream:

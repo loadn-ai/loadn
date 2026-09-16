@@ -31,6 +31,9 @@ API_RETRY_MAX = 5                 # 429/529/5xx 重试次数
 API_BACKOFF_MIN_S = 1.0
 API_BACKOFF_MAX_S = 60.0
 STREAM_LINE_MAX = 64 * 1024 * 1024   # 读缓冲单行上限（base64 图片免疫）
+# 单响应输出上限：16384 会被长 thinking 吃满（Terminal-Bench 实测：竞赛数学题
+# 16k 全耗在 thinking、text 零产出空转一轮）——提到 32k + loop 层截断续轮兜底
+MODEL_MAX_OUTPUT_TOKENS = 32_768
 
 # ---------------------------------------------------------------- 进程/心跳
 HEARTBEAT_INTERVAL_S = 30         # 工具长执行时 system/heartbeat 心跳间隔

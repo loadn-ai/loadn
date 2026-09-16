@@ -149,3 +149,10 @@ async def test_compact_fallback_on_provider_error():
     msgs = _rounds_messages(30)
     out, did = await comp.compact(msgs)
     assert did and "自动硬摘要" in out[0].text_parts()
+
+
+def test_prompt_has_anti_reconnoitering_discipline():
+    """blind-maze 案回归：system 提示含「不侦查测试」纪律。"""
+    from hahaness.core.context import CORE_PROMPT
+    assert "不侦查测试" in CORE_PROMPT
+    assert "monkeypatch" in CORE_PROMPT

@@ -197,6 +197,7 @@ class AgentCore:
         system = self.assembler.build()
         max_turns = self.settings.max_turns or 0
         final_text = ""
+        truncation_nudged = False
 
         try:
             while True:
@@ -231,6 +232,22 @@ class AgentCore:
                 if texts:
                     final_text = texts[-1]
                 if not tool_uses:
+                    # 截断空转兜底：stop_reason=max_tokens 且零文本零工具
+                    # （长 thinking 吃满输出上限——Terminal-Bench aimo 实测：
+                    # 16k 全耗在推理、result 为空串空转一轮）→ 注入一次收敛
+                    # 续轮；再截断就按空文本终结
+                    if (not texts and asm.stop_reason == "max_tokens"
+                            and not truncation_nudged):
+                        truncation_nudged = True
+                        nudge = ("你的上一条回复被输出长度上限截断，且没有产出任何"
+                                 "正文或工具调用。请立即收敛：直接给出最终答案"
+                                 "或下一步行动，不要再展开长推理。")
+                        messages.append(Message(role="user", content=[
+                            TextBlock(text=nudge)]))
+                        self.session.append_event("user", {
+                            "role": "user",
+                            "content": [{"type": "text", "text": nudge}]})
+                        continue
                     summary.subtype = "success"   # 纯文本=turn 终结
                     break
                 if stop is not None and stop.requested:
