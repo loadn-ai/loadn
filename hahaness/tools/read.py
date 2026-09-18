@@ -83,11 +83,26 @@ class ReadTool(Tool):
         selected = lines[start:start + limit]
         if not selected:
             raise ToolError(f"文件共 {len(lines)} 行，offset={offset} 超出范围")
-        out = [f"{start + i + 1:6}\t{Truncator.clip_head(line, READ_LINE_CHARS_MAX)}"
-               for i, line in enumerate(selected)]
+        out, clipped_lines = [], []
+        for i, line in enumerate(selected):
+            if len(line) > READ_LINE_CHARS_MAX:
+                clipped_lines.append(start + i + 1)
+            out.append(f"{start + i + 1:6}\t"
+                       f"{Truncator.clip_head(line, READ_LINE_CHARS_MAX)}")
+        # 截断即行动（pi 纪律）：有更多行给续读 offset；被裁单行给 sed 取整行命令
+        foot: list[str] = []
+        if start + len(selected) < len(lines):
+            foot.append(f"[文件共 {len(lines)} 行，已显示 "
+                        f"{start + 1}-{start + len(selected)}；"
+                        f"继续读用 offset={start + len(selected) + 1}]")
+        if clipped_lines:
+            hints = "; ".join(
+                f"sed -n '{n}p' {path.resolve()} | head -c 4000"
+                for n in clipped_lines[:5])
+            foot.append(f"[有 {len(clipped_lines)} 行超长被截断，取整行：{hints}]")
         # 读后写守卫数据源：文本读成功才登记（图片不参与 Edit 守卫）
         ctx.files_touched[file_key(raw)] = st.st_mtime
-        return "\n".join(out)
+        return "\n".join(out + foot)
 
     @staticmethod
     def _missing_hint(path: Path) -> str:

@@ -15,17 +15,29 @@ from __future__ import annotations
 import asyncio
 import hashlib
 import json
+import os
 import time
 from collections.abc import Awaitable, Callable
 from dataclasses import dataclass, field
 from pathlib import Path
 
-from hahaness.constants import LOOP_REPEAT_LIMIT, MAX_TURNS_DEFAULT, TOOL_RESULT_INLINE_MAX
+from hahaness.constants import (
+    LOOP_REMIND_AT,
+    LOOP_REPEAT_LIMIT,
+    MAX_TURNS_DEFAULT,
+    STREAM_RETRY_MAX,
+    TOOL_RESULT_INLINE_MAX,
+)
 from hahaness.core.hooks import HookRunner
 from hahaness.core.permissions import PermissionEngine
+from hahaness.core.streamsynth import StreamEventSynthesizer
 from hahaness.providers import Chunk
+from hahaness.providers.retry import StreamInterrupted, backoff_delay, classify_error
 from hahaness.tools.base import Tool, ToolContext, ToolError
 from hahaness.types import Message, TextBlock, ThinkingBlock, ToolResultBlock, ToolUseBlock
+from hahaness.util import get_logger
+
+log = get_logger(__name__)
 
 # 对外事件发射器：async def emit(event: dict) -> None
 #   {"type": "assistant", "message": Message}          每轮 assistant 消息（整块）
@@ -71,7 +83,11 @@ async def _fire(emit: Emitter, ev: dict) -> None:
 
 # ---------------------------------------------------------------- chunk 组装
 class ChunkAssembler:
-    """chunk 流 → content blocks + usage + model（provider 无关）。"""
+    """chunk 流 → content blocks + usage + model（provider 无关）。
+
+    blocks() 按块首片到达序输出（thinking/text/tool_use 交错时与真实流
+    一致，stream_event 增量流与最终 assistant 消息块序对齐）。
+    """
 
     def __init__(self) -> None:
         self.text_parts: list[str] = []
@@ -81,52 +97,67 @@ class ChunkAssembler:
         self.usage: dict = {}
         self.model = ""
         self.stop_reason = ""
+        self.message_id = ""
+        self.bad_tool_raws: dict[str, str] = {}     # JSON 装配失败的 id → raw
+        self._order: list[str] = []                 # 块首见序："thinking"/"text"/"tool:<id>"
+
+    def _reg(self, key: str) -> None:
+        if key not in self._order:
+            self._order.append(key)
 
     def feed(self, c: Chunk) -> None:
         if c.kind == "text_delta":
             self.text_parts.append(c.text)
+            self._reg("text")
         elif c.kind == "thinking_delta":
             self.thinking_parts.append(c.text)
+            self._reg("thinking")
         elif c.kind == "input_json_delta":
             if c.tool_name:
                 self.tools_meta.setdefault(c.tool_use_id, c.tool_name)
             self.tools_json.setdefault(c.tool_use_id, []).append(c.partial_json)
-        elif c.kind == "usage":
-            if c.usage:
-                self.usage.update(c.usage)
-            if c.model:
-                self.model = c.model
-        elif c.kind == "stop":
+            self._reg(f"tool:{c.tool_use_id}")
+        elif c.kind in ("usage", "stop"):
             if c.usage:
                 self.usage.update(c.usage)   # message_stop 全量覆盖
-            self.stop_reason = c.stop_reason or self.stop_reason
             if c.model:
                 self.model = c.model
+            if c.message_id:
+                self.message_id = c.message_id
+            if c.kind == "stop":
+                self.stop_reason = c.stop_reason or self.stop_reason
 
     def blocks(self) -> list:
         out: list = []
-        if self.thinking_parts:
-            out.append(ThinkingBlock(thinking="".join(self.thinking_parts)))
-        for tid, parts in self.tools_json.items():
-            raw = "".join(parts)
-            try:
-                args = json.loads(raw) if raw.strip() else {}
-                if not isinstance(args, dict):
-                    args = {"value": args}
-            except json.JSONDecodeError:
-                args = {"_raw": raw[:2000]}   # 模型产出了坏 JSON：回显让其自救
-            out.append(ToolUseBlock(id=tid,
-                                    name=self.tools_meta.get(tid, "?"), input=args))
         text = "".join(self.text_parts)
-        if text:
-            out.append(TextBlock(text=text))
+        thinking = "".join(self.thinking_parts)
+        for key in self._order:
+            if key == "thinking":
+                if thinking:
+                    out.append(ThinkingBlock(thinking=thinking))
+            elif key == "text":
+                if text:
+                    out.append(TextBlock(text=text))
+            elif key.startswith("tool:"):
+                tid = key[len("tool:"):]
+                raw = "".join(self.tools_json.get(tid, []))
+                try:
+                    args = json.loads(raw) if raw.strip() else {}
+                    if not isinstance(args, dict):
+                        args = {"value": args}
+                except json.JSONDecodeError:
+                    args = {"_raw": raw[:2000]}   # 模型产出了坏 JSON：回显让其自救
+                    self.bad_tool_raws[tid] = raw  # 截断场景下 loop 拒绝执行
+                out.append(ToolUseBlock(id=tid,
+                                        name=self.tools_meta.get(tid, "?"),
+                                        input=args))
         return out
 
 
 # ---------------------------------------------------------------- LoopGuard
 class LoopGuard:
-    """同指纹（name+规范化 input）调用连续 LOOP_REPEAT_LIMIT 次且结果相同
-    → 注入打断提示。任何一次不同指纹/不同结果即重置。"""
+    """同指纹（name+规范化 input）调用两段式防循环：先轻提醒后硬打断。
+    任何一次不同指纹/不同结果即重置。"""
 
     def __init__(self) -> None:
         self._last_fp: str | None = None
@@ -134,7 +165,13 @@ class LoopGuard:
         self._count = 0
         self.nudges = 0
 
-    def record(self, name: str, args: dict, result: str) -> str | None:
+    def record(self, name: str, args: dict,
+               result: str) -> tuple[str, str] | None:
+        """返回 (level, text)：level ∈ remind|break；None = 无事。
+
+        两段式（dsh repeat-tool-reminder）：连续 LOOP_REMIND_AT 次同结果先
+        轻提醒（省 token 的第一道闸），LOOP_REPEAT_LIMIT 次才硬打断。
+        """
         fp = hashlib.sha1(
             (name + "|" + json.dumps(args, sort_keys=True, ensure_ascii=False))
             .encode()).hexdigest()[:16]
@@ -146,9 +183,14 @@ class LoopGuard:
         if self._count >= LOOP_REPEAT_LIMIT:
             self._count = 0
             self.nudges += 1
-            return ("检测到你在重复同一操作（同参数同结果已连续 "
+            return ("break",
+                    "检测到你在重复同一操作（同参数同结果已连续 "
                     f"{LOOP_REPEAT_LIMIT} 次）。请改变策略、拆小步骤，"
                     "或直接向用户汇报阻塞原因，不要再重复该调用。")
+        if self._count >= LOOP_REMIND_AT:
+            return ("remind",
+                    f"同一调用已连续 {self._count} 次同结果无进展；"
+                    "确认没有收益就换策略，不要继续原样重复。")
         return None
 
 
@@ -187,10 +229,73 @@ class AgentCore:
         self.ctx.extras.setdefault("state", self.session.state)
         self.assembler = ContextAssembler(self.cwd, tools=list(tools))
         self.loop_guard = LoopGuard()
+        # 随时插话（steering）：宿主把用户插话追加到 HAHANESS_STEER_FILE，
+        # 主循环每轮 LLM 调用前轮询——运行中消息不等排队、下一轮即生效。
+        # 边界取「构造时刻的文件大小」：启动前已有的是历史插话（已在当时
+        # 上下文消化过，不重放）；启动时文件尚不存在则从 0 起——之后写入
+        # 的全是本 turn 插话。不能等首次成功 open 再定界：文件往往是宿主
+        # 收到第一条插话才创建的，那样启动到创建之间写入的会被当历史跳过
+        self._steer_path = os.environ.get("HAHANESS_STEER_FILE", "")
+        try:
+            self._steer_offset = os.path.getsize(self._steer_path)
+        except OSError:
+            self._steer_offset = 0
+
+    # ------------------------------------------------------------ 插话轮询
+    def _poll_steer(self) -> list[str]:
+        """读上次轮询后新增的插话（.steer.jsonl 每行 {ts,text}）。
+
+        二进制读（字节 offset 精确）；尾部半行（宿主并发 append 中）不越
+        过，下次连剩余半段一起读；文件不存在/读失败静默跳过（插话是增强
+        不是依赖）。
+        """
+        if not self._steer_path:
+            return []
+        try:
+            with open(self._steer_path, "rb") as f:
+                f.seek(self._steer_offset)
+                new = f.read()
+        except OSError:
+            return []
+        if not new or not new.endswith(b"\n"):
+            return []
+        self._steer_offset += len(new)
+        out = []
+        for ln in new.decode("utf-8", errors="replace").splitlines():
+            ln = ln.strip()
+            if not ln:
+                continue
+            try:
+                data = json.loads(ln)
+                if isinstance(data, dict) and data.get("text"):
+                    out.append(str(data["text"]))
+            except json.JSONDecodeError:
+                continue
+        return out
+
+    async def _inject_steer(self, texts: list[str], messages: list,
+                            emit: Emitter | None = None) -> int:
+        """插话注入上下文 + transcript，并向宿主发 steer 事件（宿主据此
+        知道该条插话已被消费——turn 抢先结束时未消费的插话由宿主回队列）。"""
+        n = 0
+        for t in texts:
+            t = t[:4000]
+            injected = (f"【用户插话（随时指令，优先级高于原任务）】{t}\n"
+                        "请判断与本任务的关系：要求放弃/调整方向的，立即执行转向"
+                        "（停止相关子工作，改做用户要的）；要求补充信息的，并入"
+                        "当前工作；与本任务无关的，记下不打断。")
+            messages.append(Message(role="user", content=[TextBlock(text=injected)]))
+            self.session.append_event("user", {
+                "role": "user", "content": [{"type": "text", "text": injected}]})
+            if emit is not None:
+                await _fire(emit, {"type": "steer", "text": t})
+            n += 1
+        return n
 
     # ------------------------------------------------------------ turn 入口
     async def run_turn(self, user_msg: str, *, emit: Emitter | None = None,
-                       stop: StopFlag | None = None) -> TurnSummary:
+                       stop: StopFlag | None = None,
+                       stream_events: bool = False) -> TurnSummary:
         t0 = time.time()
         summary = TurnSummary()
         emit = emit or _noop_emit
@@ -209,7 +314,7 @@ class AgentCore:
             self.session.append_event("system", {"subtype": "plan", **plan_rec})
             await _fire(emit, {"type": "plan", "plan": plan_rec})
             if plan.parallelizable and len(plan.subtasks) >= 2:
-                results = await self.subagents.gather(plan.subtasks)
+                results = await self.subagents.gather(plan.subtasks, emit=emit)
                 if stop is not None and stop.requested:
                     summary.subtype = "error_stopped"
                     summary.stopped = True
@@ -232,6 +337,10 @@ class AgentCore:
         max_turns = self.settings.max_turns or 0
         final_text = ""
         truncation_nudged = False
+        # 压缩触发的用量口径：最近一次调用的 input 侧（非累计——累计会在
+        # 实际上下文 20-40% 时误触发过度压缩）
+        last_input_usage: dict = {}
+        compress_used = False   # context_overflow 压缩自救（每 turn 至多一次）
 
         try:
             while True:
@@ -239,27 +348,102 @@ class AgentCore:
                     summary.subtype = "error_stopped"
                     summary.stopped = True
                     break
-                # ① provider 流式调用（retry 在 provider 内部）
+                # ⓪ 插话轮询：上一轮工具执行期间用户可能发了新消息——
+                # 下一轮 LLM 调用前注入，运行中转向不等排队
+                steer_texts = self._poll_steer()
+                if steer_texts:
+                    await self._inject_steer(steer_texts, messages, emit=emit)
+                # ① provider 流式调用：首 chunk 前失败由 provider 内部重试；
+                #    流中断（StreamInterrupted）与可重试 error chunk 在本层
+                #    重试——半成品 assistant 从未 append 进 messages，整轮
+                #    重放语义安全（已外发的 stream_event 增量以最终 assistant
+                #    整块事件为准，见 streamsynth）
                 asm = ChunkAssembler()
-                try:
-                    async for c in self.provider.chat(messages,
-                                                      [t.def_() for t in self.tools.values()],
-                                                      system):
-                        asm.feed(c)
-                        if c.kind == "error":
-                            raise ProviderError(c.error, c.retriable)
-                except ProviderError as e:
-                    summary.subtype = "error_during_execution"
-                    summary.error = f"provider error: {e}"
+                synth = (StreamEventSynthesizer(
+                    model=getattr(self.provider, "model_name", "") or "")
+                    if stream_events else None)
+                stream_done = False
+                stream_err = ""
+                attempt = 0
+                overflowed = False
+                while True:
+                    try:
+                        async for c in self.provider.chat(
+                                messages,
+                                [t.def_() for t in self.tools.values()],
+                                system):
+                            asm.feed(c)
+                            if synth is not None:
+                                for ev in synth.feed(c):
+                                    await _fire(emit, {"type": "stream_event",
+                                                       "event": ev})
+                            if c.kind == "error":
+                                raise ProviderError(c.error, c.retriable)
+                        stream_done = True
+                        break
+                    except ProviderError as e:
+                        if e.reason == "context_overflow" \
+                                and self.compactor is not None \
+                                and not self.settings.no_compact \
+                                and not compress_used:
+                            # 溢出自救（hermes FailoverReason）：强制压缩一次
+                            # 再重发；不计 STREAM_RETRY attempt（一次压缩
+                            # 不该挤掉两次流重试额度）
+                            compress_used = True
+                            try:
+                                messages, did = await self.compactor.compact(
+                                    messages,
+                                    context_window=self.settings.context_window,
+                                    prev_summary=self.session.last_compact_summary())
+                            except Exception as ce:  # noqa: BLE001
+                                summary.subtype = "error_during_execution"
+                                summary.error = f"provider error: {e}｜压缩自救失败: {ce!r}"
+                                break
+                            if did:
+                                self.session.mark_compact(
+                                    self.compactor.last_summary)
+                                overflowed = True
+                                break        # 出内层，回 while True 重发
+                            summary.subtype = "error_during_execution"
+                            summary.error = f"provider error: {e}（无可压缩轮）"
+                            break
+                        if not e.retriable:
+                            summary.subtype = "error_during_execution"
+                            summary.error = f"provider error: {e}"
+                            break
+                        stream_err = f"provider error: {e}"
+                    except StreamInterrupted as e:
+                        stream_err = f"stream interrupted: {e}"
+                    if stop is not None and stop.requested:
+                        summary.subtype = "error_stopped"
+                        summary.stopped = True
+                        break
+                    if attempt >= STREAM_RETRY_MAX:
+                        summary.subtype = "error_during_execution"
+                        summary.error = f"{stream_err}（重试 {STREAM_RETRY_MAX} 次后仍失败）"
+                        break
+                    await asyncio.sleep(backoff_delay(attempt + 1))
+                    attempt += 1
+                    asm = ChunkAssembler()   # 丢弃半成品，整轮重装
+                    if synth is not None:
+                        synth.reset()         # 新 message id 重发增量
+                if not stream_done:
+                    if overflowed:
+                        continue     # 溢出已压缩：回 while True 用新 messages 重发
                     break
                 blocks = asm.blocks()
                 summary.num_turns += 1
                 self._merge_usage(summary, asm)
+                last_input_usage = {k: (asm.usage or {}).get(k) or 0
+                                    for k in ("input_tokens",
+                                              "cache_read_input_tokens",
+                                              "cache_creation_input_tokens")}
 
                 msg = Message(role="assistant", content=blocks)
                 messages.append(msg)
                 self.session.append_event("assistant", msg.to_dict())
-                await _fire(emit, {"type": "assistant", "message": msg})
+                await _fire(emit, {"type": "assistant", "message": msg,
+                                   "message_id": asm.message_id})
 
                 tool_uses = [b for b in blocks if isinstance(b, ToolUseBlock)]
                 texts = [b.text for b in blocks if isinstance(b, TextBlock)]
@@ -289,29 +473,45 @@ class AgentCore:
                     summary.stopped = True
                     break
 
-                # ④ 工具批执行
+                # ④ 工具批执行（残缺参数拒绝先行——pi 纪律：截断产出的
+                # 半截 toolCall 绝不带病执行，直接回填错误让模型重发）
                 result_blocks: list[ToolResultBlock] = []
                 for tu in tool_uses:
                     if stop is not None and stop.requested:
                         break
+                    raw = asm.bad_tool_raws.get(tu.id)
+                    if raw is not None and asm.stop_reason == "max_tokens":
+                        blk = ToolResultBlock(
+                            tool_use_id=tu.id, is_error=True,
+                            content=f"该工具参数因输出截断不完整（原文前 200 "
+                                    f"字符：{raw[:200]}），未执行；请重新发起"
+                                    "完整调用（必要时精简参数避免再截断）。")
+                        self.session.append_event("tool_result", blk.to_dict())
+                        await _fire(emit, {"type": "tool_result", "block": blk,
+                                           "name": tu.name})
+                        result_blocks.append(blk)
+                        continue
                     blk, name = await self._exec_tool(tu, emit)
                     result_blocks.append(blk)
                     nudge = self.loop_guard.record(name, tu.input,
                                                    _inline(blk.content))
-                    if nudge:
+                    if nudge is not None:
+                        _, nudge_text = nudge
                         messages.append(Message(role="user", content=[
-                            TextBlock(text=nudge)]))
+                            TextBlock(text=nudge_text)]))
                         self.session.append_event("user", {
-                            "role": "user", "content": [{"type": "text", "text": nudge}]})
+                            "role": "user",
+                            "content": [{"type": "text", "text": nudge_text}]})
                 if result_blocks:
                     # transcript 已逐条落 tool_result 事件（replay 自动归并成
                     # user 批消息）；这里只维护内存上下文
                     messages.append(Message(role="user", content=result_blocks))
 
-                # ⑥ 压缩复查（工具批后上下文增长点）
+                # ⑥ 压缩复查（工具批后上下文增长点；last-call 口径防误触发）
                 if self.compactor is not None and not self.settings.no_compact:
                     messages, did = await self.compactor.maybe_compact(
-                        messages, summary.usage, self.settings.context_window)
+                        messages, last_input_usage,
+                        self.settings.context_window)
                     if did:
                         self.session.mark_compact(self.compactor.last_summary)
 
@@ -319,7 +519,22 @@ class AgentCore:
                 if max_turns and summary.num_turns >= max_turns:
                     summary.subtype = "error_max_turns"
                     summary.error = f"达到轮次上限 {max_turns}"
+                    # grace call（hermes）：无工具收尾一次，让模型基于已有
+                    # 信息写结论——自包异常：外层 catch-all 会改写 subtype
+                    if stop is None or not stop.requested:
+                        try:
+                            grace = await self._grace_call(
+                                messages, system, emit, summary,
+                                stream_events=stream_events, stop=stop)
+                            if grace:
+                                final_text = grace
+                        except Exception:  # noqa: BLE001 — grace 失败沿用旧 text
+                            log.warning("grace call 失败（沿用已有 final text）")
                     break
+        except Exception as e:  # noqa: BLE001 — 意外异常转 turn error 落盘（不落假 success）
+            log.exception("run_turn 意外异常")
+            summary.subtype = "error_during_execution"
+            summary.error = f"internal error: {e!r}"
         finally:
             summary.text = final_text
             summary.duration_s = time.time() - t0
@@ -339,6 +554,39 @@ class AgentCore:
         return summary
 
     # ------------------------------------------------------------ 工具执行
+    async def _grace_call(self, messages: list[Message], system: str,
+                          emit: Emitter, summary: TurnSummary, *,
+                          stream_events: bool = False,
+                          stop: StopFlag | None = None) -> str:
+        """轮次耗尽后的无工具收尾调用（hermes grace call）。
+
+        tools=[] 从 API 层保证零 tool_use；usage 经 ChunkAssembler 并入
+        summary（记账口径与主轮一致）；num_turns 不增；no-cache 通道。
+        返回收尾正文（空串 = 放弃）。
+        """
+        if stop is not None and stop.requested:
+            return ""
+        gsys = (system + "\n\n（轮次已到上限。请立即基于已有信息写最终结论"
+                "与未竟事项，不要再调用工具，不要展开新工作。）")
+        asm = ChunkAssembler()
+        synth = (StreamEventSynthesizer(
+            model=getattr(self.provider, "model_name", "") or "")
+            if stream_events else None)
+        async for c in self.provider.chat(messages, [], gsys, use_cache=False):
+            asm.feed(c)
+            if synth is not None:
+                for ev in synth.feed(c):
+                    await _fire(emit, {"type": "stream_event", "event": ev})
+            if c.kind == "error":
+                return ""
+        self._merge_usage(summary, asm)
+        msg = Message(role="assistant", content=asm.blocks())
+        messages.append(msg)
+        self.session.append_event("assistant", msg.to_dict())
+        await _fire(emit, {"type": "assistant", "message": msg,
+                           "message_id": asm.message_id})
+        return "".join(asm.text_parts)
+
     async def _exec_tool(self, tu: ToolUseBlock, emit: Emitter) -> tuple[ToolResultBlock, str]:
         name = tu.name
         tool = self.tools.get(name)
@@ -386,6 +634,12 @@ class AgentCore:
         blk = ToolResultBlock(tool_use_id=tu.id, content=content, is_error=is_error)
         self.session.append_event("tool_result", blk.to_dict())
         await _fire(emit, {"type": "tool_result", "block": blk, "name": name})
+        if name == "TodoWrite" and not is_error:
+            # todos 事件（Emitter 契约已声明）：清单变更即外发，供 REPL/宿主 UI
+            state = self.ctx.extras.get("state")
+            if state is not None:
+                await _fire(emit, {"type": "todos",
+                                   "todos": [t.to_dict() for t in state.todos]})
         return blk, name
 
     # ------------------------------------------------------------ 记账
@@ -406,9 +660,13 @@ class AgentCore:
 
 
 class ProviderError(RuntimeError):
+    """provider 错误（loop 消费）：retriable 走重试；reason 来自
+    retry.classify_error——context_overflow 走压缩自救路径。"""
+
     def __init__(self, msg: str, retriable: bool = False) -> None:
         super().__init__(msg)
         self.retriable = retriable
+        self.reason = classify_error(str(msg))["reason"]
 
 
 def _inline(content) -> str:

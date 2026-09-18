@@ -58,10 +58,13 @@ def test_cli_stream_json_happy_path(tmp_path, ws):
                   fake_dir=ws / ".fake")
     assert cp.returncode == 0, cp.stderr[-500:]
     evs = _events(cp)
-    assert [e["type"] for e in evs] == ["system", "assistant", "result"]
+    # plan/stream_event 是观测性事件，不计入主契约序列
+    types = [e["type"] for e in evs if e["type"] not in ("plan", "stream_event")]
+    assert types == ["system", "assistant", "result"]
     assert evs[0]["subtype"] == "init" and evs[0]["session_id"] == sid
-    assert evs[1]["message"]["content"][0]["text"].startswith("CLI 回复")
-    r = evs[2]
+    a1 = next(e for e in evs if e["type"] == "assistant")
+    assert a1["message"]["content"][0]["text"].startswith("CLI 回复")
+    r = evs[-1]
     assert r["subtype"] == "success" and r["num_turns"] == 1
     assert r["usage"]["input_tokens"] > 0
     assert r["modelUsage"] and "inputTokens" in next(iter(r["modelUsage"].values()))
@@ -127,13 +130,67 @@ def test_cli_tools_roundtrip_stream(tmp_path, ws):
                   cwd=ws, home=tmp_path, fake_dir=ws / ".fake")
     assert cp.returncode == 0, cp.stderr[-400:]
     evs = _events(cp)
-    types = [e["type"] for e in evs]
+    types = [e["type"] for e in evs if e["type"] not in ("plan", "stream_event", "todos")]
     assert types == ["system", "assistant", "user", "assistant", "result"]
-    tu = [b for b in evs[1]["message"]["content"] if b["type"] == "tool_use"][0]
+    a1 = next(e for e in evs if e["type"] == "assistant")
+    tu = [b for b in a1["message"]["content"] if b["type"] == "tool_use"][0]
     assert tu["name"] == "Bash" and tu["input"]["command"] == "echo hi"
-    tr = evs[2]["message"]["content"][0]
+    u1 = next(e for e in evs if e["type"] == "user")
+    tr = u1["message"]["content"][0]
     assert tr["type"] == "tool_result" and tr["tool_use_id"] == tu["id"]
     assert "hi" in tr["content"] and not tr["is_error"]   # 真执行了 echo
+
+
+def test_cli_stream_events_with_verbose(tmp_path, ws):
+    """--verbose：stream_event 逐 delta 外发，text 拼接与 assistant 整块一致。"""
+    (ws / ".fake" / "reply").write_text("逐字流的回复")
+    cp = _run_cli(["-p", "--verbose", "--output-format", "stream-json",
+                   "--session-id", str(uuid.uuid4()), "x"],
+                  cwd=ws, home=tmp_path, fake_dir=ws / ".fake")
+    assert cp.returncode == 0, cp.stderr[-400:]
+    evs = _events(cp)
+    sevs = [e for e in evs if e["type"] == "stream_event"]
+    assert sevs, "应有 stream_event 行"
+    assert sevs[0]["parent_tool_use_id"] is None
+    assert sevs[0]["event"]["type"] == "message_start"
+    assert sevs[-1]["event"]["type"] == "message_stop"
+    deltas = "".join(e["event"]["delta"]["text"] for e in sevs
+                     if e["event"]["type"] == "content_block_delta"
+                     and e["event"]["delta"]["type"] == "text_delta")
+    a = next(e for e in evs if e["type"] == "assistant")
+    assert deltas == a["message"]["content"][0]["text"] == "逐字流的回复"
+    # stream_event 全部位于 assistant 整块之前（增量先行、整块收口）
+    assert max(i for i, e in enumerate(evs) if e["type"] == "stream_event") \
+        < next(i for i, e in enumerate(evs) if e["type"] == "assistant")
+
+
+def test_cli_no_stream_events_without_verbose(tmp_path, ws):
+    """无 --verbose：不外发 stream_event（与 claude CLI 同位语义）。"""
+    (ws / ".fake" / "reply").write_text("普通回复")
+    cp = _run_cli(["-p", "--output-format", "stream-json",
+                   "--session-id", str(uuid.uuid4()), "x"],
+                  cwd=ws, home=tmp_path, fake_dir=ws / ".fake")
+    assert cp.returncode == 0, cp.stderr[-400:]
+    assert not [e for e in _events(cp) if e["type"] == "stream_event"]
+
+
+def test_cli_todos_event_stream(tmp_path, ws):
+    """todos 旋钮：TodoWrite 执行后外发 todos 事件（紧随 tool_result 的 user 行）。"""
+    (ws / ".fake" / "todos").write_text(json.dumps(
+        [{"content": "检索来源", "status": "pending", "activeForm": "检索来源中"}]))
+    (ws / ".fake" / "reply").write_text("清单已建")
+    cp = _run_cli(["-p", "--verbose", "--output-format", "stream-json",
+                   "--dangerously-skip-permissions",
+                   "--session-id", str(uuid.uuid4()), "列清单"],
+                  cwd=ws, home=tmp_path, fake_dir=ws / ".fake")
+    assert cp.returncode == 0, cp.stderr[-400:]
+    evs = _events(cp)
+    types = [e["type"] for e in evs]
+    assert "todos" in types
+    todo_ev = next(e for e in evs if e["type"] == "todos")
+    assert todo_ev["todos"][0]["subject"] == "检索来源"
+    assert todo_ev["todos"][0]["status"] == "pending"
+    assert types.index("todos") == types.index("user") + 1
 
 
 def test_cli_bigusage_result(tmp_path, ws):

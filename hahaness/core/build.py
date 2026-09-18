@@ -12,6 +12,7 @@ from hahaness.core.compactor import Compactor
 from hahaness.core.loop import AgentCore, LoopSettings
 from hahaness.core.plan import TaskPlanner
 from hahaness.core.session import SessionManager
+from hahaness.core.skills import discover_skills
 from hahaness.core.subagent import SubagentManager, TaskTool
 from hahaness.providers import build_provider, provider_config
 from hahaness.tools import ToolRegistry
@@ -46,9 +47,26 @@ async def build_agent(cwd: Path, *, session_id: str | None = None,
     cfg = cfg or provider_config()
     disallow = set(disallow or [])
 
+    # CC-Fingerprint 工具面整形：伪装通道隐藏 hahaness 特有工具（形状出戏）
+    # + 注册 CC 名单内的 stub 工具（BashOutput/KillShell 映射真实后台治理）
+    from hahaness.providers.fingerprint import stealth_mode
+    stealth = bool(stealth_mode())
+    if stealth:
+        disallow.add("InteractiveShell")
+
     provider = build_provider(cfg)
     registry = ToolRegistry.default(disallow=disallow)
     tools = {name: registry.get(name) for name in registry.names()}
+    if stealth:
+        from hahaness.tools.cc_stubs import cc_stub_tools
+        for t in cc_stub_tools():
+            tools[t.name] = t
+
+    # Skill 工具（发现非空才注册——空 enum 不进装配；AUTO_REGISTER=False）
+    skills = discover_skills(cwd)
+    if skills and "Skill" not in disallow:
+        from hahaness.tools.skill import SkillTool
+        tools["Skill"] = SkillTool(skills)
 
     # MCP 动态工具（单个失败降级警告，不阻断会话）
     mcp_conns: list = []
@@ -68,9 +86,13 @@ async def build_agent(cwd: Path, *, session_id: str | None = None,
     # Task 子代理（子代理自身构建时 enable_task=False——默认禁递归）
     mgr = None
     if enable_task and "Task" not in disallow:
+        from hahaness import hahaness_home
+        from hahaness.core.agent_defs import load_agent_defs
         mgr = SubagentManager(
             registry=registry, provider_factory=lambda: build_provider(cfg),
-            cwd=cwd, session_id=session.session_id)
+            cwd=cwd, session_id=session.session_id,
+            extra_types=load_agent_defs(cwd, hahaness_home() / "agents"),
+            model_provider_factory=lambda m: build_provider({**cfg, "model": m}))
         tools["Task"] = TaskTool(mgr)
 
     window = context_window or _window_of(cfg.get("model") or "")
@@ -85,7 +107,14 @@ async def build_agent(cwd: Path, *, session_id: str | None = None,
         planner=(TaskPlanner(_planner_provider(cfg))
                  if (mgr is not None and not no_plan) else None),
         ctx=ToolContext(cwd=cwd, workspace=cwd, supervisor=supervisor))
-    core.compactor = Compactor(provider)
+    # Bash 超限全文落盘位置：session scratch 目录（transcript.dir）——不落
+    # cwd/logs（会改 git status → 打掉 system 缓存断点）
+    core.ctx.extras["scratch_dir"] = str(session.transcript.dir)
+    # 伪装层会话 id（metadata.user_id 的 session 后缀稳定派生；对主 provider
+    # 与 planner/子代理的 provider 实例统一注入）
+    if hasattr(provider, "_stealth_sid"):
+        provider._stealth_sid = session.session_id
+    core.compactor = Compactor(provider, small_model=cfg.get("small_model"))
     return AgentBundle(core=core, session=session, registry=registry,
                        mcp_conns=mcp_conns, supervisor=supervisor)
 

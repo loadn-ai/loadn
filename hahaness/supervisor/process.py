@@ -6,6 +6,8 @@ start_new_session=True 独立进程组，pgid==pid），绝不扫全局进程表
 
 三块职责：
 - spawn_bg：登记 + 输出 tee 到 cwd/logs/task_<id>.out（异步 reader 协程）
+- adopt/track：收养在跑的前台进程（Bash 60s 自动转后台）与只登记不启
+  reader 的外部进程（InteractiveShell 的 pty 会话——master fd 由工具自管）
 - watchdog：双信号判死——某任务 stdout 静默超阈值【且】产物路径无新写入
   才标 stalled（只标记不杀，杀不杀由上层决断；写文件型任务安静不算死）
 - shutdown：SIGTERM→宽限→SIGKILL 收割全部登记进程组，供 CLI 退出钩子
@@ -84,6 +86,25 @@ def _tail(path: str | Path, chars: int) -> str:
     return data[-(chars * 4):].decode("utf-8", errors="replace")[-chars:]
 
 
+class _SyncProcAdapter:
+    """同步 Popen → asyncio Process 形态适配（shutdown 的 wait 梯子用）。
+
+    只需 returncode/wait 两个面；wait 走默认 executor，不让同步阻塞
+    挂住事件循环。
+    """
+
+    def __init__(self, popen) -> None:
+        self._popen = popen
+
+    @property
+    def returncode(self) -> int | None:
+        return self._popen.poll()
+
+    async def wait(self) -> int:
+        loop = asyncio.get_running_loop()
+        return await loop.run_in_executor(None, self._popen.wait)
+
+
 class ProcessSupervisor:
     """登记式进程组治理（事件循环内使用，非线程安全）。"""
 
@@ -125,6 +146,70 @@ class ProcessSupervisor:
         self._readers[task_id] = asyncio.create_task(
             self._reader(info, proc), name=f"sup-reader-{task_id}")
         return info
+
+    # ---------------------------------------------------------------- adopt/track
+    async def adopt(self, proc: asyncio.subprocess.Process, cmd: list[str],
+                    cwd: str | Path, prelude: bytes = b"",
+                    *, started_at: float | None = None) -> ProcInfo:
+        """收养一个在跑的前台进程（Bash 60s 自动转后台路径）。
+
+        prelude 是前台已捕获的输出——同步写盘（本段到 create_task 之间
+        禁止 await：协程要等同步块让出才被调度，O_APPEND 双写本身安全），
+        之后与 spawn_bg 完全同构：同一个 _reader 续读 stdout 落盘，shutdown
+        的 SIGTERM→SIGKILL 梯子照走。started_at 透传前台真实启动墙钟。
+        """
+        self._seq += 1
+        task_id = f"t{self._seq}"
+        logs = Path(cwd) / "logs"
+        logs.mkdir(parents=True, exist_ok=True)
+        out_path = logs / f"task_{task_id}.out"
+        if prelude:
+            with out_path.open("ab") as f:
+                f.write(prelude)
+                f.flush()
+        try:
+            pgid = os.getpgid(proc.pid)
+        except ProcessLookupError:
+            pgid = proc.pid
+        info = ProcInfo(id=task_id, pid=proc.pid, pgid=pgid, cmd=list(cmd),
+                        started_at=started_at or time.time(), status="running",
+                        output_path=str(out_path))
+        self._procs[task_id] = info
+        self._proc_objs[task_id] = proc          # 必登：shutdown 的 SIGKILL 升级只对有 proc_obj 的条目做
+        self._last_output[task_id] = time.time()
+        self._stalled.discard(task_id)
+        self._readers[task_id] = asyncio.create_task(
+            self._reader(info, proc), name=f"sup-reader-{task_id}")
+        return info
+
+    def track(self, pid: int, pgid: int, cmd: list[str], *,
+              started_at: float | None = None,
+              proc=None) -> ProcInfo:
+        """只登记不启 reader（InteractiveShell 的 pty 会话：master fd 由
+        工具自管读写，这里只挂进 shutdown 收割梯子）。
+
+        proc 接受同步 Popen——内部包 _SyncProcAdapter，避免 shutdown 的
+        wait 阻塞事件循环。无 reader → 子进程退出后需工具调 mark_exited
+        落态，否则 status 恒 running。
+        """
+        self._seq += 1
+        task_id = f"t{self._seq}"
+        info = ProcInfo(id=task_id, pid=pid, pgid=pgid, cmd=list(cmd),
+                        started_at=started_at or time.time(), status="running",
+                        output_path="")
+        self._procs[task_id] = info
+        if proc is not None:
+            self._proc_objs[task_id] = (proc if isinstance(
+                proc, asyncio.subprocess.Process) else _SyncProcAdapter(proc))
+        self._last_output[task_id] = info.started_at
+        return info
+
+    def mark_exited(self, task_id: str, rc: int) -> None:
+        """track 登记（无 reader）的落态出口；显式收割（killed）不抢。"""
+        info = self._procs.get(task_id)
+        if info is not None and info.status == "running" \
+                and task_id not in self._killing:
+            info.status = "done" if rc == 0 else "failed"
 
     async def _reader(self, info: ProcInfo,
                       proc: asyncio.subprocess.Process) -> None:

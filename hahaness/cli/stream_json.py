@@ -3,7 +3,10 @@
 契约与 宿主平台 tests/fake_claude.py 逐字段对齐（宿主平台 消费层零改动）：
   首行   {"type":"system","subtype":"init","session_id","model","tools","mcp_servers"}
   增量   {"type":"assistant","message":{"id":"msg_<hex>","role":"assistant","content":[blocks]}}
+  流式   {"type":"stream_event","event":{Anthropic SSE 形事件},"parent_tool_use_id":null}
+         —— --verbose 时逐 delta 外发（claude CLI 同位语义；宿主打字机渲染可用）
   回填   {"type":"user","message":{"role":"user","content":[{"type":"tool_result",…}]}}
+  观测   {"type":"plan",…} / {"type":"todos","todos":[…]}（planner 判定/清单变更）
   心跳   {"type":"system","subtype":"heartbeat","ts"}   —— 工具长执行时 stdout 判活续命
   终止   {"type":"result","subtype","result","session_id","total_cost_usd","usage",
           "modelUsage","num_turns","duration_ms"}
@@ -44,13 +47,27 @@ class StreamJsonEmitter:
             msg = event["message"]
             self._msg_n += 1
             self._emit({"type": "assistant", "message": {
-                "id": f"msg_{uuid.uuid4().hex[:12]}",
+                "id": event.get("message_id") or f"msg_{uuid.uuid4().hex[:12]}",
                 "role": "assistant",
                 "content": [b.to_dict() for b in msg.content]}})
         elif t == "tool_result":
             blk = event["block"]
             self._emit({"type": "user", "message": {
                 "role": "user", "content": [blk.to_dict()]}})
+        elif t == "plan":
+            self._emit({"type": "plan", "session_id": self.session_id,
+                        **(event.get("plan") or {})})
+        elif t == "todos":
+            self._emit({"type": "todos", "session_id": self.session_id,
+                        "todos": event.get("todos") or []})
+        elif t == "stream_event":
+            self._emit({"type": "stream_event", "event": event["event"],
+                        "session_id": self.session_id,
+                        "parent_tool_use_id": None})
+        elif t == "steer":
+            # 用户插话被注入（消费回执）：宿主据此把该条从待回队列摘除
+            self._emit({"type": "steer", "session_id": self.session_id,
+                        "text": event.get("text") or ""})
         elif t == "turn":
             self.send_result(event["summary"])
 

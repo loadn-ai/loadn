@@ -144,11 +144,29 @@ async def test_compact_noop_below_threshold():
 
 async def test_compact_fallback_on_provider_error():
     from hahaness.providers import Chunk
+
+    class _AlwaysError:
+        model_name = "err"
+
+        async def chat(self, messages, tools, system, *, stream=True,
+                       model=None, use_cache=True):
+            yield Chunk(kind="error", error="down")
+
+    comp = Compactor(_AlwaysError())
+    msgs = _rounds_messages(30)
+    out, did = await comp.compact(msgs)
+    assert did and "自动硬摘要" in out[0].text_parts()   # 重试一次仍败 → 降级
+
+
+async def test_compact_retry_once_then_success():
+    """首次摘要 error chunk → 减半重试成功（不再直接降级硬摘要）。"""
+    from hahaness.providers import Chunk
     prov = H.ScriptedProvider([[Chunk(kind="error", error="down")]])
     comp = Compactor(prov)
     msgs = _rounds_messages(30)
     out, did = await comp.compact(msgs)
-    assert did and "自动硬摘要" in out[0].text_parts()
+    assert did and "scripted done" in out[0].text_parts()
+    assert prov.i == 2                       # 恰两次 chat：失败 + 重试
 
 
 def test_prompt_has_anti_reconnoitering_discipline():
@@ -156,3 +174,104 @@ def test_prompt_has_anti_reconnoitering_discipline():
     from hahaness.core.context import CORE_PROMPT
     assert "不侦查测试" in CORE_PROMPT
     assert "monkeypatch" in CORE_PROMPT
+
+
+async def test_compactor_passes_small_model():
+    """small_model 配置 → 摘要调用的 per-call model 覆盖透传到 provider。"""
+    from hahaness.providers import Chunk
+    from hahaness.providers.fake import FakeProvider
+    prov = FakeProvider(script=[[Chunk(kind="text_delta", text="小模型摘要")]])
+    comp = Compactor(prov, small_model="glm-5.3-flash")
+    out, did = await comp.compact(_rounds_messages(30))
+    assert did and "小模型摘要" in out[0].text_parts()
+    assert prov.last_model == "glm-5.3-flash"
+    assert prov.last_use_cache is False    # 摘要走 no-cache 通道
+
+
+async def test_compactor_default_model_when_unset():
+    from hahaness.providers import Chunk
+    from hahaness.providers.fake import FakeProvider
+    prov = FakeProvider(script=[[Chunk(kind="text_delta", text="同模型摘要")]])
+    comp = Compactor(prov)
+    await comp.compact(_rounds_messages(30))
+    assert prov.last_model is None
+
+
+def test_prompt_has_timeout_death_disciplines():
+    """Terminal-Bench 死法①③的提示词纪律回归：auto-bg 语义 + make -j。"""
+    from hahaness.core.context import CORE_PROMPT
+    assert "自动转后台" in CORE_PROMPT          # 死法①：60s auto-bg 语义
+    assert "先继续干" in CORE_PROMPT            # 转后台后不空转轮询
+    assert "-j$(nproc)" in CORE_PROMPT          # 死法③：编译必并行
+
+
+# ---------------------------------------------------------------- 压缩四件套
+def _big_round_messages(n: int, big_chars: int = 5000) -> list[Message]:
+    msgs = [Message(role="user", content=[TextBlock(text="开始")])]
+    for i in range(n):
+        msgs.append(Message(role="assistant", content=[
+            ToolUseBlock(id=f"tu_{i}", name="Read",
+                         input={"file_path": f"/tmp/f{i}.py"})]))
+        msgs.append(Message(role="user", content=[
+            ToolResultBlock(tool_use_id=f"tu_{i}",
+                            content="x" * big_chars)]))
+        msgs.append(Message(role="assistant", content=[TextBlock(text=f"轮{i}完")]))
+    return msgs
+
+
+async def test_prune_renders_without_mutating():
+    """先裁剪后总结：渲染层骨架化，Message 原对象深比较不变。"""
+    import copy
+
+    from hahaness.core.compactor import _render_history
+    msgs = _big_round_messages(3)
+    snapshot = copy.deepcopy([m.to_dict() for m in msgs])
+    rendered = _render_history(msgs)
+    assert "…[pruned]…" in rendered          # 5000 字符结果被骨架化
+    assert [m.to_dict() for m in msgs] == snapshot   # 未 mutate
+
+
+async def test_file_ledger_extraction():
+    from hahaness.core.compactor import _file_ledger
+    msgs = _big_round_messages(2)
+    msgs.append(Message(role="assistant", content=[
+        ToolUseBlock(id="tu_w", name="Edit", input={"file_path": "/tmp/f0.py"})]))
+    ledger = _file_ledger(msgs)
+    assert "readFiles: /tmp/f0.py, /tmp/f1.py" in ledger
+    assert "modifiedFiles: /tmp/f0.py" in ledger
+
+
+async def test_compact_update_mode_uses_prev_summary():
+    """有旧摘要 → UPDATE 模板（请求体含旧摘要文本）。"""
+    prov = H.ScriptedProvider([H.text_round("更新版摘要")])
+    comp = Compactor(prov)
+    out, did = await comp.compact(
+        _rounds_messages(30), prev_summary="旧摘要：目标是 X")
+    assert did and "更新版摘要" in out[0].text_parts()
+    req_text = prov.calls[0][0].text_parts()
+    assert "旧摘要：目标是 X" in req_text
+    assert "更新版交接摘要" in req_text
+
+
+async def test_compact_token_budget_cutpoint():
+    """token 预算切点：3 个巨型轮 + 若干小轮 → 按体积保留而非固定 20 轮。"""
+    prov = H.ScriptedProvider([H.text_round("摘要")])
+    comp = Compactor(prov)
+    msgs = _big_round_messages(8, big_chars=30_000)   # 每轮 ~30k 字符
+    out, did = await comp.compact(msgs)
+    assert did
+    # 保留轮的总体积 ≤ COMPACT_KEEP_TOKENS*1.6 + 单轮余量；丢掉的大结果不进保留窗
+    kept = [m for m in out[1:]]
+    assert len(kept) < len(msgs)
+    assert prov.i == 1
+
+
+async def test_compact_clip_scales_with_window():
+    """小窗口 → 摘要 history clip 随之缩小（防压缩本身超限）。"""
+    prov = H.ScriptedProvider([H.text_round("短摘要")])
+    comp = Compactor(prov)
+    await comp.compact(_big_round_messages(4, big_chars=60_000),
+                       context_window=30_000)
+    req_text = prov.calls[0][0].text_parts()
+    # clip = max(20000, 30000*0.6)=20000 → pruned 骨架后历史被截到 ~20k 内
+    assert len(req_text) < 40_000

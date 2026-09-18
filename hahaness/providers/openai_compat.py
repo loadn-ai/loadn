@@ -81,15 +81,23 @@ class OpenAICompatProvider:
 
     # ------------------------------------------------------------ 对外入口
     async def chat(self, messages: list[Message], tools: list[ToolDef],
-                   system: str, *, stream: bool = True) -> AsyncIterator[Chunk]:
-        """一轮 assistant 响应的完整 chunk 流（以 stop/error 收尾，或抛流中断）。"""
+                   system: str, *, stream: bool = True,
+                   model: str | None = None,
+                   use_cache: bool = True) -> AsyncIterator[Chunk]:
+        """一轮 assistant 响应的完整 chunk 流（以 stop/error 收尾，或抛流中断）。
+
+        model：per-call 覆盖（摘要/planner 用小模型场景）；None = 实例默认。
+        use_cache：Anthropic 形缓存断点在 openai_compat 无对应概念，接受并忽略。
+        """
 
         async def _once() -> AsyncIterator[Chunk]:
             if stream:
-                async for chunk in self._stream_once(messages, tools, system):
+                async for chunk in self._stream_once(messages, tools, system,
+                                                     model=model):
                     yield chunk
             else:
-                for chunk in await self._nonstream_once(messages, tools, system):
+                for chunk in await self._nonstream_once(messages, tools, system,
+                                                        model=model):
                     yield chunk
 
         try:
@@ -103,9 +111,10 @@ class OpenAICompatProvider:
 
     # ------------------------------------------------------------ 请求构造
     def _body(self, messages: list[Message], tools: list[ToolDef],
-              system: str, *, stream: bool) -> dict:
+              system: str, *, stream: bool,
+              model: str | None = None) -> dict:
         body: dict = {
-            "model": self.model,
+            "model": api_model_name(model) if model else self.model,
             "max_tokens": int(self.extra.get("max_tokens", MODEL_MAX_OUTPUT_TOKENS)),
             **({"temperature": float(self.extra["temperature"])}
               if self.extra.get("temperature") is not None else {}),
@@ -174,8 +183,9 @@ class OpenAICompatProvider:
 
     # ------------------------------------------------------------ 流式
     async def _stream_once(self, messages: list[Message], tools: list[ToolDef],
-                           system: str) -> AsyncIterator[Chunk]:
-        body = self._body(messages, tools, system, stream=True)
+                           system: str, *,
+                           model: str | None = None) -> AsyncIterator[Chunk]:
+        body = self._body(messages, tools, system, stream=True, model=model)
         got_content = False
         done = False
         finish = ""
@@ -251,9 +261,10 @@ class OpenAICompatProvider:
 
     # ------------------------------------------------------------ 非流式
     async def _nonstream_once(self, messages: list[Message], tools: list[ToolDef],
-                              system: str) -> list[Chunk]:
+                              system: str, *,
+                              model: str | None = None) -> list[Chunk]:
         """单次 JSON 响应 → 一次性发全量 chunks + stop（与流式同形态）。"""
-        body = self._body(messages, tools, system, stream=False)
+        body = self._body(messages, tools, system, stream=False, model=model)
         resp = await self._client.post(self._url, json=body)
         if resp.status_code != 200:
             raise _status_error(resp, resp.content)

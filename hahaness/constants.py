@@ -4,6 +4,7 @@ from __future__ import annotations
 # ---------------------------------------------------------------- 工具纪律
 BASH_OUTPUT_MAX = 30_000          # Bash 输出超限截中间保首尾（字符）
 BASH_TIMEOUT_DEFAULT_S = 120      # Bash 默认超时（工具级可覆盖）
+BASH_AUTO_BG_S = 60               # 前台超此线自动转后台（Terminal-Bench 死法①）
 BASH_KILL_GRACE_S = 3.0           # SIGTERM → SIGKILL 宽限
 READ_LINES_DEFAULT = 2000         # Read 默认行数
 READ_LINE_CHARS_MAX = 2000        # Read 单行超限截断
@@ -16,21 +17,43 @@ TASK_OUTPUT_MAX_CHARS = 30_000    # 子代理 final text 回传上限
 WEBFETCH_MAX_CHARS = 50_000       # 正文提取上限
 WEBSEARCH_TOP_K = 10
 
+# InteractiveShell（pty 会话；Terminal-Bench 死法②——交互轮次爆炸）
+SHELL_SESSIONS_MAX = 4            # 并发会话上限（超限要求先 kill）
+SHELL_STEPS_MAX = 40              # 单次调用 steps 上限
+SHELL_STEP_TIMEOUT_S = 10.0       # 有 expect 的 step 默认超时
+SHELL_STEP_WAIT_S = 1.5           # 无 expect 的 step 固定排空等待
+SHELL_READ_POLL_S = 0.05          # master fd 轮询周期（取消安全的读法）
+SHELL_BUFFER_MAX = 65_536         # 会话滚动 buffer 上限（保尾）
+SHELL_STEP_RECV_CLIP = 4000       # 单步 transcript 接收裁剪
+SHELL_TOTAL_BUDGET_S = 900.0      # 单次调用累计预算（先于 loop 层上限返回）
+
 # ---------------------------------------------------------------- 循环/压缩
 MAX_TURNS_DEFAULT = 200           # None/0 = 不限
-LOOP_REPEAT_LIMIT = 3             # 同指纹调用连续 N 次且结果相同 → 注入打断
-COMPACT_THRESHOLD = 0.92          # 用量 ≥92% 窗口触发压缩
-COMPACT_KEEP_TURNS = 20           # 压缩保留最近 K 轮
+LOOP_REPEAT_LIMIT = 3             # 同指纹调用连续 N 次且结果相同 → 硬打断
+LOOP_REMIND_AT = 2                # 连续 N 次先轻提醒（dsh repeat-tool-reminder）
+COMPACT_THRESHOLD = 0.92          # 用量 ≥92% 窗口触发压缩（last-call 口径）
+COMPACT_KEEP_TURNS = 20           # 保留轮数上限兜底（防预算内塞几百轮）
+COMPACT_KEEP_TOKENS = 20_000      # 保留窗口 token 预算（chars/1.6 粗估）
+PRUNE_KEEP_CHARS = 2000           # 摘要渲染时旧 tool_result 骨架化阈值
 CONTEXT_BUDGET_TOKENS = 12_000    # ContextAssembler 静态注入预算（约）
 ENV_TREE_MAX_ENTRIES = 100        # 环境块目录树条目上限
 ENV_TREE_DEPTH = 2
 SUBAGENT_CONCURRENCY = 4          # Task 工具信号量
 PLAN_MAX_SUBTASKS = 3             # planner 拆分子任务上限（信号量留余量防限流）
 
+# ---------------------------------------------------------------- 宪法/skills/agents
+MEMORY_FILE_MAX_CHARS = 60_000    # 单份 CLAUDE.md/AGENT.md clip
+MEMORY_TOTAL_MAX_CHARS = 120_000  # 宪法链总量（超则截最远端）
+MEMORY_IMPORT_DEPTH = 3           # @import 递归深度上限
+MEMORY_IMPORT_MAX_CHARS = 10_000  # 单个 @import 目标 clip
+SKILL_BODY_MAX_CHARS = 16_000     # Skill 工具注入正文 clip
+AGENT_DEF_MAX_CHARS = 20_000      # 自定义 agent 定义正文 clip
+
 # ---------------------------------------------------------------- Provider
 API_RETRY_MAX = 5                 # 429/529/5xx 重试次数
 API_BACKOFF_MIN_S = 1.0
 API_BACKOFF_MAX_S = 60.0
+STREAM_RETRY_MAX = 2              # loop 层流中断/retriable error chunk 重试次数
 STREAM_LINE_MAX = 64 * 1024 * 1024   # 读缓冲单行上限（base64 图片免疫）
 # 单响应输出上限：16384 会被长 thinking 吃满（Terminal-Bench 实测：竞赛数学题
 # 16k 全耗在 thinking、text 零产出空转一轮）——提到 32k + loop 层截断续轮兜底

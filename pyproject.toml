@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "hahaness"
-version = "0.2.0"
+version = "0.6.0"
 description = "A self-contained coding agent engine: Claude Code-compatible stream-json CLI, pluggable providers, tools, MCP, subagents, and context compaction."
 readme = "README.md"
 license = { file = "LICENSE" }

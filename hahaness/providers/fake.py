@@ -44,14 +44,19 @@ class FakeProvider:
     def __init__(self, script: list[list[Chunk]] | None = None):
         self._script: list[list[Chunk]] | None = \
             [list(round_) for round_ in script] if script is not None else None
+        self.last_model: str | None = None   # per-call 覆盖的记录（测试断言用）
 
     @property
     def model_name(self) -> str:
         return "fake"
 
     async def chat(self, messages: list[Message], tools: list[ToolDef],
-                   system: str, *, stream: bool = True) -> AsyncIterator[Chunk]:
+                   system: str, *, stream: bool = True,
+                   model: str | None = None,
+                   use_cache: bool = True) -> AsyncIterator[Chunk]:
         """一轮 = 一段完整 chunk 流（text/tool_use/error 或 hang 后收尾）。"""
+        self.last_model = model
+        self.last_use_cache = use_cache
         if self._script is not None:
             round_chunks = self._script.pop(0) if self._script \
                 else [Chunk(kind="text_delta", text="(fake done)")]

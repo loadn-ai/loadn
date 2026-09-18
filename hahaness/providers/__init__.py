@@ -39,10 +39,16 @@ class Chunk:
 
 @runtime_checkable
 class Provider(Protocol):
-    """一次 chat = 一轮 assistant 响应的完整 chunk 流（以 stop/error 结尾）。"""
+    """一次 chat = 一轮 assistant 响应的完整 chunk 流（以 stop/error 结尾）。
+
+    model：per-call 覆盖实例默认模型（摘要/planner 用小模型）；None = 默认。
+    use_cache：False = 辅助请求（摘要/planner/grace）不打缓存断点——不污染
+    主会话的缓存路由（pi 的 cacheRetention:"none" 同义）。
+    """
 
     def chat(self, messages: list[Message], tools: list[ToolDef], system: str,
-             *, stream: bool = True) -> AsyncIterator[Chunk]: ...
+             *, stream: bool = True, model: str | None = None,
+             use_cache: bool = True) -> AsyncIterator[Chunk]: ...
 
     @property
     def model_name(self) -> str: ...
@@ -105,6 +111,13 @@ def provider_config() -> dict:
         cfg["api_key"] = os.environ["HAHANESS_API_KEY"]
     if os.environ.get("HAHANESS_MODEL"):
         cfg["model"] = os.environ["HAHANESS_MODEL"]
+    if os.environ.get("HAHANESS_THINKING_BUDGET"):
+        # thinking 预算旋钮（P2：竞赛类任务 thinking 无节制的闸门）；
+        # int 解析失败静默弃（保持零配置可用）
+        try:
+            cfg["extra"]["thinking_budget"] = int(os.environ["HAHANESS_THINKING_BUDGET"])
+        except (TypeError, ValueError):
+            pass
 
     # -- 1) 自有 config.json（最高优先）
     try:

@@ -75,7 +75,7 @@ class _Recorder:
         self.results = results
         self.calls = []
 
-    async def gather(self, subtasks):
+    async def gather(self, subtasks, emit=None):
         self.calls.append([st.prompt for st in subtasks])
         return list(self.results)
 
@@ -171,7 +171,6 @@ async def test_plan_decision_persisted(tmp_path):
     pe = [e for e in events if e.get("type") == "plan"]
     assert pe and pe[0]["plan"]["parallelizable"] is False
     # transcript 落了 system/plan 事件
-    import json as _json
     types = [e["type"] for e in session.transcript.read_events()]
     assert "system" in types
 
@@ -179,6 +178,7 @@ async def test_plan_decision_persisted(tmp_path):
 def test_planner_provider_temperature():
     """build 的 planner 专用 provider 注入 temperature=0。"""
     import inspect
+
     from hahaness.core import build
     src = inspect.getsource(build)
     assert '"temperature": 0' in src

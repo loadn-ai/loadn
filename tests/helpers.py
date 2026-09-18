@@ -38,10 +38,15 @@ class ScriptedProvider:
         self.i = 0
         self.calls: list[list[Message]] = []
         self.model_name = "scripted"
+        self.last_model: str | None = None
 
     async def chat(self, messages: list[Message], tools: list[ToolDef],
-                   system: str, *, stream: bool = True) -> AsyncIterator[Chunk]:
+                   system: str, *, stream: bool = True,
+                   model: str | None = None,
+                   use_cache: bool = True) -> AsyncIterator[Chunk]:
         self.calls.append(list(messages))
+        self.last_model = model
+        self.last_use_cache = use_cache
         chunks = self.rounds[self.i] if self.i < len(self.rounds) else text_round("(scripted done)")
         self.i += 1
         for c in chunks:
@@ -49,6 +54,64 @@ class ScriptedProvider:
                 yield c
                 return
             yield c
+
+
+class FlakyStreamProvider:
+    """前 fail_n 次尝试：yield 两个 text chunk 后抛 StreamInterrupted；之后正常。
+
+    驱动 loop 层流中断重试路径（provider 内部 retry_call 只管首 chunk 前）。
+    """
+
+    def __init__(self, fail_n: int = 1) -> None:
+        self.fail_n = fail_n
+        self.attempts = 0
+        self.model_name = "flaky"
+
+    async def chat(self, messages: list[Message], tools: list[ToolDef],
+                   system: str, *, stream: bool = True,
+                   model: str | None = None,
+                   use_cache: bool = True) -> AsyncIterator[Chunk]:
+        from hahaness.providers.retry import StreamInterrupted
+        self.attempts += 1
+        if self.attempts <= self.fail_n:
+            yield Chunk(kind="text_delta", text="半成品")
+            yield Chunk(kind="text_delta", text="断流前")
+            raise StreamInterrupted("connection reset (fake)")
+        for c in text_round("重试后的完整回复"):
+            yield c
+
+
+class RetriableErrorProvider:
+    """前 fail_n 次 chat 产出 retriable error chunk；之后正常收尾。"""
+
+    def __init__(self, fail_n: int = 1) -> None:
+        self.fail_n = fail_n
+        self.attempts = 0
+        self.model_name = "retriable"
+
+    async def chat(self, messages: list[Message], tools: list[ToolDef],
+                   system: str, *, stream: bool = True,
+                   model: str | None = None,
+                   use_cache: bool = True) -> AsyncIterator[Chunk]:
+        self.attempts += 1
+        if self.attempts <= self.fail_n:
+            yield Chunk(kind="error", error="overloaded_error: fake", retriable=True)
+            return
+        for c in text_round("retriable 恢复后的回复"):
+            yield c
+
+
+class ExplodingProvider:
+    """chat 直接 raise RuntimeError——驱动 run_turn 的 catch-all 兜底。"""
+
+    model_name = "exploding"
+
+    async def chat(self, messages: list[Message], tools: list[ToolDef],
+                   system: str, *, stream: bool = True,
+                   model: str | None = None,
+                   use_cache: bool = True) -> AsyncIterator[Chunk]:
+        raise RuntimeError("provider 内部炸了（预期内）")
+        yield  # pragma: no cover - 保持生成器形态
 
 
 class EchoTool(Tool):

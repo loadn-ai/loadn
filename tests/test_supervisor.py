@@ -128,3 +128,60 @@ async def test_shutdown_stops_watchdog(sup: ProcessSupervisor,
     frozen = list(sup.stalled_ids)                    # 协程已取消，标记冻结
     await asyncio.sleep(0.2)
     assert sup.stalled_ids == frozen
+
+
+# ---------------------------------------------------------------- adopt/track
+async def test_adopt_tees_prelude_and_continues(sup: ProcessSupervisor,
+                                                tmp_path: Path):
+    """收养在跑进程：prelude 落盘 + reader 续读 + 正常落态 done。"""
+    proc = await asyncio.create_subprocess_exec(
+        "bash", "-c", "echo pre; sleep 0.3; echo post",
+        stdout=asyncio.subprocess.PIPE,
+        stderr=asyncio.subprocess.STDOUT,
+        start_new_session=True)
+    first = await proc.stdout.read(64)          # 读到 "pre\n"
+    info = await sup.adopt(proc, ["bash", "-c", "…"], tmp_path, first)
+    assert info.pgid == info.pid
+    final = await _wait_status(sup, info.id, "done")
+    assert final["status"] == "done"
+    body = Path(info.output_path).read_text()
+    assert "pre" in body and "post" in body     # prelude + reader 续写都在
+
+
+async def test_adopt_killed_by_shutdown(sup: ProcessSupervisor, tmp_path: Path):
+    """收养的长进程被 shutdown 收割：SIGKILL 升级走通（proc_obj 必登）。"""
+    proc = await asyncio.create_subprocess_exec(
+        "bash", "-c", "trap '' TERM; sleep 30",
+        stdout=asyncio.subprocess.PIPE,
+        stderr=asyncio.subprocess.STDOUT,
+        start_new_session=True)
+    info = await sup.adopt(proc, ["bash", "-c", "…"], tmp_path, b"")
+    await sup.shutdown()
+    assert info.status == "killed"
+    assert not Path(f"/proc/{info.pid}").exists()   # SIGTERM 免疫也被 SIGKILL 收割
+
+
+async def test_track_adapter_full_ladder(sup: ProcessSupervisor, tmp_path: Path):
+    """track 同步 Popen：SIGTERM 免疫进程走完 SIGTERM→SIGKILL 梯子。"""
+    import subprocess
+    popen = subprocess.Popen(
+        ["bash", "-c", "trap '' TERM; sleep 30"],
+        stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
+        start_new_session=True)
+    info = sup.track(popen.pid, popen.pid, ["bash", "-c", "…"], proc=popen)
+    assert sup.poll(info.id)["output_tail"] == ""   # 无 output_path，poll 安全
+    await sup.shutdown()
+    assert not Path(f"/proc/{popen.pid}").exists()
+
+
+async def test_track_mark_exited(sup: ProcessSupervisor, tmp_path: Path):
+    import subprocess
+    popen = subprocess.Popen(["bash", "-c", "true"],
+                             stdout=subprocess.DEVNULL,
+                             stderr=subprocess.DEVNULL)
+    info = sup.track(popen.pid, popen.pid, ["true"], proc=popen)
+    rc = popen.wait()
+    sup.mark_exited(info.id, rc)
+    assert sup.poll(info.id)["status"] == "done"
+    sup.mark_exited(info.id, 1)                      # 已落态不抢改
+    assert sup.poll(info.id)["status"] == "done"

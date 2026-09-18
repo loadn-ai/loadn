@@ -44,7 +44,9 @@ async def run_repl(bundle, emitter, fmt: str, stop) -> int:
             continue
         if line == "/compact" and core.compactor is not None:
             msgs = core.session.messages_for_turn()
-            msgs, did = await core.compactor.compact(msgs)
+            msgs, did = await core.compactor.compact(
+                msgs, context_window=core.settings.context_window,
+                prev_summary=core.session.last_compact_summary())
             if did:
                 core.session.mark_compact(core.compactor.last_summary)
                 # 压缩后重置内存上下文：下一轮从 compact 点重放

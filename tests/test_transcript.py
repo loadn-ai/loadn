@@ -90,3 +90,18 @@ def test_fork_copies_history(tmp_path):
     assert fk.session_id != sm.session_id
     msgs = fk.messages_for_turn()
     assert any(m.text_parts() == "A" for m in msgs)
+
+
+def test_replay_reinjects_compact_summary(tmp_path):
+    """resume 修复：compact 点后的重放以摘要头开始（不丢交接）。"""
+    ts = TranscriptStore("sess-cs", home=tmp_path)
+    ts.append("user", {"role": "user", "content": [{"type": "text", "text": "旧问题"}]})
+    ts.append("compact", {"summary": "目标 X 已完成一半"}, fsync=True)
+    ts.append("user", {"role": "user", "content": [{"type": "text", "text": "压缩后新消息"}]})
+    msgs = ts.replay_messages()
+    assert msgs[0].role == "user"
+    first = msgs[0].text_parts()
+    assert "上下文已压缩" in first and "目标 X 已完成一半" in first
+    assert "压缩后新消息" in msgs[-1].text_parts()
+    # 旧消息（compact 之前）不在重放结果里
+    assert all("旧问题" != m.text_parts() for m in msgs)

@@ -71,7 +71,7 @@ class TaskPlanner:
             chunks = self.provider.chat(
                 [Message(role="user", content=[TextBlock(
                     text=PLAN_PROMPT.format(max_sub=self.max_subtasks, task=task[:8000]))])],
-                [], "你是任务规划器，只输出 JSON。")
+                [], "你是任务规划器，只输出 JSON。", use_cache=False)
             text = ""
             async for c in chunks:
                 if c.kind == "text_delta":

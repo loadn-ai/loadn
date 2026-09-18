@@ -67,17 +67,24 @@ class TranscriptStore:
         return evs[-1].get("uuid") if evs else None
 
     def replay_messages(self) -> list[Message]:
-        """重建 messages（compact 点截断：最后一个 compact 事件之后的事件才重放）。
+        """重建 messages（compact 点截断 + 摘要头回注——恢复会话不丢交接）。
 
         连续 tool_result 事件归并进同一条 user 消息（Anthropic 形态：一批
         tool_result 属于 assistant 消息后的下一条 user 消息）。
         """
         evs = self.read_events()
         last_compact = -1
+        compact_summary = ""
         for i, ev in enumerate(evs):
             if ev.get("type") == "compact":
                 last_compact = i
+                compact_summary = str((ev.get("payload") or {}).get("summary") or "")
         messages: list[Message] = []
+        if last_compact >= 0 and compact_summary:
+            from hahaness.types import TextBlock as _TB
+            messages.append(Message(role="user", content=[_TB(
+                text=f"【上下文已压缩】之前的会话交接摘要如下，请以此接力继续，"
+                     f"不要重做已完成步骤：\n\n{compact_summary}\n\n请继续当前任务。")]))
         for ev in evs[last_compact + 1:]:
             t = ev.get("type")
             payload = ev.get("payload") or {}

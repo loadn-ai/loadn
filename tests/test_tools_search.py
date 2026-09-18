@@ -403,8 +403,9 @@ async def test_todowrite_requires_state(ctx: ToolContext):
 def test_registry_default_collects_all_except_task():
     reg = ToolRegistry.default()
     names = reg.names()
-    assert names == ["Bash", "Edit", "Glob", "Grep", "Read",
-                     "TodoWrite", "WebFetch", "WebSearch", "Write"]
+    assert names == ["Bash", "Edit", "Glob", "Grep", "InteractiveShell",
+                     "MultiEdit", "NotebookEdit", "Read", "TodoWrite",
+                     "WebFetch", "WebSearch", "Write"]
     assert "Task" not in names
 
 

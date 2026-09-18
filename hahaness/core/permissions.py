@@ -19,7 +19,7 @@ from hahaness import hahaness_home
 MODES = ("default", "acceptEdits", "plan", "bypassPermissions")
 
 # 文件写入类工具（acceptEdits 模式免问；plan 模式全拒）
-EDIT_TOOLS = {"Write", "Edit", "NotebookEdit"}
+EDIT_TOOLS = {"Write", "Edit", "MultiEdit", "NotebookEdit"}
 
 
 @dataclass

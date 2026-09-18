@@ -74,6 +74,13 @@ class SessionManager:
                      fsync: bool = False) -> None:
         self.transcript.append(type_, payload, fsync=fsync)
 
+    def last_compact_summary(self) -> str:
+        """最后一个 compact 事件的摘要文本（无则空串——UPDATE 模式的 prev）。"""
+        for ev in reversed(self.transcript.read_events()):
+            if ev.get("type") == "compact":
+                return str((ev.get("payload") or {}).get("summary") or "")
+        return ""
+
     def mark_compact(self, summary: str) -> None:
         self.transcript.append("compact", {"summary": summary}, fsync=True)
         self.state.compact_points.append(self.transcript.last_uuid() or "")

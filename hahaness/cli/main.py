@@ -33,7 +33,7 @@ def build_parser() -> argparse.ArgumentParser:
     ap.add_argument("--output-format", default="text",
                     choices=["text", "stream-json", "json"])
     ap.add_argument("--verbose", action="store_true",
-                    help="stream-json 必需（与 claude CLI 同语义；本实现恒出全量事件）")
+                    help="stream-json 下逐 delta 外发 stream_event（与 claude CLI 同语义）")
     ap.add_argument("--model", default=None)
     ap.add_argument("--effort", dest="effort", default=None)
     ap.add_argument("--variant", dest="effort", default=None)   # 别名
@@ -179,11 +179,14 @@ async def _run(args, prompt: str | None, cwd: Path, cfg: dict, mode: str) -> int
             return 2
 
         # stream-json：全事件流（turn 事件→result 由 emitter 收尾）；
-        # json：只出最终 result；text：人读增量。
+        # json：只出最终 result；text：人读增量。--verbose 时逐 delta 外发
+        # stream_event（claude CLI 同位语义）。
         emit = emitter if fmt == "stream-json" else None
         hb_task = asyncio.create_task(_heartbeat(emitter, fmt))
         try:
-            summary = await core.run_turn(prompt, emit=emit, stop=stop)
+            summary = await core.run_turn(
+                prompt, emit=emit, stop=stop,
+                stream_events=(fmt == "stream-json" and args.verbose))
             if fmt == "json":
                 emitter.send_result(summary)
             elif fmt == "text":

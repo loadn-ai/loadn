@@ -91,11 +91,17 @@ async def test_happy_path_full():
     assert body["model"] == "glm-5.3"
     assert body["max_tokens"] == 32768
     assert body["stream"] is True
-    assert body["system"] == "你是测试助手"
-    assert body["messages"] == [{"role": "user",
-                                 "content": [{"type": "text", "text": "巴黎天气"}]}]
+    # system 走缓存块数组形态（三断点之一）
+    assert body["system"] == [{"type": "text", "text": "你是测试助手",
+                               "cache_control": {"type": "ephemeral"}}]
+    # 末消息末块断点（消息侧三断点之二）
+    assert body["messages"] == [{"role": "user", "content": [
+        {"type": "text", "text": "巴黎天气",
+         "cache_control": {"type": "ephemeral"}}]}]
+    # tools 末项断点（三断点之三；input_schema 未被污染——只加顶层键）
     assert body["tools"] == [{"name": "get_weather", "description": "查天气",
-                              "input_schema": {"type": "object"}}]
+                              "input_schema": {"type": "object"},
+                              "cache_control": {"type": "ephemeral"}}]
     headers = captured["request"].headers
     assert headers["x-api-key"] == "sk-test"
     assert headers["authorization"] == "Bearer sk-test"
@@ -308,3 +314,177 @@ async def test_nonstream_full_message():
     assert acc.finish("tu_9") == {"command": "pwd"}    # 与流式同一装配路径
     assert chunks[3].stop_reason == "tool_use"
     assert chunks[3].usage["output_tokens"] == 9
+
+
+# ---------------------------------------------------------------- per-call model
+async def test_chat_model_override_strips_variant():
+    """per-call model 覆盖：剥 [1m] 后缀（Z.AI 网关只认裸名）。"""
+    from hahaness.types import Message as _M
+    from hahaness.types import TextBlock as _TB
+    stream = sse("message_start", {"type": "message_start", "message": {
+        "id": "msg_m", "model": "glm-5.3-flash",
+        "usage": {"input_tokens": 3, "output_tokens": 1}}}) + \
+        sse("content_block_start", {"index": 0, "content_block": {
+            "type": "text", "text": ""}}) + \
+        sse("content_block_delta", {"index": 0, "delta": {
+            "type": "text_delta", "text": "ok"}}) + \
+        sse("message_stop", {"type": "message_stop"})
+
+    prov, captured = make_provider(lambda r: httpx.Response(
+        200, headers=SSE_HEADERS, content=stream))
+    chunks = await collect(prov.chat([_M(role="user", content=[_TB(text="x")])],
+                                     [], "s", model="glm-5.3-flash[1m]"))
+    assert captured["body"]["model"] == "glm-5.3-flash"
+    assert chunks[-1].kind == "stop"
+
+
+async def test_chat_no_model_uses_default():
+    from hahaness.types import Message as _M
+    from hahaness.types import TextBlock as _TB
+    prov, captured = make_provider(lambda r: httpx.Response(
+        200, headers=SSE_HEADERS, content=sse("message_stop", {"type": "message_stop"})))
+    chunks = await collect(prov.chat([_M(role="user", content=[_TB(text="x")])],
+                                     [], "s"))
+    assert chunks[-1].kind == "stop"
+    assert captured["body"]["model"] == "glm-5.3"
+
+
+# ---------------------------------------------------------------- thinking 预算
+async def test_thinking_budget_set():
+    from hahaness.types import Message as _M
+    from hahaness.types import TextBlock as _TB
+    prov, captured = make_provider(lambda r: httpx.Response(
+        200, headers=SSE_HEADERS, content=sse("message_stop", {"type": "message_stop"})))
+    prov.extra["thinking_budget"] = 4096
+    await collect(prov.chat([_M(role="user", content=[_TB(text="x")])], [], "s"))
+    assert captured["body"]["thinking"] == {"type": "enabled",
+                                            "budget_tokens": 4096}
+
+
+async def test_thinking_budget_clamped_to_min():
+    from hahaness.types import Message as _M
+    from hahaness.types import TextBlock as _TB
+    prov, captured = make_provider(lambda r: httpx.Response(
+        200, headers=SSE_HEADERS, content=sse("message_stop", {"type": "message_stop"})))
+    prov.extra["thinking_budget"] = 100        # 低于 1024 → 抬到下限
+    await collect(prov.chat([_M(role="user", content=[_TB(text="x")])], [], "s"))
+    assert captured["body"]["thinking"]["budget_tokens"] == 1024
+
+
+async def test_thinking_budget_absent_when_default_or_too_big():
+    from hahaness.types import Message as _M
+    from hahaness.types import TextBlock as _TB
+    prov, captured = make_provider(lambda r: httpx.Response(
+        200, headers=SSE_HEADERS, content=sse("message_stop", {"type": "message_stop"})))
+    await collect(prov.chat([_M(role="user", content=[_TB(text="x")])], [], "s"))
+    assert "thinking" not in captured["body"]  # 默认关
+    prov2, captured2 = make_provider(lambda r: httpx.Response(
+        200, headers=SSE_HEADERS, content=sse("message_stop", {"type": "message_stop"})))
+    prov2.extra["thinking_budget"] = 10 ** 9    # 与 max_tokens 无余量 → 不设
+    await collect(prov2.chat([_M(role="user", content=[_TB(text="x")])], [], "s"))
+    assert "thinking" not in captured2["body"]
+
+
+def test_provider_config_env_thinking_budget(monkeypatch):
+    from hahaness.providers import provider_config
+    monkeypatch.setenv("HAHANESS_THINKING_BUDGET", "2048")
+    cfg = provider_config()
+    assert cfg["extra"]["thinking_budget"] == 2048
+    monkeypatch.setenv("HAHANESS_THINKING_BUDGET", "not-a-number")
+    cfg2 = provider_config()
+    assert "thinking_budget" not in cfg2["extra"]
+
+
+# ---------------------------------------------------------------- 缓存断点
+def _ok_stream():
+    return sse("message_start", {"message": {"id": "m", "usage": {"input_tokens": 3}}}) + \
+        sse("content_block_start", {"index": 0, "content_block": {"type": "text"}}) + \
+        sse("content_block_delta", {"index": 0, "delta": {"type": "text_delta", "text": "ok"}}) + \
+        sse("message_stop", {"type": "message_stop"})
+
+
+async def test_cache_off_no_markers():
+    from hahaness.types import Message as _M
+    from hahaness.types import TextBlock as _TB
+    prov, captured = make_provider(lambda r: httpx.Response(
+        200, headers=SSE_HEADERS, content=_ok_stream()))
+    chunks = await collect(prov.chat([_M(role="user", content=[_TB(text="x")])],
+                                     [], "s", use_cache=False))
+    assert chunks[-1].kind == "stop"
+    b = captured["body"]
+    assert b["system"] == "s"          # 字符串形态，无块数组
+    assert "cache_control" not in json.dumps(b)
+
+
+async def test_cache_kill_switch():
+    from hahaness.types import Message as _M
+    from hahaness.types import TextBlock as _TB
+    cfg = {"provider": "anthropic", "base_url": "http://mock.test",
+           "api_key": "k", "model": "glm-5.3",
+           "extra": {"disable_prompt_cache": True}}
+    captured: dict = {}
+
+    def wrap(request):
+        captured["body"] = json.loads(request.read())
+        return httpx.Response(200, headers=SSE_HEADERS, content=_ok_stream())
+
+    prov = AnthropicProvider(cfg, transport=httpx.MockTransport(wrap))
+    await collect(prov.chat([_M(role="user", content=[_TB(text="x")])], [], "s"))
+    assert "cache_control" not in json.dumps(captured["body"])
+
+
+async def test_cache_empty_guards():
+    """空 tools / 空 system / 空末消息 content 不炸。"""
+    from hahaness.types import Message as _M
+    prov, captured = make_provider(lambda r: httpx.Response(
+        200, headers=SSE_HEADERS, content=_ok_stream()))
+    chunks = await collect(prov.chat([_M(role="user", content=[])], [], ""))
+    assert chunks[-1].kind == "stop"
+    assert "system" not in captured["body"] and "tools" not in captured["body"]
+
+
+async def test_cache_downgrade_on_400_named_system():
+    """网关 400 点名 system → 降级字符串 system 重发一次成功。"""
+    from hahaness.types import Message as _M
+    from hahaness.types import TextBlock as _TB
+    bodies: list[dict] = []
+    state = {"n": 0}
+
+    def wrap(request):
+        bodies.append(json.loads(request.read()))
+        state["n"] += 1
+        if state["n"] == 1:
+            return httpx.Response(400, json={"error": {
+                "message": "invalid system format"}})
+        return httpx.Response(200, headers=SSE_HEADERS, content=_ok_stream())
+
+    prov = AnthropicProvider({"provider": "anthropic", "base_url": "http://m",
+                              "api_key": "k", "model": "glm-5.3", "extra": {}},
+                             transport=httpx.MockTransport(wrap))
+    chunks = await collect(prov.chat([_M(role="user", content=[_TB(text="x")])],
+                                     [], "s"))
+    assert chunks[-1].kind == "stop"           # 降级重发成功
+    assert isinstance(bodies[0]["system"], list)
+    assert bodies[1]["system"] == "s"          # 第二次退回字符串
+    assert prov._system_blocks_ok is False
+
+
+async def test_cache_downgrade_on_400_named_cache_control():
+    from hahaness.types import Message as _M
+    from hahaness.types import TextBlock as _TB
+    state = {"n": 0}
+
+    def wrap(request):
+        state["n"] += 1
+        if state["n"] == 1:
+            return httpx.Response(400, json={"error": {
+                "message": "cache_control not supported"}})
+        return httpx.Response(200, headers=SSE_HEADERS, content=_ok_stream())
+
+    prov = AnthropicProvider({"provider": "anthropic", "base_url": "http://m",
+                              "api_key": "k", "model": "glm-5.3", "extra": {}},
+                             transport=httpx.MockTransport(wrap))
+    chunks = await collect(prov.chat([_M(role="user", content=[_TB(text="x")])],
+                                     [], "s"))
+    assert chunks[-1].kind == "stop"
+    assert prov._cache_enabled is False        # 永久关闭
