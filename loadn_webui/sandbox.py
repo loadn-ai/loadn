@@ -21,6 +21,7 @@ from __future__ import annotations
 
 import os
 import shutil
+import sys
 from pathlib import Path
 
 from .config import PATHS
@@ -68,7 +69,8 @@ def wrap_loadn(cmd: list[str], env: dict, *, sid_session: str,
     venv = Path(os.environ.get("LOADN_VENV_BIN", "")).parent \
         if os.environ.get("LOADN_VENV_BIN") else None
     # 引擎本体定位（与 engines/loadn.py resolve_bin 同序的最小复刻）
-    engine_bin = shutil.which("loadn") or str(Path("/data/code/loadn/.venv/bin/loadn"))
+    engine_bin = (shutil.which("loadn")
+                 or str(Path(sys.executable).parent / "loadn"))
     venv_dir = Path(engine_bin).resolve().parent.parent      # bin/ → venv 根
     # editable 安装指回源码树：包目录必须 ro 挂（不暴露 webui/config）
     pkg_src = venv_dir.parent / "loadn"

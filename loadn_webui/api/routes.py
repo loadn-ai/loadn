@@ -1651,6 +1651,14 @@ def stats_cost(days: int = 14):
 
 @router.get("/health")
 def health():
+    # R7：release 字段（读 RELEASE.json——让 healthcheck 能验证新版本真在跑）
+    release = {}
+    try:
+        import json as _j
+        from ..config import CODE_ROOT as _CR
+        release = _j.loads((_CR / "RELEASE.json").read_text())
+    except (OSError, ValueError, KeyError):
+        pass
     from .. import engines as engines_mod
 
     engines = {name: spec.health() for name, spec in engines_mod.ENGINES.items()}
@@ -1662,7 +1670,7 @@ def health():
     except OSError:
         pass
     # claude_bin/claude_version 顶层字段保留（前端兼容）；engines 为全引擎状态
-    return {"claude_bin": engines.get("claude", {}).get("bin"),
+    return {"release": release,"claude_bin": engines.get("claude", {}).get("bin"),
             "claude_version": engines.get("claude", {}).get("version"),
             "engines": engines, "default_engine": engines_mod.default_engine(),
             "disk_free_gb": disk_free_gb, "time": iso()}

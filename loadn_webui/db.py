@@ -20,6 +20,10 @@ from contextlib import contextmanager
 from typing import Any
 
 from .config import PATHS
+
+# R7 回滚门禁：每次加列/加表 +1；RELEASE.json 记此值，rollback 时比对。
+# additive-only 契约：只加列/加表（旧代码可跑新 schema，多余列无害）。
+SCHEMA_REV = 1
 from .util import iso
 
 SCHEMA = """
@@ -166,6 +170,16 @@ def conn() -> Iterator[sqlite3.Connection]:
     try:
         c.executescript(SCHEMA)
         _migrate(c)
+        # R7 回滚门禁：记录 schema 版本（只在值变化时写——每次连接都写会
+        # 引发写锁竞争，实测 61 用例 ReadTimeout 的根因）
+        try:
+            row = c.execute("SELECT value FROM kv WHERE key='schema_rev'"
+                            ).fetchone()
+            if row is None or row[0] != str(SCHEMA_REV):
+                c.execute("INSERT OR REPLACE INTO kv(key, value) VALUES"
+                          "('schema_rev', ?)", (str(SCHEMA_REV),))
+        except sqlite3.OperationalError:
+            pass
         yield c
         c.commit()
     finally:

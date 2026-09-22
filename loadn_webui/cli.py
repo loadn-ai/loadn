@@ -648,6 +648,31 @@ def main(argv: list[str] | None = None) -> int:
     p_v.add_argument("--offline", action="store_true", help="只查到期/schema，不回访")
     p_v.add_argument("--out", default="", help="报告落盘（默认 notes/verify-report.md）")
 
+    # R7 发布-升级-回滚
+    p_rel = sub.add_parser("release", help="发布管理（R7：build/versions/status/gc）")
+    rel_sub = p_rel.add_subparsers(dest="relcmd", required=True)
+    _pb = rel_sub.add_parser("build", help="从代码仓构建 release（须在仓内+有 tag）")
+    _pb.add_argument("--tag", required=True, help="git tag 名（vX.Y.Z）")
+    _pb.add_argument("--skip-ui", action="store_true", help="跳过前端构建（调试）")
+    _pb.add_argument("--skip-smoke", action="store_true", help="跳过冒烟+脏树检查（调试）")
+    rel_sub.add_parser("versions", help="列出全部 release")
+    rel_sub.add_parser("status", help="当前版本/磁盘/引用状态")
+    _pgc = rel_sub.add_parser("gc", help="清理旧 release")
+    _pgc.add_argument("--keep", type=int, default=4, help="保留数（默认 4）")
+    _prv = rel_sub.add_parser("repair-venv", help="从 wheelhouse 重建 venv（L4 恢复）")
+    _prv.add_argument("version", help="版本名（vX.Y.Z）")
+
+    p_up = sub.add_parser("upgrade", help="升级到指定版本（含自动回滚）")
+    p_up.add_argument("version", nargs="?", default="", help="目标版本（缺省=最新）")
+    p_up.add_argument("--wait-idle", type=int, default=1800, help="等 idle 超时秒（0=跳过）")
+    p_up.add_argument("--health-timeout", type=int, default=90, help="healthcheck 超时秒")
+    p_up.add_argument("--no-backup", action="store_true", help="跳过 DB 备份")
+    p_up.add_argument("--yes", action="store_true", help="超时/门禁自动确认")
+
+    p_rb = sub.add_parser("rollback", help="回滚到指定版本")
+    p_rb.add_argument("version", nargs="?", default="", help="目标版本（缺省=previous）")
+    p_rb.add_argument("--yes", action="store_true", help="跳过 schema 门禁确认")
+
     p_t = sub.add_parser("token", help="API token 管理（W0）")
     p_t.add_argument("action", choices=["show", "rotate"])
     sub.add_parser("kill-all",
@@ -720,6 +745,28 @@ def main(argv: list[str] | None = None) -> int:
             (PATHS["run"] / "KILL_ALL").write_text("kill-all")
             print("KILL_ALL 已落盘（调度器暂停；恢复需删除该标记）")
             return 0
+    if args.cmd == "release":
+        from . import ops as ops_mod
+        if args.relcmd == "build":
+            return ops_mod.cmd_release_build(
+                args.tag, skip_ui=args.skip_ui, skip_smoke=args.skip_smoke)
+        if args.relcmd == "versions":
+            return ops_mod.cmd_versions()
+        if args.relcmd == "status":
+            return ops_mod.cmd_status()
+        if args.relcmd == "gc":
+            return ops_mod.cmd_gc(args.keep)
+        if args.relcmd == "repair-venv":
+            return ops_mod.cmd_repair_venv(args.version)
+    if args.cmd == "upgrade":
+        from . import ops as ops_mod
+        return ops_mod.cmd_upgrade(
+            args.version or None, wait_idle=args.wait_idle,
+            health_timeout=args.health_timeout, no_backup=args.no_backup,
+            yes=args.yes)
+    if args.cmd == "rollback":
+        from . import ops as ops_mod
+        return ops_mod.cmd_rollback(args.version or None, yes=args.yes)
     if args.cmd == "policy-check":
         from .policy import policy_check_hook
         return policy_check_hook(sys.stdin.read())
