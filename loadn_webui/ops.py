@@ -670,8 +670,10 @@ def cmd_gc(keep: int = 4) -> int:
             protected.add(rels[-1])  # 最新的总是保留
 
         deletable = [v for v in rels if v not in protected]
-        # 多余的才删（保留 keep 个）
-        to_delete = deletable[:max(0, len(rels) - keep - len(protected))]
+        # keep = 总保留数下限；protected 数已超 keep 则全可删非保护项
+        protected_count = len(protected & set(rels))
+        to_keep_non_protected = max(0, keep - protected_count)
+        to_delete = deletable[to_keep_non_protected:]
         if not to_delete:
             print("无待清理 release（全受保护或在保留数内）")
             return 0
