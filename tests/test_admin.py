@@ -31,7 +31,8 @@ def writable_assets():
             swaps[name] = src
             p.unlink()
             shutil.copytree(src, p)
-    reg = PATHS["profiles"] / "registry.yaml"
+    from loadn_webui.config import behavior_file
+    reg = behavior_file("profiles", "registry.yaml")
     reg_orig = reg.read_bytes() if reg.exists() else None
     base_skills = {x.name for x in PATHS["skills"].iterdir()}
     yield
@@ -280,7 +281,8 @@ async def test_convergence_roundtrip(client):
 
     # registry.yaml 是 symlink 的真实资产：PUT 直写且不恢复——先存原文，
     # 测试结束原样写回（否则每跑一轮全量测试就把线上超时改成 7200）
-    reg_path = PATHS["profiles"] / "registry.yaml"
+    from loadn_webui.config import behavior_file as _bf
+    reg_path = _bf("profiles", "registry.yaml")
     orig_text = reg_path.read_text()
     try:
         await _convergence_body(client, _yaml, profile_mod, reg_path)

@@ -163,7 +163,9 @@ def put_profile_tools(profile_name: str, disallowed: list[str]) -> dict:
     if profile_name not in reg:
         raise KeyError(f"未知 profile: {profile_name}")
     norm = sorted({str(t) for t in disallowed if str(t) in BUILTIN_TOOLS})
-    path = PATHS["profiles"] / "registry.yaml"
+    from .config import PATHS as _P, ROOT as _R
+    path = _R / "profiles" / "registry.yaml"      # 写到数据根（用户定制层）
+    path.parent.mkdir(parents=True, exist_ok=True)
     _backup(path)
     data = _load_yaml_conf(path)
     entry = (data.get("profiles") or {}).get(profile_name)

@@ -82,7 +82,7 @@ async def test_e1_api_flow(client, ws_root):
 
 def test_w54_constitution_security_section():
     """宪法模板含平台强制安全五条（provenance/Rule of Two 底座）。"""
-    from loadn_webui.config import PATHS
-    tmpl = (PATHS["prompts"] / "workspace.md.tmpl").read_text()
+    from loadn_webui.config import behavior_file
+    tmpl = behavior_file("prompts", "workspace.md.tmpl").read_text()
     assert "安全机制（平台强制" in tmpl
     assert "--request-approval" in tmpl and "canary" in tmpl

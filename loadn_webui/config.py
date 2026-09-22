@@ -33,8 +33,10 @@ PATHS = {
     "stop_file": ROOT / "var" / "run" / "STOP",
     "pages_cache": ROOT / "var" / "pages_cache",
     "backups": ROOT / "var" / "backups",
-    "profiles": ROOT / "profiles",
-    "prompts": ROOT / "prompts",
+    # 行为类资产：代码根给默认值，数据根可覆盖（同 skills overlay 模式——
+    # 代码版本走 monorepo，用户定制走数据根；frontend_dist 教训：行为
+    # 定义拴数据根则代码更新到不了生产，宪法安全章节实际丢了）
+    # 注意这里是**默认路径**，运行时用 behavior_dirs() 搜索（下文）
     "skills": ROOT / "skills",
     # 前端是代码工件（随 monorepo 走），不是数据——用代码根而非数据根
     "frontend_dist": CODE_ROOT / "ui" / "dist",
@@ -312,6 +314,30 @@ def ensure_dirs() -> None:
     for key in ("workspace", "var", "logs", "call_logs", "run", "pid_dir",
                 "pages_cache", "backups"):
         PATHS[key].mkdir(parents=True, exist_ok=True)
+
+def behavior_file(name: str, rel: str) -> Path:
+    """在 behavior_dirs(name) 搜索路径中找 rel 文件（先到先得=数据根覆盖）。"""
+    for d in behavior_dirs(name):
+        f = d / rel
+        if f.exists():
+            return f
+    return behavior_dirs(name)[0] / rel      # 不存在时返回默认位置（调用方报错）
+
+
+def behavior_dirs(name: str) -> list[Path]:
+    """行为类资产搜索路径（profiles/prompts）：代码根在前（默认值），
+    数据根在后（用户覆盖）。同名文件先到先得——数据根的覆盖生效。
+
+    skills 用 skills_dirs()（overlay 语义同构但合并方式不同——skill 是
+    目录级合并，这里按文件级覆盖）。
+    """
+    dirs = [ROOT / name, CODE_ROOT / name]     # 数据根优先（用户覆盖）
+    seen, out = set(), []
+    for d in dirs:                              # 去重（测试 HOME=CODE_ROOT 时同路径）
+        if d.exists() and str(d) not in seen:
+            seen.add(str(d)); out.append(d)
+    return out
+
 
 def skills_dirs() -> list[Path]:
     """skill 搜索路径（overlay 双轨，v1.1 §4.3 R2）：repo skills/（公开/脱敏）

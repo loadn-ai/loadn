@@ -37,7 +37,8 @@ def new_session_id(title: str) -> str:
 
 def render_claude_md(sid: str, title: str, prof: profile_mod.Profile,
                      skills: list[str]) -> str:
-    tmpl = (PATHS["prompts"] / "workspace.md.tmpl").read_text()
+    from .config import behavior_file
+    tmpl = behavior_file("prompts", "workspace.md.tmpl").read_text()
     fetch = CODE_ROOT / "scripts" / "fetch_page.py"
     repl = {
         "{{SESSION_ID}}": sid,

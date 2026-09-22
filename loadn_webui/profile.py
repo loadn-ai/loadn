@@ -55,7 +55,8 @@ def load_registry() -> dict[str, Profile]:
     if _REGISTRY is not None:
         return _REGISTRY
     reg: dict[str, Profile] = {}
-    path = PATHS["profiles"] / "registry.yaml"
+    from .config import behavior_file
+    path = behavior_file("profiles", "registry.yaml")
     try:
         data = yaml.safe_load(path.read_text()) or {}
     except (OSError, yaml.YAMLError):
@@ -63,7 +64,7 @@ def load_registry() -> dict[str, Profile]:
     for name, spec in (data.get("profiles") or {}).items():
         if not isinstance(spec, dict):
             continue
-        md_path = PATHS["profiles"] / spec.get("profile", f"{name}.md")
+        md_path = behavior_file("profiles", spec.get("profile", f"{name}.md"))
         try:
             md = md_path.read_text()
         except OSError:
