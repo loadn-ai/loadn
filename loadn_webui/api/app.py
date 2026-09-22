@@ -79,10 +79,13 @@ def _allowed_hosts() -> set[str]:
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     global _SERVE_LOCK_FH
-    from ..config import ensure_dirs
+    from ..config import ensure_dirs, migrate_legacy_db
     from ..scheduler import get_scheduler
     ensure_dirs()
     resolve_runtime_token()   # W0.1：token 空 → 生成 var/server_token + 14 天宽限
+    _mig = migrate_legacy_db()   # R2.5：旧 var/workdaddy.db → var/loadn.db（copy）
+    if _mig is not None:
+        log.info("[R2.5] 旧库迁移完成 → %s", _mig)
     # 单实例闸（2026-09-17 事故）：双 serve 抢端口时，败者在 bind 失败前也会先跑
     # lifespan——孤儿清理/中断恢复会直接误伤胜者正在跑的 turn（systemd
     # Restart=always 每 5s 拉起僵尸实例，几小时内三批把活跃 turn 标成
