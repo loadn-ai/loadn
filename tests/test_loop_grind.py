@@ -2,8 +2,8 @@
 from __future__ import annotations
 
 import tests.helpers as H
-from hahaness.core.loop import AgentCore, LoopSettings
-from hahaness.core.session import SessionManager
+from loadn.core.loop import AgentCore, LoopSettings
+from loadn.core.session import SessionManager
 
 
 def _core(tmp_path, rounds, **settings_kw):

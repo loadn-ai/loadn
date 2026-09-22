@@ -4,9 +4,9 @@ from __future__ import annotations
 import json
 
 import tests.helpers as H
-from hahaness.core.loop import AgentCore, LoopSettings
-from hahaness.core.session import SessionManager
-from hahaness.core.subagent import SUBAGENT_TYPES, SubagentManager, TaskTool
+from loadn.core.loop import AgentCore, LoopSettings
+from loadn.core.session import SessionManager
+from loadn.core.subagent import SUBAGENT_TYPES, SubagentManager, TaskTool
 
 
 # ---------------------------------------------------------------- 子代理
@@ -32,7 +32,7 @@ async def test_task_returns_final_text_only(tmp_path):
 
 
 async def test_task_output_truncated_30k(tmp_path):
-    from hahaness.constants import TASK_OUTPUT_MAX_CHARS
+    from loadn.constants import TASK_OUTPUT_MAX_CHARS
     session = SessionManager.create(tmp_path, home=tmp_path)
     big = "结" * (TASK_OUTPUT_MAX_CHARS + 500)
     mgr = SubagentManager(
@@ -76,14 +76,14 @@ async def test_task_tool_wires_manager(tmp_path):
     assert out == "子结果"
     import pytest
 
-    from hahaness.tools.base import ToolError
+    from loadn.tools.base import ToolError
     with pytest.raises(ToolError):
         await tool.execute({"prompt": "  "}, None)
 
 
 # ---------------------------------------------------------------- stream-json
 async def test_stream_json_event_contract(tmp_path, capsys):
-    from hahaness.cli.stream_json import StreamJsonEmitter
+    from loadn.cli.stream_json import StreamJsonEmitter
     session = SessionManager.create(tmp_path, home=tmp_path)
     core = AgentCore(provider=H.ScriptedProvider(
         [H.tool_round("tu_1", "Echo", {"msg": "hi"}), H.text_round("完成")]),
@@ -119,7 +119,7 @@ async def test_stream_json_event_contract(tmp_path, capsys):
 
 
 def test_price_table_cost():
-    from hahaness.constants import cost_usd, price_key
+    from loadn.constants import cost_usd, price_key
     assert price_key("glm-5.3[1m]") == "glm-5.3"
     assert price_key("GLM-5.3-FLASH") == "glm-5.3-flash"
     assert price_key("unknown-model") == "glm-5.3"

@@ -4,10 +4,10 @@ from __future__ import annotations
 import json
 
 import tests.helpers as H
-from hahaness.core.loop import AgentCore, LoopSettings, StopFlag
-from hahaness.core.session import SessionManager
-from hahaness.providers import Chunk
-from hahaness.types import ToolResultBlock
+from loadn.core.loop import AgentCore, LoopSettings, StopFlag
+from loadn.core.session import SessionManager
+from loadn.providers import Chunk
+from loadn.types import ToolResultBlock
 
 
 async def _core(tmp_path, rounds, tools=None, settings=None, provider=None):
@@ -88,7 +88,7 @@ async def test_provider_error_turn_error(tmp_path):
 
 async def test_stream_interrupted_retries(tmp_path, monkeypatch):
     """断流（已产出内容后连接断开）→ loop 层整轮重试，最终 success。"""
-    monkeypatch.setattr("hahaness.core.loop.backoff_delay", lambda n: 0.0)
+    monkeypatch.setattr("loadn.core.loop.backoff_delay", lambda n: 0.0)
     prov = H.FlakyStreamProvider(fail_n=1)
     core, session = await _core(tmp_path, [], provider=prov)
     summary = await core.run_turn("断流场景")
@@ -103,7 +103,7 @@ async def test_stream_interrupted_retries(tmp_path, monkeypatch):
 
 async def test_stream_interrupted_exhausts_to_error(tmp_path, monkeypatch):
     """重试耗尽 → error_during_execution（不再落假 success / 带 traceback 崩）。"""
-    monkeypatch.setattr("hahaness.core.loop.backoff_delay", lambda n: 0.0)
+    monkeypatch.setattr("loadn.core.loop.backoff_delay", lambda n: 0.0)
     prov = H.FlakyStreamProvider(fail_n=99)
     core, session = await _core(tmp_path, [], provider=prov)
     summary = await core.run_turn("一直断流")
@@ -117,7 +117,7 @@ async def test_stream_interrupted_exhausts_to_error(tmp_path, monkeypatch):
 
 async def test_retriable_provider_error_retried(tmp_path, monkeypatch):
     """retriable error chunk（429/529/5xx 形态）→ loop 层重试后恢复。"""
-    monkeypatch.setattr("hahaness.core.loop.backoff_delay", lambda n: 0.0)
+    monkeypatch.setattr("loadn.core.loop.backoff_delay", lambda n: 0.0)
     prov = H.RetriableErrorProvider(fail_n=1)
     core, _ = await _core(tmp_path, [], provider=prov)
     summary = await core.run_turn("限流场景")
@@ -176,7 +176,7 @@ async def test_loop_guard_nudge(tmp_path):
 
 
 async def test_permission_denied(tmp_path):
-    from hahaness.core.permissions import PermissionEngine
+    from loadn.core.permissions import PermissionEngine
     rounds = [H.tool_round("tu_1", "Echo", {"msg": "x"}),
               H.text_round("改道")]
     session = SessionManager.create(tmp_path)
@@ -209,7 +209,7 @@ async def test_result_event_usage_contract(tmp_path):
 
 async def test_truncation_nudge_recovers_empty_turn(tmp_path):
     """aimo 案回归：stop_reason=max_tokens 且零文本零工具 → 注入收敛续轮一次。"""
-    from hahaness.providers import Chunk
+    from loadn.providers import Chunk
     rounds = [
         # 第一轮：只有 thinking，撞满 max_tokens（复刻实测事故形态）
         [Chunk(kind="thinking_delta", text="让我分析这道竞赛题" * 500),
@@ -231,7 +231,7 @@ async def test_truncation_nudge_recovers_empty_turn(tmp_path):
 
 async def test_truncation_nudge_only_once(tmp_path):
     """连续两次截断空转：只续一次，第二次按空文本终结（不死循环）。"""
-    from hahaness.providers import Chunk
+    from loadn.providers import Chunk
 
     def trunc():
         return [Chunk(kind="thinking_delta", text="继续想" * 10),
@@ -362,7 +362,7 @@ async def test_bad_json_non_max_tokens_still_executes(tmp_path):
 
 # ---------------------------------------------------------------- FailoverReason
 def test_classify_error_table():
-    from hahaness.providers.retry import classify_error
+    from loadn.providers.retry import classify_error
     assert classify_error("Prompt is too long: 210000 > 200000")["reason"] \
         == "context_overflow"
     assert classify_error("400: context_length_exceeded")["compress"] is True
@@ -374,8 +374,8 @@ def test_classify_error_table():
 
 async def test_overflow_triggers_compact_and_resend(tmp_path, monkeypatch):
     """溢出 error chunk → 强制压缩 → 重发成功（不计流重试额度）。"""
-    from hahaness.core.compactor import Compactor
-    monkeypatch.setattr("hahaness.core.compactor.COMPACT_KEEP_TOKENS", 10)
+    from loadn.core.compactor import Compactor
+    monkeypatch.setattr("loadn.core.compactor.COMPACT_KEEP_TOKENS", 10)
     overflow = [Chunk(kind="error",
                       error="400: prompt is too long (210000 tokens)",
                       retriable=False)]
@@ -401,8 +401,8 @@ async def test_overflow_triggers_compact_and_resend(tmp_path, monkeypatch):
 
 async def test_overflow_second_time_reports_error(tmp_path, monkeypatch):
     """压缩自救后再溢出（compress_used 已置位）→ 如实 error_during_execution。"""
-    from hahaness.core.compactor import Compactor
-    monkeypatch.setattr("hahaness.core.compactor.COMPACT_KEEP_TOKENS", 10)
+    from loadn.core.compactor import Compactor
+    monkeypatch.setattr("loadn.core.compactor.COMPACT_KEEP_TOKENS", 10)
     overflow = [Chunk(kind="error",
                       error="400: context_length_exceeded", retriable=False)]
 
@@ -453,8 +453,8 @@ async def test_steer_injected_between_rounds(tmp_path, monkeypatch):
     """
     import os
     steer = tmp_path / "steer.jsonl"
-    monkeypatch.setattr("hahaness.core.loop.os.environ",
-                        {**os.environ, "HAHANESS_STEER_FILE": str(steer)})
+    monkeypatch.setattr("loadn.core.loop.os.environ",
+                        {**os.environ, "LOADN_STEER_FILE": str(steer)})
     rounds = [H.tool_round("tu_1", "Echo", {"msg": "a"}),
               H.tool_round("tu_2", "Echo", {"msg": "b"}),
               H.text_round("收到转向指令，已放弃 kaggle")]
@@ -490,8 +490,8 @@ async def test_steer_history_not_replayed(tmp_path, monkeypatch):
     import os
     steer = tmp_path / "steer.jsonl"
     steer.write_text(json.dumps({"ts": 0, "text": "上周的旧插话"}) + "\n")
-    monkeypatch.setattr("hahaness.core.loop.os.environ",
-                        {**os.environ, "HAHANESS_STEER_FILE": str(steer)})
+    monkeypatch.setattr("loadn.core.loop.os.environ",
+                        {**os.environ, "LOADN_STEER_FILE": str(steer)})
     rounds = [H.tool_round("tu_1", "Echo", {"msg": "a"}),
               H.text_round("done")]
     core, _ = await _core(tmp_path, rounds,
@@ -514,7 +514,7 @@ async def test_steer_history_not_replayed(tmp_path, monkeypatch):
 
 async def test_steer_absent_file_silent(tmp_path, monkeypatch):
     """无 steer 文件/无 env：零影响（插话是增强不是依赖）。"""
-    monkeypatch.delenv("HAHANESS_STEER_FILE", raising=False)
+    monkeypatch.delenv("LOADN_STEER_FILE", raising=False)
     core, _ = await _core(tmp_path, [H.text_round("ok")])
     summary = await core.run_turn("x")
     assert summary.subtype == "success"

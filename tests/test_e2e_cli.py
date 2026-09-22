@@ -1,4 +1,4 @@
-"""CLI 端到端（子进程 -p 全链，HAHANESS_PROVIDER=fake 零 token）。
+"""CLI 端到端（子进程 -p 全链，LOADN_PROVIDER=fake 零 token）。
 
 argv 契约与 stream-json 事件形状在这里整体校验——宿主引擎接缝
 （spawn 的就是这组 argv）以此为准。
@@ -22,12 +22,12 @@ def _run_cli(args: list[str], cwd: Path, home: Path, fake_dir: Path | None = Non
     env = {
         **os.environ,
         "PYTHONPATH": str(REPO) + os.pathsep + os.environ.get("PYTHONPATH", ""),
-        "HAHANESS_HOME": str(home),
-        "HAHANESS_PROVIDER": "fake",
+        "LOADN_HOME": str(home),
+        "LOADN_PROVIDER": "fake",
     }
     if fake_dir is not None:
-        env["HAHANESS_FAKE_DIR"] = str(fake_dir)
-    return subprocess.run([sys.executable, "-m", "hahaness", *args],
+        env["LOADN_FAKE_DIR"] = str(fake_dir)
+    return subprocess.run([sys.executable, "-m", "loadn", *args],
                           cwd=str(cwd), env=env, capture_output=True,
                           text=True, timeout=timeout)
 
@@ -47,7 +47,7 @@ def ws(tmp_path):
 def test_cli_version_fast():
     cp = _run_cli(["--version"], cwd=REPO, home=REPO / ".hh_tmp_home")
     assert cp.returncode == 0
-    assert "hahaness" in cp.stdout
+    assert "loadn" in cp.stdout
 
 
 def test_cli_stream_json_happy_path(tmp_path, ws):

@@ -6,9 +6,9 @@ from pathlib import Path
 
 import httpx
 
-from hahaness.providers import fingerprint
-from hahaness.providers.anthropic import AnthropicProvider
-from hahaness.types import Message, TextBlock
+from loadn.providers import fingerprint
+from loadn.providers.anthropic import AnthropicProvider
+from loadn.types import Message, TextBlock
 
 SSE_HEADERS = {"content-type": "text/event-stream"}
 
@@ -53,33 +53,33 @@ async def _one_chat(prov):
 
 # ---------------------------------------------------------------- 开关与门控
 def test_stealth_mode_env(monkeypatch):
-    monkeypatch.delenv("HAHANESS_STEALTH", raising=False)
+    monkeypatch.delenv("LOADN_STEALTH", raising=False)
     assert fingerprint.stealth_mode() == ""
-    monkeypatch.setenv("HAHANESS_STEALTH", "cc")
+    monkeypatch.setenv("LOADN_STEALTH", "cc")
     assert fingerprint.stealth_mode() == "cc"
-    monkeypatch.setenv("HAHANESS_STEALTH", "cc-all")
+    monkeypatch.setenv("LOADN_STEALTH", "cc-all")
     assert fingerprint.stealth_mode() == "cc-all"
-    monkeypatch.setenv("HAHANESS_STEALTH", "bogus")
+    monkeypatch.setenv("LOADN_STEALTH", "bogus")
     assert fingerprint.stealth_mode() == ""
 
 
 def test_active_glm_gating():
     assert fingerprint.active("https://open.bigmodel.cn/api/anthropic") is False  # 需开关
     import os
-    os.environ["HAHANESS_STEALTH"] = "cc"
+    os.environ["LOADN_STEALTH"] = "cc"
     try:
         assert fingerprint.active("https://open.bigmodel.cn/api/anthropic") is True
         assert fingerprint.active("https://api.anthropic.com") is False   # 非 GLM 不开
-        os.environ["HAHANESS_STEALTH"] = "cc-all"
+        os.environ["LOADN_STEALTH"] = "cc-all"
         assert fingerprint.active("https://api.anthropic.com") is True   # 测试档全开
     finally:
-        del os.environ["HAHANESS_STEALTH"]
+        del os.environ["LOADN_STEALTH"]
 
 
 # ---------------------------------------------------------------- headers
 async def test_cc_headers_full_family(monkeypatch, tmp_path):
-    monkeypatch.setenv("HAHANESS_STEALTH", "cc")
-    monkeypatch.setenv("HAHANESS_HOME", str(tmp_path))
+    monkeypatch.setenv("LOADN_STEALTH", "cc")
+    monkeypatch.setenv("LOADN_HOME", str(tmp_path))
     prov, cap = make_provider(glm_cfg(), lambda r: httpx.Response(
         200, headers=SSE_HEADERS, content=_ok_stream()))
     await _one_chat(prov)
@@ -98,8 +98,8 @@ async def test_cc_headers_full_family(monkeypatch, tmp_path):
 
 
 async def test_retry_count_increments(monkeypatch, tmp_path):
-    monkeypatch.setenv("HAHANESS_STEALTH", "cc")
-    monkeypatch.setenv("HAHANESS_HOME", str(tmp_path))
+    monkeypatch.setenv("LOADN_STEALTH", "cc")
+    monkeypatch.setenv("LOADN_HOME", str(tmp_path))
     state = {"n": 0}
 
     def handler(r):
@@ -117,8 +117,8 @@ async def test_retry_count_increments(monkeypatch, tmp_path):
 
 async def test_off_state_no_injection(monkeypatch, tmp_path):
     """关闭伪装（默认）：零注入回归保护——无 stainless、双鉴权头照旧。"""
-    monkeypatch.delenv("HAHANESS_STEALTH", raising=False)
-    monkeypatch.setenv("HAHANESS_HOME", str(tmp_path))
+    monkeypatch.delenv("LOADN_STEALTH", raising=False)
+    monkeypatch.setenv("LOADN_HOME", str(tmp_path))
     prov, cap = make_provider(glm_cfg(), lambda r: httpx.Response(
         200, headers=SSE_HEADERS, content=_ok_stream()))
     await _one_chat(prov)
@@ -131,8 +131,8 @@ async def test_off_state_no_injection(monkeypatch, tmp_path):
 
 # ---------------------------------------------------------------- 请求体
 async def test_cc_request_body_habits(monkeypatch, tmp_path):
-    monkeypatch.setenv("HAHANESS_STEALTH", "cc")
-    monkeypatch.setenv("HAHANESS_HOME", str(tmp_path))
+    monkeypatch.setenv("LOADN_STEALTH", "cc")
+    monkeypatch.setenv("LOADN_HOME", str(tmp_path))
     prov, cap = make_provider(glm_cfg(extra={"temperature": 0.7}),
                               lambda r: httpx.Response(
                                   200, headers=SSE_HEADERS, content=_ok_stream()))
@@ -163,8 +163,8 @@ async def test_cc_request_body_habits(monkeypatch, tmp_path):
 
 
 async def test_identity_stable_across_calls(monkeypatch, tmp_path):
-    monkeypatch.setenv("HAHANESS_STEALTH", "cc")
-    monkeypatch.setenv("HAHANESS_HOME", str(tmp_path))
+    monkeypatch.setenv("LOADN_STEALTH", "cc")
+    monkeypatch.setenv("LOADN_HOME", str(tmp_path))
     prov, cap = make_provider(glm_cfg(), lambda r: httpx.Response(
         200, headers=SSE_HEADERS, content=_ok_stream()))
     await _one_chat(prov)
@@ -177,42 +177,42 @@ async def test_identity_stable_across_calls(monkeypatch, tmp_path):
 
 # ---------------------------------------------------------------- system 泄漏清扫
 def test_stealth_system_scrub(monkeypatch):
-    monkeypatch.setenv("HAHANESS_STEALTH", "cc")
-    from hahaness.core.context import CORE_PROMPT, _stealth_system
+    monkeypatch.setenv("LOADN_STEALTH", "cc")
+    from loadn.core.context import CORE_PROMPT, _stealth_system
     out = _stealth_system(CORE_PROMPT)
-    assert "hahaness" not in out.lower()
-    assert not out.startswith("你是 hahaness")     # 身份句已剥
-    monkeypatch.delenv("HAHANESS_STEALTH")
+    assert "loadn" not in out.lower()
+    assert not out.startswith("你是 loadn")     # 身份句已剥
+    monkeypatch.delenv("LOADN_STEALTH")
     assert _stealth_system(CORE_PROMPT) == CORE_PROMPT.strip()   # 关闭=原样
 
 
 async def test_no_identity_leak_in_body(monkeypatch, tmp_path):
     """启用伪装后的完整请求体序列化串中不得出现自曝身份字样。"""
-    monkeypatch.setenv("HAHANESS_STEALTH", "cc")
-    monkeypatch.setenv("HAHANESS_HOME", str(tmp_path))
+    monkeypatch.setenv("LOADN_STEALTH", "cc")
+    monkeypatch.setenv("LOADN_HOME", str(tmp_path))
     prov, cap = make_provider(glm_cfg(), lambda r: httpx.Response(
         200, headers=SSE_HEADERS, content=_ok_stream()))
     await _one_chat(prov)
     blob = json.dumps(cap["reqs"][0]["body"], ensure_ascii=False).lower()
-    for leak in ("hahaness", "httpx"):
+    for leak in ("loadn", "httpx"):
         assert leak not in blob, f"身份泄漏: {leak}"
 
 
 # ---------------------------------------------------------------- 工具面整形
 async def test_tool_surface_shape(monkeypatch, tmp_path):
     """伪装通道：藏 InteractiveShell + 注册 CC stub（BashOutput/KillShell 真功能）。"""
-    monkeypatch.setenv("HAHANESS_STEALTH", "cc")
-    monkeypatch.setenv("HAHANESS_HOME", str(tmp_path))
+    monkeypatch.setenv("LOADN_STEALTH", "cc")
+    monkeypatch.setenv("LOADN_HOME", str(tmp_path))
     fake_home = tmp_path / "fakehome"
     fake_home.mkdir()
     monkeypatch.setattr(Path, "home", lambda: fake_home)
-    from hahaness.core.build import build_agent
-    from hahaness.supervisor.process import ProcessSupervisor
-    from hahaness.tools.base import ToolContext
+    from loadn.core.build import build_agent
+    from loadn.supervisor.process import ProcessSupervisor
+    from loadn.tools.base import ToolContext
 
     bundle = await build_agent(tmp_path, cfg={"provider": "fake"})
     tools = bundle.core.tools
-    assert "InteractiveShell" not in tools        # hahaness 特有工具隐藏
+    assert "InteractiveShell" not in tools        # loadn 特有工具隐藏
     for name in ("AskUserQuestion", "EnterPlanMode", "ExitPlanMode",
                  "BashOutput", "KillShell"):
         assert name in tools, f"缺 CC stub {name}"
@@ -228,7 +228,7 @@ async def test_tool_surface_shape(monkeypatch, tmp_path):
     finally:
         await sup.shutdown()
     # 关闭伪装反向验证
-    monkeypatch.setenv("HAHANESS_STEALTH", "off")
+    monkeypatch.setenv("LOADN_STEALTH", "off")
     bundle2 = await build_agent(tmp_path, cfg={"provider": "fake"})
     assert "InteractiveShell" in bundle2.core.tools
     assert "AskUserQuestion" not in bundle2.core.tools
@@ -237,8 +237,8 @@ async def test_tool_surface_shape(monkeypatch, tmp_path):
 # ---------------------------------------------------------------- GLM 通道关闭时
 async def test_non_glm_channel_untouched(monkeypatch, tmp_path):
     """stealth=cc 但 base_url 非 GLM：行为与非伪装完全一致。"""
-    monkeypatch.setenv("HAHANESS_STEALTH", "cc")
-    monkeypatch.setenv("HAHANESS_HOME", str(tmp_path))
+    monkeypatch.setenv("LOADN_STEALTH", "cc")
+    monkeypatch.setenv("LOADN_HOME", str(tmp_path))
     cfg = glm_cfg(base_url="https://api.example.test")
     prov, cap = make_provider(cfg, lambda r: httpx.Response(
         200, headers=SSE_HEADERS, content=_ok_stream()))
@@ -251,8 +251,8 @@ async def test_non_glm_channel_untouched(monkeypatch, tmp_path):
 
 async def test_aux_request_metadata_shape(monkeypatch, tmp_path):
     """辅助请求（无 sid）：session_id 用落盘的固定 aux id（恒定）。"""
-    monkeypatch.setenv("HAHANESS_STEALTH", "cc")
-    monkeypatch.setenv("HAHANESS_HOME", str(tmp_path))
+    monkeypatch.setenv("LOADN_STEALTH", "cc")
+    monkeypatch.setenv("LOADN_HOME", str(tmp_path))
     prov, cap = make_provider(glm_cfg(), lambda r: httpx.Response(
         200, headers=SSE_HEADERS, content=_ok_stream()))
     await _one_chat(prov)

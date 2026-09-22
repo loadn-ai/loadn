@@ -12,9 +12,9 @@ import logging
 
 import httpx
 
-from hahaness.providers.anthropic import JsonAccumulator
-from hahaness.providers.openai_compat import OpenAICompatProvider
-from hahaness.types import Message, TextBlock, ThinkingBlock, ToolDef, ToolResultBlock, ToolUseBlock
+from loadn.providers.anthropic import JsonAccumulator
+from loadn.providers.openai_compat import OpenAICompatProvider
+from loadn.types import Message, TextBlock, ThinkingBlock, ToolDef, ToolResultBlock, ToolUseBlock
 
 SSE_HEADERS = {"content-type": "text/event-stream"}
 
@@ -173,7 +173,7 @@ async def test_missing_usage_warns_and_empty(caplog):
                                 "finish_reason": "stop"}]}),
             DONE]), headers=SSE_HEADERS))
     with caplog.at_level(logging.WARNING,
-                         logger="hahaness.providers.openai_compat"):
+                         logger="loadn.providers.openai_compat"):
         chunks = await collect(provider.chat(
             [Message(role="user", content=[TextBlock("hi")])], [], ""))
     assert chunks[-1].kind == "stop"

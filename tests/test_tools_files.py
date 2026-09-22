@@ -11,17 +11,17 @@ from pathlib import Path
 
 import pytest
 
-from hahaness.constants import (
+from loadn.constants import (
     EDIT_DIFF_MAX_LINES,
     READ_FILE_MAX_BYTES,
     READ_LINE_CHARS_MAX,
     WRITE_MAX_BYTES,
 )
-from hahaness.tools.base import ToolContext, ToolError
-from hahaness.tools.edit import EditTool
-from hahaness.tools.multiedit import MultiEditTool
-from hahaness.tools.read import ReadTool, file_key
-from hahaness.tools.write import WriteTool
+from loadn.tools.base import ToolContext, ToolError
+from loadn.tools.edit import EditTool
+from loadn.tools.multiedit import MultiEditTool
+from loadn.tools.read import ReadTool, file_key
+from loadn.tools.write import WriteTool
 
 
 @pytest.fixture
@@ -441,7 +441,7 @@ async def test_multiedit_inherits_fuzzy(ctx: ToolContext, tmp_path: Path):
 
 def test_fuzzy_replace_last_line_no_eol():
     """末行无换行文件：不引入尾换行。"""
-    from hahaness.tools.edit import _fuzzy_replace
+    from loadn.tools.edit import _fuzzy_replace
     out = _fuzzy_replace("aaa\ncontent-line  \ntail", "content-line", "CHANGED")
     assert out == "aaa\nCHANGED\ntail"
     assert not out.endswith("\n")

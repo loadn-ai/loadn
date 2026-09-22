@@ -12,10 +12,10 @@ import json
 import httpx
 import pytest
 
-from hahaness.providers import Chunk
-from hahaness.providers.anthropic import AnthropicProvider, JsonAccumulator
-from hahaness.providers.retry import StreamInterrupted
-from hahaness.types import Message, TextBlock, ToolDef
+from loadn.providers import Chunk
+from loadn.providers.anthropic import AnthropicProvider, JsonAccumulator
+from loadn.providers.retry import StreamInterrupted
+from loadn.types import Message, TextBlock, ToolDef
 
 SSE_HEADERS = {"content-type": "text/event-stream"}
 
@@ -319,8 +319,8 @@ async def test_nonstream_full_message():
 # ---------------------------------------------------------------- per-call model
 async def test_chat_model_override_strips_variant():
     """per-call model 覆盖：剥 [1m] 后缀（Z.AI 网关只认裸名）。"""
-    from hahaness.types import Message as _M
-    from hahaness.types import TextBlock as _TB
+    from loadn.types import Message as _M
+    from loadn.types import TextBlock as _TB
     stream = sse("message_start", {"type": "message_start", "message": {
         "id": "msg_m", "model": "glm-5.3-flash",
         "usage": {"input_tokens": 3, "output_tokens": 1}}}) + \
@@ -339,8 +339,8 @@ async def test_chat_model_override_strips_variant():
 
 
 async def test_chat_no_model_uses_default():
-    from hahaness.types import Message as _M
-    from hahaness.types import TextBlock as _TB
+    from loadn.types import Message as _M
+    from loadn.types import TextBlock as _TB
     prov, captured = make_provider(lambda r: httpx.Response(
         200, headers=SSE_HEADERS, content=sse("message_stop", {"type": "message_stop"})))
     chunks = await collect(prov.chat([_M(role="user", content=[_TB(text="x")])],
@@ -351,8 +351,8 @@ async def test_chat_no_model_uses_default():
 
 # ---------------------------------------------------------------- thinking 预算
 async def test_thinking_budget_set():
-    from hahaness.types import Message as _M
-    from hahaness.types import TextBlock as _TB
+    from loadn.types import Message as _M
+    from loadn.types import TextBlock as _TB
     prov, captured = make_provider(lambda r: httpx.Response(
         200, headers=SSE_HEADERS, content=sse("message_stop", {"type": "message_stop"})))
     prov.extra["thinking_budget"] = 4096
@@ -362,8 +362,8 @@ async def test_thinking_budget_set():
 
 
 async def test_thinking_budget_clamped_to_min():
-    from hahaness.types import Message as _M
-    from hahaness.types import TextBlock as _TB
+    from loadn.types import Message as _M
+    from loadn.types import TextBlock as _TB
     prov, captured = make_provider(lambda r: httpx.Response(
         200, headers=SSE_HEADERS, content=sse("message_stop", {"type": "message_stop"})))
     prov.extra["thinking_budget"] = 100        # 低于 1024 → 抬到下限
@@ -372,8 +372,8 @@ async def test_thinking_budget_clamped_to_min():
 
 
 async def test_thinking_budget_absent_when_default_or_too_big():
-    from hahaness.types import Message as _M
-    from hahaness.types import TextBlock as _TB
+    from loadn.types import Message as _M
+    from loadn.types import TextBlock as _TB
     prov, captured = make_provider(lambda r: httpx.Response(
         200, headers=SSE_HEADERS, content=sse("message_stop", {"type": "message_stop"})))
     await collect(prov.chat([_M(role="user", content=[_TB(text="x")])], [], "s"))
@@ -386,11 +386,11 @@ async def test_thinking_budget_absent_when_default_or_too_big():
 
 
 def test_provider_config_env_thinking_budget(monkeypatch):
-    from hahaness.providers import provider_config
-    monkeypatch.setenv("HAHANESS_THINKING_BUDGET", "2048")
+    from loadn.providers import provider_config
+    monkeypatch.setenv("LOADN_THINKING_BUDGET", "2048")
     cfg = provider_config()
     assert cfg["extra"]["thinking_budget"] == 2048
-    monkeypatch.setenv("HAHANESS_THINKING_BUDGET", "not-a-number")
+    monkeypatch.setenv("LOADN_THINKING_BUDGET", "not-a-number")
     cfg2 = provider_config()
     assert "thinking_budget" not in cfg2["extra"]
 
@@ -404,8 +404,8 @@ def _ok_stream():
 
 
 async def test_cache_off_no_markers():
-    from hahaness.types import Message as _M
-    from hahaness.types import TextBlock as _TB
+    from loadn.types import Message as _M
+    from loadn.types import TextBlock as _TB
     prov, captured = make_provider(lambda r: httpx.Response(
         200, headers=SSE_HEADERS, content=_ok_stream()))
     chunks = await collect(prov.chat([_M(role="user", content=[_TB(text="x")])],
@@ -417,8 +417,8 @@ async def test_cache_off_no_markers():
 
 
 async def test_cache_kill_switch():
-    from hahaness.types import Message as _M
-    from hahaness.types import TextBlock as _TB
+    from loadn.types import Message as _M
+    from loadn.types import TextBlock as _TB
     cfg = {"provider": "anthropic", "base_url": "http://mock.test",
            "api_key": "k", "model": "glm-5.3",
            "extra": {"disable_prompt_cache": True}}
@@ -435,7 +435,7 @@ async def test_cache_kill_switch():
 
 async def test_cache_empty_guards():
     """空 tools / 空 system / 空末消息 content 不炸。"""
-    from hahaness.types import Message as _M
+    from loadn.types import Message as _M
     prov, captured = make_provider(lambda r: httpx.Response(
         200, headers=SSE_HEADERS, content=_ok_stream()))
     chunks = await collect(prov.chat([_M(role="user", content=[])], [], ""))
@@ -445,8 +445,8 @@ async def test_cache_empty_guards():
 
 async def test_cache_downgrade_on_400_named_system():
     """网关 400 点名 system → 降级字符串 system 重发一次成功。"""
-    from hahaness.types import Message as _M
-    from hahaness.types import TextBlock as _TB
+    from loadn.types import Message as _M
+    from loadn.types import TextBlock as _TB
     bodies: list[dict] = []
     state = {"n": 0}
 
@@ -470,8 +470,8 @@ async def test_cache_downgrade_on_400_named_system():
 
 
 async def test_cache_downgrade_on_400_named_cache_control():
-    from hahaness.types import Message as _M
-    from hahaness.types import TextBlock as _TB
+    from loadn.types import Message as _M
+    from loadn.types import TextBlock as _TB
     state = {"n": 0}
 
     def wrap(request):

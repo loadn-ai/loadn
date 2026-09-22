@@ -3,13 +3,13 @@ requires = ["setuptools>=61"]
 build-backend = "setuptools.build_meta"
 
 [project]
-name = "hahaness"
-version = "0.7.1"
-description = "A self-contained coding agent engine: Claude Code-compatible stream-json CLI, pluggable providers, tools, MCP, subagents, and context compaction."
+name = "loadn"
+version = "0.1.0"
+description = "loadn (load-n) agent engine: Claude Code-compatible stream-json CLI, pluggable providers, tools, MCP, subagents, and context compaction. Monorepo also hosts loadn webui."
 readme = "README.md"
 license = { file = "LICENSE" }
 requires-python = ">=3.10"
-authors = [{ name = "hahaness contributors" }]
+authors = [{ name = "loadn-ai contributors" }]
 keywords = ["agent", "llm", "cli", "coding-agent", "anthropic", "mcp", "claude-code"]
 classifiers = [
   "Development Status :: 4 - Beta",
@@ -34,15 +34,17 @@ dev = [
   "pytest-asyncio>=0.23",
   "ruff>=0.4",
 ]
+# webui = [ ... R2 平台迁入时补：fastapi/uvicorn/httpx/pyyaml ... ]
+# desktop = [ ... M3+ pywebview ... ]
 
 [project.scripts]
-hahaness = "hahaness.cli.main:main"
+loadn = "loadn.cli.main:main"
 
 [tool.setuptools.packages.find]
-include = ["hahaness*"]
+include = ["loadn*"]
 
 [tool.setuptools.package-data]
-hahaness = ["py.typed"]
+loadn = ["py.typed"]
 
 [tool.pytest.ini_options]
 asyncio_mode = "auto"

@@ -15,8 +15,8 @@
 
 ## 设计边界（与安全相关）
 
-- hahaness 以你声明的权限模式运行；`--dangerously-skip-permissions` /
+- loadn 以你声明的权限模式运行；`--dangerously-skip-permissions` /
   `--yolo` 会放行非 deny 名单内的全部工具——容器/沙箱里跑无头任务时
   请自行评估
-- 密钥只经环境变量/`$HAHANESS_HOME/config.json` 进入，绝不写入 transcript
+- 密钥只经环境变量/`$LOADN_HOME/config.json` 进入，绝不写入 transcript
 - 子进程治理只作用于自己登记的进程组，不扫全局进程表

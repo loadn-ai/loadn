@@ -6,9 +6,9 @@ from pathlib import Path
 
 import pytest
 
-from hahaness.tools.base import ToolContext, ToolError
-from hahaness.tools.notebook import NotebookEditTool
-from hahaness.tools.read import ReadTool
+from loadn.tools.base import ToolContext, ToolError
+from loadn.tools.notebook import NotebookEditTool
+from loadn.tools.read import ReadTool
 
 
 @pytest.fixture

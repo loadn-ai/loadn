@@ -1,9 +1,9 @@
 """transcript 持久化：replay 重建 / tool_result 归并 / compact 截断。"""
 from __future__ import annotations
 
-from hahaness.core.session import SessionManager
-from hahaness.persistence.transcript import TranscriptStore
-from hahaness.types import Message, TextBlock, ToolResultBlock, ToolUseBlock
+from loadn.core.session import SessionManager
+from loadn.persistence.transcript import TranscriptStore
+from loadn.types import Message, TextBlock, ToolResultBlock, ToolUseBlock
 
 
 def _assistant_text(t: str) -> dict:

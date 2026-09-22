@@ -4,8 +4,8 @@ from __future__ import annotations
 from pathlib import Path
 
 import tests.helpers as H
-from hahaness.core.agent_defs import load_agent_defs
-from hahaness.core.subagent import GENERAL_TOOLS, SUBAGENT_TYPES, SubagentManager, TaskTool
+from loadn.core.agent_defs import load_agent_defs
+from loadn.core.subagent import GENERAL_TOOLS, SUBAGENT_TYPES, SubagentManager, TaskTool
 
 
 def _agent_md(path: Path, body: str, *, name: str = "", tools: str = "",
@@ -128,8 +128,8 @@ def test_builtin_types_still_default(tmp_path: Path):
 
 async def test_build_agent_wires_skill_and_agents(tmp_path, monkeypatch):
     """build_agent 集成：skills 非空注册 Skill 工具；.claude/agents 进 Task enum。"""
-    from hahaness.core.build import build_agent
-    monkeypatch.setenv("HAHANESS_HOME", str(tmp_path / "hh"))
+    from loadn.core.build import build_agent
+    monkeypatch.setenv("LOADN_HOME", str(tmp_path / "hh"))
     (tmp_path / "hh").mkdir()
     _agent_md(tmp_path / ".claude" / "agents" / "reviewer.md",
               "评审员。", name="reviewer", tools="Read")
@@ -148,8 +148,8 @@ async def test_build_agent_wires_skill_and_agents(tmp_path, monkeypatch):
 
 
 async def test_build_agent_no_skills_no_skill_tool(tmp_path, monkeypatch):
-    from hahaness.core.build import build_agent
-    monkeypatch.setenv("HAHANESS_HOME", str(tmp_path / "hh2"))
+    from loadn.core.build import build_agent
+    monkeypatch.setenv("LOADN_HOME", str(tmp_path / "hh2"))
     (tmp_path / "hh2").mkdir()
     # 隔离真实 ~/.claude/skills（用户全局 skill 共享特性会把它发现进来）
     fake_home = tmp_path / "fakehome2"

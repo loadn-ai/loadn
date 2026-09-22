@@ -4,10 +4,10 @@ from __future__ import annotations
 import json
 
 import tests.helpers as H
-from hahaness.core.compactor import Compactor, _split_rounds
-from hahaness.core.context import ContextAssembler
-from hahaness.core.permissions import PermissionEngine
-from hahaness.types import Message, TextBlock, ToolResultBlock, ToolUseBlock
+from loadn.core.compactor import Compactor, _split_rounds
+from loadn.core.context import ContextAssembler
+from loadn.core.permissions import PermissionEngine
+from loadn.types import Message, TextBlock, ToolResultBlock, ToolUseBlock
 
 
 # ---------------------------------------------------------------- 权限
@@ -143,7 +143,7 @@ async def test_compact_noop_below_threshold():
 
 
 async def test_compact_fallback_on_provider_error():
-    from hahaness.providers import Chunk
+    from loadn.providers import Chunk
 
     class _AlwaysError:
         model_name = "err"
@@ -160,7 +160,7 @@ async def test_compact_fallback_on_provider_error():
 
 async def test_compact_retry_once_then_success():
     """首次摘要 error chunk → 减半重试成功（不再直接降级硬摘要）。"""
-    from hahaness.providers import Chunk
+    from loadn.providers import Chunk
     prov = H.ScriptedProvider([[Chunk(kind="error", error="down")]])
     comp = Compactor(prov)
     msgs = _rounds_messages(30)
@@ -171,15 +171,15 @@ async def test_compact_retry_once_then_success():
 
 def test_prompt_has_anti_reconnoitering_discipline():
     """blind-maze 案回归：system 提示含「不侦查测试」纪律。"""
-    from hahaness.core.context import CORE_PROMPT
+    from loadn.core.context import CORE_PROMPT
     assert "不侦查测试" in CORE_PROMPT
     assert "monkeypatch" in CORE_PROMPT
 
 
 async def test_compactor_passes_small_model():
     """small_model 配置 → 摘要调用的 per-call model 覆盖透传到 provider。"""
-    from hahaness.providers import Chunk
-    from hahaness.providers.fake import FakeProvider
+    from loadn.providers import Chunk
+    from loadn.providers.fake import FakeProvider
     prov = FakeProvider(script=[[Chunk(kind="text_delta", text="小模型摘要")]])
     comp = Compactor(prov, small_model="glm-5.3-flash")
     out, did = await comp.compact(_rounds_messages(30))
@@ -189,8 +189,8 @@ async def test_compactor_passes_small_model():
 
 
 async def test_compactor_default_model_when_unset():
-    from hahaness.providers import Chunk
-    from hahaness.providers.fake import FakeProvider
+    from loadn.providers import Chunk
+    from loadn.providers.fake import FakeProvider
     prov = FakeProvider(script=[[Chunk(kind="text_delta", text="同模型摘要")]])
     comp = Compactor(prov)
     await comp.compact(_rounds_messages(30))
@@ -199,7 +199,7 @@ async def test_compactor_default_model_when_unset():
 
 def test_prompt_has_timeout_death_disciplines():
     """Terminal-Bench 死法①③的提示词纪律回归：auto-bg 语义 + make -j。"""
-    from hahaness.core.context import CORE_PROMPT
+    from loadn.core.context import CORE_PROMPT
     assert "自动转后台" in CORE_PROMPT          # 死法①：60s auto-bg 语义
     assert "先继续干" in CORE_PROMPT            # 转后台后不空转轮询
     assert "-j$(nproc)" in CORE_PROMPT          # 死法③：编译必并行
@@ -223,7 +223,7 @@ async def test_prune_renders_without_mutating():
     """先裁剪后总结：渲染层骨架化，Message 原对象深比较不变。"""
     import copy
 
-    from hahaness.core.compactor import _render_history
+    from loadn.core.compactor import _render_history
     msgs = _big_round_messages(3)
     snapshot = copy.deepcopy([m.to_dict() for m in msgs])
     rendered = _render_history(msgs)
@@ -232,7 +232,7 @@ async def test_prune_renders_without_mutating():
 
 
 async def test_file_ledger_extraction():
-    from hahaness.core.compactor import _file_ledger
+    from loadn.core.compactor import _file_ledger
     msgs = _big_round_messages(2)
     msgs.append(Message(role="assistant", content=[
         ToolUseBlock(id="tu_w", name="Edit", input={"file_path": "/tmp/f0.py"})]))

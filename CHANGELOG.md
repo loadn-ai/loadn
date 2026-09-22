@@ -3,6 +3,20 @@
 本项目的全部显著变更记录于此。格式遵循 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/)，
 版本遵循 [SemVer](https://semver.org/lang/zh-CN/)。
 
+## [0.1.0] - 2026-09-22
+
+### Changed
+- **品牌重绑：hahaness → loadn**（loadn-ai monorepo 首版）。包名/CLI/import 根
+  `loadn`；env `HAHANESS_*` → `LOADN_*`（HOME/STEER_FILE/PROVIDER/STEALTH 四件
+  保留旧名 fallback 一版，其余直改）；数据根 `~/.agent` → `~/.loadn`
+  （首启自动搬迁，搬不动回退旧根）；workspace 配置目录 `.agent/settings.json`
+  → `.loadn/settings.json`（hooks/permissions/agents/skills 读旧路径兜底一版）。
+- 版本线重起 v0.1.0（此前历史见 0.7.1 及更早条目；功能面 = 0.7.1 全量）。
+
+### 迁移注意
+- 生产共存期（R2.5 切换前）`~/.agent` 与 `~/.loadn` 双根并存：旧引擎用前者，
+  本包用后者；切换时终同步。
+
 ## [0.7.1] - 2026-09-22
 
 ### Added
@@ -21,14 +35,14 @@
 
 ### Added
 - **CC-Fingerprint 伪装层**（GLM Coding Plan 通道把请求出口对齐 Claude Code
-  客户端形态）：`HAHANESS_STEALTH=cc`（或 config.json `extra.stealth`）开启，
+  客户端形态）：`LOADN_STEALTH=cc`（或 config.json `extra.stealth`）开启，
   仅对 GLM 主机自动生效（`cc-all` 全通道，测试用）。五层：
   ① headers 全家——`claude-cli/{VER} (external, cli)` UA + x-stainless 家族
   （lang=js/os/arch/runtime/runtime-version/retry-count 随重试递增）+ beta 位
   + 只发 Bearer 不发 x-api-key；② 请求体——metadata.user_id 实例级稳定
   （stealth_identity.json 落盘复用）+ 会话后缀 sha8 稳定派生、stream 恒真
   （辅助请求强制流式）、max_tokens CC 档位值、去 temperature；③ system 前置
-  CC 官方身份句 + 剥 hahaness 自报身份句、全量清扫身份字样（provider 层统一
+  CC 官方身份句 + 剥 loadn 自报身份句、全量清扫身份字样（provider 层统一
   出口，摘要/planner 辅助请求同过伪装层）；④ 工具面整形——隐藏
   InteractiveShell、注册 CC 名单 stub（AskUserQuestion/EnterPlanMode/
   ExitPlanMode 无害回执；BashOutput/KillShell 映射真实后台任务治理）；
@@ -94,7 +108,7 @@ Terminal-Bench 超时死法画像驱动的四项引擎加固（31/32 临终任�
   会话上限 4、steps ≤40、单调用预算 900s（先于 loop 层超时返回）
 - **编译并行死规矩**（死法③）：CORE_PROMPT 加"make/编译/大安装必带
   `-j$(nproc)`"；auto-bg 语义与"转后台后先干别的"同步进提示
-- **thinking 预算旋钮**（P2）：`HAHANESS_THINKING_BUDGET` env 或
+- **thinking 预算旋钮**（P2）：`LOADN_THINKING_BUDGET` env 或
   config.json `extra.thinking_budget` → Anthropic 形请求体
   `thinking.budget_tokens`（clamp ≥1024 且 < max_tokens-1024，默认关）
 
@@ -131,7 +145,7 @@ Terminal-Bench 超时死法画像驱动的四项引擎加固（31/32 临终任�
 - **宪法祖先链 + @import**：CLAUDE.md/AGENTS.md 从边界根（git 根；repo 外
   home 下到 home；再外只读 cwd）到 cwd 远→近收集，每层 CLAUDE.md 优先；
   `@path` 行级 import（相对所在文件、深度 3、seen 防环、缺失留注释）；
-  用户级 `$HAHANESS_HOME/AGENT.md` 置顶；总量 120k 截最远端
+  用户级 `$LOADN_HOME/AGENT.md` 置顶；总量 120k 截最远端
 - **small_model 接线**：provider `chat(model=...)` per-call 覆盖（过
   api_model_name 剥变体后缀），Compactor 摘要优先用小模型
 - loop 外发 todos 事件（TodoWrite 成功后）与 plan 事件透传
@@ -202,4 +216,4 @@ Terminal-Bench 超时死法画像驱动的四项引擎加固（31/32 临终任�
 - **测试**：150+ 用例零 token 全分支（fake provider 控制文件协议 + 内联脚本
   provider + CLI 子进程 e2e）
 
-[0.1.0]: https://github.com/placeholder/hahaness/releases/tag/v0.1.0
+[0.1.0]: https://github.com/placeholder/loadn/releases/tag/v0.1.0

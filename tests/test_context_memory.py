@@ -5,10 +5,10 @@ from pathlib import Path
 
 import pytest
 
-from hahaness.core.agent_defs import load_agent_defs
-from hahaness.core.context import ContextAssembler, _chain_files, _memory_boundary
-from hahaness.core.skills import discover_skills, load_skill_body
-from hahaness.tools.skill import SkillTool
+from loadn.core.agent_defs import load_agent_defs
+from loadn.core.context import ContextAssembler, _chain_files, _memory_boundary
+from loadn.core.skills import discover_skills, load_skill_body
+from loadn.tools.skill import SkillTool
 
 
 # ---------------------------------------------------------------- 边界与链
@@ -68,7 +68,7 @@ async def test_constitution_chain_and_user_level(tmp_path: Path, monkeypatch):
     home = tmp_path / "hh"
     home.mkdir()
     (home / "AGENT.md").write_text("用户级规则")
-    monkeypatch.setattr("hahaness.core.context.hahaness_home", lambda: home)
+    monkeypatch.setattr("loadn.core.context.loadn_home", lambda: home)
     asm = ContextAssembler(deep)
     block = asm.constitution_block()
     pos_user = block.index("用户级规则")
@@ -83,14 +83,14 @@ def test_import_expansion_relative_and_missing(tmp_path: Path):
         "主文件\n@./rules/common.md\n@./no-such.md\n")
     (tmp_path / "rules").mkdir()
     (tmp_path / "rules" / "common.md").write_text("公共条款")
-    from hahaness.core.context import _expand_imports
+    from loadn.core.context import _expand_imports
     out = _expand_imports((tmp_path / "CLAUDE.md").read_text(), tmp_path)
     assert "公共条款" in out
     assert "@import 未解析：./no-such.md" in out
 
 
 def test_import_cycle_and_depth(tmp_path: Path):
-    from hahaness.core.context import _expand_imports
+    from loadn.core.context import _expand_imports
     (tmp_path / "A.md").write_text("A 开头\n@./B.md\n")
     (tmp_path / "B.md").write_text("B 开头\n@./A.md\n")
     out = _expand_imports((tmp_path / "A.md").read_text(), tmp_path)
@@ -142,14 +142,14 @@ async def test_skill_tool_loads_body(tmp_path: Path):
 
 
 async def test_skill_tool_unknown_rejected(tmp_path: Path):
-    from hahaness.tools.base import ToolError
+    from loadn.tools.base import ToolError
     tool = SkillTool({})
     with pytest.raises(ToolError):
         await tool.execute({"command": "nope"}, None)
 
 
 def test_load_skill_body_clips():
-    from hahaness.core.skills import SkillInfo
+    from loadn.core.skills import SkillInfo
     info = SkillInfo(name="big", description="", path=Path("/dev/null"))
     # 用真实临时文件测 clip
     import tempfile
@@ -167,10 +167,10 @@ def test_user_constitution_falls_back_to_claude(tmp_path, monkeypatch):
     fake_home = tmp_path / "home"
     (fake_home / ".claude").mkdir(parents=True)
     (fake_home / ".claude" / "CLAUDE.md").write_text("Claude 用户宪法内容")
-    monkeypatch.setenv("HAHANESS_HOME", str(tmp_path / "hh"))   # 无 AGENT.md
+    monkeypatch.setenv("LOADN_HOME", str(tmp_path / "hh"))   # 无 AGENT.md
     (tmp_path / "hh").mkdir()
     monkeypatch.setattr("pathlib.Path.home", lambda: fake_home)
-    from hahaness.core.context import ContextAssembler
+    from loadn.core.context import ContextAssembler
     block = ContextAssembler(tmp_path / "ws").constitution_block()
     assert "Claude 用户宪法内容" in block
 
@@ -204,21 +204,21 @@ def test_claude_project_memory_loaded(tmp_path, monkeypatch):
     fake_home = tmp_path / "home"
     fake_home.mkdir()
     monkeypatch.setattr("pathlib.Path.home", lambda: fake_home)
-    from hahaness.core.context import _claude_project_memory
+    from loadn.core.context import _claude_project_memory
     ws = tmp_path / "ws" / "proj"
     ws.mkdir(parents=True)
     mem = _claude_project_memory(ws)          # 与实现同源定位（slug 全路径推导）
     mem.parent.mkdir(parents=True)
     mem.write_text("# 项目记忆\n- 偏好 A")
-    monkeypatch.setattr("hahaness.core.context.hahaness_home",
+    monkeypatch.setattr("loadn.core.context.loadn_home",
                         lambda: tmp_path / "hh")   # 无全局记忆
     (tmp_path / "hh").mkdir()
-    from hahaness.core.context import ContextAssembler
+    from loadn.core.context import ContextAssembler
     out = ContextAssembler(ws).build()
     assert "项目记忆" in out and "偏好 A" in out
 
 
 def test_claude_project_memory_slug_rule():
-    from hahaness.core.context import _claude_project_memory
+    from loadn.core.context import _claude_project_memory
     p = _claude_project_memory(Path("/data/code/workdaddy"))
     assert p == Path.home() / ".claude" / "projects" / "-data-code-workdaddy" / "memory" / "MEMORY.md"

@@ -1,4 +1,4 @@
-"""hahaness 测试基建：HAHANESS_HOME 隔离 + repo 根入 sys.path。
+"""loadn 测试基建：LOADN_HOME 隔离 + repo 根入 sys.path。
 
 独立测试树（pytest 按路径收集，不与宿主测试互扰）。
 asyncio_mode=auto 由仓库根 pytest.ini 提供。
@@ -15,5 +15,5 @@ if str(REPO) not in sys.path:
 
 import os  # noqa: E402
 
-_HOME = Path(tempfile.mkdtemp(prefix="hahaness_test_home_"))
-os.environ["HAHANESS_HOME"] = str(_HOME)
+_HOME = Path(tempfile.mkdtemp(prefix="loadn_test_home_"))
+os.environ["LOADN_HOME"] = str(_HOME)

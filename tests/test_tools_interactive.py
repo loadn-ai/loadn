@@ -6,9 +6,9 @@ from pathlib import Path
 
 import pytest
 
-from hahaness.supervisor.process import ProcessSupervisor
-from hahaness.tools.base import ToolContext, ToolError
-from hahaness.tools.interactive import InteractiveShellTool
+from loadn.supervisor.process import ProcessSupervisor
+from loadn.tools.base import ToolContext, ToolError
+from loadn.tools.interactive import InteractiveShellTool
 
 
 @pytest.fixture
@@ -18,7 +18,7 @@ async def env(tmp_path: Path):
     yield tool_ctx(sup, ctx)
     for sh in list(ctx.extras.get("shells", {}).values()):
         try:
-            from hahaness.tools.interactive import _kill_shell
+            from loadn.tools.interactive import _kill_shell
             _kill_shell(sh, ctx)
         except Exception:
             pass
@@ -156,7 +156,7 @@ async def test_short_program_eof_marked(env):
 
 async def test_big_output_clipped_still_expect_tail(env, monkeypatch):
     """64k 滚动裁剪后仍能 expect 到尾部行（重叠窗防跨点漏配）。"""
-    from hahaness.constants import SHELL_BUFFER_MAX
+    from loadn.constants import SHELL_BUFFER_MAX
     tool = InteractiveShellTool()
     await tool.execute({"command": "bash"}, env.ctx)
     out = await tool.execute({"session": "sh1", "steps": [

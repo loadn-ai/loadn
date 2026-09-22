@@ -6,9 +6,9 @@ import json
 
 import pytest
 
-from hahaness.providers import Chunk
-from hahaness.providers.fake import FakeProvider
-from hahaness.types import Message, TextBlock, ToolResultBlock
+from loadn.providers import Chunk
+from loadn.providers.fake import FakeProvider
+from loadn.types import Message, TextBlock, ToolResultBlock
 
 USER = lambda text="": Message(role="user", content=[TextBlock(text=text)])  # noqa: E731
 TOOL_RESULT = lambda tid: Message(role="user", content=[  # noqa: E731
@@ -48,7 +48,7 @@ async def test_model_name():
 # ---------------------------------------------------------------- 控制文件模式
 @pytest.fixture()
 def fake_dir(tmp_path, monkeypatch):
-    monkeypatch.setenv("HAHANESS_FAKE_DIR", str(tmp_path / ".fake"))
+    monkeypatch.setenv("LOADN_FAKE_DIR", str(tmp_path / ".fake"))
     d = tmp_path / ".fake"
     d.mkdir()
     return d
@@ -153,7 +153,7 @@ async def test_hang_sleeps_300(fake_dir, monkeypatch):
 
 
 async def test_fake_model_env(fake_dir, monkeypatch):
-    monkeypatch.setenv("HAHANESS_FAKE_MODEL", "fake-glm-5.3")
+    monkeypatch.setenv("LOADN_FAKE_MODEL", "fake-glm-5.3")
     chunks = await collect(FakeProvider(), [USER("hi")])
     assert chunks[0].model == "fake-glm-5.3"
     assert chunks[-1].model == "fake-glm-5.3"

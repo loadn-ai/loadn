@@ -10,7 +10,7 @@ from pathlib import Path
 
 import pytest
 
-from hahaness.supervisor.process import ProcessSupervisor, ProcInfo
+from loadn.supervisor.process import ProcessSupervisor, ProcInfo
 
 
 @pytest.fixture

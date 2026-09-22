@@ -15,18 +15,18 @@ from pathlib import Path
 import httpx
 import pytest
 
-import hahaness.tools.grep as grep_mod
-import hahaness.tools.webfetch as webfetch_mod
-import hahaness.tools.websearch as websearch_mod
-from hahaness.constants import GLOB_MAX_HITS, GREP_MAX_HITS, WEBFETCH_MAX_CHARS, WEBSEARCH_TOP_K
-from hahaness.tools import ToolRegistry
-from hahaness.tools.base import ToolContext, ToolError
-from hahaness.tools.glob import GlobTool
-from hahaness.tools.grep import GrepTool
-from hahaness.tools.todowrite import TodoWriteTool
-from hahaness.tools.webfetch import WebFetchTool
-from hahaness.tools.websearch import WebSearchTool
-from hahaness.types import SessionState
+import loadn.tools.grep as grep_mod
+import loadn.tools.webfetch as webfetch_mod
+import loadn.tools.websearch as websearch_mod
+from loadn.constants import GLOB_MAX_HITS, GREP_MAX_HITS, WEBFETCH_MAX_CHARS, WEBSEARCH_TOP_K
+from loadn.tools import ToolRegistry
+from loadn.tools.base import ToolContext, ToolError
+from loadn.tools.glob import GlobTool
+from loadn.tools.grep import GrepTool
+from loadn.tools.todowrite import TodoWriteTool
+from loadn.tools.webfetch import WebFetchTool
+from loadn.tools.websearch import WebSearchTool
+from loadn.types import SessionState
 
 
 @pytest.fixture
@@ -304,16 +304,16 @@ def _fake_httpx_websearch(payload=None, status=200, exc=None):
 
 
 async def test_websearch_unconfigured(ctx: ToolContext, monkeypatch):
-    monkeypatch.delenv("HAHANESS_SEARCH_PROVIDER", raising=False)
-    monkeypatch.delenv("HAHANESS_SEARCH_KEY", raising=False)
+    monkeypatch.delenv("LOADN_SEARCH_PROVIDER", raising=False)
+    monkeypatch.delenv("LOADN_SEARCH_KEY", raising=False)
     with pytest.raises(ToolError) as ei:
         await WebSearchTool().execute({"query": "q"}, ctx)
     assert "搜索后端未配置" in str(ei.value)
 
 
 async def test_websearch_unknown_provider(ctx: ToolContext, monkeypatch):
-    monkeypatch.setenv("HAHANESS_SEARCH_PROVIDER", "google")
-    monkeypatch.setenv("HAHANESS_SEARCH_KEY", "k")
+    monkeypatch.setenv("LOADN_SEARCH_PROVIDER", "google")
+    monkeypatch.setenv("LOADN_SEARCH_KEY", "k")
     with pytest.raises(ToolError) as ei:
         await WebSearchTool().execute({"query": "q"}, ctx)
     assert "未知搜索后端" in str(ei.value)
@@ -325,8 +325,8 @@ async def test_websearch_bocha(ctx: ToolContext, monkeypatch):
         {"name": "结果乙", "url": "https://ex.com/2", "summary": "摘要乙"}]}}}
     fake, calls = _fake_httpx_websearch(payload)
     monkeypatch.setattr(websearch_mod, "httpx", fake)
-    monkeypatch.setenv("HAHANESS_SEARCH_PROVIDER", "bocha")
-    monkeypatch.setenv("HAHANESS_SEARCH_KEY", "test-key")
+    monkeypatch.setenv("LOADN_SEARCH_PROVIDER", "bocha")
+    monkeypatch.setenv("LOADN_SEARCH_KEY", "test-key")
     out = await WebSearchTool().execute({"query": "测试"}, ctx)
     assert "1. 结果甲\nhttps://ex.com/1\n摘要甲" in out
     assert "2. 结果乙" in out
@@ -341,8 +341,8 @@ async def test_websearch_zhipu(ctx: ToolContext, monkeypatch):
         {"title": "智谱结果", "link": "https://z.cn/1", "content": "内容甲"}]}
     fake, calls = _fake_httpx_websearch(payload)
     monkeypatch.setattr(websearch_mod, "httpx", fake)
-    monkeypatch.setenv("HAHANESS_SEARCH_PROVIDER", "zhipu")
-    monkeypatch.setenv("HAHANESS_SEARCH_KEY", "zk")
+    monkeypatch.setenv("LOADN_SEARCH_PROVIDER", "zhipu")
+    monkeypatch.setenv("LOADN_SEARCH_KEY", "zk")
     out = await WebSearchTool().execute({"query": "智谱查询"}, ctx)
     assert "1. 智谱结果\nhttps://z.cn/1\n内容甲" in out
     req = calls[0]
@@ -355,8 +355,8 @@ async def test_websearch_zhipu(ctx: ToolContext, monkeypatch):
 async def test_websearch_network_error(ctx: ToolContext, monkeypatch):
     fake, _ = _fake_httpx_websearch(exc=httpx.ReadTimeout("t"))
     monkeypatch.setattr(websearch_mod, "httpx", fake)
-    monkeypatch.setenv("HAHANESS_SEARCH_PROVIDER", "bocha")
-    monkeypatch.setenv("HAHANESS_SEARCH_KEY", "k")
+    monkeypatch.setenv("LOADN_SEARCH_PROVIDER", "bocha")
+    monkeypatch.setenv("LOADN_SEARCH_KEY", "k")
     with pytest.raises(ToolError) as ei:
         await WebSearchTool().execute({"query": "q"}, ctx)
     assert "网络层" in str(ei.value)
@@ -428,6 +428,6 @@ def test_registry_disallow_and_defs():
 
 def test_registry_register_duplicate_rejected():
     reg = ToolRegistry.default()
-    from hahaness.tools.read import ReadTool
+    from loadn.tools.read import ReadTool
     with pytest.raises(ValueError):
         reg.register(ReadTool())

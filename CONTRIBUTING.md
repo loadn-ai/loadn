@@ -1,12 +1,12 @@
 # 贡献指南
 
-感谢愿意贡献！hahaness 刻意保持小而清晰（~7k 行，一个运行时依赖），
+感谢愿意贡献！loadn 刻意保持小而清晰（~7k 行，一个运行时依赖），
 新贡献请守住这两条。
 
 ## 开发环境
 
 ```bash
-git clone <repo> && cd hahaness
+git clone <repo> && cd loadn
 pip install -e ".[dev]"
 pytest            # 全绿再提 PR（零 token，无需 API key）
 ruff check .
@@ -23,8 +23,8 @@ ruff check .
 
 | 要加什么 | 动哪里 |
 |---|---|
-| 新工具 | `hahaness/tools/<name>.py` 实现 `Tool` 基类（自动注册），纪律常量进 constants |
-| 新 provider | `hahaness/providers/<name>.py` 实现 `chat()` chunk 流（契约见 `providers/__init__.py`） |
+| 新工具 | `loadn/tools/<name>.py` 实现 `Tool` 基类（自动注册），纪律常量进 constants |
+| 新 provider | `loadn/providers/<name>.py` 实现 `chat()` chunk 流（契约见 `providers/__init__.py`） |
 | 新钩子事件 | `core/hooks.py`（Pre/PostToolUse/Stop/Session* 已有骨架） |
 
 测试要求：新分支必须有用例；网络相关一律 MockTransport/控制文件，CI 不碰真端点。

@@ -6,8 +6,8 @@ import asyncio
 import httpx
 import pytest
 
-from hahaness.providers import Chunk
-from hahaness.providers.retry import (
+from loadn.providers import Chunk
+from loadn.providers.retry import (
     StreamInterrupted,
     is_retriable_exc,
     is_retriable_status,

@@ -4,11 +4,11 @@ from __future__ import annotations
 import json
 
 import tests.helpers as H
-from hahaness.core.loop import AgentCore, LoopSettings
-from hahaness.core.plan import TaskPlanner, _extract_json
-from hahaness.core.session import SessionManager
-from hahaness.core.subagent import SubagentManager
-from hahaness.providers import Chunk
+from loadn.core.loop import AgentCore, LoopSettings
+from loadn.core.plan import TaskPlanner, _extract_json
+from loadn.core.session import SessionManager
+from loadn.core.subagent import SubagentManager
+from loadn.providers import Chunk
 
 
 def _plan_round(obj: dict) -> list[Chunk]:
@@ -144,14 +144,14 @@ async def test_gather_real_subagents(tmp_path):
         return H.ScriptedProvider([H.text_round("子代理产出")])
     mgr = SubagentManager(registry=_R(), provider_factory=factory,
                           cwd=tmp_path, session_id="gather-test", home=tmp_path)
-    from hahaness.core.plan import SubTask
+    from loadn.core.plan import SubTask
     out = await mgr.gather([SubTask(prompt="子1"), SubTask(prompt="子2")])
     assert out == ["子代理产出", "子代理产出"]
 
 
 def test_prompt_has_background_discipline():
     """v0.2 后台纪律进了 system 提示。"""
-    from hahaness.core.context import CORE_PROMPT, TOOL_NOTES
+    from loadn.core.context import CORE_PROMPT, TOOL_NOTES
     assert "长命令必后台" in CORE_PROMPT
     assert "run_in_background" in TOOL_NOTES["Bash"]
 
@@ -179,6 +179,6 @@ def test_planner_provider_temperature():
     """build 的 planner 专用 provider 注入 temperature=0。"""
     import inspect
 
-    from hahaness.core import build
+    from loadn.core import build
     src = inspect.getsource(build)
     assert '"temperature": 0' in src

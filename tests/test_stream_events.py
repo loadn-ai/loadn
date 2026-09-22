@@ -4,10 +4,10 @@ from __future__ import annotations
 import random
 
 import tests.helpers as H
-from hahaness.core.loop import AgentCore, LoopSettings
-from hahaness.core.session import SessionManager
-from hahaness.core.streamsynth import StreamEventSynthesizer
-from hahaness.providers import Chunk
+from loadn.core.loop import AgentCore, LoopSettings
+from loadn.core.session import SessionManager
+from loadn.core.streamsynth import StreamEventSynthesizer
+from loadn.providers import Chunk
 
 
 def _feed_all(synth: StreamEventSynthesizer, chunks: list[Chunk]) -> list[dict]:

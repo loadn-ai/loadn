@@ -30,7 +30,7 @@ jobs:
       - run: pip install -e ".[dev]"
       - run: pytest -q
         env:
-          HAHANESS_PROVIDER: fake
+          LOADN_PROVIDER: fake
 
   secrets:
     runs-on: ubuntu-latest

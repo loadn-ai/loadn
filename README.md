@@ -1,4 +1,4 @@
-# hahaness
+# loadn（老登，读 **load-n**）
 
 **A self-contained coding-agent engine in pure Python.** One `pip install`, any
 Anthropic-form or OpenAI-compatible endpoint, and you get a headless agent with
@@ -6,9 +6,12 @@ tools, MCP, subagents, session persistence, and context compaction — speaking
 the Claude Code `stream-json` dialect, so existing harnesses can drive it as a
 drop-in subprocess engine.
 
+> 命名：loadn 是 loadn-ai 平台的引擎包（org: **loadn-ai**）。吉祥物「老登」，
+> 昵称老 bike，仅作文案。平台产品形态：loadn webui / loadn desktop。
+
 ```
 ┌────────────────────────────────────────────────────────────┐
-│  CLI:  hahaness -p / REPL / python -m hahaness             │
+│  CLI:  loadn -p / REPL / python -m loadn             │
 ├────────────────────────────────────────────────────────────┤
 │  AgentCore   loop · LoopGuard · Compactor (92% window)     │
 │              stream-event synth (--verbose deltas)         │
@@ -39,7 +42,7 @@ drop-in subprocess engine.
   `--session-id`/`--resume`, `system/assistant/user/result` events with
   `usage` + per-model `modelUsage`, plus per-delta `stream_event` lines under
   `--verbose` for typewriter rendering). Harnesses built for the Claude CLI
-  can spawn hahaness instead — supervision, accounting, and UI keep working.
+  can spawn loadn instead — supervision, accounting, and UI keep working.
 - **Provider-agnostic.** Works with Anthropic-form gateways (Z.AI GLM,
   Anthropic proper) and any OpenAI-compatible endpoint (DeepSeek, vLLM,
   LiteLLM, ...), with thinking/reasoning and tool-call translation handled in
@@ -71,31 +74,31 @@ drop-in subprocess engine.
 ## Install
 
 ```bash
-pip install hahaness          # or: pip install git+https://github.com/<you>/hahaness
+pip install loadn          # or: pip install git+https://github.com/<you>/loadn
 ```
 
 No config required — endpoint resolution order:
 
-1. `$HAHANESS_HOME/config.json` (your overrides)
-2. environment: `ANTHROPIC_BASE_URL` / `ANTHROPIC_AUTH_TOKEN` / `HAHANESS_MODEL`
-   / `HAHANESS_PROVIDER` (`anthropic` | `openai` | `fake`)
+1. `$LOADN_HOME/config.json` (your overrides)
+2. environment: `ANTHROPIC_BASE_URL` / `ANTHROPIC_AUTH_TOKEN` / `LOADN_MODEL`
+   / `LOADN_PROVIDER` (`anthropic` | `openai` | `fake`)
 3. `~/.claude/settings.json` env block (if you already run the Claude CLI
-   against a gateway, hahaness reuses it as-is)
+   against a gateway, loadn reuses it as-is)
 
 ## Quickstart
 
 ```bash
 # one-shot, human-readable
-hahaness -p --dangerously-skip-permissions "read ./note.txt and summarize it"
+loadn -p --dangerously-skip-permissions "read ./note.txt and summarize it"
 
 # headless event stream (Claude Code stream-json dialect)
-hahaness -p --verbose --output-format stream-json \
+loadn -p --verbose --output-format stream-json \
   --session-id 11111111-2222-3333-4444-555555555555 "fix the failing test"
 
 # continue a session / structured result only / interactive REPL
-hahaness -p --resume 11111111-2222-3333-4444-555555555555 "continue"
-hahaness -p --output-format json "list the todos"
-hahaness                       # REPL: /help /resume /fork /compact /todos
+loadn -p --resume 11111111-2222-3333-4444-555555555555 "continue"
+loadn -p --output-format json "list the todos"
+loadn                       # REPL: /help /resume /fork /compact /todos
 ```
 
 Event stream shape (NDJSON on stdout, one JSON object per line):
@@ -124,7 +127,7 @@ kill healthy work.
 ```python
 import asyncio
 from pathlib import Path
-from hahaness.core.build import build_agent
+from loadn.core.build import build_agent
 
 async def main():
     bundle = await build_agent(Path.cwd())          # provider/tools/session wired
@@ -135,38 +138,38 @@ asyncio.run(main())
 ```
 
 `AgentCore` is also constructible piecewise (custom tool registry, permission
-mode, hooks, compactor off, ...) — see `hahaness/core/build.py`.
+mode, hooks, compactor off, ...) — see `loadn/core/build.py`.
 
 ## Embedding into a harness
 
 Because the CLI mirrors Claude Code's headless contract, any supervisor that
-spawns `claude -p --output-format stream-json` can spawn `hahaness` instead:
+spawns `claude -p --output-format stream-json` can spawn `loadn` instead:
 
 - fresh sessions: `--session-id <uuid>`; continuations: `--resume <uuid>`
 - a live session lock rejects concurrent use with the same
   `Session ID already in use` wording (stderr, exit 1)
 - accounting: the final `result` event carries snake_case `usage` and
   camelCase per-model `modelUsage` for cost dashboards
-- per-session transcripts live under `$HAHANESS_HOME/sessions/<sid>/`
+- per-session transcripts live under `$LOADN_HOME/sessions/<sid>/`
   (append-only JSONL; replay resumes from the last compaction point)
 
 ## Configuration & extension points
 
 | Thing | Where |
 |---|---|
-| Engine knobs (thresholds, budgets, limits) | `hahaness/constants.py` |
+| Engine knobs (thresholds, budgets, limits) | `loadn/constants.py` |
 | Permission rules | `.agent/settings.json` in the project (deny/allow, `Bash:git push*` patterns); modes `default/acceptEdits/plan/bypassPermissions` |
 | Hooks (Pre/PostToolUse, Stop, Session*) | `.agent/settings.json` `hooks` — external commands, stdin JSON, exit 2 blocks |
 | MCP servers | `.mcp.json` in the project (stdio; tools appear as `mcp__<server>__<tool>`) |
-| Skills | `.claude/skills/` / `.agent/skills/` / `$HAHANESS_HOME/skills` SKILL.md — name+description indexed in the system prompt; body loads on demand via the `Skill` tool |
-| Custom subagents | `.claude/agents/*.md` / `.agent/agents/*.md` / `$HAHANESS_HOME/agents` — frontmatter `name/description/tools/model`, body becomes the type's system addendum; usable as `Task(subagent_type=…)` |
-| Constitution chain | CLAUDE.md/AGENTS.md from the git root (or `$HOME`/cwd boundary) down to cwd, nearest last; `@./file.md` line imports (depth 3); user-level `$HAHANESS_HOME/AGENT.md` on top |
-| Small model for summaries | `small_model` key in `$HAHANESS_HOME/config.json` (per-call model override for compaction) |
-| Web search backend | `HAHANESS_SEARCH_PROVIDER` (`bocha`\|`zhipu`) + `HAHANESS_SEARCH_KEY` |
+| Skills | `.claude/skills/` / `.agent/skills/` / `$LOADN_HOME/skills` SKILL.md — name+description indexed in the system prompt; body loads on demand via the `Skill` tool |
+| Custom subagents | `.claude/agents/*.md` / `.agent/agents/*.md` / `$LOADN_HOME/agents` — frontmatter `name/description/tools/model`, body becomes the type's system addendum; usable as `Task(subagent_type=…)` |
+| Constitution chain | CLAUDE.md/AGENTS.md from the git root (or `$HOME`/cwd boundary) down to cwd, nearest last; `@./file.md` line imports (depth 3); user-level `$LOADN_HOME/AGENT.md` on top |
+| Small model for summaries | `small_model` key in `$LOADN_HOME/config.json` (per-call model override for compaction) |
+| Web search backend | `LOADN_SEARCH_PROVIDER` (`bocha`\|`zhipu`) + `LOADN_SEARCH_KEY` |
 | Model variant suffixes | `glm-5.3[1m]` — `[...]` is treated as a client-side window hint, stripped for API calls |
-| Thinking budget | `HAHANESS_THINKING_BUDGET` env or `extra.thinking_budget` in config.json (Anthropic-form `thinking.budget_tokens`, clamped; off by default) |
+| Thinking budget | `LOADN_THINKING_BUDGET` env or `extra.thinking_budget` in config.json (Anthropic-form `thinking.budget_tokens`, clamped; off by default) |
 | Prompt caching | on by default (3 breakpoints); `extra.disable_prompt_cache` kills it; auxiliary calls (summaries/planner/grace) bypass the cache lane |
-| Compaction knobs | `COMPACT_KEEP_TOKENS` (20k keep window), `PRUNE_KEEP_CHARS` (2000 skeletonize threshold), `LOOP_REMIND_AT` (soft-remind tier) in `hahaness/constants.py` |
+| Compaction knobs | `COMPACT_KEEP_TOKENS` (20k keep window), `PRUNE_KEEP_CHARS` (2000 skeletonize threshold), `LOOP_REMIND_AT` (soft-remind tier) in `loadn/constants.py` |
 
 ## Development
 
@@ -176,8 +179,8 @@ pytest            # 290+ tests, zero API calls
 ruff check .
 ```
 
-The fake provider (`HAHANESS_PROVIDER=fake`) replays control files from
-`$HAHANESS_FAKE_DIR` (`reply`/`tools`/`todos`/`fail`/`fastfail`/`bigusage`/
+The fake provider (`LOADN_PROVIDER=fake`) replays control files from
+`$LOADN_FAKE_DIR` (`reply`/`tools`/`todos`/`fail`/`fastfail`/`bigusage`/
 `hang`/`giantline`) — the same protocol used by the end-to-end CLI tests.
 
 ## Status & roadmap
@@ -197,7 +200,7 @@ The fake provider (`HAHANESS_PROVIDER=fake`) replays control files from
 - [ ] Terminal-Bench baseline numbers
 - [ ] Ollama provider, DeepSeek native
 - [ ] TUI (textual)
-- [ ] MCP server mode (hahaness as an MCP server)
+- [ ] MCP server mode (loadn as an MCP server)
 
 See [CHANGELOG.md](CHANGELOG.md). Contributions welcome —
 [CONTRIBUTING.md](CONTRIBUTING.md) describes the layout and how to add a tool

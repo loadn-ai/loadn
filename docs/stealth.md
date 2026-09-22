@@ -21,7 +21,7 @@
 - system 三块：billing 头块（无缓存标记）+ "You are a Claude agent, built on
   Anthropic's Claude Agent SDK."（ephemeral）+ 主 prompt（ephemeral）
 - 工具面：真 CC 无 Grep/Glob/MultiEdit/TodoWrite（Agent 替代搜索）——
-  hahaness 保留这些工具（已知形状差异：砍掉会瘫痪检索能力；工具集合是
+  loadn 保留这些工具（已知形状差异：砍掉会瘫痪检索能力；工具集合是
   弱信号，headers/metadata/system 才是硬指纹）
 
 ## 校准流程（复刻 2026-09-17 的做法，零 token）
@@ -41,7 +41,7 @@
    - `BETA_FLAGS` ← `anthropic-beta` 全串；metadata/thinking/output_config/
      context_management/system 块结构变化 → 同步 `cc_request_body` 与
      anthropic `_body` 三块组装
-4. **diff 验证**：hahaness（`HAHANESS_STEALTH=cc-all` + `HAHANESS_BASE_URL`
+4. **diff 验证**：loadn（`LOADN_STEALTH=cc-all` + `LOADN_BASE_URL`
    指捕获服务）跑一 turn，与真 CC 捕获逐字段对比
 5. 跑 `pytest tests/test_fingerprint.py` 全绿
 
@@ -58,10 +58,10 @@
 
 - [ ] 独立 GLM 账号已购 plan（不挂主力资产）
 - [x] 校准完成（2026-09-17，CC 2.1.183，逐字段 diff 全对齐）
-- [ ] `HAHANESS_STEALTH=cc` 仅 GLM 通道启用（`cc-all` 只用于测试）
+- [ ] `LOADN_STEALTH=cc` 仅 GLM 通道启用（`cc-all` 只用于测试）
 - [ ] 并发 ≤3 会话；工作日 15:00-18:00 高峰错峰
 - [ ] API fallback 通道演练过一次切换
-- [ ] workdaddy 侧：systemd unit `Environment=HAHANESS_STEALTH=cc`（spawn env
+- [ ] workdaddy 侧：systemd unit `Environment=LOADN_STEALTH=cc`（spawn env
       继承）或 engines 配置注入
 
 ## 已知边界（行为纪律 > 伪装）

@@ -11,10 +11,10 @@ from pathlib import Path
 
 import pytest
 
-from hahaness.constants import BASH_OUTPUT_MAX
-from hahaness.supervisor.process import ProcessSupervisor
-from hahaness.tools.base import ToolContext, ToolError
-from hahaness.tools.bash import BashTool
+from loadn.constants import BASH_OUTPUT_MAX
+from loadn.supervisor.process import ProcessSupervisor
+from loadn.tools.base import ToolContext, ToolError
+from loadn.tools.bash import BashTool
 
 
 @pytest.fixture
@@ -52,8 +52,8 @@ async def test_cwd_is_ctx_cwd(ctx: ToolContext, tmp_path: Path):
 
 
 async def test_env_extra_injected(ctx: ToolContext):
-    ctx.extras["env_extra"] = {"HAHANESS_PROBE_VAR": "42"}
-    out = await BashTool().execute({"command": "echo $HAHANESS_PROBE_VAR"}, ctx)
+    ctx.extras["env_extra"] = {"LOADN_PROBE_VAR": "42"}
+    out = await BashTool().execute({"command": "echo $LOADN_PROBE_VAR"}, ctx)
     assert out.strip() == "42"
 
 
@@ -213,7 +213,7 @@ async def test_background_cwd_param(
 # ---------------------------------------------------------------- auto-bg
 async def test_auto_bg_converts_at_threshold(monkeypatch, tmp_path: Path):
     """前台超阈值 → 收养转后台：返回 task_id/输出文件，任务最终 done。"""
-    monkeypatch.setattr("hahaness.tools.bash.BASH_AUTO_BG_S", 1.0)
+    monkeypatch.setattr("loadn.tools.bash.BASH_AUTO_BG_S", 1.0)
     sup = ProcessSupervisor()
     try:
         ctx = ToolContext(cwd=tmp_path, supervisor=sup)
@@ -250,7 +250,7 @@ async def test_auto_bg_short_timeout_still_kills(tmp_path: Path):
 
 
 async def test_auto_bg_short_timeout_raises(monkeypatch, tmp_path: Path):
-    monkeypatch.setattr("hahaness.tools.bash.BASH_AUTO_BG_S", 1.0)
+    monkeypatch.setattr("loadn.tools.bash.BASH_AUTO_BG_S", 1.0)
     with pytest.raises(ToolError) as ei:
         await BashTool().execute({"command": "sleep 3", "timeout_s": 0.3},
                                  ToolContext(cwd=tmp_path))
@@ -259,7 +259,7 @@ async def test_auto_bg_short_timeout_raises(monkeypatch, tmp_path: Path):
 
 async def test_auto_bg_degrades_without_supervisor(monkeypatch, tmp_path: Path):
     """无 supervisor（子代理场景）→ 降级为原超时杀。"""
-    monkeypatch.setattr("hahaness.tools.bash.BASH_AUTO_BG_S", 0.5)
+    monkeypatch.setattr("loadn.tools.bash.BASH_AUTO_BG_S", 0.5)
     with pytest.raises(ToolError) as ei:
         await BashTool().execute({"command": "sleep 3", "timeout_s": 1},
                                  ToolContext(cwd=tmp_path))
@@ -268,7 +268,7 @@ async def test_auto_bg_degrades_without_supervisor(monkeypatch, tmp_path: Path):
 
 async def test_completes_before_threshold_normal(monkeypatch, tmp_path: Path):
     """阈值前完成 → 正常同步结果，不转后台。"""
-    monkeypatch.setattr("hahaness.tools.bash.BASH_AUTO_BG_S", 5.0)
+    monkeypatch.setattr("loadn.tools.bash.BASH_AUTO_BG_S", 5.0)
     out = await BashTool().execute({"command": "echo x; sleep 0.2; echo y"},
                                    ToolContext(cwd=tmp_path))
     assert "已自动转后台" not in out
@@ -277,7 +277,7 @@ async def test_completes_before_threshold_normal(monkeypatch, tmp_path: Path):
 
 async def test_drain_and_finish_when_exit_at_line(monkeypatch, tmp_path: Path):
     """阈值线上恰好退出 → _drain_and_finish 前台语义收尾（stub proc）。"""
-    monkeypatch.setattr("hahaness.tools.bash.BASH_AUTO_BG_S", 0.3)
+    monkeypatch.setattr("loadn.tools.bash.BASH_AUTO_BG_S", 0.3)
 
     class _Stdout:
         def __init__(self):

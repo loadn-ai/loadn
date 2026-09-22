@@ -3,9 +3,9 @@ from __future__ import annotations
 
 from collections.abc import AsyncIterator
 
-from hahaness.providers import Chunk
-from hahaness.tools.base import Tool, ToolContext, ToolError
-from hahaness.types import Message, ToolDef
+from loadn.providers import Chunk
+from loadn.tools.base import Tool, ToolContext, ToolError
+from loadn.types import Message, ToolDef
 
 
 def text_round(text: str, model: str = "fake") -> list[Chunk]:
@@ -71,7 +71,7 @@ class FlakyStreamProvider:
                    system: str, *, stream: bool = True,
                    model: str | None = None,
                    use_cache: bool = True) -> AsyncIterator[Chunk]:
-        from hahaness.providers.retry import StreamInterrupted
+        from loadn.providers.retry import StreamInterrupted
         self.attempts += 1
         if self.attempts <= self.fail_n:
             yield Chunk(kind="text_delta", text="半成品")
