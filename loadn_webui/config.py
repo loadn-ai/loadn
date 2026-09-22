@@ -134,7 +134,8 @@ class SecurityConfig:
     egress_allow: list = field(default_factory=lambda: [
         "api.anthropic.com", "api.bochaai.com", "open.bigmodel.cn",
         "sms.example.test", "registry.npmjs.org", "pypi.org",
-        "ark.cn-beijing.volces.com", "2captcha.com", "capsolver.com"])
+        "ark.cn-beijing.volces.com", "2captcha.com", "capsolver.com",
+        "opencode.ai"])
     egress_mode: str = "enforce"          # enforce | warn
     approval_ttl_s: int = 600
     approval_cooldown_after: int = 5

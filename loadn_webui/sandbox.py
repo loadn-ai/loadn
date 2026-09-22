@@ -151,9 +151,10 @@ def _wrap_generic(cmd: list[str], env: dict, *, cwd: Path,
             return None                  # 必需挂载缺失 → 回落直跑
         flag = {"ro": "--ro-bind", "rw": "--bind",
                 "try-ro": "--ro-bind-try"}[mode]
-        argv += [flag, str(src), str(dst if dst else src)]
+        argv += [flag, str(src), str(dst or src)]
     for k, v in env.items():
         argv += ["--setenv", k, v]
+    argv += cmd
     return argv
 
 
@@ -194,6 +195,8 @@ def wrap_engine(cmd: list[str], env: dict, *, engine: str, sid: str,
             cmd, env, cwd=cwd, extra_binds=[
                 ("try-ro", str(node), str(node)),
                 ("rw", str(oc), str(oc)),
+                ("try-ro", str(home / ".config/opencode"),
+                 str(home / ".config/opencode")),   # provider/MCP 配置
             ])
         if wrapped is not None:
             return wrapped, "bwrap"
