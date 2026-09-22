@@ -89,8 +89,11 @@ async def lifespan(app: FastAPI):
         log.info("[R2.5] 旧库迁移完成 → %s", _mig)
     # W5.1：出口白名单代理（引擎 env 通道接管；enforce 由 security.egress_mode）
     from ..egress_proxy import EgressProxy
-    _EGRESS[0] = EgressProxy(port=CONFIG.server.port + 1)
-    await _EGRESS[0].start()
+    try:
+        _EGRESS[0] = EgressProxy(port=CONFIG.security.egress_proxy_port)
+        CONFIG.security.egress_proxy_port = await _EGRESS[0].start()
+    except OSError:
+        log.exception("egress 代理绑定失败（多实例/端口占用）——本实例无代理")
     # 单实例闸（2026-09-17 事故）：双 serve 抢端口时，败者在 bind 失败前也会先跑
     # lifespan——孤儿清理/中断恢复会直接误伤胜者正在跑的 turn（systemd
     # Restart=always 每 5s 拉起僵尸实例，几小时内三批把活跃 turn 标成

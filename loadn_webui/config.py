@@ -143,6 +143,8 @@ class SecurityConfig:
     approval_enforce: str = "warn"
     # W2-a 执行沙箱：off（默认，双轨——doctor 通过+真机验证后切 bwrap）| bwrap
     sandbox: str = "off"
+    # W5.1 出口代理端口（0=随机绑定，lifespan 回写实际值；生产可固定 8793）
+    egress_proxy_port: int = 0
 
 
 @dataclass

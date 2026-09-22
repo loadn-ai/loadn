@@ -344,8 +344,9 @@ async def run_turn(call: TurnCall, stop: StopHandle | None = None) -> TurnProcRe
         call.env_extra)
     # W5.1：引擎流量走出口代理（白名单+审计+面板数据源；env 通道=可回退）
     from .config import CONFIG as _C
-    if _C.security.egress_mode in ("warn", "enforce"):
-        proxy = f"http://127.0.0.1:{_C.server.port + 1}"
+    if _C.security.egress_mode in ("warn", "enforce") \
+            and _C.security.egress_proxy_port:
+        proxy = f"http://127.0.0.1:{_C.security.egress_proxy_port}"
         env.setdefault("https_proxy", proxy)
         env.setdefault("HTTPS_PROXY", proxy)
         env.setdefault("http_proxy", proxy)

@@ -115,7 +115,7 @@ class EgressProxy:
             return
         writer.write(b"HTTP/1.1 200 Connection Established\r\n\r\n")
         await writer.drain()
-        await self._pipe(reader, upstream[1], writer, upstream[0])
+        await self._pipe(reader, upstream[1], upstream[0], writer)
 
     async def _plain_http(self, reader, writer, method: str, url: str,
                           headers: dict) -> None:
@@ -151,9 +151,11 @@ class EgressProxy:
         req += "Connection: close\r\n\r\n"
         up_w.write(req.encode("latin1"))
         await up_w.drain()
-        await self._pipe(reader, up_w, writer, up_r)
+        await self._pipe(reader, up_w, up_r, writer)
 
     async def _pipe(self, r1, w1, r2, w2) -> None:
+        """双向裸转发。关闭时机：两方向都 EOF 后统一收尾——单方向 EOF 提前
+        close 对端会截断 TLS 长流（实测 curl TLS decode_error 教训）。"""
         async def _p(a, wb):
             try:
                 while True:
@@ -164,9 +166,9 @@ class EgressProxy:
                     await wb.drain()
             except OSError:
                 pass
-            finally:
-                try:
-                    wb.close()
-                except OSError:
-                    pass
         await asyncio.gather(_p(r1, w1), _p(r2, w2))
+        for w in (w1, w2):
+            try:
+                w.close()
+            except OSError:
+                pass
