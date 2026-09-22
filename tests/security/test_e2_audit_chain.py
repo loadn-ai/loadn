@@ -22,12 +22,11 @@ def fresh_audit(tmp_path, monkeypatch):
     monkeypatch.setattr(audit_mod, "_initialized", False)
     monkeypatch.setattr(audit_mod, "_last_anchor_day", "")
     from loadn_webui.config import PATHS
-    PATHS["var"] = tmp_path / "var"
+    monkeypatch.setitem(PATHS, "var", tmp_path / "var")
     for i in range(5):
         audit_mod.audit("permission_decision",
                         {"action": "allow", "i": i, "subject": f"cmd{i}"})
     yield tmp_path
-    PATHS["var"] = None      # conftest 的 session 级 PATHS 由下次 import 重建
 
 
 def test_e2_chain_healthy_and_anchored(fresh_audit):

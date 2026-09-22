@@ -46,6 +46,7 @@ webui = [
   "Pillow>=10",
   "beautifulsoup4>=4.12",
   "bashlex>=0.18",
+  "cryptography>=42",
 ]
 # desktop = [ ... M3+ pywebview ... ]
 

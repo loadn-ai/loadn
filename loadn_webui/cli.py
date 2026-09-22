@@ -653,6 +653,8 @@ def main(argv: list[str] | None = None) -> int:
     sub.add_parser("policy-check",
                    help="策略钩子执行体：stdin 传 {tool_name,tool_input}，"
                         "exit 2=block（W1 执行点 A 物化用）")
+    p_vlt = sub.add_parser("vault", help="保险库（W3.1：AES-GCM 加密）")
+    p_vlt.add_argument("action", choices=["verify", "migrate"])
     p_aud = sub.add_parser("audit", help="审计账本（W6.1：哈希链+日锚点）")
     p_aud.add_argument("action", choices=["tail", "verify", "export"])
     p_aud.add_argument("-n", type=int, default=20)
@@ -689,6 +691,14 @@ def main(argv: list[str] | None = None) -> int:
             tmp.replace(p)
             print(f"已轮换 → {p}")
             print("重启服务生效：sudo systemctl restart workdaddy")
+        return 0
+    if args.cmd == "vault":
+        from . import vault as vault_mod
+        if args.action == "verify":
+            print(vault_mod.verify())
+            return 0 if vault_mod.verify()["ok"] else 1
+        vault_mod._migrate_legacy_if_any()
+        print(vault_mod.verify())
         return 0
     if args.cmd == "policy-check":
         from .policy import policy_check_hook

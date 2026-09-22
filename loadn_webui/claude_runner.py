@@ -307,6 +307,24 @@ class _Sink:
             **kw)
 
 
+# W3.3 spawn env 白名单：宿主 env 历史泄漏不再继承（clearenv 等效）。
+# M1 过渡期：ANTHROPIC_*/OPENCODE_*（引擎 LLM 凭证）仍在名单（known-gap，
+# M2 代理接管后收回）；LC_* 语言族保留（CLI 输出编码稳定）。
+_ENV_ALLOW_EXACT = {"PATH", "HOME", "LANG", "TERM", "TZ", "SHELL", "PWD",
+                    "TMPDIR", "LC_ALL", "SSL_CERT_FILE", "REQUESTS_CA_BUNDLE",
+                    "NODE_OPTIONS", "XDG_CONFIG_HOME", "XDG_CACHE_HOME"}
+_ENV_ALLOW_PREFIXES = ("LOADN_", "WORKDADDY_", "HAHANESS_", "ANTHROPIC_",
+                       "OPENCODE_", "LC_")
+
+
+def _spawn_env(spec_env: dict, env_extra: dict) -> dict:
+    out = {k: v for k, v in os.environ.items()
+           if k in _ENV_ALLOW_EXACT or k.startswith(_ENV_ALLOW_PREFIXES)}
+    out.update(spec_env)
+    out.update(env_extra)
+    return out
+
+
 async def run_turn(call: TurnCall, stop: StopHandle | None = None) -> TurnProcResult:
     """跑一次无头会话 turn：子进程 stdout 直写文件，tail 消费 stream-json。
 
@@ -320,12 +338,10 @@ async def run_turn(call: TurnCall, stop: StopHandle | None = None) -> TurnProcRe
 
     spec = engines_mod.resolve(call.engine)
     cmd, spec_env = spec.build_argv(call)
-    env = {
-        **os.environ,
-        "LOADN_TURN_ID": str(call.turn_id), "WORKDADDY_TURN_ID": str(call.turn_id),
-        **spec_env,
-        **call.env_extra,
-    }
+    env = _spawn_env(
+        {"LOADN_TURN_ID": str(call.turn_id),
+         "WORKDADDY_TURN_ID": str(call.turn_id), **spec_env},
+        call.env_extra)
     log.info("%s turn 开始 turn=%s resume=%s cwd=%s", spec.name, call.turn_id,
              call.resume, call.cwd)
 
