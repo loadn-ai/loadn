@@ -141,6 +141,8 @@ class SecurityConfig:
     # M0 关门双轨：warn=无确认码放行+审计告警（存量 skill 文档渐进替换）；
     # enforce=不可逆动作必须 --request-approval/--confirm（v1.1 §11 断兼容条款）
     approval_enforce: str = "warn"
+    # W2-a 执行沙箱：off（默认，双轨——doctor 通过+真机验证后切 bwrap）| bwrap
+    sandbox: str = "off"
 
 
 @dataclass

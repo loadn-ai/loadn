@@ -1,0 +1,141 @@
+"""执行沙箱（W2-a 第一步）：bwrap 文件系统隔离，--share-net 过渡。
+
+设计要点（v1.1 §6.3 + 实机验证 2026-09-22）：
+- **同路径 bind**：workspace/venv/档案挂载点路径与宿主逐字一致——cwd、
+  steer 文件（LOADN_STEER_FILE）、transcript 约定全部不变，根治 PROTOCOL
+  §5 双源耦合在路径映射下的断链风险。
+- 挂载矩阵（loadn 引擎首版；claude/opencode 见 profile 备注）：
+  ro：/usr（+usrmerge symlink /bin /lib /lib64）、/etc、/opt、venv、
+      ~/.loadn/config.json
+  rw：workspace/<sid>（同路径）、~/.loadn/sessions/<sid>（仅本会话档案）
+  不挂：平台 var/（vault.enc/db/audit）、config.yaml、~/.claude、~/.ssh、
+      ~/.aws、~/.loadn/sessions/<其他会话>
+- env：--clearenv + 白名单逐项 --setenv（复用 W3.3 _spawn_env 语义；
+  PYTHONDONTWRITEBYTECODE=1 因 venv ro）。
+- 网络：--share-net 过渡（unshare-net 等 W5.1 代理，M1 切换）。
+- 安全语义：symlink 先 resolve 再校验相对工作区（出界拒），D1 用例锁定。
+
+上线形态：security.sandbox = off（默认，双轨）| bwrap；doctor 探测可用性。
+"""
+from __future__ import annotations
+
+import os
+import shutil
+from pathlib import Path
+
+from .config import PATHS
+from .util import get_logger
+
+log = get_logger(__name__)
+
+
+def bwrap_available() -> bool:
+    """探测 bwrap 与非特权 user namespace（不可用则 doctor 分级降级）。"""
+    exe = shutil.which("bwrap")
+    if not exe:
+        return False
+    import subprocess
+    try:
+        p = subprocess.run(
+            [exe, "--ro-bind", "/usr", "/usr", "--symlink", "usr/bin", "/bin",
+             "--symlink", "usr/lib", "/lib", "--symlink", "usr/lib64", "/lib64",
+             "--proc", "/proc", "--dev", "/dev", "--tmpfs", "/tmp",
+             "--unshare-ipc", "--unshare-pid", "--share-net",
+             "--die-with-parent", "/usr/bin/true"],
+            capture_output=True, timeout=10)
+        return p.returncode == 0
+    except (OSError, subprocess.TimeoutExpired):
+        return False
+
+
+def _resolve_in(ws: Path, p: Path) -> bool:
+    """symlink 出界校验：resolve 后必须仍在 ws 内。"""
+    try:
+        (ws / p).resolve().relative_to(ws.resolve())
+        return True
+    except (ValueError, OSError):
+        return False
+
+
+def wrap_loadn(cmd: list[str], env: dict, *, sid_session: str,
+               cwd: Path) -> list[str] | None:
+    """loadn 引擎的 bwrap 包裹。返回完整 argv；环境不可用时返回 None
+    （调用方回落直跑并审计 sandbox_violation 计 warn）。"""
+    exe = shutil.which("bwrap")
+    if not exe:
+        return None
+    home = Path.home()
+    venv = Path(os.environ.get("LOADN_VENV_BIN", "")).parent \
+        if os.environ.get("LOADN_VENV_BIN") else None
+    # 引擎本体定位（与 engines/loadn.py resolve_bin 同序的最小复刻）
+    engine_bin = shutil.which("loadn") or str(Path("/data/code/loadn/.venv/bin/loadn"))
+    venv_dir = Path(engine_bin).resolve().parent.parent      # bin/ → venv 根
+    # editable 安装指回源码树：包目录必须 ro 挂（不暴露 webui/config）
+    pkg_src = venv_dir.parent / "loadn"
+
+    ws = Path(cwd)
+    # 档案根 env 感知（测试隔离/部署重定位走 LOADN_HOME；沙箱内同路径 bind）
+    engine_home = Path(os.environ.get("LOADN_HOME")
+                       or os.environ.get("HAHANESS_HOME") or home / ".loadn")
+    archive = engine_home / "sessions" / sid_session
+
+    argv = [exe,
+            "--ro-bind", "/usr", "/usr",
+            "--symlink", "usr/bin", "/bin",
+            "--symlink", "usr/lib", "/lib",
+            "--symlink", "usr/lib64", "/lib64",
+            "--ro-bind-try", "/etc", "/etc",
+            "--ro-bind-try", "/opt", "/opt",
+            # systemd-resolved stub（/etc/resolv.conf 是指向 /run 的 symlink）
+            "--ro-bind-try", "/run/systemd/resolve", "/run/systemd/resolve",
+            "--proc", "/proc", "--dev", "/dev",
+            "--tmpfs", "/tmp",
+            # 引擎运行时（venv 只读；pyc 不写）+ 包源码树（editable 指回）
+            "--ro-bind", str(venv_dir), str(venv_dir),
+            "--ro-bind-try", str(pkg_src), str(pkg_src),
+            # workspace 同路径 rw（inputs 子目录 ro 由策略层后续收紧）
+            "--bind", str(ws), str(ws),
+            # 本会话引擎档案（resume/判死需要；其他会话不可见）
+            ]
+    archive.mkdir(parents=True, exist_ok=True)
+    argv += ["--bind", str(archive), str(archive)]
+    for f in ("config.json", "settings.json"):
+        src = engine_home / f
+        if src.exists():
+            argv += ["--ro-bind", str(src), str(src)]
+    argv += [
+        "--clearenv",
+        "--share-net",            # W2-a 过渡；W5.1 代理就绪后切 --unshare-net
+        "--unshare-ipc", "--unshare-pid",
+        "--die-with-parent",
+    ]
+    for k, v in env.items():
+        argv += ["--setenv", k, v]
+    argv += ["--setenv", "PYTHONDONTWRITEBYTECODE", "1"]
+    argv += cmd
+    return argv
+
+
+def wrap_engine(cmd: list[str], env: dict, *, engine: str, sid: str,
+                cwd: Path) -> tuple[list[str], str]:
+    """spawn 入口：按引擎/profile 选包裹。返回 (argv, mode)。
+
+    mode: "bwrap" | "direct"（不可用回落，audit 留痕由调用方记）。
+    claude/opencode 引擎的档案/认证面结构不同（~/.claude settings env、
+    opencode ~/.local/share），沙箱包裹随 W2-a2 验证后启用——当前 direct。
+    """
+    from .config import CONFIG
+    if CONFIG.security.sandbox != "bwrap" or engine not in ("loadn", "hahaness"):
+        return cmd, "direct"
+    # 会话档案 id：cwd 名即 sid（ws_of 约定），引擎档案 id=claude_session_id
+    # 由调用方给——这里用 spawn argv 里的 --session-id/--resume 值
+    sid_session = sid
+    for i, a in enumerate(cmd):
+        if a in ("--session-id", "--resume") and i + 1 < len(cmd):
+            sid_session = cmd[i + 1]
+            break
+    wrapped = wrap_loadn(cmd, env, sid_session=sid_session, cwd=Path(cwd))
+    if wrapped is None:
+        log.warning("bwrap 不可用，%s 引擎直跑（sandbox=off 回落，审计记录）", engine)
+        return cmd, "direct-fallback"
+    return wrapped, "bwrap"

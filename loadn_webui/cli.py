@@ -755,9 +755,16 @@ def main(argv: list[str] | None = None) -> int:
     if args.cmd == "doctor":
         from . import engines as engines_mod
         from .config import PATHS
+
+        def CONFIG_SECURITY():
+            from .config import CONFIG as _C
+            return _C.security
         ok = True
         print(f"root:      {PATHS['root']}")
         print(f"db:        {PATHS['db']}")
+        from . import sandbox as sandbox_mod
+        print(f"bwrap:     {'ok' if sandbox_mod.bwrap_available() else '不可用（sandbox 将回落直跑）'}"
+              f"（security.sandbox={CONFIG_SECURITY().sandbox}）")
         for name, spec in engines_mod.ENGINES.items():
             h = spec.health()
             print(f"{name + ':':10s}{h['bin']}")

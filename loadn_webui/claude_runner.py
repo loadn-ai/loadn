@@ -342,6 +342,15 @@ async def run_turn(call: TurnCall, stop: StopHandle | None = None) -> TurnProcRe
         {"LOADN_TURN_ID": str(call.turn_id),
          "WORKDADDY_TURN_ID": str(call.turn_id), **spec_env},
         call.env_extra)
+    # W2-a 执行沙箱（security.sandbox=bwrap 时包裹；同路径 bind 保协议通道）
+    from . import sandbox as sandbox_mod
+    from .audit import audit as _audit
+    cmd, sbx_mode = sandbox_mod.wrap_engine(
+        cmd, env, engine=spec.name, sid=call.session_id, cwd=Path(call.cwd))
+    if sbx_mode != "direct":
+        _audit("sandbox_violation" if sbx_mode == "direct-fallback" else "snapshot",
+               {"mode": sbx_mode, "engine": spec.name, "sid": call.sid},
+               sid=call.sid, turn_id=call.turn_id)
     log.info("%s turn 开始 turn=%s resume=%s cwd=%s", spec.name, call.turn_id,
              call.resume, call.cwd)
 
