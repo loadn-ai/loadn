@@ -109,17 +109,38 @@ def wrap_loadn(cmd: list[str], env: dict, *, sid_session: str,
     gw = Path.home() / ".claude" / "settings.json"
     if gw.exists():
         argv += ["--ro-bind", str(gw), str(gw)]
+    # P3：物理断网——unshare-net + 唯一出口=挂载的代理 unix socket。
+    # 沙箱内 lo up（user ns 内可行）+ socat 桥 TCP:代理端口 → unix socket，
+    # 引擎 env 的 https_proxy 指向沙箱内桥（引擎零改动）。
+    uds = _egress_uds()
+    if uds is not None:
+        argv += ["--ro-bind", str(uds), str(uds)]
     argv += [
         "--clearenv",
-        "--share-net",            # W2-a 过渡；W5.1 代理就绪后切 --unshare-net
+        "--unshare-net" if uds is not None else "--share-net",
         "--unshare-ipc", "--unshare-pid",
         "--die-with-parent",
     ]
     for k, v in env.items():
         argv += ["--setenv", k, v]
     argv += ["--setenv", "PYTHONDONTWRITEBYTECODE", "1"]
-    argv += cmd
-    return argv
+    if uds is None:
+        return argv + cmd
+    proxy_port = env.get("https_proxy", "").rsplit(":", 1)[-1] or "8793"
+    boot = (f"ip link set lo up 2>/dev/null; "
+            f"socat TCP-LISTEN:{proxy_port},bind=127.0.0.1,fork,reuseaddr "
+            f"UNIX-CONNECT:{uds} & "
+            f'exec "$@"')
+    return argv + ["bash", "-c", boot, "boot", *cmd]
+
+
+def _egress_uds() -> Path | None:
+    """宿主代理 unix socket 路径（存在才启用断网形态）。"""
+    from .config import CONFIG, PATHS
+    if CONFIG.security.egress_mode not in ("warn", "enforce"):
+        return None
+    uds = PATHS["run"] / "egress.sock"
+    return uds if uds.exists() else None
 
 
 def _wrap_generic(cmd: list[str], env: dict, *, cwd: Path,

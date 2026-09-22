@@ -41,26 +41,48 @@ def _record(host: str, decision: str, mode: str, port: int = 0) -> None:
 
 
 class EgressProxy:
-    """极简正向代理：CONNECT 直通（白名单后）+ 明文 HTTP 转发。"""
+    """极简正向代理：CONNECT 直通（白名单后）+ 明文 HTTP 转发。
 
-    def __init__(self, host: str = "127.0.0.1", port: int = 8793):
-        self.host, self.port = host, port
+    双监听：TCP（claude/opencode 引擎，share-net 场景）+ Unix socket
+    （loadn 引擎 unshare-net 场景——socket 可 bind-mount 进沙箱）。
+    """
+
+    def __init__(self, host: str = "127.0.0.1", port: int = 8793,
+                 uds_path: str = ""):
+        self.host, self.port, self.uds_path = host, port, uds_path
         self._server: asyncio.AbstractServer | None = None
+        self._uds_server: asyncio.AbstractServer | None = None
 
     async def start(self) -> int:
         self._server = await asyncio.start_server(
             self._handle, self.host, self.port, limit=1 << 20)
         # port=0（随机）时取实际绑定端口
         self.port = self._server.sockets[0].getsockname()[1]
-        log.info("egress 代理监听 %s:%s（mode=%s，白名单 %d 域）",
-                 self.host, self.port, CONFIG.security.egress_mode,
-                 len(CONFIG.security.egress_allow))
+        if self.uds_path:
+            try:
+                import os as _os
+                pathlib_path = __import__("pathlib").Path(self.uds_path)
+                pathlib_path.parent.mkdir(parents=True, exist_ok=True)
+                try:
+                    _os.unlink(self.uds_path)
+                except OSError:
+                    pass
+                self._uds_server = await asyncio.start_unix_server(
+                    self._handle, path=self.uds_path, limit=1 << 20)
+                _os.chmod(self.uds_path, 0o660)
+            except OSError:
+                log.exception("egress unix socket 监听失败（P3 断网形态不可用）")
+        log.info("egress 代理监听 %s:%s%s（mode=%s，白名单 %d 域）",
+                 self.host, self.port,
+                 f"+uds:{self.uds_path}" if self._uds_server else "",
+                 CONFIG.security.egress_mode, len(CONFIG.security.egress_allow))
         return self.port
 
     async def stop(self) -> None:
-        if self._server:
-            self._server.close()
-            await self._server.wait_closed()
+        for srv in (self._server, self._uds_server):
+            if srv:
+                srv.close()
+                await srv.wait_closed()
 
     async def _handle(self, reader: asyncio.StreamReader,
                       writer: asyncio.StreamWriter) -> None:

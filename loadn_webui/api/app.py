@@ -90,7 +90,10 @@ async def lifespan(app: FastAPI):
     # W5.1：出口白名单代理（引擎 env 通道接管；enforce 由 security.egress_mode）
     from ..egress_proxy import EgressProxy
     try:
-        _EGRESS[0] = EgressProxy(port=CONFIG.security.egress_proxy_port)
+        from ..config import PATHS as _P
+        _EGRESS[0] = EgressProxy(
+            port=CONFIG.security.egress_proxy_port,
+            uds_path=str(_P["run"] / "egress.sock"))
         CONFIG.security.egress_proxy_port = await _EGRESS[0].start()
     except OSError:
         log.exception("egress 代理绑定失败（多实例/端口占用）——本实例无代理")

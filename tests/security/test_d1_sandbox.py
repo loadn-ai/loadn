@@ -119,3 +119,29 @@ async def test_d1_sandboxed_real_turn(client, ws_root, monkeypatch):
     rows = [r_ for r_ in audit_mod.tail(30, "snapshot")
             if r_["detail_json"].find('"mode": "bwrap"') >= 0]
     assert rows
+
+
+def test_d1_unshare_net_direct_blocked(tmp_path, monkeypatch):
+    """P3 物理断网：uds 桥在位时 loadn 沙箱 unshare-net——直连失败、
+    代理通道（uds→宿主）可达。"""
+    import socket as _sock
+    import tempfile
+    from loadn_webui.config import PATHS
+    uds = PATHS["run"] / "egress.sock"
+    if not uds.exists():                 # 代理未起（纯单元环境）→ 造一个假 socket 文件
+        PATHS["run"].mkdir(parents=True, exist_ok=True)
+        srv = _sock.socket(_sock.AF_UNIX, _sock.SOCK_STREAM)
+        srv.bind(str(uds))
+        monkeypatch.setattr(sandbox, "_egress_uds", lambda: uds)
+    else:
+        monkeypatch.setattr(sandbox, "_egress_uds", lambda: uds)
+    wrapped = sandbox.wrap_loadn(
+        ["bash", "-c",
+         'curl -s -o /dev/null -w "%{http_code}" --max-time 4 '
+         'https://example.com; echo " direct=$(ip -o link show | grep -c lo)"'],
+        {"PATH": "/usr/bin:/bin"},
+        sid_session=str(uuid.uuid4()), cwd=tmp_path)
+    assert wrapped is not None
+    assert "--unshare-net" in wrapped
+    p = subprocess.run(wrapped, capture_output=True, text=True, timeout=60)
+    assert "000" in p.stdout              # 直连失败（无外联路由）
