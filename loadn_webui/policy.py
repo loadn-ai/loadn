@@ -164,6 +164,21 @@ def check_command(cmd: str, *, source: str = "cli") -> Decision:
             _audit_decision(d, cmd, source)
             return d
 
+    # 1.5) canary 外渗检测（W5.5）：内容命中蜜罐值 → block + 会话熔断
+    try:
+        from . import canary as _canary
+        tok = _canary.hit(cmd)
+        if tok:
+            from .config import PATHS as _P
+            d = Decision(ACTION_BLOCK, f"外发内容含 canary 蜜罐值（{tok[:10]}…）"
+                         "——疑似数据外渗，会话已熔断", matched="canary")
+            _audit_decision(d, cmd, source)
+            audit("canary_hit", {"token": tok[:12] + "…", "subject": cmd[:200],
+                                 "source": source})
+            return d
+    except Exception:                                  # noqa: BLE001
+        pass                                            # canary 不可用不阻塞判定
+
     # 2) bash AST（保守档：解析失败 = block）
     try:
         import bashlex

@@ -713,6 +713,52 @@ def delete_session(sid: str, purge: bool = False):
 
 
 # ---------------------------------------------------------------- schedules（定时调度）
+# ---------------------------------------------------------------- 熔断（W6.4）
+@router.post("/sessions/{sid}/kill")
+def kill_session(sid: str):
+    """会话级 kill：停活跃 turn + 熔断（新消息拒绝）。管理面（admin 头）。"""
+    _get_session_or_404(sid)
+    from .. import canary as canary_mod
+    from .. import db as db_mod
+    from ..engine import ENGINE
+    stopped = []
+    with db_mod.conn() as c:
+        rows = c.execute("SELECT id FROM turns WHERE session_id=? AND"
+                         " status IN ('running','queued')", (sid,)).fetchall()
+    for r in rows:
+        if ENGINE.stop_turn(r["id"]):
+            stopped.append(r["id"])
+    canary_mod.lock_session(sid, "kill switch（用户/自动触发）")
+    return {"ok": True, "stopped_turns": stopped, "locked": True}
+
+
+@router.post("/sessions/{sid}/unlock")
+def unlock_session(sid: str):
+    from .. import canary as canary_mod
+    return {"ok": canary_mod.unlock_session(sid)}
+
+
+@router.post("/admin/kill-all")
+def kill_all():
+    """全局熔断：停全部活跃 turn + 调度器暂停（KILL_ALL 标记）+ 拒绝新任务。"""
+    from .. import canary as canary_mod
+    from .. import db as db_mod
+    from ..engine import ENGINE
+    from ..config import PATHS
+    stopped = 0
+    with db_mod.conn() as c:
+        rows = c.execute("SELECT id, session_id FROM turns WHERE"
+                         " status IN ('running','queued')").fetchall()
+    for r in rows:
+        if ENGINE.stop_turn(r["id"]):
+            stopped += 1
+        canary_mod.lock_session(r["session_id"], "kill-all（全局熔断）")
+    (PATHS["run"] / "KILL_ALL").write_text("kill-all")
+    return {"ok": True, "stopped_turns": stopped,
+            "scheduler_paused": True,
+            "hint": "恢复：删除 var/run/KILL_ALL 并逐会话 unlock"}
+
+
 # ---------------------------------------------------------------- 审批（W1-2）
 @router.get("/sessions/{sid}/approvals")
 def list_approvals(sid: str):
@@ -1031,7 +1077,10 @@ async def post_message(sid: str, body: dict):
                                       skills_json=json.dumps(list(prof.skills),
                                                              ensure_ascii=False))
                 ws_mod.rerender(sid, prof_name=prof.name, skills=list(prof.skills))
-    tid = await ENGINE.submit(sid, text or "（见附件）", mode, attachments=atts)
+    try:
+        tid = await ENGINE.submit(sid, text or "（见附件）", mode, attachments=atts)
+    except PermissionError as e:      # W6.4 熔断（kill switch/canary 命中）
+        raise HTTPException(403, str(e))
     with db_mod.conn() as c:
         turn = db_mod.to_dict(db_mod.get_turn(c, tid))
     return {"turn": turn}

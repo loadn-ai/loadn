@@ -210,6 +210,14 @@ class Engine:
         text = (text or "").strip()
         if not text:
             raise ValueError("消息不能为空")
+        # W6.4 熔断检查（canary 命中/kill switch 锁定的会话拒绝新消息）
+        try:
+            from . import canary as _canary
+            why = _canary.is_locked(sid)
+            if why:
+                raise PermissionError(f"会话已熔断（{why}）——kill switch/canary 命中")
+        except PermissionError:
+            raise
         blocks_json = None
         if attachments:
             blocks_json = json.dumps(

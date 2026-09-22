@@ -1,6 +1,14 @@
 """md → 自包含 html：内嵌 CSS + 本地图片 base64 内联，零外部依赖单文件。
 
-用 python-markdown（已装，extensions: tables/fenced_code/toc）。
+用 python-markdown（已装， extensions: tables/fenced_code/toc）。
+
+W5.3（v1.1 §14-12：T4 升级——原管线零消毒）：产物内容不可信（可含注入的
+脚本/事件属性/外链图片），导出前两道处理：
+1. http(s) 外链图片 → 占位符「🖼 外链图片（domain）」——自动加载=IP/Referer
+   泄漏；点击确认由预览层经代理（W5.1）。
+2. HTML 白名单消毒（标准库 html.parser）：script/style/iframe/object 全剥、
+   on* 事件属性全剥、href/src 仅放行 http(s)/data:image/# 相对——
+   md 里混入的任意 raw HTML 不得直达输出（A4 用例锁定）。
 """
 from __future__ import annotations
 
@@ -41,6 +49,11 @@ ul,ol { padding-left: 1.6em; } li { margin: .35em 0; }
 """
 
 _EXTENSIONS = ["tables", "fenced_code", "toc", "sane_lists", "smarty"]
+
+
+def _escape(s: str) -> str:
+    return (s.replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;")
+             .replace('"', "&quot;"))
 _IMG_RE = re.compile(r"!\[([^\]]*)\]\(([^)]+)\)")
 
 
@@ -69,15 +82,91 @@ def _inline_images(md_text: str, base_dir: Path | None) -> tuple[str, list[str]]
     return _IMG_RE.sub(repl, md_text), inlined
 
 
+# ---------------------------------------------------------------- W5.3
+
+def _strip_remote_images(md_text: str) -> str:
+    """http(s) 图片 → 占位符（md 语法形态与 html img 形态各一遍）。"""
+    def _ph(src: str) -> str:
+        host = re.match(r"https?://([^/\s]+)", src)
+        dom = host.group(1) if host else src[:40]
+        return f"[🖼 外链图片（{dom}）——已阻断自动加载]"
+
+    md_text = _IMG_RE.sub(
+        lambda m: _ph(m.group(2)) if m.group(2).startswith(("http://", "https://"))
+        else m.group(0), md_text)
+    return re.sub(
+        r'<img[^>]*src="(https?://[^"]+)"[^>]*>',
+        lambda m: f"<p>{_ph(m.group(1))}</p>", md_text)
+
+
+_ALLOWED_TAGS = {"p", "h1", "h2", "h3", "h4", "h5", "h6", "ul", "ol", "li",
+                 "code", "pre", "em", "strong", "blockquote", "a", "table",
+                 "thead", "tbody", "tr", "th", "td", "img", "div", "span",
+                 "br", "hr", "details", "summary", "sup", "sub"}
+_ALLOWED_ATTRS = {"href", "src", "class", "id", "alt", "colspan", "rowspan",
+                  "title"}
+
+
+def _sanitize_html(html: str) -> str:
+    """白名单消毒（html.parser，零依赖）。非白名单标签剥壳留内容；on*/未知
+    属性删除；href/src 协议白名单（http(s)/data:image/#/相对）。"""
+    from html.parser import HTMLParser
+
+    class _Clean(HTMLParser):
+        def __init__(self):
+            super().__init__(convert_charrefs=True)
+            self.out: list[str] = []
+            self.skip_depth = 0          # script/style/iframe 整段丢
+
+        def handle_starttag(self, tag, attrs):
+            if tag in ("script", "style", "iframe", "object", "embed", "form"):
+                self.skip_depth += 1
+                return
+            if self.skip_depth or tag not in _ALLOWED_TAGS:
+                return
+            keep = []
+            for k, v in attrs:
+                if k.startswith("on") or k not in _ALLOWED_ATTRS:
+                    continue
+                if k in ("href", "src") and v:
+                    ok = (v.startswith(("http://", "https://", "data:image/",
+                                        "#", "mailto:"))
+                          or not re.match(r"^[a-zA-Z][a-zA-Z0-9+.-]*:", v))
+                    if not ok:
+                        continue
+                keep.append(f'{k}="{v}"')
+            self.out.append(f"<{tag}{' ' + ' '.join(keep) if keep else ''}>")
+
+        def handle_endtag(self, tag):
+            if tag in ("script", "style", "iframe", "object", "embed", "form"):
+                if self.skip_depth:
+                    self.skip_depth -= 1
+                return
+            if self.skip_depth or tag not in _ALLOWED_TAGS:
+                return
+            self.out.append(f"</{tag}>")
+
+        def handle_data(self, data):
+            if not self.skip_depth:
+                self.out.append(data)
+
+    c = _Clean()
+    c.feed(html)
+    c.close()
+    return "".join(c.out)
+
+
 def convert(md_text: str, title: str = "Document",
             base_dir: Path | None = None) -> str:
     md2, _ = _inline_images(md_text, base_dir)
+    md2 = _strip_remote_images(md2)
     body = _md.markdown(md2, extensions=_EXTENSIONS)
+    body = _sanitize_html(body)
     return (
         "<!DOCTYPE html>\n<html lang=\"zh-CN\">\n<head>\n"
         "<meta charset=\"utf-8\">\n"
         "<meta name=\"viewport\" content=\"width=device-width, initial-scale=1\">\n"
-        f"<title>{title}</title>\n<style>{CSS}</style>\n</head>\n<body>\n"
+        f"<title>{_escape(title)}</title>\n<style>{CSS}</style>\n</head>\n<body>\n"
         f"{body}\n</body>\n</html>\n")
 
 

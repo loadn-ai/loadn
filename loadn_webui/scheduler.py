@@ -148,6 +148,14 @@ class Scheduler:
         return n
 
     async def fire(self, job) -> bool:
+        # W6.4 全局熔断标记：KILL_ALL 存在时调度器不投递
+        try:
+            from .config import PATHS as _P
+            if (_P["run"] / "KILL_ALL").exists():
+                log.warning("KILL_ALL 生效中，调度投递暂停（job %s）", job.get("id"))
+                return False
+        except Exception:                              # noqa: BLE001
+            pass
         """触发单个 job：按 kind 分流 + 记账（fires/due_at/终态）。返回是否投递成功。"""
         now = datetime.now(timezone.utc)
         if (job["kind"] or "message") == "new_session":

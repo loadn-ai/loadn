@@ -185,6 +185,14 @@ def scaffold(sid: str, title: str, prof: profile_mod.Profile, skill_names: list[
         (ws / "PROGRESS.md").write_text(
             f"# {title}\n\n- session: `{sid}` ｜ profile: {prof.name}\n"
             f"- created: {iso()}\n\n## 进展\n")
+    # W5.5：会话 canary 蜜罐（泄露指示物；命中即熔断）
+    try:
+        from . import canary as _canary
+        if not (ws / "notes" / ".canary_tokens.md").exists():
+            _canary.plant(sid)
+            _canary.invalidate_cache()
+    except Exception:                                  # noqa: BLE001
+        pass
     return ws
 
 
