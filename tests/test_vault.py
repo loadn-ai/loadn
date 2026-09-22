@@ -51,8 +51,15 @@ def test_file_permissions_atomic():
     assert vault.delete("testplat")
 
 
-def test_cli_roundtrip(capsys):
+def test_cli_roundtrip(capsys, monkeypatch):
     # 写入 → 单字段（脚本取值模式，stdout 只有值）→ 概览
+    # （审批门单测另见 test_a3；此处测 vault 本体——终端直调形态）
+    from loadn_webui.config import CONFIG
+    monkeypatch.setattr(CONFIG.security, "approval_enforce", "warn")
+    monkeypatch.delenv("LOADN_SESSION_ID", raising=False)
+    monkeypatch.delenv("WORKDADDY_SESSION_ID", raising=False)
+    monkeypatch.delenv("LOADN_PROJECT_ID", raising=False)
+    monkeypatch.delenv("WORKDADDY_PROJECT_ID", raising=False)
     assert main(["r", "account", "--platform", "hubspot",
                  "--set", "password=Hs!2026", "--set", "username=me@x.com"]) == 0
     capsys.readouterr()

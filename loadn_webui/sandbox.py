@@ -122,16 +122,83 @@ def wrap_loadn(cmd: list[str], env: dict, *, sid_session: str,
     return argv
 
 
+def _wrap_generic(cmd: list[str], env: dict, *, cwd: Path,
+                  extra_binds: list[tuple[str, str, str]]) -> list[str] | None:
+    """通用 bwrap 骨架（W2-a2）：基础系统 ro + workspace rw + 引擎专属 binds。
+
+    extra_binds: [(mode, src, dst)] mode ∈ ro|rw|try-ro
+    """
+    exe = shutil.which("bwrap")
+    if not exe:
+        return None
+    ws = Path(cwd)
+    argv = [exe,
+            "--ro-bind", "/usr", "/usr",
+            "--symlink", "usr/bin", "/bin",
+            "--symlink", "usr/lib", "/lib",
+            "--symlink", "usr/lib64", "/lib64",
+            "--ro-bind-try", "/etc", "/etc",
+            "--ro-bind-try", "/opt", "/opt",
+            "--ro-bind-try", "/run/systemd/resolve", "/run/systemd/resolve",
+            "--proc", "/proc", "--dev", "/dev", "--tmpfs", "/tmp",
+            "--bind", str(ws), str(ws),
+            "--clearenv", "--share-net", "--unshare-ipc", "--unshare-pid",
+            "--die-with-parent"]
+    for mode, src, dst in extra_binds:
+        if not Path(src).exists():
+            if mode == "try-ro":
+                continue
+            return None                  # 必需挂载缺失 → 回落直跑
+        flag = {"ro": "--ro-bind", "rw": "--bind",
+                "try-ro": "--ro-bind-try"}[mode]
+        argv += [flag, str(src), str(dst if dst else src)]
+    for k, v in env.items():
+        argv += ["--setenv", k, v]
+    return argv
+
+
 def wrap_engine(cmd: list[str], env: dict, *, engine: str, sid: str,
                 cwd: Path) -> tuple[list[str], str]:
     """spawn 入口：按引擎/profile 选包裹。返回 (argv, mode)。
 
     mode: "bwrap" | "direct"（不可用回落，audit 留痕由调用方记）。
-    claude/opencode 引擎的档案/认证面结构不同（~/.claude settings env、
-    opencode ~/.local/share），沙箱包裹随 W2-a2 验证后启用——当前 direct。
+    claude：nvm node 树 ro（CLI 运行时）+ ~/.claude/projects rw（档案）+
+    ~/.claude/settings.json ro（网关 env 段=M1 known-gap）+ 全局 CLAUDE.md ro。
+    opencode：node 树 ro + ~/.local/share/opencode rw（档案）。
     """
     from .config import CONFIG
-    if CONFIG.security.sandbox != "bwrap" or engine not in ("loadn", "hahaness"):
+    if CONFIG.security.sandbox != "bwrap":
+        return cmd, "direct"
+    if engine in ("loadn", "hahaness"):
+        pass                                     # 走 wrap_loadn（同路径 bind 矩阵）
+    elif engine == "claude":
+        home = Path.home()
+        node = home / ".nvm/versions/node/v22.21.0"
+        wrapped = _wrap_generic(
+            cmd, env, cwd=cwd, extra_binds=[
+                ("ro", str(node), str(node)),
+                ("rw", str(home / ".claude/projects"), str(home / ".claude/projects")),
+                ("try-ro", str(home / ".claude/settings.json"), ""),
+                ("try-ro", str(home / ".claude/CLAUDE.md"), ""),
+                ("try-ro", str(home / ".claude/statsig"), ""),
+                ("try-ro", str(home / ".claude/cache"), ""),
+            ])
+        if wrapped is not None:
+            return wrapped, "bwrap"
+        return cmd, "direct-fallback"
+    elif engine == "opencode":
+        home = Path.home()
+        node = home / ".nvm/versions/node/v22.21.0"
+        oc = home / ".local/share/opencode"
+        wrapped = _wrap_generic(
+            cmd, env, cwd=cwd, extra_binds=[
+                ("try-ro", str(node), str(node)),
+                ("rw", str(oc), str(oc)),
+            ])
+        if wrapped is not None:
+            return wrapped, "bwrap"
+        return cmd, "direct-fallback"
+    else:
         return cmd, "direct"
     # 会话档案 id：cwd 名即 sid（ws_of 约定），引擎档案 id=claude_session_id
     # 由调用方给——这里用 spawn argv 里的 --session-id/--resume 值

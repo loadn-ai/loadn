@@ -138,9 +138,9 @@ class SecurityConfig:
     egress_mode: str = "enforce"          # enforce | warn
     approval_ttl_s: int = 600
     approval_cooldown_after: int = 5
-    # M0 关门双轨：warn=无确认码放行+审计告警（存量 skill 文档渐进替换）；
-    # enforce=不可逆动作必须 --request-approval/--confirm（v1.1 §11 断兼容条款）
-    approval_enforce: str = "warn"
+    # 不可逆动作确认码门（M0 关门最终形态=enforce：skill 文档已审批化）；
+    # warn 仅作迁移期显式配置
+    approval_enforce: str = "enforce"
     # W2-a 执行沙箱：off（默认，双轨——doctor 通过+真机验证后切 bwrap）| bwrap
     sandbox: str = "off"
     # W5.1 出口代理端口（0=随机绑定，lifespan 回写实际值；生产可固定 8793）
