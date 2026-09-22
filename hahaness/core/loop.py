@@ -22,9 +22,12 @@ from dataclasses import dataclass, field
 from pathlib import Path
 
 from hahaness.constants import (
+    GRIND_MAX_NUDGES,
+    GRIND_MIN_TURNS,
     LOOP_REMIND_AT,
     LOOP_REPEAT_LIMIT,
     MAX_TURNS_DEFAULT,
+    REFLECT_EVERY_TURNS,
     STREAM_RETRY_MAX,
     TOOL_RESULT_INLINE_MAX,
 )
@@ -202,6 +205,11 @@ class LoopSettings:
     no_compact: bool = False
     no_plan: bool = False       # True=禁用并行拆分调度（直跑）
     context_window: int = 200_000              # token 窗口（compactor 触发基数）
+    # v0.7 死磕模式（Terminal-Bench 实测「4 分钟投降」对症：纯文本收工前过
+    # 完工自检关卡——产物核对+预算告知，未过则注入续战提示继续磨）
+    grind: bool = False
+    budget_s: float | None = None              # 总预算（用于「剩余时间」告知）
+    reflect_every: int = REFLECT_EVERY_TURNS   # 反思检查点间隔；0=关
 
 
 class AgentCore:
@@ -229,6 +237,9 @@ class AgentCore:
         self.ctx.extras.setdefault("state", self.session.state)
         self.assembler = ContextAssembler(self.cwd, tools=list(tools))
         self.loop_guard = LoopGuard()
+        self._grind_nudges = 0        # 完工自检已续战次数（GRIND_MAX_NUDGES 封顶）
+        self._tool_execs = 0          # 累计工具执行数（口头交付检测）
+        self._gate_tool_execs = -1    # 上次关卡评估时的工具数（-1=尚未关卡过）
         # 随时插话（steering）：宿主把用户插话追加到 HAHANESS_STEER_FILE，
         # 主循环每轮 LLM 调用前轮询——运行中消息不等排队、下一轮即生效。
         # 边界取「构造时刻的文件大小」：启动前已有的是历史插话（已在当时
@@ -466,7 +477,18 @@ class AgentCore:
                             "role": "user",
                             "content": [{"type": "text", "text": nudge}]})
                         continue
-                    summary.subtype = "success"   # 纯文本=turn 终结
+                    # v0.7 完工自检关卡（grind 模式）：模型说完成 ≠ 任务完成。
+                    # Terminal-Bench 实测病灶：cad 4 分钟/cargo 13 分钟对 8 小时
+                    # 题投降——把「停不停」从模型手里拿到引擎手里。
+                    gate = self._completion_gate(user_msg, texts, summary)
+                    if gate is not None:
+                        messages.append(Message(role="user", content=[
+                            TextBlock(text=gate)]))
+                        self.session.append_event("user", {
+                            "role": "user",
+                            "content": [{"type": "text", "text": gate}]})
+                        continue
+                    summary.subtype = "success"   # 纯文本=turn 终结（自检放行）
                     break
                 if stop is not None and stop.requested:
                     summary.subtype = "error_stopped"
@@ -496,7 +518,16 @@ class AgentCore:
                     nudge = self.loop_guard.record(name, tu.input,
                                                    _inline(blk.content))
                     if nudge is not None:
-                        _, nudge_text = nudge
+                        level, nudge_text = nudge
+                        if level == "break":
+                            # v0.7 策略轮换：硬打断时给正交换向清单，而不是
+                            # 只说「别重复」——模型需要被告知可以往哪换
+                            nudge_text += (
+                                "\n换思路清单（选一条与已试路线正交的）："
+                                "①换一类工具/数学方法 ②自顶向下↔自底向上 "
+                                "③先写朴素解锚定再优化 ④拆成可单独验证的小块 "
+                                "⑤检索本地文档/示例找现成轮子。"
+                                "先一句话说清已试方法为何失败，再动手。")
                         messages.append(Message(role="user", content=[
                             TextBlock(text=nudge_text)]))
                         self.session.append_event("user", {
@@ -514,6 +545,20 @@ class AgentCore:
                         self.settings.context_window)
                     if did:
                         self.session.mark_compact(self.compactor.last_summary)
+
+                # v0.7 反思检查点：长磨不迷路（coq 6h 那场靠运气做到的事
+                # 变成机制）——周期性强制总结已确立/已废/下一步
+                if (self.settings.reflect_every
+                        and summary.num_turns % self.settings.reflect_every == 0):
+                    reflect = (
+                        f"【反思检查点·第 {summary.num_turns} 轮】用三行总结："
+                        "①已确立的事实/已产出的成果 ②已证明走不通的路线"
+                        "（别再走）③下一步最小可行动作。然后继续执行③。")
+                    messages.append(Message(role="user", content=[
+                        TextBlock(text=reflect)]))
+                    self.session.append_event("user", {
+                        "role": "user",
+                        "content": [{"type": "text", "text": reflect}]})
 
                 # 轮次闸
                 if max_turns and summary.num_turns >= max_turns:
@@ -553,6 +598,88 @@ class AgentCore:
             await _fire(emit, {"type": "turn", "summary": summary})
         return summary
 
+    # ------------------------------------------------------------ 完工自检
+    def _completion_gate(self, user_msg: str, texts: list[str],
+                         summary: TurnSummary) -> str | None:
+        """grind 模式完工关卡：纯文本收工前的最后一道闸。
+
+        返回 None=放行结束；返回字符串=注入续战提示继续磨。
+        两条腿：①从指令/末段文本里提取产物路径核对存在性；②预算告知
+        （模型常不知道任务有 8 小时预算，倾向于「差不多就交」）。
+        GRIND_MAX_NUDGES 封顶防不可能题无限空转。
+        """
+        if not self.settings.grind:
+            return None
+        if self._grind_nudges >= GRIND_MAX_NUDGES:
+            return None
+        if summary.num_turns < GRIND_MIN_TURNS:
+            return None
+        self._grind_nudges += 1
+        elapsed = int(summary.duration_s // 60)
+        if self.settings.budget_s:
+            remain = int((self.settings.budget_s - summary.duration_s) // 60)
+            budget_line = (f"任务总预算 {int(self.settings.budget_s // 60)} 分钟，"
+                           f"已用 {elapsed} 分钟，剩余约 {remain} 分钟")
+        else:
+            budget_line = f"本任务预算以小时计，你才用了 {elapsed} 分钟"
+        # 产物路径核对：绝对路径 + 相对路径/文件名（相对 cwd 检查）。
+        # v0.7.1：只认绝对路径漏掉了「修改 src/foo.v」式交付（coq 15 分钟
+        # 假交付的病灶）。
+        import re as _re
+        exts = ("v|py|txt|json|step|npz|cpp|cc|rs|js|ts|toml|yaml|yml|xml|"
+                "csv|md|sh|go|java|hs|r|nb|stp|glb|stl")
+        abs_pat = _re.compile(rf"[\/][\w./\-]+\.(?:{exts})")
+        rel_pat = _re.compile(rf"(?<![\w./\-])[\w][\w./\-]*\.(?:{exts})")
+        corpus = user_msg + "\n" + (texts[-1] if texts else "")
+        cands = set(abs_pat.findall(corpus))
+        for m in rel_pat.findall(corpus):
+            cands.add(m)
+        missing = []
+        for p in sorted(cands)[:12]:
+            if Path(p).exists():
+                continue
+            if (self.cwd / p).exists():
+                continue
+            if (self.cwd / p.lstrip("/")).exists():
+                continue   # /app/x.py → cwd/app/x.py（容器内绝对路径映射）
+            # 指令里提到的才算交付物；模型自述里的在 cands 里混入也无妨，
+            # 不存在同样说明没产出。
+            missing.append(p)
+        tag = (f"（完工自检第 {self._grind_nudges}/{GRIND_MAX_NUDGES} 次，"
+               f"之后将接受你的结论）")
+        # 口头交付硬拦截：上次关卡评估以来零工具执行 = 只是改口重申完成，
+        # 没有任何新证据（实测病灶：模型收到续战提示后直接换措辞再交一遍）。
+        if (self._gate_tool_execs >= 0
+                and self._tool_execs == self._gate_tool_execs):
+            self._gate_tool_execs = self._tool_execs
+            return ("【完工自检-口头交付拦截】自上次自检以来你没有执行任何工具，"
+                    "纯文字重申不构成交付证据。必须实际执行验证动作（跑测试/"
+                    "编译/运行程序入口/核对文件），把命令与输出亮出来；产物"
+                    "缺失就继续产出。" + tag)
+        self._gate_tool_execs = self._tool_execs
+        if missing:
+            return ("【完工自检未通过】你声称已完成，但以下产物路径实际不存在：\n  "
+                    + "\n  ".join(missing[:5])
+                    + f"\n{budget_line}，远未到收工的时候。"
+                      "请继续实际产出这些文件并使其满足指令的验收要求——"
+                      "只描述方案不算完成。" + tag)
+        # v0.7.1 递进强度：第 1 次自查式；第 ≥2 次必须动手验证并贴输出；
+        # 第 ≥4 次逐条对验收标准给证据。空口确认不再直接放行。
+        if self._grind_nudges >= 4:
+            return ("【完工自检·证据清单】" + budget_line + "。把原始指令中的"
+                    "验收标准逐条列出，每条给出可复核证据（文件路径 + 你刚"
+                    "运行过的验证命令及其真实输出）。任何一条给不出证据就"
+                    "回到工作继续完成它；全部给出后才允许最终结论。" + tag)
+        if self._grind_nudges >= 2:
+            return ("【完工自检·动手验证】" + budget_line + "。空口确认不算"
+                    "数：立即实际运行你自建的验证（编译/测试/运行入口），把"
+                    "命令与输出展示出来。有失败就继续修，直到通过再重试"
+                    "收尾。" + tag)
+        return ("【完工自检】" + budget_line + "。请重读原始任务指令，列出全部"
+                "验收标准逐条自查（文件存在性、可运行性、边界情形）；有任何"
+                "一条未实际验证通过就继续工作。若逐条确认全部满足，请再给出"
+                "最终结论。" + tag)
+
     # ------------------------------------------------------------ 工具执行
     async def _grace_call(self, messages: list[Message], system: str,
                           emit: Emitter, summary: TurnSummary, *,
@@ -588,6 +715,7 @@ class AgentCore:
         return "".join(asm.text_parts)
 
     async def _exec_tool(self, tu: ToolUseBlock, emit: Emitter) -> tuple[ToolResultBlock, str]:
+        self._tool_execs += 1
         name = tu.name
         tool = self.tools.get(name)
         content: str | list = ""

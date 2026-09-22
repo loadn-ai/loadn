@@ -3,6 +3,20 @@
 本项目的全部显著变更记录于此。格式遵循 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/)，
 版本遵循 [SemVer](https://semver.org/lang/zh-CN/)。
 
+## [0.7.1] - 2026-09-22
+
+### Added
+- **--grind 死磕模式**：纯文本收工前过完工自检关卡（产物核对 + 预算告知），
+  未过自动续战；`--budget-minutes` 告知剩余时间。参数与关卡常量：
+  GRIND_MAX_NUDGES=8（完工自检最多续战次数——TB 实测 3 次太早放行，
+  coq 15 分钟假交付）、GRIND_MIN_TURNS=6（前 N 轮纯文本直接放行，
+  聊天/简单问答不受关卡影响）；build_agent / LoopSettings 透传 grind
+  与 budget_minutes。
+- **反思检查点**：REFLECT_EVERY_TURNS=25，每 N 轮注入进展/死角总结。
+
+### 记录
+- 本条目为基线定锚补记（0.7.x 代码先落盘后补 CHANGELOG）。
+
 ## [0.6.0] - 2026-09-17
 
 ### Added

@@ -36,6 +36,8 @@ async def build_agent(cwd: Path, *, session_id: str | None = None,
                       permission_mode: str = "bypassPermissions",
                       max_turns: int | None = None, no_compact: bool = False,
                       no_plan: bool = False,
+                      grind: bool = False,
+                      budget_minutes: float | None = None,
                       context_window: int | None = None, enable_task: bool = True,
                       enable_mcp: bool = True, cfg: dict | None = None) -> AgentBundle:
     """组装 AgentCore。
@@ -102,6 +104,9 @@ async def build_agent(cwd: Path, *, session_id: str | None = None,
         provider=provider, tools=tools, session=session, cwd=cwd,
         settings=LoopSettings(max_turns=max_turns, permission_mode=permission_mode,
                               no_compact=no_compact, no_plan=no_plan,
+                              grind=grind,
+                              budget_s=(budget_minutes * 60
+                                        if budget_minutes else None),
                               context_window=window),
         subagents=mgr,
         planner=(TaskPlanner(_planner_provider(cfg))
