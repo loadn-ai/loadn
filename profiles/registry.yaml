@@ -1,0 +1,84 @@
+profiles:
+  researcher:
+    description: 深度研究员——多轮搜索、抓取、对抗验证、带引用报告
+    profile: researcher.md
+    match_keywords:
+    - 调研
+    - 研究
+    - 报告
+    - 综述
+    - 对比分析
+    - 深度
+    - deep research
+    - 引用
+    - evidence
+    - 行业分析
+    - 竞品
+    skills:
+    - deep-research
+    - doc-export
+    - file-parse
+    - web-hands-on
+    - mobile-sms
+    - email-inbox
+    - pay-hands-on
+    - wechat-send
+    effort: high
+    timeout_s: 86400
+    stall_timeout_s: 86400
+    rotate:
+      input_tokens: 500000
+    disallowed_tools:
+    - WebSearch
+    - WebFetch
+  coder:
+    description: 编程/数据分析师——在工作区内写码、执行、自修复
+    profile: coder.md
+    match_keywords:
+    - 代码
+    - 实现
+    - 脚本
+    - 数据分析
+    - bug
+    - 重构
+    - pandas
+    - python
+    - 爬虫
+    - 开发
+    - 算法
+    skills:
+    - doc-export
+    - file-parse
+    - web-hands-on
+    - mobile-sms
+    - email-inbox
+    - pay-hands-on
+    - wechat-send
+    effort: high
+    timeout_s: 86400
+    stall_timeout_s: 86400
+    rotate:
+      input_tokens: 400000
+    disallowed_tools:
+    - WebSearch
+    - WebFetch
+  assistant:
+    description: 通用助手——问答、轻工具、即时回答
+    profile: assistant.md
+    match_keywords: []
+    skills:
+    - doc-export
+    - file-parse
+    - web-hands-on
+    - mobile-sms
+    - email-inbox
+    - pay-hands-on
+    - wechat-send
+    effort: medium
+    timeout_s: 86400
+    stall_timeout_s: 900
+    rotate:
+      input_tokens: 300000
+    disallowed_tools:
+    - WebSearch
+    - WebFetch

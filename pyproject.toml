@@ -33,12 +33,25 @@ dev = [
   "pytest>=8",
   "pytest-asyncio>=0.23",
   "ruff>=0.4",
+  "playwright>=1.40",
 ]
-# webui = [ ... R2 平台迁入时补：fastapi/uvicorn/httpx/pyyaml ... ]
+webui = [
+  "PyYAML>=5.4",
+  "python-docx>=1.1",
+  "markdown>=3.5",
+  "fastapi>=0.110",
+  "uvicorn[standard]>=0.29",
+  "httpx>=0.27",
+  "python-multipart>=0.0.9",
+  "Pillow>=10",
+  "beautifulsoup4>=4.12",
+]
 # desktop = [ ... M3+ pywebview ... ]
 
 [project.scripts]
 loadn = "loadn.cli.main:main"
+loadn-web = "loadn_webui.cli:main"
+wd = "loadn_webui.cli:main"          # 旧名 alias（一版后移除）
 
 [tool.setuptools.packages.find]
 include = ["loadn*"]

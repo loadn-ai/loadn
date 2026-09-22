@@ -1,0 +1,3 @@
+{"type": "session.created", "timestamp": 1760000200000, "sessionID": "ses_fix_err01", "info": {"id": "ses_fix_err01", "title": "err", "directory": "/tmp/demo", "time": {"created": 1760000200000, "updated": 1760000200000}}}
+{"type": "message.part.updated", "timestamp": 1760000200100, "sessionID": "ses_fix_err01", "messageID": "msg_fix_e1", "part": {"id": "prt_fix_e1", "type": "text", "sessionID": "ses_fix_err01", "messageID": "msg_fix_e1", "text": "开始处理…"}}
+{"type": "session.error", "timestamp": 1760000200200, "sessionID": "ses_fix_err01", "error": "provider unavailable (502)"}
