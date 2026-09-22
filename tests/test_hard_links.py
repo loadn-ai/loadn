@@ -9,7 +9,14 @@ import sys
 import types
 from pathlib import Path
 
+from pathlib import Path
+
 import pytest
+
+# 依赖本机 legacy skills 资产（web-ops 库）与真浏览器；CI 上无本机资产时跳过
+pytestmark = pytest.mark.skipif(
+    not Path("/data/code/workdaddy/skills").exists(),
+    reason="需要本机 legacy skills 资产（迁移过渡期）")
 
 from loadn_webui import db as db_mod
 from loadn_webui.util import iso

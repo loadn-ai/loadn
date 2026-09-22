@@ -4,6 +4,8 @@ on:
   push:
     branches: [main]
   pull_request:
+  schedule:
+    - cron: '23 4 * * 1'   # 周一 04:23 UTC（audit job）
 
 jobs:
   lint:
@@ -41,3 +43,29 @@ jobs:
       - uses: gitleaks/gitleaks-action@v2
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+  webui:
+    # 平台全量（loadn_webui）：webui extras + 同 venv 引擎（契约对赌需要
+    # loadn console_script）。legacy 资产依赖的测试自带 skipif。
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - run: pip install -e ".[webui,dev]"
+      - run: pip install playwright && playwright install chromium --with-deps || true
+      - run: pytest -q
+        env:
+          LOADN_PROVIDER: fake
+
+  audit:
+    # 供应链：依赖漏洞周扫（pip-audit 对 extras 全量解析）
+    if: github.event_name == 'schedule'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - run: pip install pip-audit && pip-audit -e ".[webui,dev]" --strict

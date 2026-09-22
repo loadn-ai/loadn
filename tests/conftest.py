@@ -40,10 +40,11 @@ for _name in ("profiles", "prompts"):
     _src = REPO / _name
     if _src.exists():
         (_HOME / _name).symlink_to(_src, target_is_directory=True)
-# skills：测试期直连 legacy 资产（R2-1b skills_dirs() 接管后改双路径断言）
+# skills：测试期直连 legacy 资产；CI（无本机资产）回落 monorepo skills/（空）
 _LEGACY_SKILLS_LINK = Path("/data/code/workdaddy/skills")
-if _LEGACY_SKILLS_LINK.exists():
-    (_HOME / "skills").symlink_to(_LEGACY_SKILLS_LINK, target_is_directory=True)
+_SKILLS_SRC = _LEGACY_SKILLS_LINK if _LEGACY_SKILLS_LINK.exists() else REPO / "skills"
+(_HOME / "skills").symlink_to(_SKILLS_SRC, target_is_directory=True)
+LEGACY_ASSETS = _LEGACY_SKILLS_LINK.exists()
 # skills：monorepo skills/ 仅公开包；测试借用原 workdaddy 仓资产（迁移过渡）
 _LEGACY_SKILLS = Path("/data/code/workdaddy/skills")
 if _LEGACY_SKILLS.exists():
