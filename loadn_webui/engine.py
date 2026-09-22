@@ -268,6 +268,31 @@ class Engine:
                                  {"turn_id": tid, "error": "engine_internal_error"}, tid)
 
     # ------------------------------------------------------------ 停止
+    def _spotcheck_claims(self, sid: str, tid: int, res) -> None:
+        """W6.3 谎报抽查：agent 自称的 artifacts 路径核对（存在+mtime 窗）。"""
+        import re as _re
+        from datetime import datetime as _dt
+        from . import audit as _audit
+        from . import workspace as _ws_mod
+        text = (getattr(res, "result_text", "") or "")
+        ws = _ws_mod.ws_of(sid)
+        t_start = time.time() - max(2 * 3600, 3600)
+        paths = list(
+            _re.findall(r"(?:artifacts|notes|work)/[\w./-]+\.[\w]+", text))[:8]
+        for rel in paths:
+            f = ws / rel
+            if not f.exists():
+                _audit.audit("anomaly", {"kind": "claimed_missing", "sid": sid,
+                                      "turn": tid, "path": rel}, sid=sid, turn_id=tid)
+            else:
+                try:
+                    if f.stat().st_mtime < t_start:
+                        _audit.audit("anomaly", {"kind": "claimed_stale", "sid": sid,
+                                        "turn": tid, "path": rel},
+                               sid=sid, turn_id=tid)
+                except OSError:
+                    pass
+
     async def stop_turn(self, tid: int) -> bool:
         with db_mod.conn() as c:
             turn = db_mod.get_turn(c, tid)
@@ -689,6 +714,7 @@ class Engine:
             payload["error"] = res.error
             self._emit(at, sid, "turn_error", payload)
         else:
+            self._spotcheck_claims(sid, tid, res)
             self._emit(at, sid, "turn_done", payload)
         if rotate_reason:
             self._emit(at, sid, "session_rotated", {"turn_id": tid, "reason": rotate_reason})

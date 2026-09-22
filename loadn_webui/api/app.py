@@ -36,6 +36,7 @@ log = get_logger(__name__)
 
 # 单实例锁持有句柄（进程生命周期内不能被 GC 关闭释放）
 _SERVE_LOCK_FH = None
+_EGRESS: list = [None]             # W5.1 代理实例（lifespan 起/停）
 
 # SSE 一次性 ticket（W0.3）：ticket -> 过期 epoch。single-use（验证即摘除）+30s。
 _TICKET_TTL_S = 30
@@ -86,6 +87,10 @@ async def lifespan(app: FastAPI):
     _mig = migrate_legacy_db()   # R2.5：旧 var/workdaddy.db → var/loadn.db（copy）
     if _mig is not None:
         log.info("[R2.5] 旧库迁移完成 → %s", _mig)
+    # W5.1：出口白名单代理（引擎 env 通道接管；enforce 由 security.egress_mode）
+    from ..egress_proxy import EgressProxy
+    _EGRESS[0] = EgressProxy(port=CONFIG.server.port + 1)
+    await _EGRESS[0].start()
     # 单实例闸（2026-09-17 事故）：双 serve 抢端口时，败者在 bind 失败前也会先跑
     # lifespan——孤儿清理/中断恢复会直接误伤胜者正在跑的 turn（systemd
     # Restart=always 每 5s 拉起僵尸实例，几小时内三批把活跃 turn 标成
@@ -107,6 +112,8 @@ async def lifespan(app: FastAPI):
              recovered["interrupted"], recovered["requeued"])
     yield
     await sched.stop()
+    if _EGRESS[0] is not None:
+        await _EGRESS[0].stop()
     # 优雅停：turn 子进程独立 session 存活（配 systemd KillMode=process），
     # CancelledError 路径不杀——下次启动 recover_after_restart 收养续跑
 

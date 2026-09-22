@@ -10,7 +10,45 @@ import InstallDialog from './InstallDialog';
 import CostTab from './CostPanel';
 import { Plus, Upload, Globe, Sun, Moon } from './icons';
 
-export type AdminTab = 'skills' | 'tools' | 'settings' | 'schedules' | 'cost';
+function EgressPanel() {
+  const [rows, setRows] = useState<{ ts: string; host: string; decision: string; mode?: string }[]>([]);
+  const [mode, setMode] = useState('');
+  const load = async () => {
+    try {
+      const d = await api<{ events: { ts: string; host: string; decision: string }[]; mode: string }>(
+        '/api/admin/egress?n=60');
+      setRows(d.events); setMode(d.mode);
+    } catch { /* 忽略 */ }
+  };
+  useEffect(() => { void load(); const t = setInterval(() => void load(), 5000); return () => clearInterval(t); }, []);
+  const allowed = rows.filter(r => r.decision.startsWith('allow')).length;
+  const denied = rows.length - allowed;
+  return (
+    <div className="pad">
+      <div className="muted" style={{ marginBottom: 8 }}>
+        数据流向（W5.2）——出口代理审计 · mode=<b>{mode || '-'}</b> ·
+        近 {rows.length} 条：放行 {allowed} / 拒绝 {denied} ·
+        本任务数据已流向 {new Set(rows.filter(r => r.decision.startsWith('allow')).map(r => r.host)).size} 个域
+      </div>
+      <table className="kv-table" style={{ width: '100%' }}>
+        <thead><tr><th>时间</th><th>目标域</th><th>判定</th></tr></thead>
+        <tbody>
+          {rows.map((r, i) => (
+            <tr key={i}>
+              <td>{(r.ts || '').slice(11, 19)}</td>
+              <td>{r.host}</td>
+              <td style={{ color: r.decision.startsWith('allow') ? undefined : 'var(--accent)' }}>
+                {r.decision}
+              </td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </div>
+  );
+}
+
+export type AdminTab = 'skills' | 'tools' | 'settings' | 'schedules' | 'cost' | 'egress';
 
 export interface SkillItem {
   name: string; description: string; mtime: string; disabled: boolean;
@@ -36,11 +74,13 @@ export default function AdminPanel({ onClose, initialTab, filterSid, onClearFilt
         <button className={`tab ${tab === 'settings' ? 'on' : ''}`} onClick={() => setTab('settings')}>设置</button>
         <button className={`tab ${tab === 'schedules' ? 'on' : ''}`} onClick={() => setTab('schedules')}>定时</button>
         <button className={`tab ${tab === 'cost' ? 'on' : ''}`} onClick={() => setTab('cost')}>成本</button>
+        <button className={`tab ${tab === 'egress' ? 'on' : ''}`} onClick={() => setTab('egress')}>流量</button>
       </div>
       {tab === 'skills' ? <SkillsTab /> : tab === 'tools' ? <ToolsTab />
         : tab === 'schedules'
           ? <SchedulesTab filterSid={filterSid} onClearFilter={onClearFilter} />
-          : tab === 'cost' ? <CostTab /> : <SettingsTab />}
+          : tab === 'cost' ? <CostTab />
+          : tab === 'egress' ? <EgressPanel /> : <SettingsTab />}
     </div>
   );
 }

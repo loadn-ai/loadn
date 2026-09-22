@@ -13,6 +13,7 @@ from fastapi.responses import FileResponse, JSONResponse, Response
 
 from .. import artifacts as art
 from .. import db as db_mod
+from ..config import CONFIG
 from .. import mcp_admin, settings_admin, skill_zh, skillhub
 from .. import profile as profile_mod
 from .. import skills as skills_mod
@@ -713,6 +714,20 @@ def delete_session(sid: str, purge: bool = False):
 
 
 # ---------------------------------------------------------------- schedules（定时调度）
+# ---------------------------------------------------------------- 数据流向（W5.2）
+@router.get("/admin/egress")
+def egress_recent(n: int = 50):
+    """最近外联（面板数据源：audit egress_request 尾窗）。管理面。"""
+    from .. import audit as audit_mod
+    rows = audit_mod.tail(n, "egress_request")
+    out = []
+    for r in rows:
+        d = json.loads(r["detail_json"])
+        out.append({"ts": r["ts"], **d})
+    return {"events": out, "mode": CONFIG.security.egress_mode,
+            "allow": CONFIG.security.egress_allow}
+
+
 # ---------------------------------------------------------------- 快照回滚（W6.2）
 @router.get("/sessions/{sid}/snapshots")
 def get_snapshots(sid: str):

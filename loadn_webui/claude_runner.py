@@ -342,6 +342,16 @@ async def run_turn(call: TurnCall, stop: StopHandle | None = None) -> TurnProcRe
         {"LOADN_TURN_ID": str(call.turn_id),
          "WORKDADDY_TURN_ID": str(call.turn_id), **spec_env},
         call.env_extra)
+    # W5.1：引擎流量走出口代理（白名单+审计+面板数据源；env 通道=可回退）
+    from .config import CONFIG as _C
+    if _C.security.egress_mode in ("warn", "enforce"):
+        proxy = f"http://127.0.0.1:{_C.server.port + 1}"
+        env.setdefault("https_proxy", proxy)
+        env.setdefault("HTTPS_PROXY", proxy)
+        env.setdefault("http_proxy", proxy)
+        env.setdefault("HTTP_PROXY", proxy)
+        env["no_proxy"] = env["NO_PROXY"] = "127.0.0.1,localhost"
+
     # W2-a 执行沙箱（security.sandbox=bwrap 时包裹；同路径 bind 保协议通道）
     from . import sandbox as sandbox_mod
     from .audit import audit as _audit
