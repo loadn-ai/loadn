@@ -35,6 +35,10 @@ class Profile:
     # 内建工具黑名单（WebSearch/WebFetch/Task 等）→ 会话 .claude/settings.json
     # permissions.disallow 注入；管理面 Tools tab 可视化编辑。
     disallowed_tools: list[str] = field(default_factory=list)
+    # W1-b 三态工具矩阵（v1.1 §6.2）：
+    #   allow → permissions.allow（直通）；deny → disallow（现状管道）；
+    #   ask → loadn 引擎 PermissionEngine 原生；claude 侧由 PreToolUse 钩子拦。
+    tools: dict = field(default_factory=dict)
     # 执行引擎（engines/ 注册名：claude|hahaness|opencode）；None=继承
     # config.yaml engines.default（灰度默认翻一处即全量切换）。
     engine: str | None = None
@@ -81,6 +85,8 @@ def load_registry() -> dict[str, Profile]:
                                  if isinstance(rotate, dict) and rotate.get("input_tokens")
                                  else 400_000),
             disallowed_tools=[str(t) for t in spec.get("disallowed_tools") or []],
+            tools={k: [str(x) for x in v] for k, v in (spec.get("tools") or {}).items()
+                   if k in ("allow", "ask", "deny")},
             engine=(str(spec["engine"]) if spec.get("engine") else None),
         )
     if not reg:

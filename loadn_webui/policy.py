@@ -296,8 +296,9 @@ def policy_check_hook(stdin_json: str) -> int:
     except json.JSONDecodeError:
         print("policy-check: 输入非 JSON（fail-closed）", file=sys.stderr)
         return 2
-    tool = (payload.get("tool_name") or "").lower()
-    inp = payload.get("tool_input") or {}
+    # 双字段名兼容：claude CLI（tool_name/tool_input）与 loadn 引擎（tool/input）
+    tool = (payload.get("tool_name") or payload.get("tool") or "").lower()
+    inp = payload.get("tool_input") or payload.get("input") or {}
     if tool == "bash":
         d = check_command(str(inp.get("command") or ""), source="hook")
     elif tool in ("write", "edit", "multiedit", "read"):

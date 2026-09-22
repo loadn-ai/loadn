@@ -7,6 +7,7 @@ from __future__ import annotations
 
 import json
 import shutil
+import sys
 import uuid
 from datetime import datetime
 from pathlib import Path
@@ -108,16 +109,44 @@ def write_settings(ws: Path, sid: str, prof: profile_mod.Profile,
         settings["model"] = prof.model
     # 无头 -p 模式没有交互弹窗：AskUserQuestion 只会报错并诱导 agent 乱猜内容，
     # 一律禁用（宪法 §2.6：要澄清就把问题写进回复，等用户下一条消息）。
-    settings["permissions"] = {"disallow": ["AskUserQuestion", *ZAI_INJECTED_TOOLS,
-                                            *prof.disallowed_tools]}
+    # W1-b 三态：deny → disallow（现状管道）；allow → permissions.allow；
+    # ask 引擎侧原生（.loadn permissions.ask），claude 侧由 hook 拦截提示。
+    tools = getattr(prof, "tools", None) or {}
+    disallow = ["AskUserQuestion", *ZAI_INJECTED_TOOLS,
+                *prof.disallowed_tools, *tools.get("deny", [])]
+    allow = tools.get("allow", [])
+    perm = {"disallow": disallow}
+    if allow:
+        perm["allow"] = allow
+    settings["permissions"] = perm
+    # W1-b 执行点 A：PreToolUse 策略钩子（W1-0 POC 实证 bypass 下仍生效）。
+    # 命令绝对路径（引擎 hooks 以 shell 在 cwd 执行）。
+    hook_cmd = f'"{sys.executable}" -m loadn_webui policy-check'
+    # claude 格式（matcher 嵌套）
+    settings["hooks"] = {"PreToolUse": [{
+        "matcher": "Bash|Write|Edit|MultiEdit|WebFetch",
+        "hooks": [{"type": "command", "command": hook_cmd}],
+    }]}
     d = ws / ".claude"
     d.mkdir(parents=True, exist_ok=True)
     (d / "settings.json").write_text(json.dumps(settings, ensure_ascii=False, indent=2))
-    # hahaness 规则（deny 语义同上；ZAI 注入工具只对 claude 网关有意义，不列）
-    agent = {"permissions": {"deny": ["AskUserQuestion", *prof.disallowed_tools]}}
-    ad = ws / ".agent"
+    # loadn 引擎规则（PermissionEngine 三态原生；hooks 同体）
+    agent = {"permissions": {"deny": ["AskUserQuestion", *prof.disallowed_tools,
+                                      *tools.get("deny", [])]}}
+    if allow:
+        agent["permissions"]["allow"] = allow
+    if tools.get("ask"):
+        agent["permissions"]["ask"] = tools["ask"]
+    # loadn 引擎格式（平铺 command 列表，HookRunner.load 语义——matcher 概念
+    # 引擎侧无，策略匹配在 policy-check 内部按 tool_name 分派）
+    agent["hooks"] = {"PreToolUse": [{"command": hook_cmd}]}
+    ad = ws / ".loadn"
     ad.mkdir(parents=True, exist_ok=True)
     (ad / "settings.json").write_text(json.dumps(agent, ensure_ascii=False, indent=2))
+    # 旧 .agent 路径兼容写（一版后移除；引擎侧读新带旧兜底）
+    legacy = ws / ".agent"
+    legacy.mkdir(parents=True, exist_ok=True)
+    (legacy / "settings.json").write_text(json.dumps(agent, ensure_ascii=False, indent=2))
 
 
 def write_constitution(ws: Path, text: str) -> None:
