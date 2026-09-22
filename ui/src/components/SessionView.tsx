@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
+import ApprovalBanner from './ApprovalBanner';
 import { useStore } from '../stores/sessions';
 import { fmtTokens, fmtTime } from '../api/client';
 import ChatStream from './ChatStream';
@@ -48,6 +49,7 @@ export default function SessionView({ onMenu }: { onMenu: () => void }) {
 
   return (
     <div className="session-view">
+      <ApprovalBanner />
       <header className="session-head">
         <div className="head-left">
           <button className="menu-btn" title="任务列表" onClick={onMenu}><Menu size={18} /></button>

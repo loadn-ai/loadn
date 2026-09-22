@@ -222,6 +222,10 @@ def _build_r_parser(sub) -> None:
     p.add_argument("--to", default="", help="收件地址（给定即发信模式）")
     p.add_argument("--subject", default="", help="发信主题")
     p.add_argument("--body", default="", help="发信正文")
+    p.add_argument("--request-approval", default="",
+                   help="发信审批：挂起等用户裁决（W1-2 确认码门）")
+    p.add_argument("--confirm", default="",
+                   help="审批确认码（卡片上的一次性 6 位码）")
 
     p = rsub.add_parser("captcha", help="2captcha 过验证码 → token")
     p.add_argument("--img", default="", help="图形码图片路径")
@@ -262,6 +266,114 @@ def _build_r_parser(sub) -> None:
     p.add_argument("--sid", default="", help="来源会话（默认 $WORKDADDY_SESSION_ID）")
     p.add_argument("--out", default="", help="本机落盘路径（默认当前目录同名文件）")
     p.add_argument("--api", default="", help="宿主 API 地址（默认本机 8792）")
+
+
+
+
+def _session_sid() -> str:
+    """当前会话 id（agent 的 spawn env；终端直调为空）。"""
+    import os as os_mod
+    return (os_mod.environ.get("LOADN_SESSION_ID")
+            or os_mod.environ.get("WORKDADDY_SESSION_ID")
+            or os_mod.environ.get("LOADN_PROJECT_ID")
+            or os_mod.environ.get("WORKDADDY_PROJECT_ID") or "")
+
+
+async def _approval_gate_http(method: str, path: str, body: dict | None = None,
+                              timeout: float = 20.0) -> tuple[int, dict]:
+    """直连本机 API（token 从 var/server_token）。"""
+    import os as os_mod
+
+    import httpx
+    from .config import CONFIG, PATHS
+    token = CONFIG.server.token
+    headers = {"X-Workdaddy-Token": token} if token else {}
+    base = (os_mod.environ.get("LOADN_API_BASE")
+            or f"http://127.0.0.1:{CONFIG.server.port}")
+    url = f"{base}{path}"
+    async with httpx.AsyncClient(timeout=timeout, headers=headers) as c:
+        r = await c.request(method, url, json=body)
+        try:
+            return r.status_code, r.json()
+        except ValueError:
+            return r.status_code, {"error": r.text[:200]}
+
+
+async def _approval_gate(args, action_type: str, params: dict,
+                         human_label: str) -> int | None:
+    """不可逆动作确认码门（W1-2）。返回 None=放行执行；int=已处理应退出。
+
+    --confirm <code>        ：码+params_hash 双验过 → 放行（single-use）
+    --request-approval <note>：创建审批并挂起轮询至用户裁决；approved 后
+                              提示带码重跑（码在平台审批卡片上，一次性）
+    两者皆无：approval_enforce=warn 放行+审计告警（双轨期，存量 skill 文档
+    渐进替换）；enforce 直接拒（M0 关门形态）。
+    """
+    import asyncio as aio
+    import json as json_mod
+    import time as time_mod
+
+    from .audit import audit as audit_mod
+    from .config import CONFIG
+
+    sid = _session_sid()
+    confirm = getattr(args, "confirm", "")
+    note = getattr(args, "request_approval", "")
+
+    if confirm:
+        if not sid:
+            print("✗ --confirm 需要会话上下文（在平台会话内调用）", file=sys.stderr)
+            return 2
+        code, out = await _approval_gate_http(
+            "POST", "/api/approvals/consume",
+            {"sid": sid, "action_type": action_type, "params": params,
+             "confirm_code": confirm})
+        if code == 200 and out.get("ok"):
+            return None                      # 码门已过 → 放行执行
+        print(f"✗ 确认码门未过：{out.get('error', out)}", file=sys.stderr)
+        return 2
+
+    if note:
+        if not sid:
+            print("✗ --request-approval 需要会话上下文（在平台会话内调用）",
+                  file=sys.stderr)
+            return 2
+        code, out = await _approval_gate_http(
+            "POST", f"/api/sessions/{sid}/approvals",
+            {"action_type": action_type, "params": params, "note": note})
+        if code != 200:
+            print(f"✗ 审批创建失败：{out.get('detail') or out}", file=sys.stderr)
+            return 2
+        aid = out["id"]
+        print(f"⏳ 审批 #{aid} 已挂起：{out['summary']}")
+        print("   平台审批卡片上操作；等待裁决…（TTL 600s，fail-closed）")
+        t0 = time_mod.monotonic()
+        while time_mod.monotonic() - t0 < 600:
+            await aio.sleep(2)
+            code, st = await _approval_gate_http("GET", f"/api/approvals/{aid}")
+            if code != 200:
+                continue
+            if st["status"] == "approved":
+                print(f"✓ 已批准。用卡片上的 6 位确认码执行：")
+                print(f"   wd r {human_label} --confirm <code>")
+                return 0
+            if st["status"] in ("denied", "expired"):
+                print(f"✗ {st['status']}（未执行）", file=sys.stderr)
+                return 1
+        print("✗ 超时未裁决（fail-closed）", file=sys.stderr)
+        return 1
+
+    # 双轨期：无门径直调
+    if CONFIG.security.approval_enforce == "enforce":
+        print(f"✗ {action_type} 是不可逆动作：必须 --request-approval 获用户"
+              "确认码后 --confirm 执行（approval_enforce=enforce）", file=sys.stderr)
+        return 2
+    audit_mod("permission_decision",
+              {"action": "warn", "source": "approval-gate",
+               "reason": f"{action_type} 未走确认码（enforce=warn 双轨期放行）",
+               "subject": json_mod.dumps(params, ensure_ascii=False)[:300]},
+              sid=sid or None)
+    return None
 
 
 async def _run_r(args) -> int:
@@ -376,6 +488,12 @@ async def _run_r(args) -> int:
             for u in it.get("links") or []:
                 print(f"    link: {u}")
         if args.to:
+            gate = await _approval_gate(
+                args, "mail_send",
+                {"to": args.to, "subject": args.subject, "body": args.body},
+                f"mail --to {args.to}")
+            if gate is not None:
+                return gate
             out = await resources.mail_send(args.to, subject=args.subject,
                                             body=args.body, box=args.box)
             print(json_mod.dumps(out, ensure_ascii=False) if args.json
@@ -481,6 +599,13 @@ async def _run_r(args) -> int:
             for kv in args.set:
                 k, _, v = kv.partition("=")
                 fields[k.strip()] = v
+            gate = await _approval_gate(
+                args, "account_write",
+                {"platform": args.platform,
+                 "fields": sorted(k for k in fields if k not in ("notes", "status"))},
+                f"account --platform {args.platform} --set …")
+            if gate is not None:
+                return gate
             vault.put(args.platform, **fields)
             print(f"已写入 {args.platform}（{', '.join(sorted(fields))}）")
             return 0

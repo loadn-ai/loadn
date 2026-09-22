@@ -138,6 +138,9 @@ class SecurityConfig:
     egress_mode: str = "enforce"          # enforce | warn
     approval_ttl_s: int = 600
     approval_cooldown_after: int = 5
+    # M0 关门双轨：warn=无确认码放行+审计告警（存量 skill 文档渐进替换）；
+    # enforce=不可逆动作必须 --request-approval/--confirm（v1.1 §11 断兼容条款）
+    approval_enforce: str = "warn"
 
 
 @dataclass

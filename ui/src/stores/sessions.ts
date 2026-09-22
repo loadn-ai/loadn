@@ -81,6 +81,15 @@ interface LiveTurn {
   costUsd?: number | null;
 }
 
+export interface ApprovalInfo {
+  id: number;
+  action_type: string;
+  summary: string;
+  agent_note?: string | null;
+  status: string;
+  created_at?: string;
+}
+
 interface Store {
   sessions: SessionInfo[];
   projects: ProjectInfo[];
@@ -94,12 +103,15 @@ interface Store {
   turns: TurnInfo[];
   artifacts: ArtifactInfo[];
   live: LiveTurn | null;
+  approvals: ApprovalInfo[];
   es: EventSource | null;
   connected: boolean;
   theme: 'dark' | 'light';
 
   loadSessions: () => Promise<void>;
   loadMeta: () => Promise<void>;
+  loadApprovals: () => Promise<void>;
+  decideApproval: (id: number, approve: boolean) => Promise<string | null>;
   openSession: (sid: string) => Promise<void>;
   closeSession: () => void;
   createSession: (body: Record<string, unknown>) => Promise<SessionInfo>;
@@ -147,8 +159,31 @@ export const useStore = create<Store>((set, get) => ({
   sessions: [], projects: [], categories: [], profiles: [], skills: [], engines: {},
   defaultEngine: 'claude',
   currentSid: null, messages: [], turns: [], artifacts: [],
-  live: null, es: null, connected: false,
+  live: null,
+  approvals: [], es: null, connected: false,
   theme: initialTheme(),
+
+  async loadApprovals() {
+    const sid = get().currentSid;
+    if (!sid) return;
+    try {
+      const d = await api<{ approvals: ApprovalInfo[] }>(
+        `/api/sessions/${encodeURIComponent(sid)}/approvals`);
+      if (get().currentSid === sid) set({ approvals: d.approvals });
+    } catch { /* 拉取失败不阻塞 */ }
+  },
+
+  async decideApproval(id: number, approve: boolean): Promise<string | null> {
+    try {
+      const d = await api<{ ok: boolean; code?: string; status: string; error?: string }>(
+        `/api/approvals/${id}/decide`, { method: 'POST', body: JSON.stringify({ approve }) });
+      await get().loadApprovals();
+      return d.code ?? null;      // 批准时一次性明文码（给用户转述给 agent）
+    } catch (e) {
+      alert(String(e));
+      return null;
+    }
+  },
 
   async loadSessions() {
     const d = await api<{ sessions: SessionInfo[] }>('/api/sessions');
@@ -511,6 +546,11 @@ function handleEvent(
   get: () => Store, sid: string, type: string, data: any,
 ) {
   if (get().currentSid !== sid) return;
+  if (type === 'approval') {
+    // W1-2 审批卡片事件：request/decided → 拉最新列表
+    void get().loadApprovals();
+    return;
+  }
   switch (type) {
     case 'turn_queued':
     case 'turn_started':

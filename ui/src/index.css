@@ -950,3 +950,21 @@ button.attach-chip:hover { border-color: color-mix(in srgb, var(--accent) 40%, v
   transition: background .15s, color .15s; }
 .stale-pill:hover { background: color-mix(in srgb, var(--accent) 18%, transparent); }
 .stale-pill svg { animation: wd-spin 2.4s linear infinite; }
+
+
+/* W1-2 审批卡片 */
+.approval-banner { display: flex; flex-direction: column; gap: 8px;
+  padding: 8px 14px 0; }
+.approval-card { border: 1px solid color-mix(in srgb, var(--accent) 45%, transparent);
+  border-radius: 10px; padding: 10px 12px; background:
+  color-mix(in srgb, var(--accent) 7%, var(--panel)); }
+.approval-head { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+.approval-badge { font-size: 12px; font-weight: 700; color: var(--accent);
+  border: 1px solid color-mix(in srgb, var(--accent) 50%, transparent);
+  border-radius: 999px; padding: 1px 8px; white-space: nowrap; }
+.approval-summary { font-size: 13.5px; font-weight: 600; }
+.approval-note { font-size: 12px; opacity: 0.6; margin-top: 4px; }
+.approval-actions { display: flex; gap: 8px; margin-top: 8px; }
+.approval-code { margin-top: 8px; font-size: 13px; }
+.approval-code b { font-size: 17px; letter-spacing: 2px; color: var(--accent); }
+.btn.sm { padding: 4px 14px; font-size: 13px; }
