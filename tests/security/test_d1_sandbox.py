@@ -42,14 +42,19 @@ def test_d1_write_system_dirs_blocked(tmp_path):
 
 
 def test_d1_host_secrets_invisible(tmp_path):
-    """~/.claude（settings env token 面）、平台 var/vault.enc、~/.ssh 全不可见。"""
+    """敏感面不可见：~/.ssh、平台 var/vault.enc、两处 config.yaml、~/.claude 其余
+    （credentials/projects/cache）。~/.claude/settings.json 例外可见——网关配置
+    （M1 known-gap，M2 代理注入后收回）。"""
     p = _run_in_sandbox(
         tmp_path, str(uuid.uuid4()),
-        "for f in  /home/user/.claude/settings.json  /home/user/.ssh/id_rsa "
+        "for f in  /home/user/.ssh/id_rsa "
         "/data/code/workdaddy/var/vault.enc /data/code/loadn/config.yaml "
-        "/data/code/workdaddy/config.yaml; do ls $f 2>&1; done")
+        "/data/code/workdaddy/config.yaml  /home/user/.claude/.credentials.json "
+        " /home/user/.claude/projects; do ls $f 2>&1; done; "
+        "ls  /home/user/.claude/settings.json")
     assert "No such file or directory" in p.stdout
-    assert p.stdout.count("No such file or directory") == 5
+    assert p.stdout.count("No such file or directory") == 6
+    assert p.stdout.rstrip().endswith(" /home/user/.claude/settings.json")
 
 
 def test_d1_workspace_and_archive_ok(tmp_path):
