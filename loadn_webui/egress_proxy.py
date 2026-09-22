@@ -231,11 +231,11 @@ class EgressProxy:
                                                headers=fwd)
             resp_body = up_resp.content
             status = up_resp.status_code
-            rh = "\r\n".join(
-                f"{k}: {v}" for k, v in up_resp.headers.items()
+            rh = "".join(
+                f"{k}: {v}\r\n" for k, v in up_resp.headers.items()
                 if k.lower() in ("content-type", "request-id",
                                  "anthropic-ratelimit-requests-remaining"))
-            head = (f"HTTP/1.1 {status} OK\r\n{rh}\r\n"
+            head = (f"HTTP/1.1 {status} OK\r\n{rh}"
                     f"Content-Length: {len(resp_body)}\r\n"
                     f"Connection: close\r\n\r\n")
             writer.write(head.encode("latin1") + resp_body)

@@ -187,7 +187,6 @@ async def test_a1_integration_hook_blocks_in_engine_turn(client, ws_root, monkey
     from tests.conftest import wait_turn
     t = await wait_turn(client, sid, tid, timeout_s=60)
     assert t["status"] == "done"                    # turn 受控完成（不崩溃）
-    assert not (ws / "PWNED").exists() or True      # hook 先于执行
     # 钩子拒绝的直接证据：引擎 transcript 里 tool_result 含 policy deny
     from loadn_webui import db as db_mod
     with db_mod.conn() as c:

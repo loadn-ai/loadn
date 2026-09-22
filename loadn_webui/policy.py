@@ -14,6 +14,7 @@ bash 解析：bashlex 保守档（M0）。解析失败 = block（fail-closed）�
 from __future__ import annotations
 
 import fnmatch
+import json
 import re
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -368,6 +369,27 @@ def cli_gateway(argv_words: list[str], subcommand: str) -> Decision:
     return Decision(ACTION_ALLOW)
 
 
+def _hook_sidelog(tool: str, inp: dict, d: Decision) -> None:
+    """沙箱内 hook 判定侧车：append 到 <cwd>/.loadn-hook-audit.jsonl。
+
+    沙箱不挂平台 var/（设计）——hook 无法直写审计库；宿主侧 engine._finish
+    回收本文件入账（_drain_hook_audit）。fail-soft：写失败不影响判定。
+    """
+    if d.action == ACTION_ALLOW:
+        return                                        # 只留 block/warn 痕
+    try:
+        import time as _t
+        from datetime import datetime as _dt, timezone as _tz
+        entry = {"ts": _dt.now(_tz.utc).isoformat(timespec="seconds"),
+                 "tool": tool,
+                 "subject": json.dumps(inp, ensure_ascii=False, default=str)[:300],
+                 "action": d.action, "reason": d.reason}
+        with open(".loadn-hook-audit.jsonl", "a", encoding="utf-8") as f:
+            f.write(json.dumps(entry, ensure_ascii=False) + "\n")
+    except OSError:
+        pass
+
+
 # ---------------------------------------------------------------- 钩子执行体
 
 def policy_check_hook(stdin_json: str) -> int:
@@ -397,6 +419,7 @@ def policy_check_hook(stdin_json: str) -> int:
         d = check_path(str(inp.get("file_path") or inp.get("path") or ""))
     else:
         d = Decision(ACTION_ALLOW)
+    _hook_sidelog(tool, inp, d)                  # 沙箱内审计侧车（宿主回收）
     if not d.ok:
         print(f"{d}", file=sys.stderr)
         return 2

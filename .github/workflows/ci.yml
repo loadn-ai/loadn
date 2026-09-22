@@ -53,9 +53,9 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: "3.12"
-      - run: pip install -e ".[webui,dev]"
+      - run: pip install -e ".[webui,dev]" pytest-cov
       - run: pip install playwright && playwright install chromium --with-deps || true
-      - run: pytest -q
+      - run: pytest -q --cov=loadn_webui --cov-fail-under=78
         env:
           LOADN_PROVIDER: fake
 

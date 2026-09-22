@@ -7,6 +7,7 @@ workspace 正常；其他会话档案不可见；turn 受控失败不崩溃。
 from __future__ import annotations
 
 import json
+import os
 import subprocess
 import time
 import uuid
@@ -110,8 +111,13 @@ async def test_d1_sandboxed_real_turn(client, ws_root, monkeypatch):
     from tests.conftest import wait_turn
     t = await wait_turn(client, sid, tid, timeout_s=40)
     assert t["status"] == "done", t.get("error")
-    # turn 产物落在宿主侧 workspace（bind 写透）
-    assert (ws / "out.txt").exists() or any(ws.rglob("*.txt")) or True
+    # turn 产物落在宿主侧 workspace（bind 写透）：引擎 transcript 落档
+    # （fake 引擎 Bash 不真执行——断言档案+审计，产物执行面由 D1 单测锁定）
+    from loadn_webui import db as db_mod
+    with db_mod.conn() as c:
+        sess = db_mod.get_session(c, sid)
+    ts = Path(os.environ.get("LOADN_HOME") or Path.home() / ".loadn")
+    assert (ts / "sessions" / sess["claude_session_id"] / "transcript.jsonl").exists()
     # 审计留痕 mode=bwrap
     from loadn_webui import audit as audit_mod
     rows = [r_ for r_ in audit_mod.tail(30, "snapshot")

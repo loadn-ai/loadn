@@ -1,0 +1,6 @@
+{"ts": "2026-09-22T12:01:44+00:00", "tool": "bash", "subject": "{\"command\": \"rm -rf /\"}", "action": "block", "reason": "递归强删根/家目录（L0 红线）"}
+{"ts": "2026-09-22T12:02:05+00:00", "tool": "bash", "subject": "{\"command\": \"rm -rf /\"}", "action": "block", "reason": "递归强删根/家目录（L0 红线）"}
+{"ts": "2026-09-22T12:02:50+00:00", "tool": "bash", "subject": "{\"command\": \"rm -rf /\"}", "action": "block", "reason": "递归强删根/家目录（L0 红线）"}
+{"ts": "2026-09-22T12:06:52+00:00", "tool": "bash", "subject": "{\"command\": \"rm -rf /\"}", "action": "block", "reason": "递归强删根/家目录（L0 红线）"}
+{"ts": "2026-09-22T12:07:34+00:00", "tool": "bash", "subject": "{\"command\": \"rm -rf /\"}", "action": "block", "reason": "递归强删根/家目录（L0 红线）"}
+{"ts": "2026-09-22T12:08:17+00:00", "tool": "bash", "subject": "{\"command\": \"rm -rf /\"}", "action": "block", "reason": "递归强删根/家目录（L0 红线）"}

@@ -29,12 +29,23 @@
 
 引擎侧唯一模型依赖=GLM-5.3；其余模型均在控制域（agent 不可达凭证）。
 
-## 三、对抗用例战果（CI 门禁）
+## 三、测试体系（CI 门禁，pytest-cov 总覆盖 ≥78% 门禁）
 
-tests/security/ 共 **10 文件 100+ 用例**：A1（红线+误拦护栏+集成态 hook 拦截）、
-A2/A3/A3b（审批防伪造）、A4（导出消毒）、B1/B2/B3（供应链）、C1（canary+kill）、
-C2 前半（env/盘面）、D1（沙箱六面）、E1（回滚）、E2（审计防篡改四路）、
-E3（谎报）、E4（毕业考三层）。全量 662 passed。
+**单元**：引擎 319（provider/tools/loop/hooks 单元）+ 平台新增
+transcript（0%→全函数：SSE 断线恢复兜底）/sandbox 分支（wrap_engine
+claude/opencode/uds 门控）/egress_proxy 主干（CONNECT 隧道允许与拒/
+502/LLM 网关注入断言真 token 到达上游/uds 双监听/Host 分片拒）/
+cli 管理命令（token/vault/audit/policy-check/kill-all 离线）等。
+**集成**：tests/security/ 101 条（A1 红线+误拦护栏+**沙箱内 hook 真拦截**/
+A3 审批防伪造/A4 消毒/B 系供应链/C1 canary/D1 沙箱七面+E2 审计防篡改
+四路/E1 回滚/E3 谎报/E4 毕业考）+ tests/e2e 平台三引擎 API 级。
+**端到端**：tests/e2e/test_full_stack.py——七段用户旅程单测试全栈
+（服务+代理 tcp/uds+沙箱+fake 引擎在场：建会话→沙箱 turn→hook 红线
+拦截→审批确认码全链→快照回滚→kill/unlock→审计链 verify）。
+**本测试轮实际抓出并修复的缺陷**：网关响应头拼接在 content-type 缺失时
+提前断头；沙箱内 hook 因 loadn_webui 源码树未挂载而静默失效；沙箱内
+hook 审计丢失（新增侧车文件+宿主 turn 终回收入账）；两处 `or True`
+废断言。全量 687 passed（覆盖率 81%，CI 阈值 78%）。
 
 ## 四、known-gap 清单（终版，按优先级）
 

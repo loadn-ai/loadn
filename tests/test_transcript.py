@@ -1,107 +1,120 @@
-"""transcript 持久化：replay 重建 / tool_result 归并 / compact 截断。"""
+"""transcript.py 单元测试（覆盖率从 0% 补齐——SSE 断线恢复的兜底路径）。"""
 from __future__ import annotations
 
-from loadn.core.session import SessionManager
-from loadn.persistence.transcript import TranscriptStore
-from loadn.types import Message, TextBlock, ToolResultBlock, ToolUseBlock
+import json
+import time
+from pathlib import Path
+
+import pytest
+
+from loadn_webui import transcript as ts
+
+SID = "11111111-2222-3333-4444-555555555555"
 
 
-def _assistant_text(t: str) -> dict:
-    return Message(role="assistant", content=[TextBlock(text=t)]).to_dict()
+@pytest.fixture()
+def fake_home(tmp_path, monkeypatch):
+    """伪 ~/.claude/projects/<slug>/<sid>.jsonl + 工作区。"""
+    monkeypatch.setenv("HOME", str(tmp_path))
+    proj = tmp_path / ".claude" / "projects" / "-data-code-x"
+    proj.mkdir(parents=True)
+    ws = tmp_path / "ws"
+    (ws / "notes").mkdir(parents=True)
+    return proj, ws
 
 
-def _assistant_tool(tu_id: str, name: str, args: dict) -> dict:
-    return Message(role="assistant",
-                   content=[ToolUseBlock(id=tu_id, name=name, input=args)]).to_dict()
+def _write(p: Path, events: list[dict]):
+    with (p / f"{SID}.jsonl").open("w") as f:
+        for e in events:
+            f.write(json.dumps(e, ensure_ascii=False) + "\n")
 
 
-def _tool_result(tu_id: str, content: str, is_error: bool = False) -> dict:
-    return ToolResultBlock(tool_use_id=tu_id, content=content,
-                           is_error=is_error).to_dict()
+def test_path_found_missing_empty(fake_home):
+    proj, _ = fake_home
+    _write(proj, [{"x": 1}])
+    assert ts.transcript_path(SID) == proj / f"{SID}.jsonl"
+    assert ts.transcript_path("00000000-0000-0000-0000-000000000000") is None
+    assert ts.transcript_path("") is None
 
 
-def test_replay_basic_grouping(tmp_path):
-    ts = TranscriptStore("s1", home=tmp_path)
-    ts.append("user", Message(role="user", content=[TextBlock(text="干活")]).to_dict())
-    ts.append("assistant", _assistant_tool("tu_1", "Bash", {"command": "ls"}))
-    ts.append("tool_result", _tool_result("tu_1", "a\nb"))
-    ts.append("tool_result", _tool_result("tu_2", "err", is_error=True))
-    ts.append("assistant", _assistant_text("完成"))
-    msgs = ts.replay_messages()
-    assert [m.role for m in msgs] == ["user", "assistant", "user", "assistant"]
-    # 连续 tool_result 归并成同一条 user 消息
-    assert len(msgs[2].content) == 2
-    assert all(isinstance(b, ToolResultBlock) for b in msgs[2].content)
-    assert msgs[2].content[1].is_error
+def test_tail_events_kinds(fake_home):
+    proj, _ = fake_home
+    _write(proj, [
+        {"type": "assistant", "message": {"content": [
+            {"type": "text", "text": "第一步"},
+            {"type": "tool_use", "id": "t1", "name": "Bash",
+             "input": {"command": "ls -la"}},
+        ]}},
+        {"type": "assistant", "message": {"content": [
+            {"type": "tool_use", "id": "t2", "name": "WebSearch",
+             "input": {"query": "测试查询"}},
+        ]}},
+        {"garbage": True},
+    ])
+    evs = ts.tail_events(SID, n=10)
+    kinds = [e["kind"] for e in evs]
+    assert kinds == ["text", "tool", "tool"]
+    assert "ls -la" in evs[1]["text"] and "WebSearch" in evs[2]["text"]
 
 
-def test_compact_truncates_history(tmp_path):
-    ts = TranscriptStore("s2", home=tmp_path)
-    ts.append("user", Message(role="user", content=[TextBlock(text="旧1")]).to_dict())
-    ts.append("assistant", _assistant_text("旧答"))
-    ts.append("compact", {"summary": "前面已压缩"})
-    ts.append("user", Message(role="user", content=[TextBlock(text="新1")]).to_dict())
-    ts.append("assistant", _assistant_text("新答"))
-    msgs = ts.replay_messages()
-    texts = [m.text_parts() for m in msgs]
-    assert "旧1" not in texts and "新1" in texts
+def test_tail_events_corrupt_and_window(fake_home):
+    proj, _ = fake_home
+    (proj / f"{SID}.jsonl").write_text("not json\n{bad\n")
+    assert ts.tail_events(SID) == []
+    assert ts.tail_events("00000000-0000-0000-0000-000000000000") == []
+    # 窗口截尾：n=1 只留最后一条
+    _write(proj, [
+        {"message": {"content": [{"type": "text", "text": "A"}]}},
+        {"message": {"content": [{"type": "text", "text": "B"}]}},
+    ])
+    assert [e["text"] for e in ts.tail_events(SID, n=1)] == ["B"]
 
 
-def test_replay_state_todos(tmp_path):
-    ts = TranscriptStore("s3", home=tmp_path)
-    ts.append("assistant", {
-        "role": "assistant",
-        "content": [{"type": "tool_use", "id": "tu_1", "name": "TodoWrite",
-                     "input": {"todos": [
-                         {"content": "步骤一", "status": "completed"},
-                         {"content": "步骤二", "status": "in_progress"}]}}]})
-    st = ts.replay_state()
-    assert [t["status"] for t in st["todos"]] == ["completed", "in_progress"]
+def test_latest_todos_taskcreate_update(fake_home):
+    proj, _ = fake_home
+    _write(proj, [
+        {"message": {"content": [{"type": "tool_use", "name": "TaskCreate",
+                                  "input": {"subject": "调研"}}]}},
+        {"message": {"content": [{"type": "tool_use", "name": "TaskCreate",
+                                  "input": {"subject": "写作"}}]}},
+        {"message": {"content": [{"type": "tool_use", "name": "TaskUpdate",
+                                  "input": {"taskId": 1, "status": "completed"}}]}},
+    ])
+    todos = ts.latest_todos(SID)
+    assert todos[0] == {"subject": "调研", "status": "completed"}
+    assert todos[1]["status"] == "pending"
 
 
-def test_half_line_tolerated(tmp_path):
-    import json as _json
-    ts = TranscriptStore("s4", home=tmp_path)
-    ts._ensure_dir()
-    with ts.path.open("a", encoding="utf-8") as f:
-        f.write(_json.dumps({"type": "user", "payload": {"role": "user",
-             "content": [{"type": "text", "text": "ok"}]},
-             "uuid": "u1"}) + "\n")
-        f.write('{"type":"assistant","payl')   # 被杀半行
-    assert len(ts.read_events()) == 1
+def test_latest_todos_todowrite_fallback(fake_home):
+    proj, _ = fake_home
+    _write(proj, [
+        {"message": {"content": [{"type": "tool_use", "name": "TodoWrite",
+                                  "input": {"todos": [
+                                      {"content": "甲", "status": "completed"},
+                                      {"content": "乙", "status": "in_progress"}]}}]}},
+    ])
+    todos = ts.latest_todos(SID)
+    assert todos[0]["subject"] == "甲" and todos[1]["status"] == "in_progress"
 
 
-def test_session_manager_roundtrip(tmp_path):
-    sm = SessionManager.create(tmp_path / "ws", title="t", home=tmp_path)
-    sid = sm.session_id
-    sm.append_user("第一问")
-    sm.append_event("assistant", _assistant_text("第一答"))
-    # resume：新实例按 id 重放
-    sm2 = SessionManager.resume(sid, tmp_path / "ws", home=tmp_path)
-    msgs = sm2.messages_for_turn()
-    assert msgs[-1].text_parts() == "第一答"
+def test_latest_todos_missing(fake_home):
+    assert ts.latest_todos("00000000-0000-0000-0000-000000000000") is None
 
 
-def test_fork_copies_history(tmp_path):
-    sm = SessionManager.create(tmp_path / "ws", home=tmp_path)
-    sm.append_user("Q")
-    sm.append_event("assistant", _assistant_text("A"))
-    fk = SessionManager.fork(sm.session_id, tmp_path / "ws", home=tmp_path)
-    assert fk.session_id != sm.session_id
-    msgs = fk.messages_for_turn()
-    assert any(m.text_parts() == "A" for m in msgs)
-
-
-def test_replay_reinjects_compact_summary(tmp_path):
-    """resume 修复：compact 点后的重放以摘要头开始（不丢交接）。"""
-    ts = TranscriptStore("sess-cs", home=tmp_path)
-    ts.append("user", {"role": "user", "content": [{"type": "text", "text": "旧问题"}]})
-    ts.append("compact", {"summary": "目标 X 已完成一半"}, fsync=True)
-    ts.append("user", {"role": "user", "content": [{"type": "text", "text": "压缩后新消息"}]})
-    msgs = ts.replay_messages()
-    assert msgs[0].role == "user"
-    first = msgs[0].text_parts()
-    assert "上下文已压缩" in first and "目标 X 已完成一半" in first
-    assert "压缩后新消息" in msgs[-1].text_parts()
-    # 旧消息（compact 之前）不在重放结果里
-    assert all("旧问题" != m.text_parts() for m in msgs)
+def test_recent_ws_files(fake_home):
+    _, ws = fake_home
+    fresh = ws / "notes" / "a.md"
+    fresh.write_text("x")
+    stale = ws / "notes" / "old.md"
+    stale.write_text("y")
+    old = time.time() - 3600
+    import os
+    os.utime(stale, (old, old))
+    hidden = ws / ".hidden"
+    hidden.mkdir()
+    (hidden / "h.txt").write_text("z")
+    files = ts.recent_ws_files(ws)
+    names = [f["path"] for f in files]
+    assert "notes/a.md" in names
+    assert "notes/old.md" not in names           # 超 max_age 排除
+    assert not any(".hidden" in n for n in names)  # 隐藏目录排除

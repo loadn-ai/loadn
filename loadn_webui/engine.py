@@ -268,6 +268,31 @@ class Engine:
                                  {"turn_id": tid, "error": "engine_internal_error"}, tid)
 
     # ------------------------------------------------------------ 停止
+    def _drain_hook_audit(self, sid: str, tid: int) -> None:
+        """回收沙箱内 hook 判定侧车 → 审计账本（宿主侧唯一写库点）。"""
+        import json as _json
+        from . import audit as _audit
+        from . import workspace as _ws
+        f = _ws.ws_of(sid) / ".loadn-hook-audit.jsonl"
+        try:
+            lines = f.read_text(encoding="utf-8").splitlines()
+        except OSError:
+            return
+        for ln in lines[-50:]:
+            try:
+                e = _json.loads(ln)
+            except _json.JSONDecodeError:
+                continue
+            _audit.audit("permission_decision",
+                         {"action": e.get("action"), "reason": e.get("reason"),
+                          "rule": "hook", "source": "hook-sandbox",
+                          "tool": e.get("tool"), "subject": e.get("subject")},
+                         sid=sid, turn_id=tid)
+        try:
+            f.unlink()
+        except OSError:
+            pass
+
     def _spotcheck_claims(self, sid: str, tid: int, res) -> None:
         """W6.3 谎报抽查：agent 自称的 artifacts 路径核对（存在+mtime 窗）。"""
         import re as _re
@@ -715,6 +740,7 @@ class Engine:
             self._emit(at, sid, "turn_error", payload)
         else:
             self._spotcheck_claims(sid, tid, res)
+            self._drain_hook_audit(sid, tid)
             self._emit(at, sid, "turn_done", payload)
         if rotate_reason:
             self._emit(at, sid, "session_rotated", {"turn_id": tid, "reason": rotate_reason})

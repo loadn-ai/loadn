@@ -90,9 +90,13 @@ def wrap_loadn(cmd: list[str], env: dict, *, sid_session: str,
             "--ro-bind-try", "/run/systemd/resolve", "/run/systemd/resolve",
             "--proc", "/proc", "--dev", "/dev",
             "--tmpfs", "/tmp",
-            # 引擎运行时（venv 只读；pyc 不写）+ 包源码树（editable 指回）
+            # 引擎运行时（venv 只读；pyc 不写）+ 包源码树（editable 指回）。
+            # loadn_webui 树也必须挂：PreToolUse hook 子进程（policy-check）
+            # 在沙箱内 import loadn_webui——漏挂则 hook 静默失效（E2E 实测教训）
             "--ro-bind", str(venv_dir), str(venv_dir),
             "--ro-bind-try", str(pkg_src), str(pkg_src),
+            "--ro-bind-try", str(venv_dir.parent / "loadn_webui"),
+            str(venv_dir.parent / "loadn_webui"),
             # workspace 同路径 rw（inputs 子目录 ro 由策略层后续收紧）
             "--bind", str(ws), str(ws),
             # 本会话引擎档案（resume/判死需要；其他会话不可见）
