@@ -36,7 +36,8 @@ PATHS = {
     "profiles": ROOT / "profiles",
     "prompts": ROOT / "prompts",
     "skills": ROOT / "skills",
-    "frontend_dist": ROOT / "ui" / "dist",
+    # 前端是代码工件（随 monorepo 走），不是数据——用代码根而非数据根
+    "frontend_dist": CODE_ROOT / "ui" / "dist",
 }
 
 
