@@ -4,3 +4,11 @@
 {"ts": "2026-09-22T12:06:52+00:00", "tool": "bash", "subject": "{\"command\": \"rm -rf /\"}", "action": "block", "reason": "递归强删根/家目录（L0 红线）"}
 {"ts": "2026-09-22T12:07:34+00:00", "tool": "bash", "subject": "{\"command\": \"rm -rf /\"}", "action": "block", "reason": "递归强删根/家目录（L0 红线）"}
 {"ts": "2026-09-22T12:08:17+00:00", "tool": "bash", "subject": "{\"command\": \"rm -rf /\"}", "action": "block", "reason": "递归强删根/家目录（L0 红线）"}
+{"ts": "2026-09-22T13:21:07+00:00", "tool": "bash", "subject": "{\"command\": \"rm -rf /\"}", "action": "block", "reason": "递归强删根/家目录（L0 红线）"}
+{"ts": "2026-09-22T13:21:49+00:00", "tool": "bash", "subject": "{\"command\": \"rm -rf /\"}", "action": "block", "reason": "递归强删根/家目录（L0 红线）"}
+{"ts": "2026-09-22T13:25:50+00:00", "tool": "bash", "subject": "{\"command\": \"rm -rf /\"}", "action": "block", "reason": "递归强删根/家目录（L0 红线）"}
+{"ts": "2026-09-22T13:27:45+00:00", "tool": "bash", "subject": "{\"command\": \"rm -rf /\"}", "action": "block", "reason": "递归强删根/家目录（L0 红线）"}
+{"ts": "2026-09-22T13:32:01+00:00", "tool": "bash", "subject": "{\"command\": \"rm -rf /\"}", "action": "block", "reason": "递归强删根/家目录（L0 红线）"}
+{"ts": "2026-09-22T13:32:43+00:00", "tool": "bash", "subject": "{\"command\": \"rm -rf /\"}", "action": "block", "reason": "递归强删根/家目录（L0 红线）"}
+{"ts": "2026-09-22T13:37:01+00:00", "tool": "bash", "subject": "{\"command\": \"rm -rf /\"}", "action": "block", "reason": "递归强删根/家目录（L0 红线）"}
+{"ts": "2026-09-22T13:37:41+00:00", "tool": "bash", "subject": "{\"command\": \"rm -rf /\"}", "action": "block", "reason": "递归强删根/家目录（L0 红线）"}

@@ -89,6 +89,35 @@ def _ensure_table(c: sqlite3.Connection, table: str = "audit_events") -> None:
         _initialized = True
 
 
+def repair_monthly_chain() -> int:
+    """一次性修复：月表链重算——每行 prev 应接上一行（首行接主表尾）。
+
+    背景：分表初版取链尾恒指历史主表尾，月表内 prev 全错（verify 报断链）。
+    幂等：重算结果与正确链一致时无变化。
+    """
+    with _conn() as c:
+        tables = _all_tables(c)
+        if len(tables) < 2:
+            return 0
+        main, months = tables[0], tables[1:]
+        row = c.execute(f"SELECT hash FROM {main} ORDER BY ts DESC"
+                        " LIMIT 1").fetchone()
+        prev = row["hash"] if row else GENESIS
+        n = 0
+        for t in months:
+            for r in c.execute(f"SELECT id, ts, sid, turn_id, type,"
+                               f" detail_json FROM {t} ORDER BY id"):
+                h = _row_hash(prev, _canonical(r["ts"], r["sid"],
+                                               r["turn_id"], r["type"],
+                                               r["detail_json"]))
+                c.execute(f"UPDATE {t} SET prev_hash=?, hash=? WHERE id=?",
+                          (prev, h, r["id"]))
+                prev = h
+                n += 1
+    log.info("审计月表链重算修复：%d 行", n)
+    return n
+
+
 def _migrate_placeholder_chain(c: sqlite3.Connection) -> None:
     """一次性迁移：W1-a 最小版占位行（prev/hash 恒创世值）→ 重算为真链。
 
@@ -127,17 +156,22 @@ def audit(type_: str, detail: dict, *, sid: str | None = None,
     """追加一条审计事件（链式哈希 + 惰性日锚点；永不抛）。"""
     if type_ not in TYPES:
         raise ValueError(f"未知审计事件类型 {type_!r}（TYPES 枚举外）")
-    ts = datetime.now(timezone.utc).isoformat(timespec="seconds")
+    ts = datetime.now(timezone.utc).isoformat(timespec="microseconds")  # 秒级在同秒多写下链尾判定不稳（实测教训）
     detail_json = json.dumps(detail, ensure_ascii=False, default=str)
     try:
         with _conn() as c:
-            row = None
-            for t in _all_tables(c):                  # 链尾在最新表
-                row = c.execute(f"SELECT hash FROM {t} ORDER BY id DESC"
+            # 链尾=全部表中 ts 最新的一行（分表各表 id 独立——旧法逐表
+            # 循环在存在历史主表时永远取旧尾，月表 prev 全错——生产实测教训）
+            tables = _all_tables(c)
+            if tables:
+                union = " UNION ALL ".join(
+                    f"SELECT hash, ts, rowid FROM {t}" for t in tables)
+                row = c.execute(f"SELECT hash FROM ({union})"
+                                " ORDER BY ts DESC, rowid DESC"
                                 " LIMIT 1").fetchone()
-                if row:
-                    break
-            prev = row["hash"] if row else GENESIS
+                prev = row["hash"] if row else GENESIS
+            else:
+                prev = GENESIS
             h = _row_hash(prev, _canonical(ts, sid, turn_id, type_, detail_json))
             table = _table_for(ts)
             _ensure_table(c, table)

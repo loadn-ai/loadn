@@ -658,7 +658,7 @@ def main(argv: list[str] | None = None) -> int:
     p_vlt = sub.add_parser("vault", help="保险库（W3.1：AES-GCM 加密）")
     p_vlt.add_argument("action", choices=["verify", "migrate"])
     p_aud = sub.add_parser("audit", help="审计账本（W6.1：哈希链+日锚点）")
-    p_aud.add_argument("action", choices=["tail", "verify", "export"])
+    p_aud.add_argument("action", choices=["tail", "verify", "export", "repair"])
     p_aud.add_argument("-n", type=int, default=20)
     p_aud.add_argument("--type", default="")
     p_aud.add_argument("--out", default="", help="export 落盘路径（默认 stdout）")
@@ -742,6 +742,11 @@ def main(argv: list[str] | None = None) -> int:
             for p_ in problems:
                 print("✗", p_)
             return 1
+        if args.action == "repair":
+            n = audit_mod.repair_monthly_chain()
+            problems = audit_mod.verify()
+            print(f"月表链重算 {n} 行；verify：{'健康' if not problems else problems[:3]}")
+            return 0 if not problems else 1
         data = audit_mod.export_jsonl()
         if args.out:
             pathlib_mod.Path(args.out).write_text(data + "\n")
