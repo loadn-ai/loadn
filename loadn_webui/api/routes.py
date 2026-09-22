@@ -713,6 +713,23 @@ def delete_session(sid: str, purge: bool = False):
 
 
 # ---------------------------------------------------------------- schedules（定时调度）
+# ---------------------------------------------------------------- 快照回滚（W6.2）
+@router.get("/sessions/{sid}/snapshots")
+def get_snapshots(sid: str):
+    from .. import workspace as ws_mod
+    from ..policy import list_snapshots
+    _get_session_or_404(sid)
+    return {"snapshots": list_snapshots(ws_mod.ws_of(sid))}
+
+
+@router.post("/sessions/{sid}/rollback")
+def post_rollback(sid: str, body: dict):
+    from .. import workspace as ws_mod
+    from ..policy import rollback
+    _get_session_or_404(sid)
+    return rollback(ws_mod.ws_of(sid), str(body.get("point") or ""))
+
+
 # ---------------------------------------------------------------- 熔断（W6.4）
 @router.post("/sessions/{sid}/kill")
 def kill_session(sid: str):

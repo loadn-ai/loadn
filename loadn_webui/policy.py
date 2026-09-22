@@ -257,6 +257,78 @@ def check_path(path: str) -> Decision:
     return Decision(ACTION_ALLOW)
 
 
+# ---------------------------------------------------------------- W6.2 快照
+
+def _snapshot_before_write(target: str) -> None:
+    """Write/Edit 写路径前把原文件快照到 <cwd>/.snapshots/<点>/<rel>。
+
+    内容寻址幂等（同点同文件只存一份）；恢复前先快照现状（rollback-pre）。
+    Bash 写目标不可静态知——该面靠 .snapshots 挂 tmpfs（沙箱）+ 快照点内
+    人工核对（诚实边界，v1.1 §6.7）。
+    """
+    import shutil as _sh
+    from datetime import datetime as _dt
+    t = Path(target)
+    if not t.is_file():
+        return                                   # 新建文件无原版可快照
+    try:
+        import hashlib as _hl
+        ws = Path.cwd()
+        rel = t.resolve().relative_to(ws)
+        if any(p == ".." for p in rel.parts):
+            return                               # 工作区外不快照（沙箱兜底）
+        digest = _hl.sha256(t.read_bytes()).hexdigest()[:16]
+        point = _dt.now().strftime("%Y%m%d-%H%M%S")
+        dst = ws / ".snapshots" / point / f"{rel}::{digest}"
+        if not dst.exists():
+            dst.parent.mkdir(parents=True, exist_ok=True)
+            _sh.copy2(t, dst)
+    except (OSError, ValueError):
+        pass                                     # 快照失败不阻断写（尽力而为）
+
+
+def list_snapshots(ws: Path) -> list[dict]:
+    """快照点清单（点/文件数/时间），供回滚 UI。"""
+    root = ws / ".snapshots"
+    if not root.exists():
+        return []
+    out = []
+    for point in sorted(root.iterdir()):
+        if not point.is_dir():
+            continue
+        files = list(point.rglob("*"))
+        out.append({"point": point.name, "files": len([f for f in files if f.is_file()])})
+    return out
+
+
+def rollback(ws: Path, point: str) -> dict:
+    """把快照点内全部文件恢复回工作区（恢复前现状先快照到 rollback-pre 点）。"""
+    import shutil as _sh
+    from datetime import datetime as _dt
+    src_dir = ws / ".snapshots" / point
+    if not src_dir.is_dir():
+        return {"ok": False, "error": f"快照点不存在: {point}"}
+    pre = ws / ".snapshots" / (_dt.now().strftime("rollback-pre-%Y%m%d-%H%M%S"))
+    restored = []
+    for f in sorted(src_dir.rglob("*::*")):
+        if not f.is_file():
+            continue
+        rel_with_digest = f.relative_to(src_dir)
+        rel = Path(str(rel_with_digest).rsplit("::", 1)[0])
+        dst = ws / rel
+        if dst.exists():
+            dst.parent.mkdir(parents=True, exist_ok=True)
+            pre_dst = pre / rel
+            pre_dst.parent.mkdir(parents=True, exist_ok=True)
+            _sh.copy2(dst, pre_dst)               # 现状先快照（可再回滚）
+        dst.parent.mkdir(parents=True, exist_ok=True)
+        _sh.copy2(f, dst)
+        restored.append(str(rel))
+    from .audit import audit as _audit
+    _audit("rollback", {"point": point, "restored": restored[:50]})
+    return {"ok": True, "restored": restored, "pre_snapshot": pre.name}
+
+
 # ---------------------------------------------------------------- 审计
 
 def _audit_decision(d: Decision, subject: str, source: str) -> None:
@@ -316,7 +388,12 @@ def policy_check_hook(stdin_json: str) -> int:
     inp = payload.get("tool_input") or payload.get("input") or {}
     if tool == "bash":
         d = check_command(str(inp.get("command") or ""), source="hook")
-    elif tool in ("write", "edit", "multiedit", "read"):
+    elif tool in ("write", "edit", "multiedit"):
+        target = str(inp.get("file_path") or inp.get("path") or "")
+        d = check_path(target)
+        if d.ok:
+            _snapshot_before_write(target)       # W6.2 写前快照（回滚底座）
+    elif tool == "read":
         d = check_path(str(inp.get("file_path") or inp.get("path") or ""))
     else:
         d = Decision(ACTION_ALLOW)
