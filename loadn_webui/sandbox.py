@@ -200,7 +200,7 @@ def wrap_engine(cmd: list[str], env: dict, *, engine: str, sid: str,
             cmd, env, cwd=cwd, extra_binds=[
                 ("ro", str(node), str(node)),
                 ("rw", str(home / ".claude/projects"), str(home / ".claude/projects")),
-                ("try-ro", str(home / ".claude/settings.json"), ""),
+                # settings.json 不挂（网关 env 由 spawn 注入；token 零入沙箱）
                 ("try-ro", str(home / ".claude/CLAUDE.md"), ""),
                 ("try-ro", str(home / ".claude/statsig"), ""),
                 ("try-ro", str(home / ".claude/cache"), ""),

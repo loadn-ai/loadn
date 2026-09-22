@@ -342,6 +342,15 @@ async def run_turn(call: TurnCall, stop: StopHandle | None = None) -> TurnProcRe
         {"LOADN_TURN_ID": str(call.turn_id),
          "WORKDADDY_TURN_ID": str(call.turn_id), **spec_env},
         call.env_extra)
+    # P5 凭证收回：LLM 引擎只知虚拟网关域+dummy token（真凭证在代理控制域）
+    from .config import CONFIG as _CFG
+    if _CFG.security.egress_mode in ("warn", "enforce") \
+            and _CFG.security.egress_proxy_port \
+            and spec.name in ("loadn", "hahaness", "claude"):
+        from .egress_proxy import GW_HOST
+        env["ANTHROPIC_BASE_URL"] = f"http://{GW_HOST}"
+        env.setdefault("ANTHROPIC_AUTH_TOKEN", "dummy-controlled-by-egress-gw")
+
     # W5.1：引擎流量走出口代理（白名单+审计+面板数据源；env 通道=可回退）
     from .config import CONFIG as _C
     if _C.security.egress_mode in ("warn", "enforce") \

@@ -15,6 +15,12 @@ import pytest
 from loadn_webui import audit as audit_mod
 
 
+def _t() -> str:
+    """当前月分表名（测试写库的真实表）。"""
+    from datetime import datetime, timezone
+    return "audit_events_" + datetime.now(timezone.utc).strftime("%Y%m")
+
+
 @pytest.fixture()
 def fresh_audit(tmp_path, monkeypatch):
     """独立账本（临时 var）+ 重置模块级缓存态。"""
@@ -40,7 +46,7 @@ def test_e2_chain_healthy_and_anchored(fresh_audit):
 def test_e2_single_row_tamper_located(fresh_audit):
     db = fresh_audit / "var" / "audit.db"
     c = sqlite3.connect(db)
-    c.execute("UPDATE audit_events SET detail_json='{\"i\":99,\"hacked\":true}' "
+    c.execute(f"UPDATE {_t()} SET detail_json='{{\"i\":99,\"hacked\":true}}' "
               "WHERE id=3")
     c.commit(); c.close()
     problems = audit_mod.verify()
@@ -50,7 +56,7 @@ def test_e2_single_row_tamper_located(fresh_audit):
 def test_e2_row_deletion_breaks_chain(fresh_audit):
     db = fresh_audit / "var" / "audit.db"
     c = sqlite3.connect(db)
-    c.execute("DELETE FROM audit_events WHERE id=3")
+    c.execute(f"DELETE FROM {_t()} WHERE id=3")
     c.commit(); c.close()
     problems = audit_mod.verify()
     assert any("断链" in p for p in problems)
@@ -61,7 +67,7 @@ def test_e2_full_rechain_exposed_by_anchor(fresh_audit):
     db = fresh_audit / "var" / "audit.db"
     c = sqlite3.connect(db)
     c.row_factory = sqlite3.Row
-    rows = list(c.execute("SELECT * FROM audit_events ORDER BY id"))
+    rows = list(c.execute(f"SELECT * FROM {_t()} ORDER BY id"))
     # 攻击：篡改行 2 内容并把整链重算得天衣无缝
     rows[1] = dict(rows[1])
     rows[1]["detail_json"] = '{"i": 2, "evil": true}'
@@ -69,7 +75,7 @@ def test_e2_full_rechain_exposed_by_anchor(fresh_audit):
     for r in rows:
         h = audit_mod._row_hash(prev, audit_mod._canonical(
             r["ts"], r["sid"], r["turn_id"], r["type"], r["detail_json"]))
-        c.execute("UPDATE audit_events SET prev_hash=?, hash=? WHERE id=?",
+        c.execute(f"UPDATE {_t()} SET prev_hash=?, hash=? WHERE id=?",
                   (prev, h, r["id"]))
         prev = h
     c.commit(); c.close()

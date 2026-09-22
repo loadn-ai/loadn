@@ -22,6 +22,28 @@ from .util import get_logger
 
 log = get_logger(__name__)
 
+GW_HOST = "llm-gw.internal"          # 虚拟域：代理内 LLM 网关（凭证注入点）
+GW_PATHS_PREFIX = ("/v1/messages", "/api/anthropic")   # 透传路径族
+
+
+def _upstream_creds() -> tuple[str, str]:
+    """真上游（base_url, token）——控制域读取全局 settings env 段（缓存）。"""
+    global _UPSTREAM
+    if _UPSTREAM is None:
+        import json as _json
+        from pathlib import Path as _P
+        try:
+            env = (_json.loads((_P.home() / ".claude" / "settings.json")
+                               .read_text()).get("env") or {})
+            _UPSTREAM = (env.get("ANTHROPIC_BASE_URL", "").rstrip("/"),
+                         env.get("ANTHROPIC_AUTH_TOKEN", ""))
+        except (OSError, ValueError):
+            _UPSTREAM = ("", "")
+    return _UPSTREAM
+
+
+_UPSTREAM = None
+
 
 def _allowed(host: str) -> bool:
     host = (host or "").lower().rstrip(".")
@@ -141,11 +163,17 @@ class EgressProxy:
 
     async def _plain_http(self, reader, writer, method: str, url: str,
                           headers: dict) -> None:
-        """明文绝对 URL 形态：Host 头判定（与 URL host 不一致=分片攻击，拒）。"""
+        """明文绝对 URL 形态：Host 头判定（与 URL host 不一致=分片攻击，拒）。
+
+        P5 LLM 网关：目标=GW_HOST → 代理内注入凭证转发真上游（token 零入沙箱）。
+        """
         from urllib.parse import urlsplit
         u = urlsplit(url if "//" in url else f"http://{url}")
         host_hdr = headers.get("host", "")
         host = u.hostname or host_hdr
+        if host == GW_HOST:
+            await self._llm_gateway(reader, writer, method, u, headers)
+            return
         if host_hdr and u.hostname and host_hdr.lower() != u.hostname.lower():
             _record(host, "deny-mismatch", CONFIG.security.egress_mode)
             if CONFIG.security.egress_mode == "enforce":
@@ -174,6 +202,51 @@ class EgressProxy:
         up_w.write(req.encode("latin1"))
         await up_w.drain()
         await self._pipe(reader, up_w, up_r, writer)
+
+    async def _llm_gateway(self, reader, writer, method, u, headers) -> None:
+        """虚拟域网关：读完整请求 → 注入 Authorization → httpx 连真上游。"""
+        import httpx as _hx
+        base, token = _upstream_creds()
+        if not base:
+            writer.write(b"HTTP/1.1 503 no upstream credentials\r\n"
+                         b"Content-Length: 0\r\n\r\n")
+            await writer.drain()
+            return
+        try:
+            clen = int(headers.get("content-length", "0") or 0)
+            body = await asyncio.wait_for(reader.read(clen), timeout=60) \
+                if clen else b""
+            fwd = {k: v for k, v in headers.items()
+                   if k not in ("host", "authorization", "content-length",
+                                "transfer-encoding", "proxy-connection",
+                                "connection")}
+            fwd["authorization"] = f"Bearer {token}"
+            fwd["x-api-key"] = token
+            _record(GW_HOST, "allow-gateway", CONFIG.security.egress_mode)
+            up_url = base + (u.path or "/v1/messages") + \
+                (f"?{u.query}" if u.query else "")
+            async with _hx.AsyncClient(timeout=600) as client:
+                up_resp = await client.request(method, up_url,
+                                               content=body or None,
+                                               headers=fwd)
+            resp_body = up_resp.content
+            status = up_resp.status_code
+            rh = "\r\n".join(
+                f"{k}: {v}" for k, v in up_resp.headers.items()
+                if k.lower() in ("content-type", "request-id",
+                                 "anthropic-ratelimit-requests-remaining"))
+            head = (f"HTTP/1.1 {status} OK\r\n{rh}\r\n"
+                    f"Content-Length: {len(resp_body)}\r\n"
+                    f"Connection: close\r\n\r\n")
+            writer.write(head.encode("latin1") + resp_body)
+            await writer.drain()
+        except (OSError, ValueError, _hx.HTTPError, asyncio.TimeoutError) as e:
+            log.exception("LLM 网关转发失败")
+            msg = f"gateway error: {type(e).__name__}".encode()
+            head = (b"HTTP/1.1 502 Bad Gateway\r\n"
+                    + f"Content-Length: {len(msg)}\r\n\r\n".encode())
+            writer.write(head + msg)
+            await writer.drain()
 
     async def _pipe(self, r1, w1, r2, w2) -> None:
         """双向裸转发。关闭时机：两方向都 EOF 后统一收尾——单方向 EOF 提前

@@ -40,7 +40,7 @@ TYPES = (
 GENESIS = "0" * 64
 
 _DDL = """
-CREATE TABLE IF NOT EXISTS audit_events (
+CREATE TABLE IF NOT EXISTS {t} (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
   ts TEXT NOT NULL,
   sid TEXT,
@@ -49,11 +49,15 @@ CREATE TABLE IF NOT EXISTS audit_events (
   detail_json TEXT NOT NULL,
   prev_hash TEXT NOT NULL,
   hash TEXT NOT NULL
-);
-CREATE INDEX IF NOT EXISTS idx_audit_type_ts ON audit_events(type, ts);
+)
 """
 
 _last_anchor_day: str = ""        # 进程内去重（跨进程由锚点文件自身幂等兜底）
+
+
+def _table_for(ts: str) -> str:
+    """月分表路由（v1.1 §6.7）：audit_events_YYYYMM；主表留作历史。"""
+    return "audit_events_" + (ts[:7].replace("-", "") if ts else "197001")
 
 
 def _conn() -> sqlite3.Connection:
@@ -64,13 +68,23 @@ def _conn() -> sqlite3.Connection:
     return c
 
 
+def _all_tables(c: sqlite3.Connection) -> list[str]:
+    """全部审计表（主表+各月表，升序=链序——分表按创建顺序接力）。"""
+    rows = c.execute("SELECT name FROM sqlite_master WHERE type='table' AND"
+                     " (name='audit_events' OR name LIKE 'audit_events_______')"
+                     " ORDER BY name").fetchall()
+    return [r["name"] for r in rows]
+
+
 _initialized = False
 
 
-def _ensure_table(c: sqlite3.Connection) -> None:
+def _ensure_table(c: sqlite3.Connection, table: str = "audit_events") -> None:
+    c.execute(_DDL.format(t=table))
+    c.execute(f"CREATE INDEX IF NOT EXISTS idx_{table}_type_ts"
+              f" ON {table}(type, ts)")
     global _initialized
     if not _initialized:
-        c.executescript(_DDL)
         _migrate_placeholder_chain(c)
         _initialized = True
 
@@ -81,10 +95,10 @@ def _migrate_placeholder_chain(c: sqlite3.Connection) -> None:
     占位行本身没有可校验性，重算=建立链基线（发生在 W6.1 上线时，属合法
     一次性动作；此后任何重算都是篡改信号，由 verify+锚点抓）。
     """
-    rows = list(c.execute("SELECT * FROM audit_events ORDER BY id"))
-    if not rows or not all(r["prev_hash"] == GENESIS and r["hash"] == GENESIS
-                           for r in rows):
-        return
+    try:
+        rows = list(c.execute("SELECT * FROM audit_events ORDER BY id"))
+    except sqlite3.OperationalError:
+        return                      # 主表不存在（分表新库）——无占位链可迁
     prev = GENESIS
     for r in rows:
         h = _row_hash(prev, _canonical(r["ts"], r["sid"], r["turn_id"],
@@ -117,13 +131,18 @@ def audit(type_: str, detail: dict, *, sid: str | None = None,
     detail_json = json.dumps(detail, ensure_ascii=False, default=str)
     try:
         with _conn() as c:
-            _ensure_table(c)
-            row = c.execute(
-                "SELECT hash FROM audit_events ORDER BY id DESC LIMIT 1").fetchone()
+            row = None
+            for t in _all_tables(c):                  # 链尾在最新表
+                row = c.execute(f"SELECT hash FROM {t} ORDER BY id DESC"
+                                " LIMIT 1").fetchone()
+                if row:
+                    break
             prev = row["hash"] if row else GENESIS
             h = _row_hash(prev, _canonical(ts, sid, turn_id, type_, detail_json))
+            table = _table_for(ts)
+            _ensure_table(c, table)
             c.execute(
-                "INSERT INTO audit_events (ts, sid, turn_id, type, detail_json,"
+                f"INSERT INTO {table} (ts, sid, turn_id, type, detail_json,"
                 " prev_hash, hash) VALUES (?,?,?,?,?,?,?)",
                 (ts, sid, turn_id, type_, detail_json, prev, h))
         _maybe_anchor(h)
@@ -179,15 +198,19 @@ def anchors() -> list[dict]:
 def tail(n: int = 20, type_: str | None = None) -> list[dict]:
     """最近事件（loadn-web audit tail / 调试用）。"""
     with _conn() as c:
-        _ensure_table(c)
-        q = "SELECT * FROM audit_events"
-        args: list = []
-        if type_:
-            q += " WHERE type=?"
-            args.append(type_)
-        q += " ORDER BY id DESC LIMIT ?"
-        args.append(n)
-        return [dict(r) for r in c.execute(q, args)]
+        out: list[dict] = []
+        for t in reversed(_all_tables(c)):            # 新表在前
+            q = f"SELECT * FROM {t}"
+            args: list = []
+            if type_:
+                q += " WHERE type=?"
+                args.append(type_)
+            q += " ORDER BY id DESC LIMIT ?"
+            args.append(n)
+            out.extend(dict(r) for r in c.execute(q, args))
+            if len(out) >= n:
+                break
+        return out[:n]
 
 
 def verify() -> list[str]:
@@ -199,8 +222,9 @@ def verify() -> list[str]:
     prev = GENESIS
     rows_by_hash: dict[str, int] = {}
     with _conn() as c:
-        _ensure_table(c)
-        rows = list(c.execute("SELECT * FROM audit_events ORDER BY id"))
+        rows = []
+        for t in _all_tables(c):                      # 链序=表序+表内 id 序
+            rows.extend(c.execute(f"SELECT * FROM {t} ORDER BY id"))
     for r in rows:
         if r["prev_hash"] != prev:
             problems.append(f"行 {r['id']}: prev_hash 断链"
@@ -222,8 +246,9 @@ def verify() -> list[str]:
 def export_jsonl() -> str:
     """全量导出（SIEM 对接 / 离线回放）。"""
     with _conn() as c:
-        _ensure_table(c)
-        rows = list(c.execute("SELECT * FROM audit_events ORDER BY id"))
+        rows = []
+        for t in _all_tables(c):
+            rows.extend(c.execute(f"SELECT * FROM {t} ORDER BY id"))
     return "\n".join(
         json.dumps({k: r[k] for k in
                     ("id", "ts", "sid", "turn_id", "type", "detail_json",
