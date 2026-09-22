@@ -528,10 +528,11 @@ def main(argv: list[str] | None = None) -> int:
     sub.add_parser("policy-check",
                    help="策略钩子执行体：stdin 传 {tool_name,tool_input}，"
                         "exit 2=block（W1 执行点 A 物化用）")
-    p_aud = sub.add_parser("audit", help="审计账本（W6.1 最小版）")
-    p_aud.add_argument("action", choices=["tail"])
+    p_aud = sub.add_parser("audit", help="审计账本（W6.1：哈希链+日锚点）")
+    p_aud.add_argument("action", choices=["tail", "verify", "export"])
     p_aud.add_argument("-n", type=int, default=20)
     p_aud.add_argument("--type", default="")
+    p_aud.add_argument("--out", default="", help="export 落盘路径（默认 stdout）")
 
     args = ap.parse_args(argv)
     if args.cmd == "token":
@@ -568,10 +569,30 @@ def main(argv: list[str] | None = None) -> int:
         from .policy import policy_check_hook
         return policy_check_hook(sys.stdin.read())
     if args.cmd == "audit":
+        import pathlib as pathlib_mod
+
         from . import audit as audit_mod
-        for row in audit_mod.tail(args.n, args.type or None):
-            print(f"{row['id']:>5} {row['ts']} {row['type']:20s} "
-                  f"{row['detail_json'][:110]}")
+        if args.action == "tail":
+            for row in audit_mod.tail(args.n, args.type or None):
+                print(f"{row['id']:>5} {row['ts']} {row['type']:20s} "
+                      f"{row['detail_json'][:110]}")
+            return 0
+        if args.action == "verify":
+            problems = audit_mod.verify()
+            if not problems:
+                rows = audit_mod.tail(1)
+                print(f"✓ 账本健康（链一致，锚点 {len(audit_mod.anchors())} 个，"
+                      f"末行 id={rows[0]['id'] if rows else 0}）")
+                return 0
+            for p_ in problems:
+                print("✗", p_)
+            return 1
+        data = audit_mod.export_jsonl()
+        if args.out:
+            pathlib_mod.Path(args.out).write_text(data + "\n")
+            print(f"导出 {len(data.splitlines())} 行 → {args.out}")
+        else:
+            print(data)
         return 0
     if args.cmd == "serve":
         import uvicorn
