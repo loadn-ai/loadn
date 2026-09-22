@@ -267,7 +267,14 @@ def _build_r_parser(sub) -> None:
 async def _run_r(args) -> int:
     import json as json_mod
 
+    from . import policy as policy_mod
     from . import resources
+
+    # W1-a 执行点 B：资源 CLI 统一网关（L0 红线 + 网络类目标域；策略在模型之外）
+    gw = policy_mod.cli_gateway([str(a) for a in sys.argv[1:]], args.rcmd)
+    if not gw.ok:
+        print(f"✗ 策略拦截：{gw}", file=sys.stderr)
+        return 2
 
     if args.rcmd == "ping":
         only = [x for x in args.only.split(",") if x] or None
@@ -518,6 +525,13 @@ def main(argv: list[str] | None = None) -> int:
 
     p_t = sub.add_parser("token", help="API token 管理（W0）")
     p_t.add_argument("action", choices=["show", "rotate"])
+    sub.add_parser("policy-check",
+                   help="策略钩子执行体：stdin 传 {tool_name,tool_input}，"
+                        "exit 2=block（W1 执行点 A 物化用）")
+    p_aud = sub.add_parser("audit", help="审计账本（W6.1 最小版）")
+    p_aud.add_argument("action", choices=["tail"])
+    p_aud.add_argument("-n", type=int, default=20)
+    p_aud.add_argument("--type", default="")
 
     args = ap.parse_args(argv)
     if args.cmd == "token":
@@ -549,6 +563,15 @@ def main(argv: list[str] | None = None) -> int:
             tmp.replace(p)
             print(f"已轮换 → {p}")
             print("重启服务生效：sudo systemctl restart workdaddy")
+        return 0
+    if args.cmd == "policy-check":
+        from .policy import policy_check_hook
+        return policy_check_hook(sys.stdin.read())
+    if args.cmd == "audit":
+        from . import audit as audit_mod
+        for row in audit_mod.tail(args.n, args.type or None):
+            print(f"{row['id']:>5} {row['ts']} {row['type']:20s} "
+                  f"{row['detail_json'][:110]}")
         return 0
     if args.cmd == "serve":
         import uvicorn

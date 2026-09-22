@@ -123,6 +123,24 @@ class TitleGenConfig:
 
 
 @dataclass
+class SecurityConfig:
+    """W1 确定性权限平面（v1.1 §6.2）。策略在模型之外；出厂即生效。"""
+    # L0 红线正则（覆盖=追加；文本+AST 双拦）
+    hard_blocklist_l0: list = field(default_factory=list)
+    # 不可逆工具（W1-2 approvals 确认码门；先网关告警）
+    irreversible_tools: list = field(default_factory=lambda: [
+        "mail", "sms", "wechat", "pay", "account_write", "browser_export"])
+    # 出口白名单（v1.1：出厂默认 enforce；存量部署可先 mode=warn 灰度两周）
+    egress_allow: list = field(default_factory=lambda: [
+        "api.anthropic.com", "api.bochaai.com", "open.bigmodel.cn",
+        "sms.example.test", "registry.npmjs.org", "pypi.org",
+        "ark.cn-beijing.volces.com", "2captcha.com", "capsolver.com"])
+    egress_mode: str = "enforce"          # enforce | warn
+    approval_ttl_s: int = 600
+    approval_cooldown_after: int = 5
+
+
+@dataclass
 class ShareConfig:
     # 产物分享：/share/<token> 公开只读路由挂在主服务上（VPS workdaddy.cc/share
     # → 本机 nginx :80 → 8792）；base_url 空 = 未启用（mint API 报错）。
@@ -197,6 +215,7 @@ class Config:
     share: ShareConfig = field(default_factory=ShareConfig)
     notify: NotifyConfig = field(default_factory=NotifyConfig)
     pricing: PricingConfig = field(default_factory=PricingConfig)
+    security: SecurityConfig = field(default_factory=SecurityConfig)
 
 
 def _apply_section(cfg_obj: object, section: dict) -> None:
@@ -223,7 +242,7 @@ def load_config() -> Config:
             sections = {"claude": cfg.claude, "engines": cfg.engines, "run": cfg.run,
                         "server": cfg.server, "mcp": cfg.mcp, "titlegen": cfg.titlegen,
                         "resources": cfg.resources, "share": cfg.share,
-                        "notify": cfg.notify, "pricing": cfg.pricing}
+                        "notify": cfg.notify, "pricing": cfg.pricing, "security": cfg.security}
             for name, obj in sections.items():
                 sec = data.get(name)
                 if isinstance(sec, dict):
