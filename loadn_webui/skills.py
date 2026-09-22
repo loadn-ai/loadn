@@ -257,11 +257,29 @@ def _install_dir(src: Path, src_root: Path, via: str, **extra) -> str:
     if dst.exists():
         raise FileExistsError(f"已存在同名 skill: {name}（overwrite=true 覆盖）")
     shutil.copytree(src, dst, symlinks=False)
+    # W4：解包后 symlink 清扫（resolve 必须留在包内——防 data 过滤器边角）
+    for lk in dst.rglob("*"):
+        if lk.is_symlink():
+            try:
+                lk.resolve().relative_to(dst)
+            except ValueError:
+                shutil.rmtree(dst, ignore_errors=True)
+                raise PermissionError(f"符号链接出界: {lk.relative_to(dst)}")
     total = _dir_size(dst)
     if total > MAX_SKILL_TOTAL_BYTES:
         shutil.rmtree(dst, ignore_errors=True)
         raise PermissionError(f"{name} 解包后 {total // 1048576}MB，超过 100MB 上限")
+    # W4 ②：八类静态扫描——红=拒装（净卸载），黄=装+留痕
+    from . import skill_scan
+    report = skill_scan.scan_skill(dst)
+    if report["level"] == "red":
+        shutil.rmtree(dst, ignore_errors=True)
+        raise PermissionError(
+            f"skill 扫描红线拒装：{[x['rule'] + ':' + x['detail'] for x in report['findings'] if x['level'] == 'red'][:3]}")
+    # W4 ③：能力声明（无则全禁草案）
+    skill_scan.ensure_capability(dst)
     src_meta = {"via": via, "installed_at": iso(),
+                "scan": {"level": report["level"], "n": len(report["findings"])},
                 "subdir": str(src.relative_to(src_root)) or "."}
     src_meta.update(extra)
     (dst / SOURCE_FILE).write_text(json.dumps(src_meta, ensure_ascii=False, indent=2))
@@ -361,10 +379,12 @@ def install_from_github(repo: str, subpath: str = "", ref: str | None = None,
             for mm in members:
                 if mm.name.startswith(("/", "\\")) or ".." in Path(mm.name).parts:
                     raise PermissionError(f"非法 tar 条目: {mm.name}")
+            # W4 解包加固：一律 data 过滤器；旧解释器（无 filter 形参）直接拒装
             try:
-                tf.extractall(tmp, filter="data")   # py3.10.12+/3.12+ 数据过滤器
-            except TypeError:                       # 旧解释器无 filter 形参
-                tf.extractall(tmp)
+                tf.extractall(tmp, filter="data")
+            except TypeError:
+                raise PermissionError(
+                    "当前 Python 无 tar 数据过滤器（需 3.10.12+/3.12+）——拒装")
         # tarball 顶层是 repo 名目录
         roots = [p for p in tmp.iterdir() if p.is_dir()]
         root = roots[0] if len(roots) == 1 else tmp

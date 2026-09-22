@@ -15,6 +15,9 @@ from pathlib import Path
 from . import profile as profile_mod
 from . import skills as skills_mod
 from .config import CODE_ROOT, CONFIG, PATHS
+from .util import get_logger
+
+log = get_logger(__name__)
 from .util import iso, slugify
 
 # 工作区目录契约（与 prompts/workspace.md.tmpl 保持一致）
@@ -51,12 +54,36 @@ def render_claude_md(sid: str, title: str, prof: profile_mod.Profile,
 
 
 def write_mcp_json(ws: Path, session_mcp: dict | None) -> None:
-    """全局 config.mcp.servers + 会话级覆盖 合并落 ws/.mcp.json（标准项目级格式）。"""
+    """全局 config.mcp.servers + 会话级覆盖 合并落 ws/.mcp.json（标准项目级格式）。
+
+    W4/B3：stdio server 的 command+args 记哈希锁（.mcp-lock.json）——
+    变更（rug pull）≠ 原哈希 → 审计 policy_change + 日志显著告警。
+    """
+    import hashlib
     merged = dict(CONFIG.mcp.servers or {})
     merged.update(session_mcp or {})
     p = ws / ".mcp.json"
     if merged:
         p.write_text(json.dumps({"mcpServers": merged}, ensure_ascii=False, indent=2))
+        locks = {}
+        for name, cfg in merged.items():
+            key = f"{cfg.get('command', '')} {' '.join(cfg.get('args') or [])}"
+            locks[name] = hashlib.sha256(key.encode()).hexdigest()[:16]
+        lp = ws / ".mcp-lock.json"
+        old = {}
+        try:
+            old = json.loads(lp.read_text())
+        except (OSError, json.JSONDecodeError):
+            pass
+        for name, h in locks.items():
+            if name in old and old[name] != h:
+                log.warning("[B3] MCP server %s 的 command/args 变更（rug pull"
+                            " 风险）：%s → %s——须人工确认", name, old[name], h)
+                from .audit import audit as _audit
+                _audit("policy_change",
+                       {"what": "mcp_command_changed", "server": name,
+                        "old": old[name], "new": h})
+        lp.write_text(json.dumps(locks, ensure_ascii=False, indent=2))
     else:
         p.unlink(missing_ok=True)
 
