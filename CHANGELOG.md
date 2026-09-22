@@ -3,6 +3,30 @@
 本项目的全部显著变更记录于此。格式遵循 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/)，
 版本遵循 [SemVer](https://semver.org/lang/zh-CN/)。
 
+## [0.2.0] - 2026-09-22
+
+### Added（loadn webui 安全栈——W0-W6 全量，详见 docs/ATTACK_SURFACE.md）
+- **W0** Web 加固：token 强制/Host 白名单/SSE ticket/管理面 admin 头/CSRF
+  免疫/预览 CSP（对抗用例 T1a/T1b）
+- **W1** 确定性权限平面：policy.py（L0 红线/L1 bashlex AST 出口域/glob
+  兜底 warn/fail-closed）三消费点（PreToolUse hooks 双引擎物化=执行点 A、
+  `loadn-web r` 网关=执行点 B、policy-check --hook）；approvals 确认码门
+  （summary 平台渲染防伪造+params_hash+TTL fail-closed+ApprovalBanner）；
+  三态工具矩阵（allow/ask/deny）
+- **W2** 执行沙箱：bwrap 文件系统隔离（同路径 bind/档案单会话/敏感路径
+  物理不挂/clearenv 白名单）——生产 loadn 引擎默认运行
+- **W3** 凭证治理：vault AES-256-GCM（LDV1）+spawn env 白名单
+- **W4** 供应链：八类静态扫描（红线拒装）+tar data filter 强制+能力声明
+  默认禁+MCP 哈希锁（rug pull 检测）
+- **W5** 数据流：出口白名单代理（enforce，生产 LLM 流量已收编）+md 导出
+  白名单消毒+外链占位+canary 蜜罐（命中熔断）+数据流向面板（流量 tab）
+- **W6** 审计与回滚：哈希链账本+链头日锚点（整库重算可暴露）+verify/
+  export+文件快照回滚（rollback-pre 双向）+kill switch（会话级+全局）+
+  谎报抽查
+- 对抗用例 tests/security/ 10 文件 100+ 条（A1-E4 全编号）；全量 662 passed
+- docs/PROTOCOL.md v1（引擎↔webui 唯一接口）+tests/contract/ 双面对赌；
+  架构铁律测试（进程边界 CI 红牌）
+
 ## [0.1.0] - 2026-09-22
 
 ### Changed
