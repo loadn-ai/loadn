@@ -100,7 +100,9 @@ def repair_monthly_chain() -> int:
         if len(tables) < 2:
             return 0
         main, months = tables[0], tables[1:]
-        row = c.execute(f"SELECT hash FROM {main} ORDER BY ts DESC"
+        # repair 语义=按 id 序接力：主表尾取 id 最大（同秒 ts DESC 不稳——
+        # 首版 repair 拿到倒数第二行，实抓）
+        row = c.execute(f"SELECT hash FROM {main} ORDER BY id DESC"
                         " LIMIT 1").fetchone()
         prev = row["hash"] if row else GENESIS
         n = 0
@@ -114,7 +116,11 @@ def repair_monthly_chain() -> int:
                           (prev, h, r["id"]))
                 prev = h
                 n += 1
-    log.info("审计月表链重算修复：%d 行", n)
+    # 重算改变历史行 hash——旧日锚点已指向失效值，重锚当前链头
+    global _last_anchor_day
+    _last_anchor_day = ""
+    _maybe_anchor(prev)
+    log.info("审计月表链重算修复：%d 行（已重锚链头）", n)
     return n
 
 
