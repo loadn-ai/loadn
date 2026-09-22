@@ -1,6 +1,6 @@
-# loadn 默认配置攻击面清单 v1 + AI-BOM（W6.5 交付物）
+# loadn 默认配置攻击面清单 v2 + AI-BOM（W6.5 交付物，1.0.0 终版）
 
-日期：2026-09-22 ｜ 基线：monorepo commit 4a46c5e+ ｜ 口径：默认配置（factory defaults）逐面盘点
+日期：2026-09-22 ｜ 基线：monorepo 1.0.0 ｜ 口径：默认配置（factory defaults）逐面盘点
 
 ## 一、攻击面清单（默认配置）
 
@@ -8,11 +8,11 @@
 |---|---|---|---|---|
 | 1 | Web API（127.0.0.1:8792） | 本机进程/反代 | token 强制（14 天宽限）+常量时间比较；Host 白名单；管理面 X-Loadn-Admin；SSE ticket；CSRF 免疫（自定义头） | 宽限期内无凭证放行（2026-10-06 到期 enforce）；?token= 兼容通道在日志/历史留痕 |
 | 2 | /share/<token> 公开只读 | 公网（VPS 反代） | 80-bit URL token+CSP sandbox+nosniff | URL 即凭证（设计取舍，攻击面清单如实披露） |
-| 3 | 执行面文件系统 | 引擎进程 | bwrap（usr/etc ro+workspace rw+档案单会话+敏感路径物理不挂） | /tmp 与系统临时区可写（误删兜底=快照回滚）；claude/opencode 引擎暂 direct（W2-a2） |
-| 4 | 执行面网络 | 引擎进程 | 出口代理 enforce（SNI/Host 判定+全量审计）+hook L1+CLI 网关 | **known-gap：沙箱 share-net**（物理 unshare-net 待代理一周观察后切）；DNS 查询本身可见（DoH 未禁） |
-| 5 | 引擎 LLM 凭证 | 沙箱内 | 仅 ro-bind settings.json 单文件 | **known-gap（M1→M2）**：凭证可达执行域（TLS 直通下代理无法注入）；M2 完整化=MITM 或本地网关端点 |
+| 3 | 执行面文件系统 | 引擎进程 | bwrap 全引擎（usr/etc ro+workspace rw+档案单会话+敏感路径物理不挂；claude/opencode 各自运行时+档案矩阵） | /tmp 与系统临时区可写（误删兜底=快照回滚） |
+| 4 | 执行面网络 | 引擎进程 | **unshare-net 物理断网**+唯一出口 unix socket 代理（uds 桥）；CONNECT 按 SNI/明文按 Host 判定+全量审计 | 沙箱内 socat 桥为单点（进程级；die-with-parent 同灭）；DNS 由代理侧解析（沙箱内无 DNS 泄露面） |
+| 5 | 引擎 LLM 凭证 | —— | **虚拟网关域 llm-gw.internal**：引擎只持 dummy token，真凭证由代理控制域注入转发；沙箱零挂载 settings.json（挂载面全扫零命中） | —（已关闭） |
 | 6 | 平台资源凭证 | 控制域 | vault.enc AES-GCM+CLI 网关+审批确认码 | 密钥与密文同机（防误拷贝不防全控同用户） |
-| 7 | 不可逆动作（邮件/支付/凭证写） | agent CLI | 确认码门（平台渲染 summary+params_hash+TTL） | **双轨 warn**（存量 skill 文档替换后切 enforce）；终端直调（无会话上下文）放行 |
+| 7 | 不可逆动作（邮件/支付/凭证写） | agent CLI | 确认码门 enforce（平台渲染 summary+params_hash+TTL fail-closed） | 终端直调（无会话上下文）=用户本人操作语义，放行 |
 | 8 | skill 供应链 | 市场安装 | 八类静态扫描（红线拒装）+tar data filter+能力声明默认禁+MCP 哈希锁 | 黄牌（出网端点/安装器）人工确认制；试运行隔离（依赖 W2 档2）未上线 |
 | 9 | 产物预览/导出 | 浏览器 | HTML 白名单消毒+外链占位+CSP 三头 | 占位符点击经代理确认（前端交互层） |
 | 10 | 插话/定时唤醒/附件注入 | 提示流 | 来源标注+宪法 Rule of Two+审批门兜底 | 提示层注入无法根除（L1 兜底=不可逆动作全须确认码） |
@@ -36,13 +36,12 @@ A2/A3/A3b（审批防伪造）、A4（导出消毒）、B1/B2/B3（供应链）�
 C2 前半（env/盘面）、D1（沙箱六面）、E1（回滚）、E2（审计防篡改四路）、
 E3（谎报）、E4（毕业考三层）。全量 662 passed。
 
-## 四、known-gap 清单（按优先级，诚实披露）
+## 四、known-gap 清单（终版，按优先级）
 
-1. 沙箱 share-net（物理断网待代理一周观察后切 unshare-net+socket）
-2. LLM 凭证在执行域（M2 完整化=TLS MITM 或网关端点化）
-3. approval_enforce=warn 双轨（存量 skill 文档渐进替换）
-4. claude/opencode 引擎沙箱包裹（W2-a2，档案/认证面结构不同）
-5. skill 试运行隔离（依赖 W2 档2=AIO 沙箱整会话）
-6. canary 的全外渗通道覆盖（当前 CLI/hook/代理三层；文件系统侧信道未覆盖）
-7. 审计月分表（量级未到；单表+日锚点先行）
-8. Bash 工具写路径快照（写目标不可静态知——沙箱 tmpfs 兜底）
+1. skill 试运行隔离（依赖 W2 档2=AIO 沙箱整会话——外来代码审查场景；
+   当前面由八类扫描红线+能力声明默认禁+黄牌人工确认管控）
+2. canary 的全外渗通道覆盖（CLI/hook/代理三层已覆盖；文件系统侧信道
+   ——如诱导用户人工外传——不在技术防线内，宪法 Rule of Two+审批门兜底）
+3. Bash 工具写路径快照（写目标不可静态知——/tmp 系统临时区由沙箱
+   tmpfs 隔离+workspace 写入有快照）
+4. desktop 壳（M3+ 形态扩展）与认证路径（合规阶段）不在 1.0.0 范围

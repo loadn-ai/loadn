@@ -103,12 +103,8 @@ def wrap_loadn(cmd: list[str], env: dict, *, sid_session: str,
         src = engine_home / f
         if src.exists():
             argv += ["--ro-bind", str(src), str(src)]
-    # claude 生态网关配置（ANTHROPIC_BASE_URL/AUTH_TOKEN 的 settings env 段）：
-    # 引擎 LLM 连接必需。M1 known-gap：LLM 凭证可达执行域（ro-bind 单文件，
-    # credentials/projects/cache 均不挂）；M2 代理注入后收回。
-    gw = Path.home() / ".claude" / "settings.json"
-    if gw.exists():
-        argv += ["--ro-bind", str(gw), str(gw)]
+    # P5：不再挂全局 ~/.claude/settings.json——LLM 走虚拟网关域（spawn
+    # env 注入净化 BASE_URL+dummy token，真凭证由代理控制域注入）。
     # P3：物理断网——unshare-net + 唯一出口=挂载的代理 unix socket。
     # 沙箱内 lo up（user ns 内可行）+ socat 桥 TCP:代理端口 → unix socket，
     # 引擎 env 的 https_proxy 指向沙箱内桥（引擎零改动）。

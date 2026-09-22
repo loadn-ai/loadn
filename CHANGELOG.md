@@ -3,6 +3,22 @@
 本项目的全部显著变更记录于此。格式遵循 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/)，
 版本遵循 [SemVer](https://semver.org/lang/zh-CN/)。
 
+## [1.0.0] - 2026-09-22（最终可交付版）
+
+### 最终形态（P1-P5 收尾，known-gap 六项关闭）
+- **P1** approval_enforce=enforce（skill 文档审批化后切终态——不可逆动作
+  全走确认码门）
+- **P2** 沙箱全引擎覆盖（claude：nvm 树+projects+净化配置；opencode：
+  +config 目录）——三引擎真机 done
+- **P3** unshare-net 物理断网：unix socket（var/run/egress.sock）挂载进
+  沙箱+沙箱内 lo up+socat TCP 桥（引擎零改动）；**绕代理直连全断**
+  （agent 实测 example.com→000）——硬指标 1 完整达成
+- **P4** 审计月分表 audit_events_YYYYMM（tail/verify/export 跨表链序）
+- **P5** LLM 凭证网关注入：虚拟域 llm-gw.internal——引擎只持 dummy token，
+  真凭证由代理控制域注入转发上游；沙箱不再挂 ~/.claude/settings.json，
+  **挂载面全扫真 token 零命中**——硬指标 2 完整达成
+- 对抗用例 101 条（tests/security/）+契约 8+架构 2，全量 663 passed
+
 ## [0.2.0] - 2026-09-22
 
 ### Added（loadn webui 安全栈——W0-W6 全量，详见 docs/ATTACK_SURFACE.md）
