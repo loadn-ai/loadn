@@ -751,6 +751,24 @@ def security_posture():
     }
 
 
+@router.get("/admin/approvals")
+def approvals_overview():
+    """全平台待审清单（安全中心「审批」卡明细）。管理面读。"""
+    from .. import approve as approve_mod
+    return {"pending": approve_mod.list_pending()}
+
+
+@router.get("/admin/vault")
+def vault_overview():
+    """凭证库概览（安全中心卡明细）：条目名/安全字段+完整性校验。
+
+    list_platforms 本就不含 password/recovery 明文——明文永不走 HTTP。
+    """
+    from .. import vault as vault_mod
+    return {"platforms": vault_mod.list_platforms(),
+            "verify": vault_mod.verify()}
+
+
 @router.get("/admin/audit")
 def audit_feed(n: int = 50, type: str | None = None):
     """审计事件流（管理面读；type 过滤同 audit tail）。"""

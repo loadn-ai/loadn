@@ -1,6 +1,7 @@
 // 安全中心（管理中心「安全」tab）：产品视角的 W0-W6 姿态呈现。
-// 设计原则：每张卡回答三问——这是什么 / 现在什么状态 / 异常了我该干什么；
-// 审计流说人话（类型中文化+详情字段化），内部网关噪声聚合不刷屏。
+// 交互模型：每张姿态卡是入口（master）——点开下方详情面板（detail），
+// 详情按卡各自取数：沙箱=近期任务隔离记录 / 审批=待审清单 / 出口=域聚合 /
+// vault=条目+完整性 / 账本=跳到事件流 / 蜜罐=锁定会话可解锁。
 import { useEffect, useRef, useState } from 'react';
 import { api } from '../api/client';
 import { useStore } from '../stores/sessions';
@@ -19,7 +20,6 @@ interface AuditEvent {
   sid: string | null; detail_json: string;
 }
 
-/** 审计类型 → 中文 + 过滤器项（''=全部，'__llm'=内部网关） */
 const TYPE_ZH: Record<string, string> = {
   egress_request: '外发请求', snapshot: '任务启动',
   approval_request: '审批请求', approval_decision: '审批决定',
@@ -43,7 +43,6 @@ function parse(d: string): Record<string, any> {
   try { return JSON.parse(d); } catch { return {}; }
 }
 
-/** 事件 → 一句人话（未知结构回落 k=v 拼接） */
 function humanize(e: AuditEvent): string {
   const d = parse(e.detail_json);
   switch (e.type) {
@@ -56,9 +55,9 @@ function humanize(e: AuditEvent): string {
     case 'snapshot':
       return `${d.engine ?? '?'} 引擎 · ${d.mode === 'bwrap' ? '沙箱内运行' : '⚠ 未隔离直跑'}`;
     case 'approval_request':
-      return `${d.action ?? d.summary ?? '敏感操作'} 等待确认码`;
+      return `${d.summary ?? '敏感操作'} 等待确认码`;
     case 'approval_decision':
-      return `${d.action ?? '敏感操作'} · ${d.decision === 'approved' ? '已批准' : '已拒绝'}`;
+      return `${d.summary ?? d.action ?? '敏感操作'} · ${d.decision === 'approved' ? '已批准' : '已拒绝'}`;
     case 'canary_hit':
       return `诱饵凭证被盗用（${d.subject ?? '?'}）——已自动熔断`;
     case 'kill_switch':
@@ -79,7 +78,7 @@ function aggregate(events: AuditEvent[]): (AuditEvent & { count?: number })[] {
     const isLlm = e.type === 'egress_request' && d.host === 'llm-gw.internal';
     const prev = out[out.length - 1];
     if (isLlm && prev && prev.count && parse(prev.detail_json).host === 'llm-gw.internal') {
-      prev.count += 1;                     // 相邻才合并（保留时间线语义）
+      prev.count += 1;
     } else {
       out.push(isLlm ? { ...e, count: 1 } : e);
     }
@@ -93,6 +92,7 @@ function Dot({ ok, warn }: { ok: boolean; warn?: boolean }) {
 }
 
 const card = { border: '1px solid var(--border,#333)', borderRadius: 8, padding: '10px 12px' };
+type CardKey = 'sandbox' | 'approvals' | 'egress' | 'vault' | 'audit' | 'canary';
 
 export default function SecurityPanel({ onClose }: { onClose: () => void }) {
   const [posture, setPosture] = useState<Posture | null>(null);
@@ -100,9 +100,11 @@ export default function SecurityPanel({ onClose }: { onClose: () => void }) {
   const [filter, setFilter] = useState('');
   const [verify, setVerify] = useState<{ ok: boolean; text: string } | null>(null);
   const [verifying, setVerifying] = useState(false);
-  const [armed, setArmed] = useState(false);        // 熔断两段式确认
+  const [armed, setArmed] = useState(false);
   const [busy, setBusy] = useState('');
+  const [open, setOpen] = useState<CardKey | null>(null);
   const armTimer = useRef<number | null>(null);
+  const feedRef = useRef<HTMLDivElement | null>(null);
   const openSession = useStore(s => s.openSession);
 
   const load = async () => {
@@ -130,7 +132,7 @@ export default function SecurityPanel({ onClose }: { onClose: () => void }) {
   };
 
   const doKillAll = async () => {
-    if (!armed) {                          // 第一段：进入确认态，5s 超时回退
+    if (!armed) {
       setArmed(true);
       armTimer.current = window.setTimeout(() => setArmed(false), 5000);
       return;
@@ -162,6 +164,14 @@ export default function SecurityPanel({ onClose }: { onClose: () => void }) {
     void openSession(sid);
   };
 
+  const toggle = (k: CardKey) => {
+    if (k === 'audit') {                    // 账本卡=跳到下方事件流
+      feedRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+      return;
+    }
+    setOpen(open === k ? null : k);
+  };
+
   if (!posture) return <div className="pad muted">加载中…</div>;
 
   const sandboxOk = posture.sandbox.mode === 'bwrap';
@@ -169,38 +179,38 @@ export default function SecurityPanel({ onClose }: { onClose: () => void }) {
   const policyWarn = posture.policy.approval_enforce === 'warn';
   const egressOk = posture.egress.mode === 'enforce';
   const egressWarn = posture.egress.mode === 'warn';
-  const cards = [
+  const cards: { key: CardKey; name: string; ok: boolean; warn?: boolean; icon: string;
+    top: string; sub: string; hint?: string; danger?: boolean }[] = [
     {
-      name: '沙箱隔离', ok: sandboxOk, icon: '📦',
-      top: sandboxOk ? `已隔离 · 近 ${posture.sandbox.window} 个任务全覆盖`
-        : '未启用（直跑）',
+      key: 'sandbox', name: '沙箱隔离', ok: sandboxOk, icon: '📦',
+      top: sandboxOk ? `已隔离 · 近 ${posture.sandbox.window} 个任务全覆盖` : '未启用（直跑）',
       sub: 'AI 执行的命令被关在隔离环境里，碰不到系统其它文件与真实网络。',
       hint: sandboxOk ? undefined : '在 config.yaml 的 security.sandbox 设为 bwrap 后重启。',
     },
     {
-      name: '敏感操作审批', ok: policyOk, warn: policyWarn, icon: '🔐',
+      key: 'approvals', name: '敏感操作审批', ok: policyOk, warn: policyWarn, icon: '🔐',
       top: policyOk ? '强制（高危操作须输确认码）' : policyWarn ? '仅告警（不拦截）' : posture.policy.approval_enforce,
       sub: '发邮件、动账号、付款类操作执行前需要你输确认码放行，AI 无法自行通过。',
       hint: policyOk ? undefined : '当前不拦截：在 config.yaml security.approval_enforce 设为 enforce。',
     },
     {
-      name: '网络出口管控', ok: egressOk, warn: egressWarn, icon: '🌐',
+      key: 'egress', name: '网络出口管控', ok: egressOk, warn: egressWarn, icon: '🌐',
       top: `${egressOk ? '强制' : '告警'} · 白名单 ${posture.egress.allow_count} 个域`,
       sub: 'AI 的所有对外请求经过代理，白名单之外的域名一律拒绝；模型调用走内部网关，凭证不进沙箱。',
     },
     {
-      name: '凭证保险库', ok: posture.vault.platforms > 0, icon: '🗝️',
+      key: 'vault', name: '凭证保险库', ok: posture.vault.platforms > 0, icon: '🗝️',
       top: `${posture.vault.platforms} 组账号 · AES-GCM 加密`,
       sub: '各类账号密码加密落盘，明文不出现在代码、配置和日志里。',
       hint: posture.vault.platforms > 0 ? undefined : '尚无凭证入库：用 loadn-web r account --set 添加。',
     },
     {
-      name: '审计账本', ok: true, icon: '🧾',
+      key: 'audit', name: '审计账本', ok: true, icon: '🧾',
       top: `防篡改 · 已记 ${posture.audit.last_id} 条 · ${posture.audit.anchors} 个锚点`,
-      sub: '敏感操作全部入链式账本，任何人（包括管理员）改一行都会被校验发现。',
+      sub: '敏感操作全部入链式账本，任何人（包括管理员）改一行都会被校验发现。点卡跳到事件流。',
     },
     {
-      name: '蜜罐诱饵', ok: !posture.canary.kill_all, icon: '🪤',
+      key: 'canary', name: '蜜罐诱饵', ok: !posture.canary.kill_all, icon: '🪤',
       top: posture.canary.kill_all ? '全局熔断激活中！'
         : posture.canary.locked_sessions.length
           ? `${posture.canary.locked_sessions.length} 个会话触发警报`
@@ -213,23 +223,36 @@ export default function SecurityPanel({ onClose }: { onClose: () => void }) {
   const isLlmEvent = (e: AuditEvent) =>
     e.type === 'egress_request' && parse(e.detail_json).host === 'llm-gw.internal';
   const visible = events.filter(e => {
-    if (filter === '__llm') return isLlmEvent(e);          // 明细：逐条看
+    if (filter === '__llm') return isLlmEvent(e);
     if (filter === 'approval_request')
       return e.type === 'approval_request' || e.type === 'approval_decision';
     if (filter) return e.type === filter;
-    return true;                                           // 全部：网关行走聚合
+    return true;
   });
   const rows: (AuditEvent & { count?: number })[] =
     filter === '__llm' ? visible : aggregate(visible);
 
   return (
     <div className="pad">
-      {/* ---- 姿态卡 ---- */}
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(290px, 1fr))', gap: 10, marginBottom: 14 }}>
+      {/* ---- 姿态卡（可点开明细） ---- */}
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(290px, 1fr))', gap: 10, marginBottom: open ? 10 : 14 }}>
         {cards.map(c => (
-          <div key={c.name} style={{ ...card, borderColor: c.danger ? 'var(--accent,#e5484d)' : undefined }}>
+          <div key={c.key} onClick={() => toggle(c.key)}
+            style={{
+              ...card,
+              borderColor: c.danger ? 'var(--accent,#e5484d)'
+                : open === c.key ? 'var(--accent,#4f6bf0)' : undefined,
+              cursor: 'pointer',
+              transition: 'border-color .15s, transform .1s',
+              transform: open === c.key ? 'translateY(-1px)' : undefined,
+            }}
+            onMouseEnter={e => { if (!c.danger && open !== c.key) e.currentTarget.style.borderColor = 'var(--accent,#4f6bf0)'; }}
+            onMouseLeave={e => { if (!c.danger && open !== c.key) e.currentTarget.style.borderColor = 'var(--border,#333)'; }}>
             <div style={{ display: 'flex', alignItems: 'center', fontWeight: 600 }}>
               <Dot ok={c.ok} warn={c.warn} /><span style={{ marginRight: 6 }}>{c.icon}</span>{c.name}
+              <span className="muted" style={{ marginLeft: 'auto', fontSize: 11 }}>
+                {c.key === 'audit' ? '事件流 ›' : open === c.key ? '收起 ⌃' : '明细 ›'}
+              </span>
             </div>
             <div style={{ fontSize: 13, marginTop: 4, color: c.ok || c.danger ? undefined : 'var(--muted)' }}>{c.top}</div>
             <div className="muted" style={{ fontSize: 12, marginTop: 6, lineHeight: 1.5 }}>{c.sub}</div>
@@ -237,6 +260,17 @@ export default function SecurityPanel({ onClose }: { onClose: () => void }) {
           </div>
         ))}
       </div>
+
+      {/* ---- 卡片详情面板 ---- */}
+      {open && (
+        <div style={{ ...card, marginBottom: 14, background: 'rgba(127,127,127,.04)' }}>
+          {open === 'sandbox' && <SandboxDetail events={events} jump={jump} />}
+          {open === 'approvals' && <ApprovalsDetail events={events} jump={jump} />}
+          {open === 'egress' && <EgressDetail />}
+          {open === 'vault' && <VaultDetail />}
+          {open === 'canary' && <CanaryDetail locked={posture.canary.locked_sessions} reload={load} jump={jump} />}
+        </div>
+      )}
 
       {/* ---- 操作区 ---- */}
       <div style={{ display: 'flex', gap: 10, alignItems: 'flex-start', flexWrap: 'wrap', marginBottom: 14 }}>
@@ -273,7 +307,7 @@ export default function SecurityPanel({ onClose }: { onClose: () => void }) {
       )}
 
       {/* ---- 审计事件流 ---- */}
-      <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 8, flexWrap: 'wrap' }}>
+      <div ref={feedRef} style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 8, flexWrap: 'wrap' }}>
         <b style={{ fontSize: 13 }}>操作记录</b>
         <span className="muted" style={{ fontSize: 12 }}>
           全部敏感动作的防篡改流水（{posture.audit.last_id} 条中的最近一段）
@@ -308,6 +342,206 @@ export default function SecurityPanel({ onClose }: { onClose: () => void }) {
               </tr>
             );
           })}
+        </tbody>
+      </table>
+    </div>
+  );
+}
+
+/* ================= 卡片详情 ================= */
+
+function DetailHead({ title, note }: { title: string; note?: string }) {
+  return (
+    <div style={{ display: 'flex', alignItems: 'baseline', gap: 10, marginBottom: 8 }}>
+      <b style={{ fontSize: 13 }}>{title}</b>
+      {note && <span className="muted" style={{ fontSize: 12 }}>{note}</span>}
+    </div>
+  );
+}
+
+function SandboxDetail({ events, jump }: { events: AuditEvent[]; jump: (s: string | null) => void }) {
+  const snaps = events.filter(e => e.type === 'snapshot').slice(0, 12);
+  return (
+    <div>
+      <DetailHead title="近期任务的隔离记录" note="点会话名跳转；「直跑」=未进沙箱（应排查）" />
+      <table className="kv-table" style={{ width: '100%' }}>
+        <thead><tr><th style={{ width: 96 }}>时间</th><th style={{ width: 80 }}>引擎</th><th style={{ width: 110 }}>隔离</th><th>会话</th></tr></thead>
+        <tbody>
+          {snaps.length === 0 && <tr><td colSpan={4} className="muted" style={{ textAlign: 'center', padding: 12 }}>（近期无任务）</td></tr>}
+          {snaps.map(s => {
+            const d = parse(s.detail_json);
+            const ok = d.mode === 'bwrap';
+            return (
+              <tr key={s.id}>
+                <td style={{ fontVariantNumeric: 'tabular-nums' }}>{(s.ts || '').slice(5, 19).replace('T', ' ')}</td>
+                <td>{d.engine ?? '?'}</td>
+                <td style={{ color: ok ? '#3aa675' : 'var(--accent,#e5484d)' }}>{ok ? '沙箱内' : '⚠ 直跑'}</td>
+                <td>{s.sid ? <a onClick={() => jump(s.sid)} style={{ cursor: 'pointer' }}>{s.sid}</a> : '—'}</td>
+              </tr>
+            );
+          })}
+        </tbody>
+      </table>
+    </div>
+  );
+}
+
+function ApprovalsDetail({ events, jump }: { events: AuditEvent[]; jump: (s: string | null) => void }) {
+  const [pending, setPending] = useState<{ id: number; sid: string; summary: string; created_at: string; ttl_s: number }[]>([]);
+  const [err, setErr] = useState('');
+  useEffect(() => {
+    void api<{ pending: typeof pending }>('/api/admin/approvals')
+      .then(d => setPending(d.pending))
+      .catch(e => setErr(String(e)));
+  }, []);
+  const decisions = events.filter(e => e.type === 'approval_decision').slice(0, 8);
+  return (
+    <div>
+      <DetailHead title="待审清单" note="确认码在对应会话的聊天卡片里输入（防伪造：平台渲染摘要）" />
+      {err && <div className="muted" style={{ fontSize: 12 }}>读取失败：{err}</div>}
+      <table className="kv-table" style={{ width: '100%', marginBottom: 10 }}>
+        <thead><tr><th style={{ width: 50 }}>#</th><th style={{ width: 96 }}>时间</th><th>操作摘要</th><th style={{ width: 140 }}>会话</th></tr></thead>
+        <tbody>
+          {pending.length === 0 && <tr><td colSpan={4} className="muted" style={{ textAlign: 'center', padding: 12 }}>（没有等待审批的操作）</td></tr>}
+          {pending.map(p => (
+            <tr key={p.id}>
+              <td>{p.id}</td>
+              <td style={{ fontVariantNumeric: 'tabular-nums' }}>{(p.created_at || '').slice(5, 19).replace('T', ' ')}</td>
+              <td>{p.summary}</td>
+              <td>{p.sid ? <a onClick={() => jump(p.sid)} style={{ cursor: 'pointer' }}>{p.sid.slice(0, 18)}…</a> : '—'}</td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+      {decisions.length > 0 && (
+        <>
+          <DetailHead title="最近的审批决定" />
+          <div style={{ fontSize: 12, lineHeight: 1.9 }}>
+            {decisions.map(d => (
+              <div key={d.id}>
+                <span className="muted">{(d.ts || '').slice(5, 19).replace('T', ' ')}</span>{' '}
+                {humanize(d)}
+              </div>
+            ))}
+          </div>
+        </>
+      )}
+    </div>
+  );
+}
+
+function EgressDetail() {
+  const [rows, setRows] = useState<{ host: string; n: number; denied: number; last: string }[]>([]);
+  const [mode, setMode] = useState('');
+  const [allow, setAllow] = useState<string[]>([]);
+  useEffect(() => {
+    void api<{ events: { ts: string; host: string; decision: string }[]; mode: string; allow: string[] }>('/api/admin/egress?n=100')
+      .then(d => {
+        setMode(d.mode); setAllow(d.allow ?? []);
+        const m = new Map<string, { n: number; denied: number; last: string }>();
+        for (const e of d.events) {
+          if (e.host === 'llm-gw.internal') continue;
+          const cur = m.get(e.host) ?? { n: 0, denied: 0, last: '' };
+          cur.n++; if (!String(e.decision).startsWith('allow')) cur.denied++;
+          cur.last = e.ts; m.set(e.host, cur);
+        }
+        setRows([...m.entries()].sort((a, b) => b[1].n - a[1].n).map(([host, v]) => ({ host, ...v })));
+      })
+      .catch(() => { });
+  }, []);
+  return (
+    <div>
+      <DetailHead title="窗口内外发的目标域" note={`mode=${mode || '-'} · 白名单外的域会被拒；完整时间线在「流量」tab`} />
+      <table className="kv-table" style={{ width: '100%' }}>
+        <thead><tr><th>域名</th><th style={{ width: 70 }}>次数</th><th style={{ width: 90 }}>判定</th><th style={{ width: 90 }}>最近</th></tr></thead>
+        <tbody>
+          {rows.length === 0 && <tr><td colSpan={4} className="muted" style={{ textAlign: 'center', padding: 12 }}>（窗口内没有对外请求）</td></tr>}
+          {rows.map(r => (
+            <tr key={r.host}>
+              <td>{r.host}</td>
+              <td style={{ fontVariantNumeric: 'tabular-nums' }}>{r.n}</td>
+              <td style={{ color: r.denied ? 'var(--accent,#e5484d)' : '#3aa675' }}>
+                {r.denied ? `拒绝 ${r.denied}/${r.n}` : '放行'}
+              </td>
+              <td style={{ fontVariantNumeric: 'tabular-nums' }}>{(r.last || '').slice(11, 19)}</td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+      <div className="muted" style={{ fontSize: 12, marginTop: 8 }}>
+        白名单（{allow.length} 域）：{allow.join(' · ') || '-'}
+      </div>
+    </div>
+  );
+}
+
+function VaultDetail() {
+  const [data, setData] = useState<{ platforms: { platform: string; user?: string; email?: string; has_password: boolean; updated_at: string }[]; verify: { ok: boolean; entries: number; encrypted: boolean; error?: string } } | null>(null);
+  useEffect(() => {
+    void api<typeof data>('/api/admin/vault').then(setData).catch(() => { });
+  }, []);
+  if (!data) return <div className="muted">读取中…</div>;
+  return (
+    <div>
+      <DetailHead
+        title={`入库凭证（${data.platforms.length} 组）`}
+        note={data.verify.ok ? '加密格式校验通过' : `⚠ 校验失败：${data.verify.error ?? '未知'}`} />
+      <div className="muted" style={{ fontSize: 12, marginBottom: 6 }}>
+        明文永不经过网络/界面；取用走审批门（loadn-web r account）。
+      </div>
+      <table className="kv-table" style={{ width: '100%' }}>
+        <thead><tr><th>平台</th><th>账号</th><th style={{ width: 70 }}>密码</th><th style={{ width: 110 }}>更新</th></tr></thead>
+        <tbody>
+          {data.platforms.map(p => (
+            <tr key={p.platform}>
+              <td>{p.platform}</td>
+              <td className="muted">{p.user || p.email || '-'}</td>
+              <td style={{ color: p.has_password ? '#3aa675' : 'var(--accent,#e5484d)' }}>
+                {p.has_password ? '已存' : '缺'}
+              </td>
+              <td style={{ fontVariantNumeric: 'tabular-nums' }}>{(p.updated_at || '').slice(0, 10)}</td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </div>
+  );
+}
+
+function CanaryDetail({ locked, reload, jump }: {
+  locked: { sid: string; reason: string }[];
+  reload: () => Promise<void>; jump: (s: string | null) => void;
+}) {
+  const [busy, setBusy] = useState('');
+  const unlock = async (sid: string) => {
+    if (!confirm(`解锁会话 ${sid}？只有确认过警报原因后才应解锁（蜜罐命中=有人/有注入在用诱饵凭证）。`)) return;
+    setBusy(sid);
+    try { await api(`/api/sessions/${sid}/unlock`, { method: 'POST' }); await reload(); }
+    catch (e) { alert(`解锁失败: ${e}`); }
+    finally { setBusy(''); }
+  };
+  return (
+    <div>
+      <DetailHead
+        title={locked.length ? `${locked.length} 个会话因警报锁定` : '没有触发警报的会话'}
+        note="诱饵凭证被使用=提示词注入或盗用的强信号，解锁前先核会话里发生了什么" />
+      <table className="kv-table" style={{ width: '100%' }}>
+        <tbody>
+          {locked.length === 0 && (
+            <tr><td className="muted" style={{ textAlign: 'center', padding: 12 }}>
+              全部正常。诱饵埋在每个会话的 notes/.canary_tokens.md，任何工具读到并使用都会立即熔断。
+            </td></tr>
+          )}
+          {locked.map(l => (
+            <tr key={l.sid}>
+              <td>
+                <a onClick={() => jump(l.sid)} style={{ cursor: 'pointer' }}>{l.sid}</a>
+                <span className="muted" style={{ marginLeft: 10, fontSize: 12 }}>{l.reason}</span>
+                <button style={{ marginLeft: 12 }} disabled={busy === l.sid}
+                  onClick={() => void unlock(l.sid)}>{busy === l.sid ? '解锁中…' : '解锁'}</button>
+              </td>
+            </tr>
+          ))}
         </tbody>
       </table>
     </div>

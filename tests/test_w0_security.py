@@ -363,3 +363,14 @@ def test_kill_all_clear_only_unlocks_kill_locks():
     assert canary_mod.is_locked("t-canaryx")      # 真警报不解
     assert not canary_mod.is_locked("t-killx")
     assert not (PATHS["run"] / "KILL_ALL").exists()
+
+
+def test_admin_approvals_and_vault_readonly(w0):
+    """审批清单/vault 概览端点：GET 可读（token 面），vault 响应不含明文字段。"""
+    r = _get(w0, "/api/admin/approvals", headers=w0["headers"])
+    assert r.status_code == 200 and "pending" in r.json()
+    r = _get(w0, "/api/admin/vault", headers=w0["headers"])
+    assert r.status_code == 200
+    d = r.json()
+    assert "platforms" in d and "verify" in d
+    assert "password" not in str(d.get("platforms"))
