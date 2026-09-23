@@ -39,7 +39,7 @@ class Profile:
     #   allow → permissions.allow（直通）；deny → disallow（现状管道）；
     #   ask → loadn 引擎 PermissionEngine 原生；claude 侧由 PreToolUse 钩子拦。
     tools: dict = field(default_factory=dict)
-    # 执行引擎（engines/ 注册名：claude|hahaness|opencode）；None=继承
+    # 执行引擎（engines/ 注册名：claude|loadn|opencode）；None=继承
     # config.yaml engines.default（灰度默认翻一处即全量切换）。
     engine: str | None = None
 

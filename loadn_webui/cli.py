@@ -1,4 +1,4 @@
-"""CLI：`workdaddy serve` 启动 API 服务；`workdaddy doctor` 自检；`workdaddy r` 资源；
+"""CLI：`loadn-web serve` 启动 API 服务；`loadn-web doctor` 自检；`loadn-web r` 资源；
 `loadn-web schedule` 定时调度；`loadn-web verify` 凭证巡检。"""
 from __future__ import annotations
 

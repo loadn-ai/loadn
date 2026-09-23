@@ -65,9 +65,9 @@ class PerEngineConfig:
 
 @dataclass
 class EnginesConfig:
-    # 可插拔无头引擎（workdaddy/engines/ 注册表）。default 为全局默认，灰度切换
+    # 可插拔无头引擎（loadn_webui/engines/ 注册表）。default 为全局默认，灰度切换
     # 只翻这一处；profile 可用 engine 字段按角色覆盖。opencode_provider 是
-    # opencode 模型前缀默认（zai=Z.AI GLM）。no_compact 控制 hahaness 内压：
+    # opencode 模型前缀默认（zai=Z.AI GLM）。no_compact 控制 loadn 内压：
     # None=自动（profile 设了 rotate_input_tokens 则禁内压），True/False 恒定。
     default: str = "claude"
     opencode_provider: str = "zai"
@@ -176,7 +176,7 @@ class NotifyConfig:
 
 @dataclass
 class PricingConfig:
-    # 成本分析页价目（$/M tokens、积分/M tokens）。留空 = 用 workdaddy/pricing.py
+    # 成本分析页价目（$/M tokens、积分/M tokens）。留空 = 用 loadn_webui/pricing.py
     # 内置 z.ai 官方价目；覆盖即**整表替换**（非深合并），键结构见 pricing.py。
     api: dict = field(default_factory=dict)
     plan_credits: dict = field(default_factory=dict)

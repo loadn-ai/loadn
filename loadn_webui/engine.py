@@ -125,7 +125,7 @@ class ActiveTurn:
     texts: list = field(default_factory=list)
     blocks: list = field(default_factory=list)
     tool_names: dict = field(default_factory=dict)   # tool_use_id → 工具名（tool_result 配对用）
-    # stream_event 逐 delta 直播（--verbose 下 claude/hahaness 都发）：缓冲合流
+    # stream_event 逐 delta 直播（--verbose 下 claude/loadn 都发）：缓冲合流
     # 后按 0.5s/320 字符冲刷成 delta 事件；整块 assistant 到达时若该类块已
     # 流式发射过则跳过重复直播（数据层照常入账）
     delta_buf: dict = field(default_factory=lambda: {"think": "", "text": ""})
@@ -192,7 +192,7 @@ class Engine:
             with db_mod.conn() as c:
                 row = db_mod.get_turn(c, tid)
                 eng = row["engine"] if row is not None else None
-            if eng in ("hahaness", "loadn"):
+            if eng in ("loadn", "hahaness"):  # hahaness=旧名 alias
                 path = ws_mod.ws_of(sid) / f".steer.{sid}.jsonl"
                 path.parent.mkdir(parents=True, exist_ok=True)
                 with path.open("a", encoding="utf-8") as f:

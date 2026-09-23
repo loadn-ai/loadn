@@ -346,7 +346,7 @@ async def run_turn(call: TurnCall, stop: StopHandle | None = None) -> TurnProcRe
     from .config import CONFIG as _CFG
     if _CFG.security.egress_mode in ("warn", "enforce") \
             and _CFG.security.egress_proxy_port \
-            and spec.name in ("loadn", "hahaness", "claude"):
+            and spec.name in ("loadn", "hahaness", "claude"):  # hahaness=alias
         from .egress_proxy import GW_HOST
         env["ANTHROPIC_BASE_URL"] = f"http://{GW_HOST}"
         env.setdefault("ANTHROPIC_AUTH_TOKEN", "dummy-controlled-by-egress-gw")
@@ -604,7 +604,7 @@ async def supervise_adopted(call: AdoptCall, stop: StopHandle) -> TurnProcResult
                                      log_out=str(call.out_log), log_err=str(call.err_log))
         # 无 result 行：opencode 无 rc 可言——err_log 空且 adapter 无 error 按
         # rc=0 合成（用 sink 的 adapter——带着重放状态，fresh adapter 无从合成）；
-        # 否则如实 error（claude/hahaness 无 result 行 = 异常死）
+        # 否则如实 error（claude/loadn 无 result 行 = 异常死）
         if err_msg is None and not err_tail:
             for nev in sink.adapter.finalize(0, duration):
                 await sink.feed_event(nev)
