@@ -3,7 +3,10 @@
 本项目的全部显著变更记录于此。格式遵循 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/)，
 版本遵循 [SemVer](https://semver.org/lang/zh-CN/)。
 
-## [1.0.0] - 2026-09-22（最终可交付版）
+## [0.3.0] - 2026-09-23（预发布：功能完备，对外仍 0.x 待稳）
+
+> 版本线勘误：原标 1.0.0 过早——开源发布未做、API 未承诺稳定，
+> 降回 0.x 语义（平台线 0.1.0→0.2.0→0.3.0 续）。
 
 ### 最终形态（P1-P5 收尾，known-gap 六项关闭）
 - **P1** approval_enforce=enforce（skill 文档审批化后切终态——不可逆动作
@@ -18,6 +21,11 @@
   真凭证由代理控制域注入转发上游；沙箱不再挂 ~/.claude/settings.json，
   **挂载面全扫真 token 零命中**——硬指标 2 完整达成
 - 对抗用例 101 条（tests/security/）+契约 8+架构 2，全量 663 passed
+- R7 发布系统：release/upgrade/rollback（/opt/loadn 自包含实例+原子指针
+  +自动回滚）；实修两坑——venv 须在最终位置创建（shebang 嵌绝对路径）、
+  release venv 必须用系统 python 创建（venv-from-venv 链式符号链在
+  bwrap 沙箱内断链，exit 126）
+- R9 开源前置：loadn init 安装向导+品牌残留清零+默认路径通用化
 
 ## [0.2.0] - 2026-09-22
 

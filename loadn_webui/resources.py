@@ -330,7 +330,7 @@ def _imap_open(box: dict, folder: str = "INBOX"):
     try:
         m.login(box["user"], box["auth_code"])
         try:    # 126/163 必须发 ID 否则 Unsafe Login；qq 等不支持的服务器忽略失败
-            m._simple_command("ID", '("name" "loadn" "version" "1.0.0")')
+            m._simple_command("ID", '("name" "loadn" "version" "0.3.0")')
         except Exception:  # noqa: BLE001
             pass
         typ, _ = m.select(folder, readonly=True)
