@@ -294,7 +294,12 @@ def cmd_release_build(tag: str, *, skip_ui: bool = False,
     print("[4/5] venv 构建（离线安装）")
     venv_dir = build_dir / ".venv"
     venv_python = venv_dir / "bin" / "python"
-    subprocess.run([sys.executable, "-m", "venv", str(venv_dir)], check=True)
+    # 用系统 Python 建 venv：venv-from-venv 的 bin/python 是符号链→
+    # 开发环境路径（/data/code/...），沙箱不挂载即断（exit 126 实测根因）
+    system_python = "/usr/bin/python3"
+    if not Path(system_python).exists():
+        system_python = sys.executable       # 兜底（非 Linux 场景）
+    subprocess.run([system_python, "-m", "venv", str(venv_dir)], check=True)
     subprocess.run(
         [str(venv_python), "-m", "pip", "install", "--no-index",
          "--find-links", str(wh), "setuptools>=61", "wheel", "pip",
@@ -709,7 +714,12 @@ def cmd_repair_venv(version: str) -> int:
     if venv_dir.exists():
         shutil.rmtree(venv_dir)
     venv_python = venv_dir / "bin" / "python"
-    subprocess.run([sys.executable, "-m", "venv", str(venv_dir)], check=True)
+    # 用系统 Python 建 venv：venv-from-venv 的 bin/python 是符号链→
+    # 开发环境路径（/data/code/...），沙箱不挂载即断（exit 126 实测根因）
+    system_python = "/usr/bin/python3"
+    if not Path(system_python).exists():
+        system_python = sys.executable       # 兜底（非 Linux 场景）
+    subprocess.run([system_python, "-m", "venv", str(venv_dir)], check=True)
     subprocess.run([str(venv_python), "-m", "pip", "install", "--no-index",
                     "--find-links", str(wh), "setuptools>=61", "wheel", "pip",
                     "-q"], check=True, timeout=300)
