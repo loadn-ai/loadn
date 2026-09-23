@@ -193,7 +193,7 @@ def wrap_engine(cmd: list[str], env: dict, *, engine: str, sid: str,
     from .config import CONFIG
     if CONFIG.security.sandbox != "bwrap":
         return cmd, "direct"
-    if engine in ("loadn", "hahaness"):
+    if engine in ("loadn", "hahaness"):  # hahaness=alias（旧引擎名会话）
         pass                                     # 走 wrap_loadn（同路径 bind 矩阵）
     elif engine == "claude":
         home = Path.home()
