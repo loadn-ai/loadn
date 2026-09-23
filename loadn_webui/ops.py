@@ -280,7 +280,17 @@ def cmd_release_build(tag: str, *, skip_ui: bool = False,
             print(f"✗ wheelhouse 预热失败：{r.stderr[-300:]}", file=sys.stderr)
             return EXIT_PRECONDITION
 
-    # 4) venv 构建
+    # 4) 先 mv 到 releases/（venv 必须在最终位置创建——console script 的
+    #    shebang 嵌入绝对路径，先建后移会导致解释器路径指向已删除的 build/）
+    RELEASES_DIR.mkdir(parents=True, exist_ok=True)
+    dst = RELEASES_DIR / tag
+    if dst.exists():
+        print(f"⚠️  {dst} 已存在，覆盖")
+        shutil.rmtree(dst)
+    os.rename(build_dir, dst)
+    build_dir = dst
+
+    # venv 构建（在最终位置）
     print("[4/5] venv 构建（离线安装）")
     venv_dir = build_dir / ".venv"
     venv_python = venv_dir / "bin" / "python"
@@ -293,7 +303,6 @@ def cmd_release_build(tag: str, *, skip_ui: bool = False,
         [str(venv_python), "-m", "pip", "install", "--no-index",
          "--find-links", str(wh), "-r", str(lock_file), "-q"],
         check=True, timeout=600)
-    # editable 安装项目自身（CODE_ROOT 契约：venv 的 .pth 指向 release 目录）
     subprocess.run(
         [str(venv_python), "-m", "pip", "install", "--no-deps",
          "--no-build-isolation", "-e", str(build_dir), "-q"],
@@ -317,13 +326,7 @@ def cmd_release_build(tag: str, *, skip_ui: bool = False,
             shutil.rmtree(build_dir, ignore_errors=True)
             return EXIT_PRECONDITION
 
-    # mv 到 releases/
-    RELEASES_DIR.mkdir(parents=True, exist_ok=True)
-    dst = RELEASES_DIR / tag
-    if dst.exists():
-        print(f"⚠️  {dst} 已存在，覆盖")
-        shutil.rmtree(dst)
-    os.rename(build_dir, dst)
+    # mv 已在 venv 构建前完成
     _log(f"release build {tag} sha={git_sha[:10]} lock={lock_hash}")
     print(f"✓ release {tag} → {dst}")
     return EXIT_OK
