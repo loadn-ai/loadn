@@ -44,7 +44,8 @@ def test_wrap_engine_loadn_routes(monkeypatch, tmp_path):
     monkeypatch.setattr(CONFIG.security, "sandbox", "bwrap")
     called = {}
     monkeypatch.setattr(sandbox, "wrap_loadn",
-                        lambda cmd, env, sid_session, cwd, project_root=None: called.update(
+                        lambda cmd, env, sid_session, cwd, project_root=None, \
+                               owner_sid="": called.update(
                             cmd=cmd, sid=sid_session) or ["wrapped"])
     cmd, mode = sandbox.wrap_engine(
         ["loadn", "-p", "--session-id", "aaaa-bbbb", "hi"], {},

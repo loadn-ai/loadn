@@ -140,6 +140,10 @@ class SecurityConfig:
         "ark.cn-beijing.volces.com", "2captcha.com", "capsolver.com",
         "opencode.ai", "llm-gw.internal"])
     egress_mode: str = "enforce"          # enforce | warn
+    # SSRF 内网敏感域（fetch_page 等宿主中介抓取的禁入后缀清单）——私网/回环/
+    # 链路本地 IP 段无条件拦截，这里只补「解析得到公网 IP 但属于平台侧通道」的域
+    ssrf_deny_hosts: list = field(default_factory=lambda: [
+        "llm-gw.internal", "sms.woldy.net"])
     approval_ttl_s: int = 600
     approval_cooldown_after: int = 5
     # 不可逆动作确认码门（M0 关门最终形态=enforce：skill 文档已审批化）；

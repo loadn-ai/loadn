@@ -47,6 +47,67 @@ async def _post(url: str, *, headers=None, params=None, data=None, files=None,
                              files=files, json=json)
 
 
+# ---------------------------------------------------------------- SSRF 防护
+# fetch_page 系（宿主中介抓取）接受 agent 可控 URL——不拦内网就是把中介通道
+# 变成绕过沙箱的侧门（agent 让宿主替它 GET llm-gw/sms 服务并读回响应）。
+# 拦两层：私网/回环/链路本地/保留 IP 段（无条件）+ 平台敏感域后缀（yaml 可配）。
+class SsrfBlocked(Exception):
+    """目标命中 SSRF 拦截（不落 CDP 兜底——浏览器同样不许去）。"""
+
+
+def _ssrf_deny_suffixes() -> tuple[str, ...]:
+    return tuple(CONFIG.security.ssrf_deny_hosts or ())
+
+
+async def _ssrf_check(url: str) -> None:
+    """agent 可控 URL 的出网前校验：scheme/敏感域后缀/解析 IP 段。
+
+    DNS 失败不拦（留给 _get 自然报错）；命中即抛 SsrfBlocked。
+    """
+    import ipaddress
+    import socket
+    from urllib.parse import urlsplit
+    u = urlsplit(url)
+    if u.scheme not in ("http", "https"):
+        raise SsrfBlocked(f"非 http(s) 协议: {u.scheme or '?'}")
+    host = (u.hostname or "").lower().rstrip(".")
+    if not host:
+        raise SsrfBlocked("URL 缺少主机名")
+    for d in _ssrf_deny_suffixes():
+        if host == d or host.endswith("." + d):
+            raise SsrfBlocked(f"目标域在平台敏感域清单: {host}")
+    try:                                   # 字面 IP 免解析
+        ips = [ipaddress.ip_address(host)]
+    except ValueError:
+        try:
+            infos = await asyncio.get_running_loop().getaddrinfo(host, None)
+        except (socket.gaierror, OSError):
+            return                          # 解析失败 → 交给 _get 报网络错
+        ips = [ipaddress.ip_address(i[4][0]) for i in infos]
+    for a in ips:
+        if (a.is_private or a.is_loopback or a.is_link_local or a.is_reserved
+                or a.is_multicast or a.is_unspecified):
+            raise SsrfBlocked(f"目标解析到内网/保留地址: {host} → {a}")
+
+
+async def _guarded_get(url: str, *, headers=None, timeout: float = 20.0,
+                       proxy: str | None = None, max_hops: int = 5):
+    """逐跳过 SSRF 校验的 GET（重定向手动跟随——httpx 的 follow_redirects
+    一把梭会绕过中间跳的校验：公网页 302 → 169.254 是经典逃逸）。"""
+    from urllib.parse import urljoin
+    for hop in range(max_hops + 1):
+        await _ssrf_check(url)
+        resp = await _get(url, headers=headers, timeout=timeout,
+                          follow_redirects=False, proxy=proxy)
+        if resp.status_code not in (301, 302, 303, 307, 308):
+            return resp
+        loc = resp.headers.get("location")
+        if not loc or hop == max_hops:
+            return resp                    # 无位置/超跳数 → 交上层按状态码处置
+        url = urljoin(str(resp.url), loc)
+    return resp
+
+
 # ---------------------------------------------------------------- OCR
 async def ocr_parse(path: str | Path, *, vlm: str = "false", max_pages: int = 0,
                     prompt: str = "", extract: str = "",
@@ -682,6 +743,7 @@ async def _ocr_page_images(html: str, url: str, *, mode: str = "auto",
             if src.startswith("data:image/"):
                 raw = base64.b64decode(src.split(",", 1)[-1])
             else:
+                await _ssrf_check(src)      # 图片 src 同为页面可控外联目标
                 resp = await _get(src, headers=_FETCH_HEADERS, timeout=12.0,
                                   proxy=_res().proxy if proxy else None)
                 if resp.status_code != 200:
@@ -814,11 +876,17 @@ async def fetch_page(url: str, *, force: bool = False, wait: float = 5.0,
                 "chars": len(text), "method": "cache", "cached": True,
                 "path": str(path), "images": []}
 
+    # 入口即过 SSRF 校验（CDP 兜底与直接 GET 同一目标——命中内网/敏感域
+    # 直接失败，绝不允许「直接 GET 被拦 → 换浏览器再去」的绕行）
+    try:
+        await _ssrf_check(url)
+    except SsrfBlocked as e:
+        raise RuntimeError(f"SSRF 拦截：{url}（{e}）") from e
+
     method, html, err = "direct", "", ""
-    try:  # 阶段①：直接 GET
-        resp = await _get(url, headers=_FETCH_HEADERS, timeout=20.0,
-                          follow_redirects=True,
-                          proxy=_res().proxy if proxy else None)
+    try:  # 阶段①：直接 GET（逐跳过 SSRF 的手动重定向）
+        resp = await _guarded_get(url, headers=_FETCH_HEADERS, timeout=20.0,
+                                  proxy=_res().proxy if proxy else None)
         ctype = resp.headers.get("content-type", "").lower()
         if resp.status_code != 200:
             err = f"HTTP {resp.status_code}"
@@ -829,6 +897,8 @@ async def fetch_page(url: str, *, force: bool = False, wait: float = 5.0,
             low = html[:4000].lower()
             if any(m in low for m in _CHALLENGE_MARKS):
                 err, html = "反爬挑战页", ""
+    except SsrfBlocked as e:
+        raise RuntimeError(f"SSRF 拦截：{url}（重定向链命中 {e}）") from e
     except Exception as e:  # noqa: BLE001 - 网络层任何异常都转 CDP
         err = f"{type(e).__name__}: {e}"[:120] if not str(e) else str(e)[:120]
 

@@ -202,6 +202,13 @@ def _build_r_parser(sub) -> None:
     p.add_argument("--out", default="", help="正文写入文件（推荐 notes/xxx.md）")
     p.add_argument("--json", action="store_true")
 
+    p = rsub.add_parser("egress",
+                        help="申请临时外联放行（审批通过即热生效，仅本任务沙箱）")
+    p.add_argument("host", help="目标域，如 api.example.com（无 scheme/路径）")
+    p.add_argument("--ttl", type=int, default=7200,
+                   help="授权时长秒（默认 2h；钳制 5m-24h）")
+    p.add_argument("--note", default="", help="申请理由（审批卡片上可见）")
+
     p = rsub.add_parser("sms", help="查询/等待真机短信")
     p.add_argument("--kw", default="", help="按关键字过滤（如 验证码）")
     p.add_argument("--n", type=int, default=10)
@@ -448,8 +455,15 @@ async def _run_r(args) -> int:
         return 0
 
     if args.rcmd == "fetch":
-        out = await resources.fetch_page(args.url, force=args.force, wait=args.wait,
-                                         proxy=args.proxy, ocr=args.ocr)
+        try:
+            out = await resources.fetch_page(args.url, force=args.force,
+                                             wait=args.wait, proxy=args.proxy,
+                                             ocr=args.ocr)
+        except RuntimeError as e:
+            if "SSRF 拦截" in str(e):     # 宿主中介的安全红线 → 策略级 exit 2
+                print(f"✗ 策略拦截：{e}", file=sys.stderr)
+                return 2
+            raise
         if args.out:
             from pathlib import Path
             Path(args.out).parent.mkdir(parents=True, exist_ok=True)
@@ -464,6 +478,46 @@ async def _run_r(args) -> int:
                   f" → {out.get('out') or out['path']}")
             print(out["text"][:800])
         return 0
+
+    if args.rcmd == "egress":
+        # 任务级临时外联放行：裁决即热生效（执行方=平台授权落表，无确认码步）
+        import asyncio as aio
+        import time as time_mod
+
+        from .egress_grants import valid_host
+        host = valid_host(args.host)
+        if not host:
+            print(f"✗ host 非法：{args.host!r}（需形如 api.example.com）",
+                  file=sys.stderr)
+            return 2
+        sid = _session_sid()
+        if not sid:
+            print("✗ 需要会话上下文（在平台会话内调用）", file=sys.stderr)
+            return 2
+        code, out = await _approval_gate_http(
+            "POST", f"/api/sessions/{sid}/approvals",
+            {"action_type": "egress", "params": {"host": host, "ttl_s": args.ttl},
+             "note": args.note})
+        if code != 200:
+            print(f"✗ 审批创建失败：{out.get('detail') or out}", file=sys.stderr)
+            return 2
+        aid = out["id"]
+        print(f"⏳ 外联审批 #{aid} 已挂起：{out['summary']}")
+        print("   审批卡片批准即热生效（限时，仅本任务沙箱）…")
+        t0 = time_mod.monotonic()
+        while time_mod.monotonic() - t0 < 600:
+            await aio.sleep(2)
+            code, st = await _approval_gate_http("GET", f"/api/approvals/{aid}")
+            if code != 200:
+                continue
+            if st["status"] == "executed":
+                print(f"✓ {host} 已限时放行。直接重试原请求即可。")
+                return 0
+            if st["status"] in ("denied", "expired"):
+                print(f"✗ {st['status']}（未放行）", file=sys.stderr)
+                return 1
+        print("✗ 超时未裁决（fail-closed）", file=sys.stderr)
+        return 1
 
     if args.rcmd == "sms":
         if args.wait:

@@ -434,10 +434,12 @@ function EgressDetail() {
   const [rows, setRows] = useState<{ host: string; n: number; denied: number; last: string }[]>([]);
   const [mode, setMode] = useState('');
   const [allow, setAllow] = useState<string[]>([]);
-  useEffect(() => {
-    void api<{ events: { ts: string; host: string; decision: string }[]; mode: string; allow: string[] }>('/api/admin/egress?n=100')
+  const [grants, setGrants] = useState<{ sid: string; host: string; expires_at: string }[]>([]);
+  const [busy, setBusy] = useState('');
+  const load = () => {
+    void api<{ events: { ts: string; host: string; decision: string }[]; mode: string; allow: string[]; grants: { sid: string; host: string; expires_at: string }[] }>('/api/admin/egress?n=100')
       .then(d => {
-        setMode(d.mode); setAllow(d.allow ?? []);
+        setMode(d.mode); setAllow(d.allow ?? []); setGrants(d.grants ?? []);
         const m = new Map<string, { n: number; denied: number; last: string }>();
         for (const e of d.events) {
           if (e.host === 'llm-gw.internal') continue;
@@ -448,12 +450,34 @@ function EgressDetail() {
         setRows([...m.entries()].sort((a, b) => b[1].n - a[1].n).map(([host, v]) => ({ host, ...v })));
       })
       .catch(() => { });
-  }, []);
+  };
+  useEffect(load, []);
+  const allowHost = (host: string) => {
+    setBusy(host);
+    void api<{ allow: string[] }>('/api/admin/egress/allow', {
+      method: 'POST', body: JSON.stringify({ host }),
+    }).then(d => { setAllow(d.allow ?? []); setBusy(''); })
+      .catch(() => setBusy(''));
+  };
+  const removeHost = (host: string) => {
+    setBusy(host);
+    void api<{ allow: string[] }>(`/api/admin/egress/allow?host=${encodeURIComponent(host)}`, {
+      method: 'DELETE',
+    }).then(d => { setAllow(d.allow ?? []); setBusy(''); })
+      .catch(() => setBusy(''));
+  };
+  const revokeGrant = (sid: string, host: string) => {
+    setBusy(host);
+    void api('/api/admin/egress/grant/revoke', {
+      method: 'POST', body: JSON.stringify({ sid, host }),
+    }).then(() => setBusy('')).catch(() => setBusy(''));
+    load();
+  };
   return (
     <div>
       <DetailHead title="窗口内外发的目标域" note={`mode=${mode || '-'} · 白名单外的域会被拒；完整时间线在「流量」tab`} />
       <table className="kv-table" style={{ width: '100%' }}>
-        <thead><tr><th>域名</th><th style={{ width: 70 }}>次数</th><th style={{ width: 90 }}>判定</th><th style={{ width: 90 }}>最近</th></tr></thead>
+        <thead><tr><th>域名</th><th style={{ width: 70 }}>次数</th><th style={{ width: 120 }}>判定</th><th style={{ width: 90 }}>最近</th></tr></thead>
         <tbody>
           {rows.length === 0 && <tr><td colSpan={4} className="muted" style={{ textAlign: 'center', padding: 12 }}>（窗口内没有对外请求）</td></tr>}
           {rows.map(r => (
@@ -464,13 +488,48 @@ function EgressDetail() {
                 {r.denied ? `拒绝 ${r.denied}/${r.n}` : '放行'}
               </td>
               <td style={{ fontVariantNumeric: 'tabular-nums' }}>{(r.last || '').slice(11, 19)}</td>
+              {r.denied > 0 && (
+                <td style={{ width: 80 }}>
+                  <button
+                    className="mini-btn"
+                    disabled={busy === r.host || allow.includes(r.host)}
+                    onClick={() => allowHost(r.host)}
+                    title="加入出口白名单（热生效，免重启）">
+                    {allow.includes(r.host) ? '已放行' : '放行'}
+                  </button>
+                </td>
+              )}
             </tr>
           ))}
         </tbody>
       </table>
-      <div className="muted" style={{ fontSize: 12, marginTop: 8 }}>
-        白名单（{allow.length} 域）：{allow.join(' · ') || '-'}
+      <div style={{ marginTop: 10, fontSize: 12, lineHeight: 2 }}>
+        <span className="muted">白名单（{allow.length} 域，点 × 移除即热生效）：</span>
+        {allow.map(h => (
+          <span key={h} className="chip" style={{ marginRight: 6 }}>
+            {h}
+            <a style={{ marginLeft: 4, cursor: 'pointer', opacity: 0.7 }}
+               onClick={() => removeHost(h)}
+               title={`移除 ${h}`}>×</a>
+          </span>
+        ))}
+        {allow.length === 0 && <span className="muted">-</span>}
       </div>
+      {grants.length > 0 && (
+        <div style={{ marginTop: 10 }}>
+          <div className="muted" style={{ fontSize: 12, marginBottom: 4 }}>
+            审批式临时授权（任务级限时，到期自动收回）：
+          </div>
+          {grants.map(g => (
+            <span key={`${g.sid}:${g.host}`} className="chip" style={{ marginRight: 6 }}>
+              {g.host} · {g.sid.slice(-6)} · 至 {g.expires_at.slice(11, 16)}
+              <a style={{ marginLeft: 4, cursor: 'pointer', opacity: 0.7 }}
+                 onClick={() => revokeGrant(g.sid, g.host)}
+                 title="立即收回（不等到期）">×</a>
+            </span>
+          ))}
+        </div>
+      )}
     </div>
   );
 }

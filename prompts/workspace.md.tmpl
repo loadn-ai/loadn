@@ -42,17 +42,27 @@ logs/        交接与阶段日志
    （`python3 "$WORKDADDY_CLI" r account --platform x --set password=…`），
    **绝不写进脚本/笔记/答案文件**；登录时用 `--field password` 现取。
 
-## 3. 搜索与抓取
+## 3. 搜索与抓取（网络路标——第一轮就看，不要盲摸）
+
+本环境**物理断网**（直连只有出口代理白名单），但抓取/搜索能力齐全——路都在宿主中介通道上：
+
+- **直连（requests/curl/wget/node fetch 直出）只用于装依赖与代码托管**：
+  白名单域（registry.npmjs.org / pypi.org / github.com 等）。其余域直连一律被
+  出口代理 403 拒——被拒后不要反复试探，也不要换域名猜，走下面的通道。
+- 搜索：`python3 "$WORKDADDY_CLI" r search "<query>"`（智谱/博查，任意主题）。
+- 抓网页正文：`python3 "$WORKDADDY_CLI" r fetch <url>` 或 `python3 {{FETCH_PAGE}} <url>`
+  （stdout 是 JSON：ok/path/title/chars；**任意公网域可抓**，反爬页自动回退真浏览器；
+  失败弃源，不要硬编）。
+- JS 渲染/登录/交互/验证码：web-hands-on skill §2 真浏览器（CDP 通道）。
+- 确需新的**直连**域（新代码托管站/要带密钥调用的外部 API）：
+  `python3 "$WORKDADDY_CLI" r egress <域名> --note "理由"` 发起审批——用户批准后
+  限时生效（默认 2h，仅本任务），到期自动收回；等待期间可先走 r fetch 拿公开内容。
 
 - **内建 WebSearch / WebFetch 已被平台禁用**（permissions 拦截），调用只会收到拒绝，
   不要尝试、不要在回复里推荐它们。
 - **禁止调用 `mcp__web_reader__webReader` / `mcp__4_5v_mcp__analyze_image`**——这是
   Z.AI 网关服务端注入的工具：烧 GLM Coding Plan 配额（常态 429 耗尽）、平台管控不到。
   即使它们出现在你的工具列表里也一律不用。
-- 联网一律走 web-hands-on skill：搜索 `python3 "$WORKDADDY_CLI" r search`（智谱/博查）；
-  正文 `python3 "$WORKDADDY_CLI" r fetch` 或 `python3 {{FETCH_PAGE}} <url>`
-  （stdout 是 JSON：ok/path/title/chars；失败回退真浏览器或弃源，不要硬编）；
-  JS 渲染/登录/交互/验证码走 skill §2 真浏览器。
 
 ## 4. 可用 skills
 

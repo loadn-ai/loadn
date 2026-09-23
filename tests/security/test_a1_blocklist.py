@@ -137,10 +137,16 @@ def _cli(*argv: str, tmp_home: str | None = None) -> subprocess.CompletedProcess
 
 
 def test_a1_cli_gateway_blocks_redline(tmp_path):
-    """`loadn-web r` 网关：网络类子命令目标域非白名单 → exit 2 + stderr 理由。"""
-    p = _cli("r", "fetch", "https://evil.com/x", tmp_home=str(tmp_path))
+    """`loadn-web r` 网关（中介/直连分治）：browser 富通道非白名单 → exit 2；
+    fetch 中介通道任意公网域可走，但 SSRF 面（内网/保留段/敏感域）→ exit 2。"""
+    p = _cli("r", "browser", "cdp", "https://evil.com/x", tmp_home=str(tmp_path))
     assert p.returncode == 2, p.stderr
-    assert "策略拦截" in p.stderr
+    assert "策略拦截" in p.stderr and "白名单" in p.stderr
+
+    p2 = _cli("r", "fetch", "http://169.254.169.254/latest/meta-data",
+              tmp_home=str(tmp_path))
+    assert p2.returncode == 2, p2.stderr
+    assert "SSRF" in p2.stderr
 
 
 def test_a1_policy_check_hook_protocol():

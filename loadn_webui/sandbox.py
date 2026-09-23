@@ -19,6 +19,7 @@
 """
 from __future__ import annotations
 
+import hashlib
 import os
 import shutil
 import sys
@@ -72,9 +73,14 @@ def _project_binds(argv: list[str], project_root: Path | None) -> list[str]:
 
 
 def wrap_loadn(cmd: list[str], env: dict, *, sid_session: str,
-               cwd: Path, project_root: Path | None = None) -> list[str] | None:
+               cwd: Path, project_root: Path | None = None,
+               owner_sid: str = "") -> list[str] | None:
     """loadn 引擎的 bwrap 包裹。返回完整 argv；环境不可用时返回 None
-    （调用方回落直跑并审计 sandbox_violation 计 warn）。"""
+    （调用方回落直跑并审计 sandbox_violation 计 warn）。
+
+    owner_sid：平台会话 id（审批临时授权的判定边界）——有会话级 socket 时
+    bind 之，代理凭 accept 来源按任务放行；sid_session 是引擎会话 id（档案）。
+    """
     exe = shutil.which("bwrap")
     if not exe:
         return None
@@ -132,7 +138,7 @@ def wrap_loadn(cmd: list[str], env: dict, *, sid_session: str,
     # P3：物理断网——unshare-net + 唯一出口=挂载的代理 unix socket。
     # 沙箱内 lo up（user ns 内可行）+ socat 桥 TCP:代理端口 → unix socket，
     # 引擎 env 的 https_proxy 指向沙箱内桥（引擎零改动）。
-    uds = _egress_uds()
+    uds = _egress_uds(owner_sid)
     if uds is not None:
         argv += ["--ro-bind", str(uds), str(uds)]
     argv += [
@@ -154,11 +160,20 @@ def wrap_loadn(cmd: list[str], env: dict, *, sid_session: str,
     return argv + ["bash", "-c", boot, "boot", *cmd]
 
 
-def _egress_uds() -> Path | None:
-    """宿主代理 unix socket 路径（存在才启用断网形态）。"""
+def _egress_uds(sid: str = "") -> Path | None:
+    """宿主代理 unix socket 路径（存在才启用断网形态）。
+
+    sid（平台会话 id）有会话级 socket 时优先——审批式临时授权的判定边界；
+    没有则回落共享 socket（仅全局白名单，无任务级放行面）。
+    """
     from .config import CONFIG
     if CONFIG.security.egress_mode not in ("warn", "enforce"):
         return None
+    if sid:
+        tag = hashlib.sha1(sid.encode()).hexdigest()[:12]
+        per = PATHS["run"] / f"egress-{tag}.sock"
+        if per.exists():
+            return per
     uds = PATHS["run"] / "egress.sock"
     return uds if uds.exists() else None
 
@@ -205,7 +220,8 @@ def _wrap_generic(cmd: list[str], env: dict, *, cwd: Path,
 
 
 def wrap_engine(cmd: list[str], env: dict, *, engine: str, sid: str,
-                cwd: Path, project_root: Path | None = None) -> tuple[list[str], str]:
+                cwd: Path, project_root: Path | None = None,
+                owner_sid: str = "") -> tuple[list[str], str]:
     """spawn 入口：按引擎/profile 选包裹。返回 (argv, mode)。
 
     mode: "bwrap" | "direct"（不可用回落，audit 留痕由调用方记）。
@@ -213,6 +229,7 @@ def wrap_engine(cmd: list[str], env: dict, *, engine: str, sid: str,
     ~/.claude/settings.json ro（网关 env 段=M1 known-gap）+ 全局 CLAUDE.md ro。
     opencode：node 树 ro + ~/.local/share/opencode rw（档案）。
     project_root：项目子任务的项目根（宪法 ro + 共享 inputs rw）。
+    owner_sid：平台会话 id（loadn 引擎会话级 egress socket 用）。
     """
     from .config import CONFIG
     if CONFIG.security.sandbox != "bwrap":
@@ -260,7 +277,7 @@ def wrap_engine(cmd: list[str], env: dict, *, engine: str, sid: str,
             sid_session = cmd[i + 1]
             break
     wrapped = wrap_loadn(cmd, env, sid_session=sid_session, cwd=Path(cwd),
-                         project_root=project_root)
+                         project_root=project_root, owner_sid=owner_sid)
     if wrapped is None:
         log.warning("bwrap 不可用，%s 引擎直跑（sandbox=off 回落，审计记录）", engine)
         return cmd, "direct-fallback"

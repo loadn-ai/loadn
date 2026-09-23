@@ -251,6 +251,42 @@ def put_resources(body: dict) -> dict:
     return get_settings()
 
 
+def put_egress_allow(action: str, host: str) -> dict:
+    """出口白名单增删（数据流向页「一键放行/移除」）。
+
+    yaml round-trip 持久化 + 内存 CONFIG 原地更新——proxy._allowed 实时读
+    CONFIG，写完即热生效（免重启，不再为加一个域杀掉在跑的 turn）。
+    """
+    from .egress_grants import valid_host
+    h = valid_host(host or "")
+    if not h:
+        raise ValueError(f"域名非法: {host!r}（需形如 api.example.com，无 scheme/路径）")
+    data = _load_yaml_conf(_conf_path())
+    sec = data.setdefault("security", {})
+    if "egress_allow" in sec:
+        base = sec["egress_allow"] or []
+    else:
+        # yaml 未写该键：以内存现行清单为底（出厂默认或热更后的状态）——
+        # 若以空表为底，首次放行会把默认白名单整体清零
+        base = CONFIG.security.egress_allow
+    allow = [str(a) for a in base if str(a).strip()]
+    if action == "add":
+        if h not in allow:
+            allow.append(h)
+    elif action == "remove":
+        allow = [a for a in allow if a != h]
+    else:
+        raise ValueError("action 只能是 add|remove")
+    sec["egress_allow"] = allow
+    _dump_yaml_conf(_conf_path(), data)
+    CONFIG.security.egress_allow = allow
+    from .audit import audit
+    audit("egress_policy", {"action": f"allowlist-{action}", "host": h,
+                            "allow": allow})
+    log.info("egress 白名单 %s: %s（共 %d 域）", action, h, len(allow))
+    return {"ok": True, "host": h, "allow": allow}
+
+
 async def test_resources(only: list[str] | None = None) -> dict:
     """探测外部资源连通性（vlm 只查配置；真实链路用 CLI `wd r vlm` 验证）。"""
     from . import resources

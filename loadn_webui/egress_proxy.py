@@ -25,6 +25,13 @@ log = get_logger(__name__)
 GW_HOST = "llm-gw.internal"          # 虚拟域：代理内 LLM 网关（凭证注入点）
 GW_PATHS_PREFIX = ("/v1/messages", "/api/anthropic")   # 透传路径族
 
+# 运行实例（lifespan start() 注册；spawn 侧 ensure_session_uds 的入口）
+_INSTANCE: EgressProxy | None = None
+
+
+def get_proxy() -> EgressProxy | None:
+    return _INSTANCE
+
 
 def _upstream_creds() -> tuple[str, str]:
     """真上游（base_url, token）——控制域读取全局 settings env 段（缓存）。"""
@@ -51,6 +58,45 @@ def _allowed(host: str) -> bool:
                for a in CONFIG.security.egress_allow)
 
 
+_POLICY_MTIME: int | None = None
+
+
+def _maybe_reload_policy() -> None:
+    """白名单/模式热重载：config.yaml 外部手工编辑免重启生效。
+
+    管理面写路径（settings_admin）已原地更新 CONFIG，这里只兜「直接改 yaml」。
+    每请求一次 stat（便宜）；解析失败保持旧值。刻意只热更 egress 两键——
+    sandbox 等其余 security 键影响面在 spawn 期，仍按重启语义走。
+    """
+    global _POLICY_MTIME
+    import os as _os
+
+    from .config import PATHS as _P
+    p = _P["root"] / "config.yaml"
+    try:
+        mtime = _os.stat(p).st_mtime_ns
+    except OSError:
+        return
+    if mtime == _POLICY_MTIME:
+        return
+    _POLICY_MTIME = mtime
+    try:
+        import yaml as _yaml
+        data = _yaml.safe_load(p.read_text()) or {}
+        sec = data.get("security") if isinstance(data, dict) else None
+        if not isinstance(sec, dict):
+            return
+        allow, mode = sec.get("egress_allow"), sec.get("egress_mode")
+        if isinstance(allow, list):
+            CONFIG.security.egress_allow = [str(a) for a in allow]
+        if isinstance(mode, str):
+            CONFIG.security.egress_mode = mode
+        log.info("egress 策略热重载：allow=%d 域 mode=%s",
+                 len(CONFIG.security.egress_allow), CONFIG.security.egress_mode)
+    except (OSError, ValueError):
+        log.warning("config.yaml 解析失败，egress 策略保持旧值")
+
+
 def _record(host: str, decision: str, mode: str, port: int = 0) -> None:
     audit("egress_request",
           {"host": host, "decision": decision, "mode": mode, "port": port})
@@ -67,6 +113,9 @@ class EgressProxy:
 
     双监听：TCP（claude/opencode 引擎，share-net 场景）+ Unix socket
     （loadn 引擎 unshare-net 场景——socket 可 bind-mount 进沙箱）。
+    会话级 socket（ensure_session_uds）：loadn 沙箱 bind 各自的
+    egress-<sid12>.sock，代理凭 accept 来源区分会话——审批式临时授权
+    （egress_grants）按任务生效的判定边界。
     """
 
     def __init__(self, host: str = "127.0.0.1", port: int = 8793,
@@ -74,8 +123,41 @@ class EgressProxy:
         self.host, self.port, self.uds_path = host, port, uds_path
         self._server: asyncio.AbstractServer | None = None
         self._uds_server: asyncio.AbstractServer | None = None
+        self._session_servers: dict[str, asyncio.AbstractServer] = {}
+
+    def _session_path(self, sid: str):
+        """会话级 socket 路径（短哈希防 unix 路径 108 字节上限）。"""
+        import hashlib
+        from pathlib import Path as _P
+        tag = hashlib.sha1(sid.encode()).hexdigest()[:12]
+        return _P(self.uds_path).parent / f"egress-{tag}.sock"
+
+    async def ensure_session_uds(self, sid: str) -> str | None:
+        """幂等创建会话级监听（loadn 引擎 spawn 前调用）。返回 socket 路径。"""
+        if not self.uds_path:
+            return None
+        if sid in self._session_servers:
+            return str(self._session_path(sid))
+        p = self._session_path(sid)
+        try:
+            import os as _os
+            p.parent.mkdir(parents=True, exist_ok=True)
+            try:
+                _os.unlink(p)
+            except OSError:
+                pass
+            srv = await asyncio.start_unix_server(
+                lambda r, w: self._handle(r, w, sid), path=str(p), limit=1 << 20)
+            _os.chmod(p, 0o660)
+            self._session_servers[sid] = srv
+            return str(p)
+        except OSError:
+            log.exception("会话级 egress socket 创建失败（%s）", sid)
+            return None
 
     async def start(self) -> int:
+        global _INSTANCE
+        _INSTANCE = self
         self._server = await asyncio.start_server(
             self._handle, self.host, self.port, limit=1 << 20)
         # port=0（随机）时取实际绑定端口
@@ -101,13 +183,15 @@ class EgressProxy:
         return self.port
 
     async def stop(self) -> None:
-        for srv in (self._server, self._uds_server):
+        for srv in (self._server, self._uds_server,
+                    *self._session_servers.values()):
             if srv:
                 srv.close()
                 await srv.wait_closed()
 
     async def _handle(self, reader: asyncio.StreamReader,
-                      writer: asyncio.StreamWriter) -> None:
+                      writer: asyncio.StreamWriter,
+                      sid: str | None = None) -> None:
         try:
             line = await asyncio.wait_for(reader.readline(), timeout=30)
             parts = line.decode("latin1").split()
@@ -123,10 +207,10 @@ class EgressProxy:
                 k, _, v = h.decode("latin1").partition(":")
                 headers_raw[k.strip().lower()] = v.strip()
             if method == "CONNECT":
-                await self._connect(reader, writer, target)
+                await self._connect(reader, writer, target, sid)
             else:
                 await self._plain_http(reader, writer, method, target,
-                                        headers_raw)
+                                        headers_raw, sid)
         except (asyncio.TimeoutError, OSError, ValueError):
             pass
         finally:
@@ -135,18 +219,24 @@ class EgressProxy:
             except OSError:
                 pass
 
-    def _gate(self, host: str, port: int) -> bool:
+    def _gate(self, host: str, port: int, sid: str | None = None) -> bool:
+        _maybe_reload_policy()
+        from . import egress_grants
         mode = CONFIG.security.egress_mode
         if _allowed(host):
             _record(host, "allow", mode, port)
             return True
+        if sid and egress_grants.allowed(sid, host):
+            _record(host, "allow-grant", mode, port)
+            return True
         _record(host, "deny", mode, port)
         return mode != "enforce"          # warn：拒绝只记录，放行直通
 
-    async def _connect(self, reader, writer, target: str) -> None:
+    async def _connect(self, reader, writer, target: str,
+                       sid: str | None = None) -> None:
         host, _, port_s = target.partition(":")
         port = int(port_s or "443")
-        if not self._gate(host, port):
+        if not self._gate(host, port, sid):
             writer.write(b"HTTP/1.1 403 Forbidden by egress policy\r\n\r\n")
             await writer.drain()
             return
@@ -162,7 +252,7 @@ class EgressProxy:
         await self._pipe(reader, upstream[1], upstream[0], writer)
 
     async def _plain_http(self, reader, writer, method: str, url: str,
-                          headers: dict) -> None:
+                          headers: dict, sid: str | None = None) -> None:
         """明文绝对 URL 形态：Host 头判定（与 URL host 不一致=分片攻击，拒）。
 
         P5 LLM 网关：目标=GW_HOST → 代理内注入凭证转发真上游（token 零入沙箱）。
@@ -181,7 +271,7 @@ class EgressProxy:
                 await writer.drain()
                 return
         port = u.port or 80
-        if not self._gate(host, port):
+        if not self._gate(host, port, sid):
             writer.write(b"HTTP/1.1 403 Forbidden by egress policy\r\n\r\n")
             await writer.drain()
             return

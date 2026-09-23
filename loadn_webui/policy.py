@@ -342,15 +342,19 @@ def _audit_decision(d: Decision, subject: str, source: str) -> None:
 def cli_gateway(argv_words: list[str], subcommand: str) -> Decision:
     """资源 CLI（loadn-web r …）执行点 B：全 argv 过 L0 + 网络类目标域。
 
-    irreversible 子命令（mail/sms/pay/...）的确认码门在 W1-2（approvals）
-    接入；本版先拦红线与非白名单外联。
+    中介与直连分治（「封网络不封能力」）：
+    - fetch/search 是宿主中介 GET（resources._ssrf_check 拦内网/敏感域 +
+      只回提取正文 + 审计/缓存）——不吃直连白名单，宽进；
+    - browser 是富通道（CDP 真浏览器可登录/POST）——保守沿用直连白名单；
+    - 直连（Bash curl/wget）由 check_command 的 L1 段守，语义不变。
+    irreversible 子命令（mail/sms/pay/...）的确认码门在 W1-2（approvals）。
     """
     from .config import CONFIG
     sig = " ".join(argv_words)
     d = check_command(sig, source="cli-gateway")
     if not d.ok:
         return d
-    if subcommand in ("fetch", "search", "browser"):
+    if subcommand == "browser":
         urls = [w for w in argv_words if w.startswith(("http://", "https://"))]
         allow = _egress_allow()
         for u in urls:

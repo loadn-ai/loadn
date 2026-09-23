@@ -366,9 +366,17 @@ async def run_turn(call: TurnCall, stop: StopHandle | None = None) -> TurnProcRe
     from . import sandbox as sandbox_mod
     from . import workspace as _ws_mod
     from .audit import audit as _audit
+
+    # 会话级 egress socket：审批式临时授权按任务生效（loadn 引擎沙箱）。
+    # 幂等；失败静默回落共享 socket（只有全局白名单，fail-closed）。
+    from .egress_proxy import get_proxy as _get_egress_proxy
+    if call.sid and _C.security.egress_mode in ("warn", "enforce"):
+        _proxy = _get_egress_proxy()
+        if _proxy is not None:
+            await _proxy.ensure_session_uds(call.sid)
     cmd, sbx_mode = sandbox_mod.wrap_engine(
         cmd, env, engine=spec.name, sid=call.session_id, cwd=Path(call.cwd),
-        project_root=_ws_mod.project_root_of(call.sid))
+        project_root=_ws_mod.project_root_of(call.sid), owner_sid=call.sid)
     if sbx_mode != "direct":
         _audit("sandbox_violation" if sbx_mode == "direct-fallback" else "snapshot",
                {"mode": sbx_mode, "engine": spec.name, "sid": call.sid},

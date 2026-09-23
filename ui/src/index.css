@@ -533,6 +533,11 @@ button:focus-visible, .tab:focus-visible, .chip:focus-visible {
 .chip:hover { color: var(--text); }
 .chip.on { border-color: color-mix(in srgb, var(--accent) 45%, transparent); color: var(--accent2);
   background: var(--accent-soft); }
+/* 迷你操作钮（表格行内/条目旁的一键动作，如白名单放行） */
+.mini-btn { font-size: 11px; padding: 2px 9px; border-radius: 6px; cursor: pointer;
+  border: 1px solid var(--border); background: var(--bg3); color: var(--text-dim); }
+.mini-btn:hover { color: var(--accent); border-color: var(--accent); }
+.mini-btn:disabled { opacity: .5; cursor: default; }
 .muted { color: var(--text-dim); font-weight: 400; margin-left: 4px; }
 .modal-foot { display: flex; justify-content: flex-end; gap: 10px; margin-top: 20px; }
 

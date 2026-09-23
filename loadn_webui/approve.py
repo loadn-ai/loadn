@@ -36,6 +36,8 @@ ACTION_TYPES = {
     "wechat_send": "发微信",
     "pay": "支付",
     "browser_export": "导出登录态",
+    # 网络侧不可逆面：任务级临时放行外联域（限时+审计+到期收回）
+    "egress": "临时放行外联",
 }
 
 
@@ -53,6 +55,11 @@ def _render_summary(action_type: str, params: dict) -> str:
         return f"支付 {params.get('amount', '?')} → {params.get('to', '?')}"
     if action_type == "wechat_export":
         return f"导出登录态：{params.get('target', '?')}"
+    if action_type == "egress":
+        ttl = int(params.get("ttl_s") or 7200)
+        h, m = ttl // 3600, (ttl % 3600) // 60
+        dur = f"{h}h{m:02d}m" if h else f"{m}m"
+        return f"临时放行外联域 {params.get('host', '?')}（{dur}，仅本任务沙箱）"
     return f"{ACTION_TYPES.get(action_type, action_type)} {json.dumps(params, ensure_ascii=False)[:80]}"
 
 
@@ -106,6 +113,11 @@ def create(sid: str, action_type: str, params: dict, note: str = "",
     """创建审批请求（pending）+ 审计 + 返回（码不在此步出现）。"""
     if action_type not in ACTION_TYPES:
         raise ValueError(f"未知动作类型 {action_type!r}")
+    if action_type == "egress":
+        # host 提前验：非法请求在创建即拒，不留到裁决时才炸
+        from .egress_grants import valid_host
+        if not valid_host(str(params.get("host") or "")):
+            raise ValueError("egress 审批需要合法 host（params.host，如 api.example.com）")
     with _conn() as c:
         _ensure(c)
         cur = c.execute(
@@ -141,6 +153,24 @@ def decide(aid: int, approve: bool, by: str = "user") -> dict:
                   sid=row["sid"])
             return {"ok": False, "status": "expired", "error": "已超时"}
         if approve:
+            if row["action_type"] == "egress":
+                # 效果在裁决即生效（执行方是平台=授权落表，无 agent 侧确认码/
+                # 消费步）；审批行直接终态 executed，授权到期自动失效
+                from . import egress_grants
+                params = json.loads(row["params_json"])
+                host = egress_grants.valid_host(str(params.get("host") or ""))
+                if not host:
+                    return {"ok": False, "status": "pending",
+                            "error": "params.host 非法，未生效"}
+                ttl = int(params.get("ttl_s") or egress_grants.DEFAULT_TTL_S)
+                g = egress_grants.grant(row["sid"], host, ttl, approval_id=aid)
+                c.execute("UPDATE approvals SET status='executed', decided_at=?,"
+                          " decided_by=?, executed_at=? WHERE id=?",
+                          (_now(), by, _now(), aid))
+                audit("approval_decision",
+                      {"id": aid, "decision": "approved-executed", "host": host},
+                      sid=row["sid"])
+                return {"ok": True, "status": "executed", "granted": g}
             code = f"{secrets.randbelow(1000000):06d}"
             code_hash = hashlib.sha256(code.encode()).hexdigest()
             c.execute("UPDATE approvals SET status='approved', decided_at=?,"

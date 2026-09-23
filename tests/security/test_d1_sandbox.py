@@ -135,9 +135,7 @@ def test_d1_unshare_net_direct_blocked(tmp_path, monkeypatch):
         PATHS["run"].mkdir(parents=True, exist_ok=True)
         srv = _sock.socket(_sock.AF_UNIX, _sock.SOCK_STREAM)
         srv.bind(str(uds))
-        monkeypatch.setattr(sandbox, "_egress_uds", lambda: uds)
-    else:
-        monkeypatch.setattr(sandbox, "_egress_uds", lambda: uds)
+    monkeypatch.setattr(sandbox, "_egress_uds", lambda sid="": uds)
     wrapped = sandbox.wrap_loadn(
         ["bash", "-c",
          'curl -s -o /dev/null -w "%{http_code}" --max-time 4 '

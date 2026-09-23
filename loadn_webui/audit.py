@@ -31,6 +31,7 @@ TYPES = (
     "approval_request", "approval_decision",
     "tool_call_blocked",
     "egress_request", "credential_use", "policy_change",
+    "egress_policy",                 # 出口白名单变更/临时授权（allowlist-*/grant/revoke）
     "skill_install", "skill_scan",
     "canary_hit", "sandbox_violation",
     "rollback", "kill_switch", "snapshot",

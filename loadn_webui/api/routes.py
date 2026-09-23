@@ -893,15 +893,51 @@ def audit_verify():
 # ---------------------------------------------------------------- 数据流向（W5.2）
 @router.get("/admin/egress")
 def egress_recent(n: int = 50):
-    """最近外联（面板数据源：audit egress_request 尾窗）。管理面。"""
+    """最近外联（面板数据源：audit egress_request 尾窗）+ 活跃临时授权。管理面。"""
     from .. import audit as audit_mod
+    from .. import egress_grants
     rows = audit_mod.tail(n, "egress_request")
     out = []
     for r in rows:
         d = json.loads(r["detail_json"])
         out.append({"ts": r["ts"], **d})
     return {"events": out, "mode": CONFIG.security.egress_mode,
-            "allow": CONFIG.security.egress_allow}
+            "allow": CONFIG.security.egress_allow,
+            "grants": egress_grants.list_active()}
+
+
+@router.post("/admin/egress/allow")
+def egress_allow_host(body: dict):
+    """放行一个域进出口白名单（持久化+热生效，审计留痕）。管理面写。
+
+    被拒记录一键放行的后端——摩擦从「改 yaml+重启（顺手杀在跑 turn）」降为一点。
+    """
+    from . import settings_admin
+    try:
+        return settings_admin.put_egress_allow("add", str(body.get("host") or ""))
+    except ValueError as e:
+        raise HTTPException(400, str(e)) from e
+
+
+@router.delete("/admin/egress/allow")
+def egress_remove_host(host: str = ""):
+    """从白名单移除一个域（持久化+热生效；正在用它的 turn 会开始被拒）。"""
+    from . import settings_admin
+    try:
+        return settings_admin.put_egress_allow("remove", host)
+    except ValueError as e:
+        raise HTTPException(400, str(e)) from e
+
+
+@router.post("/admin/egress/grant/revoke")
+def egress_revoke_grant(body: dict):
+    """手动收回一条临时授权（会话级，提前于到期）。管理面写。"""
+    from .. import egress_grants
+    host = egress_grants.valid_host(str(body.get("host") or "")) or ""
+    sid = str(body.get("sid") or "")
+    if not host or not sid or not egress_grants.revoke(sid, host):
+        raise HTTPException(404, "授权不存在")
+    return {"ok": True, "grants": egress_grants.list_active()}
 
 
 # ---------------------------------------------------------------- 快照回滚（W6.2）
