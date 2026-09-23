@@ -685,6 +685,12 @@ def main(argv: list[str] | None = None) -> int:
     _bres = bk_sub.add_parser("restore", help="恢复备份（危险）")
     _bres.add_argument("date", help="备份日期目录名")
 
+    p_init = sub.add_parser("init", help="初始化数据根（新用户第一步）")
+    p_init.add_argument("path", nargs="?", default="",
+                        help="数据根路径（缺省 ~/.loadn-data）")
+    p_init.add_argument("--force", action="store_true",
+                        help="重新生成 config/token（已有目录不删）")
+
     p_t = sub.add_parser("token", help="API token 管理（W0）")
     p_t.add_argument("action", choices=["show", "rotate"])
     sub.add_parser("kill-all",
@@ -779,6 +785,9 @@ def main(argv: list[str] | None = None) -> int:
     if args.cmd == "rollback":
         from . import ops as ops_mod
         return ops_mod.cmd_rollback(args.version or None, yes=args.yes)
+    if args.cmd == "init":
+        from . import init_cmd
+        return init_cmd.cmd_init(args.path, force=args.force)
     if args.cmd == "backup":
         from . import backup as backup_mod
         if args.bkcmd == "run":
