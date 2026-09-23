@@ -9,3 +9,4 @@ build/
 
 # 运行时用户数据（DB/审计/备份）绝不入库
 var/
+.loadn-hook-audit.jsonl
