@@ -201,7 +201,7 @@ def wrap_engine(cmd: list[str], env: dict, *, engine: str, sid: str,
         home = Path.home()
         # node 树从引擎 bin 派生（cmd[0] 在 node 树内）——不硬编码版本路径，
         # 任意 nvm/fnm/系统安装位置都成立（开源可移植性）
-        node = Path(cmd[0]).resolve().parent.parent
+        node = Path(cmd[0]).absolute().parent.parent
         wrapped = _wrap_generic(
             cmd, env, cwd=cwd, extra_binds=[
                 ("ro", str(node), str(node)),
@@ -216,7 +216,7 @@ def wrap_engine(cmd: list[str], env: dict, *, engine: str, sid: str,
         return cmd, "direct-fallback"
     elif engine == "opencode":
         home = Path.home()
-        node = Path(cmd[0]).resolve().parent.parent   # 同上：从 bin 派生
+        node = Path(cmd[0]).absolute().parent.parent   # 同上：从 bin 派生
         oc = home / ".local/share/opencode"
         wrapped = _wrap_generic(
             cmd, env, cwd=cwd, extra_binds=[
