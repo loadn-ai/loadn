@@ -207,7 +207,7 @@ def _read_first(paths: list[Path]) -> str:
 
 def _claude_project_memory(cwd: Path) -> Path:
     """Claude Code 的 per-project 自动记忆路径（~/.claude/projects/<slug>/memory/
-    MEMORY.md；slug = cwd 绝对路径 "/"→"-"，实测 -data-code-workdaddy 即此规则）。
+    MEMORY.md；slug = cwd 绝对路径 "/"→"-"，实测路径 slug 化即此规则）。
     双引擎共享：claude 跑出来的记忆 loadn 直接继承，反之亦然。"""
     slug = str(cwd.resolve()).replace("/", "-")
     return Path.home() / ".claude" / "projects" / slug / "memory" / "MEMORY.md"

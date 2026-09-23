@@ -480,7 +480,7 @@ function JobForm({ job, presetSid, onDone }: {
           </Field>
         </div>
         <Field label="到点投递的指令"
-               hint="撞上运行中的 hahaness 任务会作为插话实时注入（不等排队）">
+               hint="撞上运行中的 loadn 任务会作为插话实时注入（不等排队）">
           <textarea rows={3} value={prompt} onChange={e => setPrompt(e.target.value)}
                     placeholder="到点交给 agent 做什么" />
         </Field>

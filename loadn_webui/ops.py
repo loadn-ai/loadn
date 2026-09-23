@@ -40,7 +40,8 @@ DEPLOY_JSON = STATE_DIR / "deploy.json"
 OPS_LOCK = STATE_DIR / "ops.lock"
 OPS_LOG = LOGS_DIR / "ops.log"
 
-DATA_ROOT = Path(os.environ.get("LOADN_WEBUI_HOME", "/data/code/workdaddy"))
+DATA_ROOT = Path(os.environ.get("LOADN_WEBUI_HOME")
+                 or Path.home() / ".loadn-data")  # 开源默认
 HEALTH_URL = "http://127.0.0.1:8792/api/health"
 SMOKE_PORT = 8799
 

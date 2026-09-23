@@ -18,10 +18,10 @@ json + 尾行记账」改造成「stream-json 逐行增量消费 + result 事件
 输出日志重建状态 → tail 增量续读 → /proc 判活轮询 → 进程退出后按 result
 行正常记账。配 systemd KillMode=process，serve 重启不再杀正在跑的任务。
 
-测试用 WORKDADDY_CLAUDE_BIN 指向假实现（tests/fake_claude.py）。
+测试用 LOADN_CLAUDE_BIN 指向假实现（tests/fake_claude.py）。
 
-引擎方言（argv/事件归一化/能力位）拆到 workdaddy/engines/（承袭 papergo
-providers.py 范式）：claude（默认，行为恒等）| hahaness | opencode。本文件
+引擎方言（argv/事件归一化/能力位）拆到 loadn_webui/engines/（承袭 papergo
+providers.py 范式）：claude（默认，行为恒等）| loadn | opencode。本文件
 只保留引擎无关的 runner 骨架。
 """
 from __future__ import annotations
@@ -72,7 +72,7 @@ def _parent_is_server(pid: int) -> bool:
         cmd = Path(f"/proc/{pid}/cmdline").read_bytes().decode(errors="replace")
     except OSError:
         return False
-    return ("workdaddy" in cmd or "loadn_webui" in cmd) and "serve" in cmd
+    return ("loadn" in cmd or "loadn_webui" in cmd) and "serve" in cmd
 
 
 def pid_alive_for_turn(pid: int, tid: int) -> bool:
@@ -92,7 +92,7 @@ def pid_alive_for_turn(pid: int, tid: int) -> bool:
             cmd = Path(f"/proc/{pid}/cmdline").read_bytes().decode(errors="replace")
         except OSError:
             return False
-        return any(m in cmd for m in ("fake_claude", "claude", "hahaness", "opencode"))
+        return any(m in cmd for m in ("fake_claude", "claude", "loadn", "opencode"))
     return (f"LOADN_TURN_ID={tid}\0".encode() in env
             or f"WORKDADDY_TURN_ID={tid}\0".encode() in env)
 
@@ -100,7 +100,7 @@ def pid_alive_for_turn(pid: int, tid: int) -> bool:
 def reap_orphans(skip: set[int] = frozenset()) -> int:
     """启动时清理遗留的孤儿 claude 进程。
 
-    判据：登记过 + 进程活着 + 父进程不是任何存活的 workdaddy serve 实例。
+    判据：登记过 + 进程活着 + 父进程不是任何存活的 loadn serve 实例。
     不能只认 ppid==1——本机 systemd --user 等 subreaper 会把孤儿挂到自己名下
     （2026-09-15 实测 ppid=systemd --user，reap 报 0 放行，claude 的 session-id
     锁把新 turn 全部「Session ID already in use」秒拒）。
@@ -148,17 +148,17 @@ def reap_orphans(skip: set[int] = frozenset()) -> int:
 class TurnCall:
     prompt: str
     cwd: Path
-    session_id: str            # 引擎会话 id（claude/hahaness=UUID；opencode=ses_…；空=引擎自建）
+    session_id: str            # 引擎会话 id（claude/loadn=UUID；opencode=ses_…；空=引擎自建）
     resume: bool = False
     effort: str = "high"
     model: str | None = None
     timeout_s: int = 3600      # 硬超时
     stall_timeout_s: int = 1800   # 双信号判死阈值
-    max_turns: int | None = None  # 工具调用轮次上限（None=不限制）→ claude/hahaness --max-turns
+    max_turns: int | None = None  # 工具调用轮次上限（None=不限制）→ claude/loadn --max-turns
     turn_id: int = 0
     sid: str = ""           # 会话 id（steer 文件按会话分段等）
     engine: str = "claude"     # 执行引擎（engines/ 注册名）
-    rotate_input_tokens: int | None = None   # 外层上下文轮换阈值（hahaness --no-compact 联动）
+    rotate_input_tokens: int | None = None   # 外层上下文轮换阈值（loadn --no-compact 联动）
     disallowed_tools: list[str] = field(default_factory=list)   # opencode env 注入用
     env_extra: dict = field(default_factory=dict)
     on_event: Callable[[dict], Awaitable[None]] | None = None   # 每个 stream-json 事件

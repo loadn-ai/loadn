@@ -14,8 +14,8 @@ from pathlib import Path
 import yaml
 
 ROOT = Path(os.environ.get("LOADN_WEBUI_HOME")
-           or os.environ.get("WORKDADDY_HOME")
-           or Path(__file__).resolve().parent.parent)
+           or os.environ.get("WORKDADDY_HOME")      # 旧名兼容（迁移期）
+           or Path.home() / ".loadn-data")          # 开源默认：用户家目录
 
 # 代码真实所在仓（HOME 重定位后仍指向源码）——历史 hack：曾作为 PYTHONPATH
 # 注入引擎子进程（W0 前的安全债），R1 起引擎经 pip console_script 解析，不再注入。
@@ -45,7 +45,7 @@ PATHS = {
 
 @dataclass
 class ClaudeConfig:
-    # model=None 继承 CLI/订阅默认。测试用 WORKDADDY_CLAUDE_BIN 指向假实现。
+    # model=None 继承 CLI/订阅默认。测试用 LOADN_CLAUDE_BIN 指向假实现。
     effort: str = "high"
     model: str | None = None
     claude_bin: str | None = None
@@ -153,9 +153,9 @@ class SecurityConfig:
 
 @dataclass
 class ShareConfig:
-    # 产物分享：/share/<token> 公开只读路由挂在主服务上（VPS workdaddy.cc/share
+    # 产物分享：/share/<token> 公开只读路由（VPS 反代 your-domain.com/share
     # → 本机 nginx :80 → 8792）；base_url 空 = 未启用（mint API 报错）。
-    base_url: str = ""            # 如 https://workdaddy.cc/share
+    base_url: str = ""            # 如 https://your-domain.com/share
 
 
 @dataclass

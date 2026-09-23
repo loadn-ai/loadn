@@ -6,7 +6,7 @@
 一次），asyncio 循环扫描 due_at。
 
 两种动作（kind）：
-- message：投递到现有会话——撞上运行中的 hahaness turn 走插话实时注入
+- message：投递到现有会话——撞上运行中的 loadn turn 走插话实时注入
   （比赛 20:00 开赛不能排队等），否则 engine.submit（FIFO 队列天然排队）
 - new_session：到点新建会话投递（定时启新任务；递归每次建全新会话）
 

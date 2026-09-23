@@ -134,7 +134,7 @@ export default function Composer() {
     for (const p of pending) URL.revokeObjectURL(p.preview);
     setPending([]);
     // 失败路径：store 已撤乐观消息并回填草稿，这里把文本同步回本地输入框。
-    // steerOrSend：运行中的 hahaness turn 且发送方式为「插话」时走插话通道
+    // steerOrSend：运行中的 loadn turn 且发送方式为「插话」时走插话通道
     // （下一轮 LLM 调用前实时注入）；「排队」或无运行任务/带附件 → 正常排队
     void steerOrSend(t || '（见附件）', 'foreground', atts,
                      { queue: queueMode === 'queue' })

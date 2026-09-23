@@ -1,6 +1,6 @@
 """产物分享：DB 令牌铸造 + 主服务上的公开只读路由 /share/<token>。
 
-架构（2026-09-10，同日合并进主服务）：VPS workdaddy.cc/share 反代到本机
+架构（2026-09-10，同日合并进主服务）：VPS 反代 your-domain.com/share 到本机
 nginx :80（路由器 30080→80 转发），nginx 再把 /share 反代到主服务 8792。
 auth 中间件只护 /api 前缀，/share 是免认证公开路径——URL 即凭证：
 

@@ -35,7 +35,7 @@ CREATE TABLE IF NOT EXISTS sessions (
   starred INTEGER DEFAULT 0,            -- 1=收藏（侧边栏收藏夹置顶展示）
   pinned INTEGER DEFAULT 0,             -- 1=置顶（侧栏「置顶」分区）
   category_id INTEGER,                  -- 自定义分类（categories.id；NULL=默认「最近」）
-  claude_session_id TEXT,           -- 当前引擎的会话 id（claude/hahaness=UUID，opencode=ses_…）
+  claude_session_id TEXT,           -- 当前引擎的会话 id（claude/loadn=UUID，opencode=ses_…）
   session_fresh INTEGER DEFAULT 1,  -- 1=从未启动，下次 --session-id；0=--resume
   resume_failures INTEGER DEFAULT 0,-- resume 连续失败计数（≥2 轮换新会话）
   workspace TEXT,

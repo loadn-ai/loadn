@@ -5,7 +5,7 @@
 artifacts/credentials.json，`wd verify` 巡检三件事：验证页可达且含持有人/
 证书号、到期窗口预警、缺失字段报告。挂调度器即可周期跑：
   wd schedule add --sid X --every 7d --max-fires 100 --label 到期巡检 \
-      --prompt "跑 python3 '$WORKDADDY_CLI' verify --sid X 并汇报结果"
+      --prompt "跑 python3 '$LOADN_CLI' verify --sid X 并汇报结果"
 
 注册表 schema（artifacts/credentials.json，数组）：
   [{"id": 1, "platform": "google", "title": "GA 基础", "cert_id": "G-123",

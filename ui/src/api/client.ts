@@ -1,5 +1,5 @@
 // API client：统一 token 注入与错误处理
-// W0（2026-09-22）：token 走自定义头（X-Workdaddy-Token / X-Workdaddy-Admin），
+// W0（2026-09-22）：token 走自定义头（X-Loadn-Token / X-Loadn-Admin），
 // 跨域简单请求带不了自定义头 → CSRF 免疫。?token= URL 参数仅作首次引导
 // （读后写 localStorage 并从地址栏清除）。SSE 走一次性 ticket。
 const BASE = '';
@@ -27,7 +27,7 @@ export function setToken(t: string): void {
 function authHeaders(): Record<string, string> {
   const t = token();
   // 双头：普通面 token + 管理面 admin（默认同值；服务端 admin 可独立配置）
-  return t ? { 'X-Workdaddy-Token': t, 'X-Workdaddy-Admin': t } : {};
+  return t ? { 'X-Loadn-Token': t, 'X-Loadn-Admin': t } : {};
 }
 
 /** 无法带自定义头的场景（<a href> 下载 / <img src>）退回 ?token= 查询串 */

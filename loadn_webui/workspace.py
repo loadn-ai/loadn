@@ -92,7 +92,7 @@ def write_mcp_json(ws: Path, session_mcp: dict | None) -> None:
 def session_env(ws: Path, sid: str) -> dict:
     """引擎无关的会话环境变量（.claude/settings.json env 块的共享子集）。
 
-    claude CLI 经 settings.json 读；hahaness/opencode 由 engine.py 经
+    claude CLI 经 settings.json 读；loadn/opencode 由 engine.py 经
     TurnCall.env_extra 注入 spawn 环境——同一份内容，不双轨漂移。
     """
     fetch = CODE_ROOT / "scripts" / "fetch_page.py"

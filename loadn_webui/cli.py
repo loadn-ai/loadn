@@ -1,5 +1,5 @@
 """CLI：`workdaddy serve` 启动 API 服务；`workdaddy doctor` 自检；`workdaddy r` 资源；
-`workdaddy schedule` 定时调度；`workdaddy verify` 凭证巡检。"""
+`loadn-web schedule` 定时调度；`loadn-web verify` 凭证巡检。"""
 from __future__ import annotations
 
 import argparse
@@ -25,7 +25,7 @@ def _build_schedule_parser(sub) -> None:
     p.add_argument("--prompt", required=True, help="到点投递给会话的指令")
     p.add_argument("--title", default="", help="new_session：新会话标题（默认用 label）")
     p.add_argument("--profile", default="", help="new_session：profile 名（默认 auto 匹配）")
-    p.add_argument("--engine", default="", help="new_session：引擎（claude/hahaness/opencode；默认跟随配置）")
+    p.add_argument("--engine", default="", help="new_session：引擎（claude/loadn/opencode；默认跟随配置）")
 
     p = ssub.add_parser("list", help="列出定时任务")
     p.add_argument("--sid", default="", help="只看该会话")
@@ -257,13 +257,13 @@ def _build_r_parser(sub) -> None:
     fsub = p.add_subparsers(dest="fcmd", required=True)
     p = fsub.add_parser("push", help="把本机文件直传进会话 workspace")
     p.add_argument("path", help="本机文件路径")
-    p.add_argument("--sid", default="", help="目标会话（默认 $WORKDADDY_SESSION_ID）")
+    p.add_argument("--sid", default="", help="目标会话（默认 $LOADN_SESSION_ID）")
     p.add_argument("--to", default="artifacts/",
                    help="目标子目录：artifacts/ notes/ work/ inputs/")
     p.add_argument("--api", default="", help="宿主 API 地址（默认本机 8792；容器内传 http://宿主IP:8792）")
     p = fsub.add_parser("pull", help="把会话 workspace 文件拉到本机")
     p.add_argument("path", help="workspace 相对路径（如 artifacts/report.md）")
-    p.add_argument("--sid", default="", help="来源会话（默认 $WORKDADDY_SESSION_ID）")
+    p.add_argument("--sid", default="", help="来源会话（默认 $LOADN_SESSION_ID）")
     p.add_argument("--out", default="", help="本机落盘路径（默认当前目录同名文件）")
     p.add_argument("--api", default="", help="宿主 API 地址（默认本机 8792）")
 
@@ -546,7 +546,7 @@ async def _run_r(args) -> int:
         from .config import CONFIG
         sid = args.sid or os_mod.environ.get("WORKDADDY_SESSION_ID", "")
         if not sid:
-            print("错误: 缺少 --sid（或设 WORKDADDY_SESSION_ID）", file=sys.stderr)
+            print("错误: 缺少 --sid（或设 LOADN_SESSION_ID）", file=sys.stderr)
             return 1
         api = args.api or f"http://127.0.0.1:{CONFIG.server.port}"
         # 本机直连用配置 token；容器/远程场景经 WORKDADDY_API_TOKEN 显式注入
@@ -673,6 +673,18 @@ def main(argv: list[str] | None = None) -> int:
     p_rb.add_argument("version", nargs="?", default="", help="目标版本（缺省=previous）")
     p_rb.add_argument("--yes", action="store_true", help="跳过 schema 门禁确认")
 
+    # R8 备份
+    p_bk = sub.add_parser("backup", help="数据备份（R8：run/list/verify/restore）")
+    bk_sub = p_bk.add_subparsers(dest="bkcmd", required=True)
+    _br = bk_sub.add_parser("run", help="执行备份")
+    _br.add_argument("--full-workspace", action="store_true",
+                     help="全量 workspace（含 .snapshots 等）")
+    bk_sub.add_parser("list", help="列出备份")
+    _bv = bk_sub.add_parser("verify", help="验证最近备份完整性")
+    _bv.add_argument("date", nargs="?", default="", help="指定备份（缺省=最近）")
+    _bres = bk_sub.add_parser("restore", help="恢复备份（危险）")
+    _bres.add_argument("date", help="备份日期目录名")
+
     p_t = sub.add_parser("token", help="API token 管理（W0）")
     p_t.add_argument("action", choices=["show", "rotate"])
     sub.add_parser("kill-all",
@@ -717,7 +729,7 @@ def main(argv: list[str] | None = None) -> int:
             os_mod.chmod(tmp, 0o600)
             tmp.replace(p)
             print(f"已轮换 → {p}")
-            print("重启服务生效：sudo systemctl restart workdaddy")
+            print("重启服务生效：sudo systemctl restart loadn")
         return 0
     if args.cmd == "vault":
         from . import vault as vault_mod
@@ -767,6 +779,16 @@ def main(argv: list[str] | None = None) -> int:
     if args.cmd == "rollback":
         from . import ops as ops_mod
         return ops_mod.cmd_rollback(args.version or None, yes=args.yes)
+    if args.cmd == "backup":
+        from . import backup as backup_mod
+        if args.bkcmd == "run":
+            return backup_mod.cmd_backup_run(args.full_workspace)
+        if args.bkcmd == "list":
+            return backup_mod.cmd_backup_list()
+        if args.bkcmd == "verify":
+            return backup_mod.cmd_backup_verify(args.date or None)
+        if args.bkcmd == "restore":
+            return backup_mod.cmd_backup_restore(args.date)
     if args.cmd == "policy-check":
         from .policy import policy_check_hook
         return policy_check_hook(sys.stdin.read())

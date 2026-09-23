@@ -8,7 +8,7 @@
   · 能力位                                  transcript 判死 / session id 域 / flag 面
 
 事件契约锚点（全引擎统一到 claude CLI stream-json 形状，engine._consume 零改动）：
-workdaddy 只消费三类事件——assistant（message.content blocks）、user（tool_result
+webui 只消费三类事件——assistant（message.content blocks）、user（tool_result
 blocks）、result（usage/modelUsage/num_turns 记账，硬契约）。claude 与 hahaness
 原生输出该格式（恒等适配器）；opencode 由有状态适配器把 NDJSON 归一化进来。
 """

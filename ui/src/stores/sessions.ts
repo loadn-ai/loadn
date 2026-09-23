@@ -132,8 +132,8 @@ interface Store {
   moveSession: (sid: string, dest: MoveDest) => Promise<void>;
   moveProject: (pid: string, dest: MoveDest) => Promise<void>;
   sendMessage: (text: string, mode?: string, attachments?: Attachment[]) => Promise<void>;
-  /** 运行中发送：默认插话（hahaness turn 下一轮 LLM 调用前注入）；
-   *  queue=true 或无运行中 hahaness turn / 带附件时回落 sendMessage（排队为新 turn） */
+  /** 运行中发送：默认插话（loadn turn 下一轮 LLM 调用前注入）；
+   *  queue=true 或无运行中 loadn turn / 带附件时回落 sendMessage（排队为新 turn） */
   steerOrSend: (text: string, mode?: string, attachments?: Attachment[],
                 opts?: { queue?: boolean }) => Promise<void>;
   uploadFile: (file: File) => Promise<Attachment>;
@@ -415,8 +415,8 @@ export const useStore = create<Store>((set, get) => ({
   async steerOrSend(text, mode = 'foreground', attachments = [], opts) {
     const sid = get().currentSid;
     if (!sid) return;
-    // 只有真正 running 的 hahaness turn 且未显式选「排队」才插话；
-    // queued/非 hahaness/带附件/用户选排队 → 直接 sendMessage
+    // 只有真正 running 的 loadn turn 且未显式选「排队」才插话；
+    // queued/非 loadn/带附件/用户选排队 → 直接 sendMessage
     const live = get().live;
     const running = live && live.status === 'running';
     if (running && !attachments.length && !opts?.queue) {
