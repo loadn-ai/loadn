@@ -25,6 +25,11 @@ ENGINES: dict[str, EngineSpec] = {
 }
 
 
+# 旧名 alias 集合：resolve() 可用（旧会话 DB 里 engine=hahaness），但 API
+# 不吐给前端（用户不需要看到两个同款引擎）
+ALIASES = {"hahaness"}
+
+
 def default_engine() -> str:
     return CONFIG.engines.default if CONFIG.engines.default in ENGINES else "claude"
 

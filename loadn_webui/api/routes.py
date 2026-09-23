@@ -1661,7 +1661,8 @@ def health():
         pass
     from .. import engines as engines_mod
 
-    engines = {name: spec.health() for name, spec in engines_mod.ENGINES.items()}
+    engines = {name: spec.health() for name, spec in engines_mod.ENGINES.items()
+               if name not in engines_mod.ALIASES}
     disk_free_gb = -1.0
     try:
         import shutil as _sh
