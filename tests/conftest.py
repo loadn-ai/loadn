@@ -41,12 +41,12 @@ for _name in ("profiles", "prompts"):
     if _src.exists():
         (_HOME / _name).symlink_to(_src, target_is_directory=True)
 # skills：测试期直连 legacy 资产；CI（无本机资产）回落 monorepo skills/（空）
-_LEGACY_SKILLS_LINK = Path("/data/code/workdaddy/skills")
+_LEGACY_SKILLS_LINK = Path(" /home/user/.loadn-data/skills")
 _SKILLS_SRC = _LEGACY_SKILLS_LINK if _LEGACY_SKILLS_LINK.exists() else REPO / "skills"
 (_HOME / "skills").symlink_to(_SKILLS_SRC, target_is_directory=True)
 LEGACY_ASSETS = _LEGACY_SKILLS_LINK.exists()
 # skills：monorepo skills/ 仅公开包；测试借用原 workdaddy 仓资产（迁移过渡）
-_LEGACY_SKILLS = Path("/data/code/workdaddy/skills")
+_LEGACY_SKILLS = Path(" /home/user/.loadn-data/skills")
 if _LEGACY_SKILLS.exists():
     os.environ["LOADN_SKILLS_EXTRA"] = str(_LEGACY_SKILLS)
 os.environ["LOADN_WEBUI_HOME"] = str(_HOME)
