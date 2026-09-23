@@ -135,7 +135,7 @@ class ActiveTurn:
     # 重发（session_events 已有停机前的事件，重发=重连客户端看到双份）
     quiet: bool = False
     # 随时插话（steering）：本 turn 期间 API 写入 .steer.jsonl 的插话；
-    # hahaness 注入上下文时回 steer 事件标记 consumed——turn 结束仍未
+    # loadn 注入上下文时回 steer 事件标记 consumed——turn 结束仍未
     # 消费的（插话落在最后一轮后）由 _finish 回队列为新 turn，不丢话
     steers: list = field(default_factory=list)
 
@@ -179,7 +179,7 @@ class Engine:
         self.publish(sid, type_, data, at.turn_id if at is not None else None)
 
     def steer_if_running(self, sid: str, text: str) -> int | None:
-        """该 session 有 running 的 hahaness turn → 写 .steer.jsonl + at.steers
+        """该 session 有 running 的 loadn turn → 写 .steer.jsonl + at.steers
         记账 + SSE "steer"，返回 turn_id；否则 None（调用方回落 submit 排队）。
 
         调用方：API /steer（用户插话，route 层截断 4000）；scheduler.fire
@@ -476,7 +476,7 @@ class Engine:
     async def _consume(self, sid: str, tid: int, at: ActiveTurn, ev: dict) -> None:
         t = ev.get("type")
         if t == "stream_event":
-            # 逐 delta 直播（--verbose 下 claude CLI / hahaness 同形）：缓冲合流
+            # 逐 delta 直播（--verbose 下 claude CLI / loadn 同形）：缓冲合流
             # 后冲刷成带 delta 标记的 thinking/text 事件，前端追加到末条同
             # 类项——生成中也能看到思考滚屏，而不是整轮沉默到块完成。
             # **类切换即块边界**：GLM interleaved-thinking 会思考/正文交错，
@@ -541,7 +541,7 @@ class Engine:
                         except (TypeError, ValueError):
                             pass
                     elif name == "TodoWrite" and isinstance(inp.get("todos"), list):
-                        # hahaness 的全量覆盖写语义（transcript.latest_todos 同构兜底）
+                        # loadn 的全量覆盖写语义（transcript.latest_todos 同构兜底）
                         at.todos = [{"subject": t.get("content") or "任务",
                                      "status": t.get("status", "pending")}
                                     for t in inp["todos"] if isinstance(t, dict)]
@@ -577,7 +577,7 @@ class Engine:
                 if name in _FILE_TOOLS:
                     await self._publish_files(sid, tid, at)
         elif t == "steer":
-            # hahaness 插话消费回执：该条已注入运行中上下文，从待回队列摘除
+            # loadn 插话消费回执：该条已注入运行中上下文，从待回队列摘除
             text = (ev.get("text") or "").strip()
             for s in at.steers:
                 if not s.get("consumed") and s.get("text") == text:

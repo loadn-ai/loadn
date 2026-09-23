@@ -119,7 +119,7 @@ def write_settings(ws: Path, sid: str, prof: profile_mod.Profile,
                    *, project: bool = False) -> None:
     """项目级 settings：env 注入 + 便利配置 + 工具禁用清单（权限本身由 CLI flag 统一）。
 
-    claude 落 .claude/settings.json；hahaness 落 .agent/settings.json（其
+    claude 落 .claude/settings.json；loadn 落 .loadn/settings.json（其
     PermissionEngine 的规则来源）。密钥永远不进 env（Bash 里 env 一打就泄露）；
     agent 用 `"$LOADN_CLI" r …`（旧 $WORKDADDY_CLI 兼容），CLI 自己读 config.yaml。
     project=True（项目属主目录）：env 写 WORKDADDY_PROJECT_ID 而非

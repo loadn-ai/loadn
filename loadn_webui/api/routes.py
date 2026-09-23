@@ -1150,10 +1150,10 @@ async def stop_turn(tid: int):
 
 @router.post("/sessions/{sid}/steer")
 async def steer_session(sid: str, body: dict):
-    """随时插话：运行中的 hahaness turn 每轮 LLM 调用前轮询 .steer.jsonl，
+    """随时插话：运行中的 loadn turn 每轮 LLM 调用前轮询 .steer.jsonl，
     插话下一轮即注入主/子代理上下文（转向/中断实时生效，不等排队）。
 
-    仅当该 session 有 running 的 hahaness turn 时 steered=true；否则
+    仅当该 session 有 running 的 loadn turn 时 steered=true；否则
     steered=false，前端回落正常发送（排队为新 turn）。插话落在最后一轮
     之后来不及注入的，engine._finish 按原话回队列（不丢话）。写文件/记账
     逻辑在 Engine.steer_if_running（scheduler.fire 复用同一通道）。

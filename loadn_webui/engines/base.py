@@ -9,7 +9,7 @@
 
 事件契约锚点（全引擎统一到 claude CLI stream-json 形状，engine._consume 零改动）：
 webui 只消费三类事件——assistant（message.content blocks）、user（tool_result
-blocks）、result（usage/modelUsage/num_turns 记账，硬契约）。claude 与 hahaness
+blocks）、result（usage/modelUsage/num_turns 记账，硬契约）。claude 与 loadn
 原生输出该格式（恒等适配器）；opencode 由有状态适配器把 NDJSON 归一化进来。
 """
 from __future__ import annotations
@@ -30,7 +30,7 @@ log = get_logger(__name__)
 class EventAdapter:
     """事件归一化器：feed 喂一行原始事件 → 0..n 个 stream-json 事件。
 
-    流结束后 finalize 合成收尾事件（result 等）。恒等引擎（claude/hahaness）
+    流结束后 finalize 合成收尾事件（result 等）。恒等引擎（claude/loadn）
     用基类行为即可；有状态引擎（opencode）子类化并维护累积状态。
     """
 
@@ -47,7 +47,7 @@ class EngineSpec:
     name: str = "claude"
     # 判死 transcript 兜底：False = 只有 stdout 静默 + 硬超时两路信号
     supports_transcript: bool = True
-    # session id 域：uuid（claude/hahaness）| any（opencode ses_… 等）
+    # session id 域：uuid（claude/loadn）| any（opencode ses_… 等）
     session_id_domain: str = "uuid"
     # flag 能力（管理面提示用；False 的在 build_argv 里降级省略）
     max_turns_flag: bool = True
@@ -55,7 +55,7 @@ class EngineSpec:
 
     # ------------------------------------------------------------ argv / env
     def resolve_bin(self) -> str | list[str]:
-        """二进制路径（str）或 argv 前缀（list，如 [python, -m, hahaness]）。"""
+        """二进制路径（str）或 argv 前缀（list，如 [python, -m, loadn]）。"""
         raise NotImplementedError
 
     def build_env(self) -> dict:

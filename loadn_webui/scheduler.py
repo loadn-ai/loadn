@@ -170,7 +170,7 @@ class Scheduler:
                                  if job["max_fires"] > 1 else "")
 
     async def _fire_message(self, job, now: datetime) -> bool:
-        """投递到现有会话。撞上运行中的 hahaness turn → 插话实时注入
+        """投递到现有会话。撞上运行中的 loadn turn → 插话实时注入
         （steer_if_running；比赛开赛不能排队等），否则 submit 排队。"""
         sid = job["session_id"]
         with db_mod.conn() as c:
