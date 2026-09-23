@@ -1,6 +1,7 @@
 // 资源中心（管理中心「资源」tab）：平台原生功能。
-// 三分区：服务（端点+密钥状态）/ MCP（外部工具服务）/ 凭证库（AES-GCM）。
-// 安全语义：密钥只写不读——界面永远只看到「已加密保存」，值不出后端。
+// 视觉：逻辑服务分组的卡片墙（而非扁平 14 行表）——每卡=一个真实服务，
+// 内含端点字段（点击编辑）+密钥 chip（只写不读）+独立测试与状态灯。
+// 样式类在 index.css「资源中心」段；安全语义不变：密钥值永不出后端。
 import { useEffect, useState } from 'react';
 import { api } from '../api/client';
 
@@ -8,7 +9,7 @@ interface ServiceItem { key: string; label: string; note: string; value: string;
 interface SecretItem { key: string; set: boolean }
 interface McpServer { name: string; spec: Record<string, any>; sessions_overriding: number; session_only?: boolean }
 interface VaultPlatform { platform: string; user?: string; email?: string; has_password: boolean; updated_at: string }
-interface VaultEdit { platform: string; username?: string; email?: string; phone?: string; twofa?: string; status?: string; notes?: string; password?: string; recovery?: string }
+interface VaultEdit { platform: string; username?: string; email?: string; notes?: string; password?: string }
 interface Overview {
   services: ServiceItem[];
   secrets: SecretItem[];
@@ -16,240 +17,336 @@ interface Overview {
   vault: { platforms: VaultPlatform[]; verify: { ok: boolean; entries: number; encrypted: boolean; error?: string } };
 }
 
+/** 逻辑服务编组：一张卡 = 一个真实服务（多字段 + 关联密钥） */
+interface CardDef {
+  id: string; name: string; icon: string; note?: string;
+  fields: { key: string; k: string; ph: string }[];     // k=字段短名 ph=占位提示
+  secrets: string[];                                     // 关联密钥 key
+  ping?: string[];                                       // ping 目标
+}
+const GROUPS: { title: string; cards: CardDef[] }[] = [
+  {
+    title: '基础设施', cards: [
+      {
+        id: 'ocr', name: 'OCR 识别', icon: '🔤', note: '图片 / PDF / Office 文本识别',
+        fields: [{ key: 'ocr_url', k: '端点', ph: 'http://127.0.0.1:8686' }], secrets: [], ping: ['ocr'],
+      },
+      {
+        id: 'sandbox', name: 'AIO 沙箱', icon: '🧳', note: '浏览器 / 命令行 / 文件 操作环境',
+        fields: [
+          { key: 'sandbox_url', k: '端点', ph: 'http://127.0.0.1:21111' },
+          { key: 'cdp_url', k: 'CDP', ph: 'http://127.0.0.1:21111/cdp' }],
+        secrets: ['sandbox_api_key'], ping: ['sandbox', 'sandbox_mcp'],
+      },
+      { id: 'proxy', name: '出网代理', icon: '🛰️', note: '出海请求经此转发（clash 等）', fields: [{ key: 'proxy', k: '地址', ph: 'http://127.0.0.1:7890' }], secrets: [], ping: ['proxy'] },
+      { id: 'adb', name: 'Android 真机', icon: '📱', note: 'adb 无线调试', fields: [{ key: 'adb_addr', k: '地址', ph: '192.0.2.78:5555' }], secrets: [] },
+    ],
+  },
+  {
+    title: '通信', cards: [
+      {
+        id: 'sms', name: '短信查询', icon: '💬', note: '真机收验证码',
+        fields: [
+          { key: 'sms_url', k: '端点', ph: 'https://sms.example.test:30443' },
+          { key: 'sms_phone', k: '手机号', ph: '+86 138…' }],
+        secrets: ['sms_token'], ping: ['sms'],
+      },
+      {
+        id: 'mail', name: '主邮箱', icon: '📮', note: '注册 / 登录收验证码（126/163 需授权码）',
+        fields: [
+          { key: 'mail_imap', k: 'IMAP', ph: 'imap.126.com:993' },
+          { key: 'mail_smtp', k: 'SMTP', ph: 'smtp.126.com:465' },
+          { key: 'mail_user', k: '账号', ph: 'you@example.com' }],
+        secrets: ['mail_auth_code'], ping: ['mail'],
+      },
+      {
+        id: 'textr', name: 'Textr 虚拟号', icon: '🇺🇸', note: '美国号码收码',
+        fields: [{ key: 'textr_email', k: '账号', ph: 'you@example.com' }],
+        secrets: ['textr_password'],
+      },
+    ],
+  },
+  {
+    title: 'AI 能力', cards: [
+      {
+        id: 'vlm', name: '视觉模型', icon: '👁️', note: '图片理解（截图分析等）',
+        fields: [
+          { key: 'vlm_api_base', k: 'API', ph: 'https://ark.cn-beijing.volces.com/api/v3' },
+          { key: 'vlm_model', k: '模型', ph: 'doubao-seed-2-1-turbo' }],
+        secrets: ['vlm_api_key'], ping: ['vlm'],
+      },
+      {
+        id: 'search', name: '网页搜索', icon: '🔎', note: '博查（中文）/ 智谱（档位计费）',
+        fields: [{ key: 'zhipu_engine', k: '智谱档', ph: 'search_pro' }],
+        secrets: ['bocha_key', 'zhipu_key'], ping: ['bocha', 'zhipu'],
+      },
+      { id: 'captcha', name: '过验证码', icon: '🧩', note: '2Captcha（图形码 / reCAPTCHA）', fields: [], secrets: ['twocaptcha_key'], ping: ['twocaptcha'] },
+    ],
+  },
+];
+
 const SECRET_ZH: Record<string, string> = {
-  sandbox_api_key: '沙箱 API Key', sms_token: '短信服务 Token',
-  mail_auth_code: '主邮箱授权码', vlm_api_key: '视觉模型 Key',
-  twocaptcha_key: '2Captcha Key', bocha_key: '博查 Key',
-  zhipu_key: '智谱 Key', textr_password: 'Textr 密码',
+  sandbox_api_key: 'API Key', sms_token: 'Token', mail_auth_code: '授权码',
+  vlm_api_key: 'API Key', twocaptcha_key: 'API Key',
+  bocha_key: '博查 Key', zhipu_key: '智谱 Key', textr_password: '密码',
 };
-const PING_MAP: Record<string, string> = {
-  ocr_url: 'ocr', sandbox_url: 'sandbox', cdp_url: 'sandbox_mcp', proxy: 'proxy',
-  sms_url: 'sms', mail_imap: 'mail', vlm_api_base: 'vlm',
-  twocaptcha_key: 'twocaptcha', bocha_key: 'bocha', zhipu_key: 'zhipu',
-};
-const card = { border: '1px solid var(--border,#333)', borderRadius: 8, padding: '10px 12px' };
 type Section = 'service' | 'mcp' | 'vault';
 
 export default function ResourcesPanel() {
   const [data, setData] = useState<Overview | null>(null);
   const [sec, setSec] = useState<Section>('service');
-  const [msg, setMsg] = useState('');
+  const [msg, setMsg] = useState<{ text: string; ok?: boolean } | null>(null);
   const [editKey, setEditKey] = useState<string | null>(null);
   const [editVal, setEditVal] = useState('');
-  const [secretInput, setSecretInput] = useState<Record<string, string>>({});
-  const [pinging, setPinging] = useState(false);
-  const [pingRes, setPingRes] = useState<Record<string, { ok: boolean; msg: string }> | null>(null);
+  const [secretInput, setSecretInput] = useState<string | null>(null);
+  const [secretVal, setSecretVal] = useState('');
+  const [pinging, setPinging] = useState<string | null>(null);
+  const [pingRes, setPingRes] = useState<Record<string, { ok: boolean; msg: string; ms?: number }>>({});
+  const [vSearch, setVSearch] = useState('');
   const [vEdit, setVEdit] = useState<VaultEdit | null>(null);
   const [mcpEdit, setMcpEdit] = useState<{ name: string; command: string; args: string } | null>(null);
 
   const load = async () => {
     try { setData(await api<Overview>('/api/admin/resources')); }
-    catch (e) { setMsg(`读取失败：${String(e)}`); }
+    catch (e) { setMsg({ text: `读取失败：${String(e)}` }); }
   };
   useEffect(() => { void load(); }, []);
 
-  const flash = (t: string) => { setMsg(t); setTimeout(() => setMsg(''), 2500); };
+  const flash = (text: string, ok = true) => {
+    setMsg({ text, ok });
+    setTimeout(() => setMsg(null), 2600);
+  };
 
   const saveService = async (key: string, value: string) => {
     try {
       await api('/api/admin/resources/service', { method: 'POST', body: JSON.stringify({ key, value }) });
       flash('✓ 已保存'); setEditKey(null); await load();
-    } catch (e) { flash(`保存失败：${String(e)}`); }
+    } catch (e) { flash(`保存失败：${String(e)}`, false); }
   };
   const saveSecret = async (key: string) => {
-    const v = (secretInput[key] ?? '').trim();
+    const v = secretVal.trim();
     if (!v) return;
     try {
       await api('/api/admin/resources/secret', { method: 'POST', body: JSON.stringify({ key, value: v }) });
-      flash('✓ 已加密保存（AES-GCM，不落配置文件）');
-      setSecretInput(s => ({ ...s, [key]: '' })); await load();
-    } catch (e) { flash(`保存失败：${String(e)}`); }
+      flash('✓ 已加密保存（AES-GCM）'); setSecretInput(null); setSecretVal(''); await load();
+    } catch (e) { flash(`保存失败：${String(e)}`, false); }
   };
-  const ping = async (only: string[]) => {
-    setPinging(true); setPingRes(null);
+  const ping = async (card: CardDef) => {
+    if (!card.ping?.length) return;
+    setPinging(card.id);
     try {
-      const d = await api<{ results: Record<string, { ok: boolean; msg: string }> }>(
-        '/api/admin/resources/test', { method: 'POST', body: JSON.stringify({ only }) });
-      setPingRes(d.results);
-    } catch (e) { flash(`探测失败：${String(e)}`); }
-    finally { setPinging(false); }
+      const d = await api<{ results: Record<string, { ok: boolean; msg: string; ms?: number }> }>(
+        '/api/admin/resources/test', { method: 'POST', body: JSON.stringify({ only: card.ping }) });
+      setPingRes(r => ({ ...r, ...d.results }));
+    } catch (e) { flash(`探测失败：${String(e)}`, false); }
+    finally { setPinging(null); }
   };
-  const pingTargets = (keys: string[]) =>
-    [...new Set(keys.map(k => PING_MAP[k]).filter(Boolean))];
+  const pingAll = async () => {
+    const all = GROUPS.flatMap(g => g.cards).flatMap(c => c.ping ?? []);
+    if (!all.length) return;
+    setPinging('__all__');
+    try {
+      const d = await api<{ results: Record<string, { ok: boolean; msg: string; ms?: number }> }>(
+        '/api/admin/resources/test', { method: 'POST', body: JSON.stringify({ only: all }) });
+      setPingRes(d.results);
+    } catch (e) { flash(`探测失败：${String(e)}`, false); }
+    finally { setPinging(null); }
+  };
 
   const saveVaultEntry = async () => {
     if (!vEdit?.platform?.trim()) return;
     const body: Record<string, string> = { platform: vEdit.platform.trim() };
-    for (const f of ['username', 'email', 'phone', 'twofa', 'status', 'notes', 'password', 'recovery'] as const) {
-      const v = (vEdit as any)[f];
-      if (v && String(v).trim()) body[f] = String(v).trim();
+    for (const f of ['username', 'email', 'notes', 'password'] as const) {
+      const v = vEdit[f];
+      if (v && v.trim()) body[f] = v.trim();
     }
     try {
       await api('/api/admin/vault/entry', { method: 'POST', body: JSON.stringify(body) });
       flash('✓ 已入加密库'); setVEdit(null); await load();
-    } catch (e) { flash(`保存失败：${String(e)}`); }
+    } catch (e) { flash(`保存失败：${String(e)}`, false); }
   };
   const delVaultEntry = async (platform: string) => {
     if (!confirm(`删除凭证「${platform}」？此操作不可撤销。`)) return;
-    try {
-      await api(`/api/admin/vault/entry/${encodeURIComponent(platform)}`, { method: 'DELETE' });
-      await load();
-    } catch (e) { flash(`删除失败：${String(e)}`); }
+    try { await api(`/api/admin/vault/entry/${encodeURIComponent(platform)}`, { method: 'DELETE' }); await load(); }
+    catch (e) { flash(`删除失败：${String(e)}`, false); }
   };
   const saveMcp = async () => {
     if (!mcpEdit?.name?.trim() || !mcpEdit.command?.trim()) return;
     let args: string[] = [];
-    try { args = mcpEdit.args ? JSON.parse(mcpEdit.args) : []; } catch { flash('args 需为 JSON 数组'); return; }
+    try { args = mcpEdit.args ? JSON.parse(mcpEdit.args) : []; } catch { flash('args 需为 JSON 数组', false); return; }
     try {
       await api(`/api/tools/mcp/${encodeURIComponent(mcpEdit.name.trim())}`, {
         method: 'PUT', body: JSON.stringify({ command: mcpEdit.command, args }) });
       flash('✓ 已保存（新会话生效）'); setMcpEdit(null); await load();
-    } catch (e) { flash(`保存失败：${String(e)}`); }
+    } catch (e) { flash(`保存失败：${String(e)}`, false); }
   };
 
   if (!data) return <div className="pad muted">加载中…</div>;
-  const secretMap = Object.fromEntries(data.secrets.map(s => [s.key, s.set]));
+  const valOf = (k: string) => data.services.find(s => s.key === k)?.value ?? '';
+  const secretSet = (k: string) => data.secrets.find(s => s.key === k)?.set ?? false;
+  const cardStatus = (c: CardDef) => {
+    if (!c.ping?.length) return null;
+    const rs = c.ping.map(p => pingRes[p]).filter(Boolean);
+    if (!rs.length) return <span className="res-status">未测</span>;
+    const ok = rs.every(r => r.ok);
+    const ms = Math.max(...rs.map(r => r.ms ?? 0));
+    return <span className={`res-status ${ok ? 'ok' : 'fail'}`}>
+      {ok ? `✓ ${ms ? `${ms}ms` : '正常'}` : `✗ ${rs.find(r => !r.ok)?.msg?.slice(0, 24) ?? '失败'}`}
+    </span>;
+  };
+
+  const vFiltered = data.vault.platforms.filter(p =>
+    !vSearch || p.platform.toLowerCase().includes(vSearch.toLowerCase())
+    || (p.user || '').toLowerCase().includes(vSearch.toLowerCase())
+    || (p.email || '').toLowerCase().includes(vSearch.toLowerCase()));
 
   return (
     <div className="pad">
-      <div style={{ display: 'flex', gap: 8, marginBottom: 12, alignItems: 'center' }}>
-        {([['service', '服务'], ['mcp', 'MCP'], ['vault', `凭证库（${data.vault.platforms.length}）`]] as [Section, string][]).map(([k, lb]) => (
+      {/* 分区切换 + 汇总 */}
+      <div className="res-toolbar">
+        {([['service', '服务'], ['mcp', 'MCP'], ['vault', `凭证库`]] as [Section, string][]).map(([k, lb]) => (
           <button key={k} className={`tab ${sec === k ? 'on' : ''}`} onClick={() => setSec(k)}>{lb}</button>
         ))}
-        <span className="muted" style={{ fontSize: 12, marginLeft: 'auto' }}>
-          密钥全部 AES-GCM 加密存储，明文不落配置文件、不回显界面
+        <span className="spacer" />
+        <span className="muted" style={{ fontSize: 12 }}>
+          🔒 密钥 AES-GCM 加密存储 · 明文不落配置、不回显
         </span>
       </div>
-      {msg && <div style={{ ...card, marginBottom: 10, fontSize: 13 }}>{msg}</div>}
+      {msg && <div className={`res-banner ${msg.ok === false ? 'err' : 'ok'}`}>{msg.text}</div>}
 
-      {/* ============ 服务 ============ */}
+      {/* ============ 服务（分组卡片墙） ============ */}
       {sec === 'service' && (
         <>
-          <div style={{ display: 'flex', gap: 8, marginBottom: 8 }}>
-            <button disabled={pinging} onClick={() => void ping(pingTargets(data.services.map(s => s.key)))}>
-              {pinging ? '探测中…' : '一键探测全部'}
+          <div className="res-toolbar" style={{ marginBottom: 0 }}>
+            <button className="res-btn" style={{ fontSize: 12, padding: '5px 12px' }}
+              disabled={!!pinging} onClick={() => void pingAll()}>
+              {pinging === '__all__' ? '探测中…' : '⚡ 全部探测'}
             </button>
-            {pingRes && <span className="muted" style={{ fontSize: 12, alignSelf: 'center' }}>
-              {Object.entries(pingRes).map(([k, v]) => `${k}:${v.ok ? '✓' : '✗'}`).join(' · ')}
-            </span>}
+            <span className="muted" style={{ fontSize: 12 }}>
+              {Object.keys(pingRes).length
+                ? `${Object.values(pingRes).filter(r => r.ok).length}/${Object.keys(pingRes).length} 项在线`
+                : '点卡片上的「测试」逐项探测'}
+            </span>
           </div>
-          <table className="kv-table" style={{ width: '100%' }}>
-            <thead><tr><th style={{ width: 150 }}>服务</th><th>端点 / 参数</th><th style={{ width: 130 }}>密钥</th><th style={{ width: 60 }}></th></tr></thead>
-            <tbody>
-              {data.services.map(sv => {
-                const sk = ({ ocr_url: 'sandbox_api_key', sandbox_url: 'sandbox_api_key', cdp_url: 'sandbox_api_key', sms_url: 'sms_token', mail_imap: 'mail_auth_code', mail_smtp: 'mail_auth_code', mail_user: 'mail_auth_code', vlm_api_base: 'vlm_api_key', textr_email: 'textr_password', zhipu_engine: 'zhipu_key' } as Record<string, string>)[sv.key];
-                return (
-                  <tr key={sv.key}>
-                    <td>
-                      <b style={{ fontSize: 13 }}>{sv.label}</b>
-                      {sv.note && <div className="muted" style={{ fontSize: 11 }}>{sv.note}</div>}
-                    </td>
-                    <td>
-                      {editKey === sv.key ? (
-                        <span style={{ display: 'flex', gap: 6 }}>
-                          <input style={{ flex: 1 }} value={editVal} autoFocus
+          {GROUPS.map(g => (
+            <div key={g.title}>
+              <div className="res-group-title">{g.title}</div>
+              <div className="res-grid">
+                {g.cards.map(c => (
+                  <div key={c.id} className="res-card">
+                    <div className="res-head">
+                      <span style={{ fontSize: 16 }}>{c.icon}</span>
+                      <span className="res-name">{c.name}</span>
+                      {cardStatus(c)}
+                    </div>
+                    {c.note && <div className="res-note" style={{ marginTop: -4 }}>{c.note}</div>}
+                    {c.fields.map(f => (
+                      <div key={f.key} className="res-field">
+                        <span className="res-k">{f.k}</span>
+                        {editKey === f.key ? (
+                          <input value={editVal} autoFocus placeholder={f.ph}
                             onChange={e => setEditVal(e.target.value)}
-                            onKeyDown={e => { if (e.key === 'Enter') void saveService(sv.key, editVal); if (e.key === 'Escape') setEditKey(null); }} />
-                          <button onClick={() => void saveService(sv.key, editVal)}>存</button>
-                          <button onClick={() => setEditKey(null)}>取消</button>
-                        </span>
-                      ) : (
-                        <a style={{ cursor: 'pointer' }} title="点击编辑"
-                          onClick={() => { setEditKey(sv.key); setEditVal(sv.value); }}>
-                          {sv.value || <span className="muted">（未配置）</span>}
-                        </a>
-                      )}
-                    </td>
-                    <td>
-                      {sk && (
-                        secretInput[sk] !== undefined ? (
-                          <span style={{ display: 'flex', gap: 4 }}>
-                            <input type="password" style={{ width: 90 }} autoFocus
-                              placeholder="新值" value={secretInput[sk]}
-                              onChange={e => setSecretInput(s => ({ ...s, [sk]: e.target.value }))}
-                              onKeyDown={e => { if (e.key === 'Enter') void saveSecret(sk); if (e.key === 'Escape') setSecretInput(s => { const n = { ...s }; delete n[sk]; return n; }); }} />
-                            <button onClick={() => void saveSecret(sk)}>存</button>
+                            onKeyDown={e => {
+                              if (e.key === 'Enter') void saveService(f.key, editVal);
+                              if (e.key === 'Escape') setEditKey(null);
+                            }} />
+                        ) : (
+                          <span className={`res-v ${valOf(f.key) ? '' : 'empty'}`}
+                            title={`${valOf(f.key) || f.ph}（点击编辑）`}
+                            onClick={() => { setEditKey(f.key); setEditVal(valOf(f.key)); }}>
+                            {valOf(f.key) || `（${f.ph}）`}
+                          </span>
+                        )}
+                        {editKey === f.key && (
+                          <>
+                            <button className="res-btn" onClick={() => void saveService(f.key, editVal)}>存</button>
+                            <button className="res-btn" onClick={() => setEditKey(null)}>取消</button>
+                          </>
+                        )}
+                      </div>
+                    ))}
+                    {c.secrets.length > 0 && (
+                      <div className="res-actions">
+                        {c.secrets.map(sk => secretInput === sk ? (
+                          <span key={sk} style={{ display: 'flex', gap: 4 }}>
+                            <input type="password" autoFocus value={secretVal} placeholder="输入新值"
+                              style={{
+                                background: 'var(--bg3)', border: '1px solid var(--accent)', borderRadius: 7,
+                                padding: '3px 8px', fontSize: 12, color: 'var(--text)', outline: 'none', width: 130,
+                                boxShadow: '0 0 0 3px var(--accent-ring)',
+                              }}
+                              onChange={e => setSecretVal(e.target.value)}
+                              onKeyDown={e => {
+                                if (e.key === 'Enter') void saveSecret(sk);
+                                if (e.key === 'Escape') { setSecretInput(null); setSecretVal(''); }
+                              }} />
+                            <button className="res-btn" onClick={() => void saveSecret(sk)}>存</button>
                           </span>
                         ) : (
-                          <a style={{ cursor: 'pointer', color: secretMap[sk] ? '#3aa675' : 'var(--accent,#e5484d)', fontSize: 12 }}
-                            title="点击设置（只写不读）"
-                            onClick={() => setSecretInput(s => ({ ...s, [sk]: '' }))}>
-                            {secretMap[sk] ? '🔑 已加密保存' : '＋ 设置密钥'}
-                          </a>
-                        )
-                      )}
-                    </td>
-                    <td>
-                      {PING_MAP[sv.key] && <button disabled={pinging}
-                        onClick={() => void ping(pingTargets([sv.key]))}>测</button>}
-                    </td>
-                  </tr>
-                );
-              })}
-              {/* 纯密钥行（无端点）：2captcha/bocha/zhipu */}
-              {(['twocaptcha_key', 'bocha_key', 'zhipu_key'] as const).map(k => (
-                <tr key={k}>
-                  <td><b style={{ fontSize: 13 }}>{SECRET_ZH[k]}</b></td>
-                  <td className="muted">仅密钥（无端点）</td>
-                  <td>
-                    {secretInput[k] !== undefined ? (
-                      <span style={{ display: 'flex', gap: 4 }}>
-                        <input type="password" style={{ width: 90 }} autoFocus placeholder="新值"
-                          value={secretInput[k] ?? ''} onChange={e => setSecretInput(s => ({ ...s, [k]: e.target.value }))}
-                          onKeyDown={e => { if (e.key === 'Enter') void saveSecret(k); if (e.key === 'Escape') setSecretInput(s => { const n = { ...s }; delete n[k]; return n; }); }} />
-                        <button onClick={() => void saveSecret(k)}>存</button>
-                      </span>
-                    ) : (
-                      <a style={{ cursor: 'pointer', color: secretMap[k] ? '#3aa675' : 'var(--accent,#e5484d)', fontSize: 12 }}
-                        onClick={() => setSecretInput(s => ({ ...s, [k]: '' }))}>
-                        {secretMap[k] ? '🔑 已加密保存' : '＋ 设置密钥'}
-                      </a>
+                          <span key={sk} className={`res-secret-chip ${secretSet(sk) ? '' : 'unset'}`}
+                            title={`${SECRET_ZH[sk]}：点击设置（只写不读，${secretSet(sk) ? '已加密保存' : '未设置'}）`}
+                            onClick={() => { setSecretInput(sk); setSecretVal(''); }}>
+                            🔑 {SECRET_ZH[sk]} {secretSet(sk) ? '已加密' : '未设'}
+                          </span>
+                        ))}
+                      </div>
                     )}
-                  </td>
-                  <td><button disabled={pinging} onClick={() => void ping([PING_MAP[k]])}>测</button></td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
+                    {(c.ping?.length ?? 0) > 0 && (
+                      <div className="res-actions">
+                        <button className="res-btn" disabled={pinging === c.id}
+                          onClick={() => void ping(c)}>{pinging === c.id ? '测试中…' : '测试'}</button>
+                      </div>
+                    )}
+                  </div>
+                ))}
+              </div>
+            </div>
+          ))}
         </>
       )}
 
       {/* ============ MCP ============ */}
       {sec === 'mcp' && (
         <>
-          <div style={{ display: 'flex', gap: 8, marginBottom: 8 }}>
-            <button onClick={() => setMcpEdit({ name: '', command: '', args: '' })}>＋ 添加 MCP Server</button>
-            <span className="muted" style={{ fontSize: 12, alignSelf: 'center' }}>
-              stdio 服务，工具以 mcp__&lt;server&gt;__&lt;tool&gt; 出现；改动新会话生效
+          <div className="res-toolbar" style={{ marginBottom: 0 }}>
+            <button className="res-btn" style={{ fontSize: 12, padding: '5px 12px' }}
+              onClick={() => setMcpEdit({ name: '', command: '', args: '' })}>＋ 添加 Server</button>
+            <span className="muted" style={{ fontSize: 12 }}>
+              stdio 服务；工具以 mcp__&lt;server&gt;__&lt;tool&gt; 出现，改动新会话生效
             </span>
           </div>
           {mcpEdit && (
-            <div style={{ ...card, marginBottom: 10, display: 'flex', gap: 6, flexWrap: 'wrap' }}>
-              <input placeholder="名称（如 browser）" style={{ width: 140 }} value={mcpEdit.name}
+            <div className="res-addbar focused">
+              <input placeholder="名称（如 browser）" style={{ width: 130 }} value={mcpEdit.name}
                 onChange={e => setMcpEdit({ ...mcpEdit, name: e.target.value })} />
-              <input placeholder="命令（如 npx）" style={{ width: 140 }} value={mcpEdit.command}
+              <input placeholder="命令（如 npx）" style={{ width: 110 }} value={mcpEdit.command}
                 onChange={e => setMcpEdit({ ...mcpEdit, command: e.target.value })} />
-              <input placeholder='参数 JSON 数组（如 ["-y","mcp-server"]）' style={{ flex: 1, minWidth: 220 }} value={mcpEdit.args}
+              <input placeholder='参数（JSON 数组，如 ["-y","…"]）' style={{ flex: 1, minWidth: 200 }} value={mcpEdit.args}
                 onChange={e => setMcpEdit({ ...mcpEdit, args: e.target.value })} />
-              <button onClick={() => void saveMcp()}>保存</button>
-              <button onClick={() => setMcpEdit(null)}>取消</button>
+              <button className="res-btn" onClick={() => void saveMcp()}>保存</button>
+              <button className="res-btn" onClick={() => setMcpEdit(null)}>取消</button>
             </div>
           )}
           <table className="kv-table" style={{ width: '100%' }}>
-            <thead><tr><th style={{ width: 140 }}>名称</th><th>命令</th><th style={{ width: 110 }}>会话覆盖</th><th style={{ width: 60 }}></th></tr></thead>
+            <thead><tr><th style={{ width: 130 }}>名称</th><th>命令</th><th style={{ width: 90 }}>会话覆盖</th><th style={{ width: 50 }}></th></tr></thead>
             <tbody>
               {data.mcp.servers.length === 0 && (
-                <tr><td colSpan={4} className="muted" style={{ textAlign: 'center', padding: 16 }}>（无全局 MCP server）</td></tr>
+                <tr><td colSpan={4} className="muted" style={{ textAlign: 'center', padding: 20 }}>
+                  （无全局 MCP server——上方添加）
+                </td></tr>
               )}
               {data.mcp.servers.map(m => (
                 <tr key={m.name}>
-                  <td><b>{m.name}</b>{m.session_only && <span className="muted" style={{ fontSize: 11 }}>（仅会话级）</span>}</td>
-                  <td className="muted" style={{ fontSize: 12 }}>
+                  <td><b>{m.name}</b>{m.session_only && <span className="muted" style={{ fontSize: 10.5 }}>（仅会话级）</span>}</td>
+                  <td className="mono muted" style={{ fontSize: 11.5 }}>
                     {[m.spec?.command, ...(m.spec?.args ?? [])].filter(Boolean).join(' ') || '-'}
                   </td>
-                  <td className="muted">{m.sessions_overriding || '-'}</td>
+                  <td className="muted">{m.sessions_overriding || '—'}</td>
                   <td>{!m.session_only && (
-                    <button onClick={() => { if (confirm(`删除 MCP server ${m.name}？`)) void api(`/api/tools/mcp/${encodeURIComponent(m.name)}`, { method: 'DELETE' }).then(load).catch(e => flash(String(e))); }}>删</button>
+                    <button className="res-btn" onClick={() => {
+                      if (confirm(`删除 MCP server ${m.name}？`))
+                        void api(`/api/tools/mcp/${encodeURIComponent(m.name)}`, { method: 'DELETE' }).then(load);
+                    }}>删</button>
                   )}</td>
                 </tr>
               ))}
@@ -261,41 +358,41 @@ export default function ResourcesPanel() {
       {/* ============ 凭证库 ============ */}
       {sec === 'vault' && (
         <>
-          <div style={{ display: 'flex', gap: 8, marginBottom: 8, alignItems: 'center' }}>
-            <button onClick={() => setVEdit({ platform: '' })}>＋ 添加凭证</button>
+          <div className="res-toolbar" style={{ marginBottom: 0 }}>
+            <button className="res-btn" style={{ fontSize: 12, padding: '5px 12px' }}
+              onClick={() => setVEdit({ platform: '' })}>＋ 添加凭证</button>
+            <input className="res-search" placeholder="搜索平台 / 账号…" value={vSearch}
+              onChange={e => setVSearch(e.target.value)} />
+            <span className="spacer" />
             <span className="muted" style={{ fontSize: 12 }}>
               {data.vault.verify.ok
-                ? `加密库健康（${data.vault.verify.entries} 条 · AES-GCM）`
+                ? `🛡 加密库健康 · ${data.vault.verify.entries} 条 · AES-GCM`
                 : `⚠ 校验失败：${data.vault.verify.error ?? '未知'}`}
             </span>
           </div>
           {vEdit && (
-            <div style={{ ...card, marginBottom: 10 }}>
-              <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
-                <input placeholder="平台名（如 GitHub）" style={{ width: 150 }} value={vEdit.platform ?? ''}
-                  onChange={e => setVEdit({ ...vEdit, platform: e.target.value })} />
-                <input placeholder="用户名" style={{ width: 130 }} value={vEdit.username ?? ''}
-                  onChange={e => setVEdit({ ...vEdit, username: e.target.value })} />
-                <input placeholder="邮箱" style={{ width: 160 }} value={vEdit.email ?? ''}
-                  onChange={e => setVEdit({ ...vEdit, email: e.target.value })} />
-                <input type="password" placeholder="密码（只写）" style={{ width: 130 }} value={vEdit.password ?? ''}
-                  onChange={e => setVEdit({ ...vEdit, password: e.target.value })} />
-                <input placeholder="备注" style={{ flex: 1, minWidth: 140 }} value={vEdit.notes ?? ''}
-                  onChange={e => setVEdit({ ...vEdit, notes: e.target.value })} />
-              </div>
-              <div style={{ display: 'flex', gap: 6, marginTop: 6 }}>
-                <button onClick={() => void saveVaultEntry()}>保存（加密）</button>
-                <button onClick={() => setVEdit(null)}>取消</button>
-                <span className="muted" style={{ fontSize: 11, alignSelf: 'center' }}>
-                  取用走审批门（loadn-web r account）；明文永不经过界面/网络
-                </span>
-              </div>
+            <div className="res-addbar focused">
+              <input placeholder="平台（如 GitHub）" style={{ width: 140 }} value={vEdit.platform ?? ''}
+                onChange={e => setVEdit({ ...vEdit, platform: e.target.value })} />
+              <input placeholder="用户名" style={{ width: 120 }} value={vEdit.username ?? ''}
+                onChange={e => setVEdit({ ...vEdit, username: e.target.value })} />
+              <input placeholder="邮箱" style={{ width: 150 }} value={vEdit.email ?? ''}
+                onChange={e => setVEdit({ ...vEdit, email: e.target.value })} />
+              <input type="password" placeholder="密码（只写）" style={{ width: 120 }} value={vEdit.password ?? ''}
+                onChange={e => setVEdit({ ...vEdit, password: e.target.value })} />
+              <input placeholder="备注" style={{ flex: 1, minWidth: 120 }} value={vEdit.notes ?? ''}
+                onChange={e => setVEdit({ ...vEdit, notes: e.target.value })} />
+              <button className="res-btn" onClick={() => void saveVaultEntry()}>保存（加密）</button>
+              <button className="res-btn" onClick={() => setVEdit(null)}>取消</button>
             </div>
           )}
           <table className="kv-table" style={{ width: '100%' }}>
-            <thead><tr><th>平台</th><th>账号</th><th style={{ width: 70 }}>密码</th><th style={{ width: 110 }}>更新</th><th style={{ width: 50 }}></th></tr></thead>
+            <thead><tr><th>平台</th><th>账号</th><th style={{ width: 70 }}>密码</th><th style={{ width: 100 }}>更新</th><th style={{ width: 50 }}></th></tr></thead>
             <tbody>
-              {data.vault.platforms.map(p => (
+              {vFiltered.length === 0 && (
+                <tr><td colSpan={5} className="muted" style={{ textAlign: 'center', padding: 20 }}>（无匹配条目）</td></tr>
+              )}
+              {vFiltered.map(p => (
                 <tr key={p.platform}>
                   <td>
                     <a style={{ cursor: 'pointer' }} title="点击编辑（密码留空=不改）"
@@ -303,12 +400,12 @@ export default function ResourcesPanel() {
                       {p.platform}
                     </a>
                   </td>
-                  <td className="muted">{p.user || p.email || '-'}</td>
-                  <td style={{ color: p.has_password ? '#3aa675' : 'var(--accent,#e5484d)' }}>
-                    {p.has_password ? '已存' : '缺'}
+                  <td className="muted">{p.user || p.email || '—'}</td>
+                  <td style={{ color: p.has_password ? 'var(--green)' : 'var(--red)' }}>
+                    {p.has_password ? '● 已存' : '○ 缺'}
                   </td>
-                  <td style={{ fontVariantNumeric: 'tabular-nums' }}>{(p.updated_at || '').slice(0, 10)}</td>
-                  <td><button onClick={() => void delVaultEntry(p.platform)}>删</button></td>
+                  <td className="mono" style={{ fontSize: 11.5 }}>{(p.updated_at || '').slice(0, 10)}</td>
+                  <td><button className="res-btn" onClick={() => void delVaultEntry(p.platform)}>删</button></td>
                 </tr>
               ))}
             </tbody>
