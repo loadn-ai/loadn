@@ -1,0 +1,74 @@
+<!doctype html>
+<!-- 引导 splash：纯静态（无构建步骤），经 window.__TAURI__ 监听阶段事件；
+     就绪后整窗被导航去 VM 内 Web UI，本页使命结束。 -->
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8" />
+<title>loadn</title>
+<style>
+  :root { color-scheme: dark; }
+  body {
+    margin: 0; height: 100vh; display: flex; flex-direction: column;
+    align-items: center; justify-content: center; gap: 18px;
+    background: #101216; color: #d7dae0;
+    font: 14px/1.7 -apple-system, "Segoe UI", "PingFang SC", "Microsoft YaHei", sans-serif;
+  }
+  h1 { font-size: 22px; font-weight: 600; letter-spacing: 2px; margin: 0; }
+  h1 b { color: #4f9e79; }
+  #phase { color: #8b93a1; min-height: 24px; }
+  #msg {
+    max-width: 620px; white-space: pre-wrap; text-align: center;
+    background: #2a1b1b; border: 1px solid #5c2f2f; color: #e8b4b4;
+    border-radius: 8px; padding: 12px 16px; display: none;
+  }
+  .spin {
+    width: 28px; height: 28px; border-radius: 50%;
+    border: 3px solid #2c313a; border-top-color: #4f9e79;
+    animation: r 0.9s linear infinite;
+  }
+  @keyframes r { to { transform: rotate(360deg); } }
+  button {
+    display: none; background: #2b6cb0; color: #fff; border: 0; cursor: pointer;
+    border-radius: 6px; padding: 8px 22px; font-size: 14px;
+  }
+  button:hover { background: #3178c6; }
+  .err .spin { display: none; } .err button { display: inline-block; }
+</style>
+</head>
+<body>
+  <h1>loadn <b>desktop</b></h1>
+  <div class="spin" id="spin"></div>
+  <div id="phase">启动中…</div>
+  <div id="msg"></div>
+  <button id="retry">重试</button>
+<script>
+  const PH = {
+    DetectingAssets: '定位并校验执行域镜像…',
+    Provisioning: '首次安装：准备 Linux 执行域（可能需要数分钟）…',
+    Starting: '启动虚拟机…',
+    Ready: '就绪',
+  };
+  function render(p) {
+    const el = document.getElementById('phase');
+    const msg = document.getElementById('msg');
+    if (p.type === 'WaitingHealth') {
+      el.textContent = '等待执行域服务就绪… ' + p.elapsed_s + 's';
+    } else if (p.type === 'Error') {
+      document.body.classList.add('err');
+      el.textContent = '启动失败';
+      msg.style.display = 'block';
+      msg.textContent = p.msg;
+    } else {
+      el.textContent = PH[p.type] || JSON.stringify(p);
+    }
+  }
+  document.getElementById('retry').onclick = () => {
+    document.body.classList.remove('err');
+    document.getElementById('msg').style.display = 'none';
+    document.getElementById('phase').textContent = '重试…';
+    window.__TAURI__.event.emit('shell://retry');
+  };
+  window.__TAURI__.event.listen('shell://phase', (e) => render(e.payload));
+</script>
+</body>
+</html>

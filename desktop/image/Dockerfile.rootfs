@@ -19,7 +19,13 @@ ENV DEBIAN_FRONTEND=noninteractive LANG=C.UTF-8
 # ---- 基础系统 + 沙箱/网络工具 + python3.11 + systemd ----
 # bashlex 依赖的 bash 解析、bwrap+iproute2（沙箱内 lo up）、socat（TCP↔uds 桥）
 # 都是平台 spawn 链的硬依赖；linux-image-cloud+initramfs 供 VZ 启动（WSL 忽略）。
-RUN apt-get update && apt-get install -y --no-install-recommends \
+# 源走 LOADN_APT_MIRROR（默认中科大镜像；构建慢网环境可设空串回退官方源）。
+ARG LOADN_APT_MIRROR=mirrors.ustc.edu.cn
+RUN if [ -n "$LOADN_APT_MIRROR" ]; then \
+        sed -i "s|deb.debian.org|$LOADN_APT_MIRROR|g; s|security.debian.org|$LOADN_APT_MIRROR|g" \
+            /etc/apt/sources.list.d/debian.sources; \
+    fi \
+    && apt-get update && apt-get install -y --no-install-recommends \
         bash ca-certificates curl gnupg git ripgrep procps \
         bubblewrap socat iproute2 less \
         python3 python3-venv python3-pip \
@@ -36,24 +42,30 @@ RUN curl -fsSL https://deb.nodesource.com/setup_20.x | bash - \
     && npm cache clean --force
 
 # ---- 运行用户（数据根 /home/loadn/.loadn-data；wsl 默认用户同名）----
+# /opt/loadn 预建并归 loadn：install/serve 全程非 root（systemd/docker 态都以
+# loadn 跑，无人再能写 /opt/loadn 之外的系统路径）
 RUN useradd -m -u 1000 -s /bin/bash loadn \
-    && mkdir -p /home/loadn/.loadn-data \
-    && chown -R loadn:loadn /home/loadn
+    && mkdir -p /home/loadn/.loadn-data /opt/loadn \
+    && chown -R loadn:loadn /home/loadn /opt/loadn
 
 # ---- VM 装配脚本 + systemd 单元 + wsl.conf ----
 COPY loadn-vm-install.sh loadn-vm-start.sh /usr/local/sbin/
 RUN chmod 0755 /usr/local/sbin/loadn-vm-install.sh /usr/local/sbin/loadn-vm-start.sh
 COPY loadn-vm.service /etc/systemd/system/loadn-vm.service
+COPY loadn-vm-exec.service /etc/systemd/system/loadn-vm-exec.service
 COPY wsl.conf /etc/wsl.conf
 # docker 内无运行中的 systemd——手工链接代替 systemctl enable（两种 VM 通用）
 RUN mkdir -p /etc/systemd/system/multi-user.target.wants \
     && ln -sfn /etc/systemd/system/loadn-vm.service \
         /etc/systemd/system/multi-user.target.wants/loadn-vm.service \
+    # exec 通道：vsock 在场才启（WSL 无 /dev/vsock，Condition 自然跳过）
+    && ln -sfn /etc/systemd/system/loadn-vm-exec.service \
+        /etc/systemd/system/multi-user.target.wants/loadn-vm-exec.service \
     # 空机器 id：VZ 首启 systemd 自动生成（WSL 忽略）；避免镜像克隆告警
     && : > /etc/machine-id
 
 # ---- VZ 网络与时间（virtio-net DHCP + timesyncd；WSL2 自带注入共存无害）----
-RUN mkdir -p /etc/systemd/network \
+RUN mkdir -p /etc/systemd/network /etc/systemd/system/sockets.target.wants \
     && printf '[Match]\nName=en* eth*\n\n[Network]\nDHCP=yes\n' \
         > /etc/systemd/network/10-dhcp.network \
     && ln -sfn /lib/systemd/system/systemd-networkd.service \

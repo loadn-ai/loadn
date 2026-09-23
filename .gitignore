@@ -10,3 +10,10 @@ build/
 # 运行时用户数据（DB/审计/备份）绝不入库
 var/
 .loadn-hook-audit.jsonl
+
+# 构建产物（cargo target / npm / desktop 资产——进 docker context 不入库）
+**/target/
+desktop/image/payload/
+desktop/image/dist/
+desktop/image/dist-platform/
+desktop/shell/src-tauri/gen/

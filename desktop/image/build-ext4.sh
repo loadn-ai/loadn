@@ -9,11 +9,12 @@ OUT="image/dist"
 SIZE_GB="${ROOTFS_SIZE_GB:-8}"
 
 TAR="$OUT/rootfs-$VER.tar"
-docker export "$(docker create "$IMAGE")" > "$TAR" \
-    && docker rm "$(docker ps -aq --filter ancestor="$IMAGE" --filter status=created | head -1)" >/dev/null 2>&1 || true
+CID=$(docker create "$IMAGE")
+docker export "$CID" > "$TAR"
+docker rm "$CID" >/dev/null
 
 IMG="$OUT/rootfs-ext4-$VER.raw"
-rm -f "$IMG"
+rm -f "$IMG" "$IMG.gz" "$OUT/rootfs-ext4-$VER.raw.gz"
 truncate -s "${SIZE_GB}G" "$IMG"
 mkfs.ext4 -q -F -L loadn-root -E lazy_itable_init=0 "$IMG"
 

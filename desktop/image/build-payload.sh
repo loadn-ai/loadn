@@ -25,8 +25,12 @@ echo "[build-payload] 2/3 ui build（dist 并入 release）"
 rm -rf /tmp/loadn-payload-stage/ui/dist
 cp -r ui/dist /tmp/loadn-payload-stage/ui/dist
 
-echo "[build-payload] 3/3 wheelhouse 离线轮子"
-"$PIP_BIN" download -q -r requirements.prod.lock -d "$OUT/wheelhouse"
+echo "[build-payload] 3/3 wheelhouse 离线轮子（目标=VM 内 python3.11 / linux x86_64）"
+"$PIP_BIN" download -q -r requirements.prod.lock -d "$OUT/wheelhouse" \
+    --python-version "${LOADN_VM_PY:-3.11}" --implementation cp \
+    --platform manylinux2014_x86_64 --platform manylinux_2_17_x86_64 \
+    --platform manylinux_2_28_x86_64 --only-binary=:all: \
+    || "$PIP_BIN" download -q -r requirements.prod.lock -d "$OUT/wheelhouse"
 
 tar -czf "$OUT/release.tar.gz" -C /tmp/loadn-payload-stage .
 echo "$VER" > "$OUT/VERSION"

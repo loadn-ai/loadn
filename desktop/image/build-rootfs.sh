@@ -29,7 +29,7 @@ docker run --rm --entrypoint bash "$IMAGE" -c \
 echo "[build-rootfs] ext4 root 磁盘（sudo loop mount）"
 "image/build-ext4.sh" "$VER"
 
-(cd "$OUT" && sha256sum "rootfs-wsl-$VER.tar.gz" "rootfs-ext4-$VER.tar.gz" \
+(cd "$OUT" && sha256sum "rootfs-wsl-$VER.tar.gz" "rootfs-ext4-$VER.raw.gz" \
     "vmlinuz-$VER" "initrd-$VER.img" > "SHA256SUMS-$VER.txt")
 echo "[build-rootfs] 完成："
 ls -lh "$OUT" | grep -E "$VER|total"

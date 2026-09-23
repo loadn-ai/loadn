@@ -1,0 +1,4 @@
+
+# desktop 构建产物（进 docker context，不入库）
+desktop/image/payload/
+desktop/image/dist/

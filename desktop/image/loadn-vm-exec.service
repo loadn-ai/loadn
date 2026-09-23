@@ -1,0 +1,18 @@
+[Unit]
+# 桌面壳 exec 通道（mac/VZ 形态）：vsock 2222 → 每连接一个 /bin/sh。
+# 用途仅限宿主壳：token 读回、诊断命令。WSL 形态无 /dev/vsock（wsl.exe
+# exec 已够用），ConditionPathExists 自然跳过——不启不算失败。
+ConditionPathExists=/dev/vsock
+After=systemd-modules-load.service
+
+[Service]
+Type=simple
+User=loadn
+ExecStartPre=-/sbin/modprobe virtio_vsock
+# 禁 tty/pty：命令流定界交给调用方哨兵（壳侧 __LOADN_DONE__）
+ExecStart=/usr/bin/socat VSOCK-LISTEN:2222,reuseaddr,fork EXEC:/bin/sh,stderr
+Restart=on-failure
+RestartSec=3
+
+[Install]
+WantedBy=multi-user.target
