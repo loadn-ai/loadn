@@ -19,10 +19,11 @@ docker run -d --name "$NAME" --privileged -p "$PORT:8792" "$IMAGE" >/dev/null
 trap 'docker rm -f "$NAME" >/dev/null' EXIT
 
 # 等服务起（首启含 venv 离线装配，给足 300s；401 也算「已起」——W0 生效即拒匿名）
+# 注意 -w 在连接失败时也输出 000，不能再 || echo 叠加（000000 会假通过）
 ok=0
 for i in $(seq 1 150); do
-    code=$(curl -s -o /dev/null -w '%{http_code}' "http://127.0.0.1:$PORT/api/health" 2>/dev/null || echo 000)
-    if [ "$code" != "000" ]; then ok=1; break; fi
+    code=$(curl -s -o /dev/null -w '%{http_code}' "http://127.0.0.1:$PORT/api/health" 2>/dev/null || true)
+    if [ "$code" = "200" ] || [ "$code" = "401" ]; then ok=1; break; fi
     sleep 2
 done
 [ "$ok" = 1 ] || { echo "FAIL: 健康检查 300s 超时"; docker logs "$NAME" | tail -30; exit 1; }
@@ -53,8 +54,9 @@ print(f"  ok release={rel.get('version')} sandbox={sbx['effective']}"
       f" claude={str(eng['claude'].get('version'))[:24]}")
 EOF
 
-echo "[verify] 2/5 VM 内 doctor（bwrap/引擎/资产）"
-docker exec "$NAME" /opt/loadn/current/.venv/bin/loadn-web doctor | tail -12
+echo "[verify] 2/5 VM 内 doctor（以服务用户与数据根——exec 通道默认不继承服务 env）"
+docker exec -u loadn -e LOADN_WEBUI_HOME=/home/loadn/.loadn-data \
+    "$NAME" /opt/loadn/current/.venv/bin/loadn-web doctor | grep -E "bwrap|claude:|loadn:|profiles|prompts|skills|result" | head -10
 
 echo "[verify] 3/5 带鉴权建会话 + 查详情"
 SID=$(curl -sf -X POST "http://127.0.0.1:$PORT/api/sessions" \

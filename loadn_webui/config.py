@@ -340,7 +340,7 @@ def admin_token_value() -> str:
 
 def ensure_dirs() -> None:
     for key in ("workspace", "var", "logs", "call_logs", "run", "pid_dir",
-                "pages_cache", "backups"):
+                "pages_cache", "backups", "skills"):   # skills：数据根 overlay 首启即建
         PATHS[key].mkdir(parents=True, exist_ok=True)
 
 def behavior_file(name: str, rel: str) -> Path:
