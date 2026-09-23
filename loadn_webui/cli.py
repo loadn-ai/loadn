@@ -285,7 +285,8 @@ async def _approval_gate_http(method: str, path: str, body: dict | None = None,
     import os as os_mod
 
     import httpx
-    from .config import CONFIG, PATHS
+
+    from .config import CONFIG
     token = CONFIG.server.token
     headers = ({"X-Loadn-Token": token, "X-Workdaddy-Token": token}
                if token else {})
@@ -355,7 +356,7 @@ async def _approval_gate(args, action_type: str, params: dict,
             if code != 200:
                 continue
             if st["status"] == "approved":
-                print(f"✓ 已批准。用卡片上的 6 位确认码执行：")
+                print("✓ 已批准。用卡片上的 6 位确认码执行：")
                 print(f"   wd r {human_label} --confirm <code>")
                 return 0
             if st["status"] in ("denied", "expired"):

@@ -5,7 +5,6 @@ CLI 一律进程内 `cli.main([...])`。配置快照 fixture 防外溢。
 """
 import asyncio
 import json
-import time
 from dataclasses import asdict
 
 import pytest
@@ -174,7 +173,6 @@ def _page_html() -> str:
 
 async def test_fetch_page_direct_and_cache(http_log, monkeypatch):
     from loadn_webui import resources
-    from loadn_webui.config import PATHS
 
     # 保险丝：本测的用例都不应触发 CDP，真触发说明直接提取链退化
     async def cdp_fail(url, *, wait, html_out):
@@ -260,7 +258,9 @@ def test_image_url_filter():
 
 def test_image_likely_text():
     import io
+
     from PIL import Image
+
     from loadn_webui.resources import _image_likely_text
     img = Image.new("RGB", (300, 200))
     v, px = 42, []
@@ -330,12 +330,14 @@ async def test_ping_all(http_log, monkeypatch):
     monkeypatch.setattr(CONFIG.resources, "bocha_key", "b")
     monkeypatch.setattr(CONFIG.resources, "zhipu_key", "z")
     monkeypatch.setattr(CONFIG.titlegen, "api_key", "ark-key")   # vlm 回退
+    monkeypatch.setattr(CONFIG.resources, "proxy", "http://127.0.0.1:7890")
 
     http_log["routes"]["8686/health"] = lambda u, k: FakeResp(200)
     http_log["routes"]["21111/health"] = lambda u, k: FakeResp(200)
     http_log["routes"]["21111/mcp"] = lambda u, k: FakeResp(200, {"jsonrpc": "2.0"})
     http_log["routes"]["generate_204"] = lambda u, k: FakeResp(204)
-    http_log["routes"]["sms.example.test"] = lambda u, k: FakeResp(200, {"count": 5, "items": []})
+    monkeypatch.setattr(CONFIG.resources, "sms_url", "https://sms.test:30443")
+    http_log["routes"]["sms.test"] = lambda u, k: FakeResp(200, {"count": 5, "items": []})
     http_log["routes"]["2captcha.com"] = lambda u, k: FakeResp(200, text="3.15")
     http_log["routes"]["bochaai.com"] = lambda u, k: FakeResp(
         200, {"data": {"webPages": {"value": [{"name": "n", "url": "u"}]}}})
@@ -436,9 +438,10 @@ async def test_sms_wait(http_log, monkeypatch):
     from loadn_webui import resources
     from loadn_webui.config import CONFIG
     monkeypatch.setattr(CONFIG.resources, "sms_token", "t")
+    monkeypatch.setattr(CONFIG.resources, "sms_url", "https://sms.test:30443")
     old = {"ts": "2026-09-03T10:00:00+08:00", "body": "旧验证码 111"}
     new = {"ts": "2026-09-03T10:05:00+08:00", "body": "新验证码 222"}
-    http_log["routes"]["sms.example.test"] = lambda u, k: FakeResp(
+    http_log["routes"]["sms.test"] = lambda u, k: FakeResp(
         200, {"count": 2, "items": [new, old]})
 
     it = await resources.sms_wait("验证码", since_ts=0, interval=0.01)
@@ -467,6 +470,7 @@ def test_extract_codes():
 def test_parse_mail_html_only():
     """html-only 邮件：style 不进正文、链接取 href、实体反转义、中文头解码。"""
     from email.message import EmailMessage
+
     from loadn_webui.resources import _parse_mail
     msg = EmailMessage()
     msg["From"] = "GitHub <noreply@github.com>"
@@ -566,6 +570,7 @@ async def test_captcha_solve(tmp_path, http_log, monkeypatch):
 # ---------------------------------------------------------------- CLI（进程内，线程里跑避免事件循环冲突）
 async def test_cli_r(monkeypatch, capsys):
     import asyncio
+
     from loadn_webui import cli, resources
 
     async def fake_ping(only=None):

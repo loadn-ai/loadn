@@ -3,13 +3,11 @@ from __future__ import annotations
 
 import json
 
-import pytest
-
 from loadn_webui import cli
 
 
 def test_token_show(capsys, monkeypatch, tmp_path):
-    from loadn_webui.config import PATHS, resolve_runtime_token
+    from loadn_webui.config import PATHS
     monkeypatch.setitem(PATHS, "var", tmp_path / "var")
     (tmp_path / "var").mkdir()
     from loadn_webui.config import CONFIG
@@ -51,6 +49,7 @@ def test_policy_check_cli_stdin(monkeypatch, capsys):
 def test_kill_all_cli_offline(monkeypatch, tmp_path, capsys):
     """API 不可达 → 落 KILL_ALL 标记（离线熔断路径）。"""
     import httpx
+
     from loadn_webui.config import PATHS
     monkeypatch.setitem(PATHS, "run", tmp_path / "run")
     (tmp_path / "run").mkdir(exist_ok=True)

@@ -1,15 +1,9 @@
 """E3（谎报抽查）+ E4（毕业考：注入→外发→外渗三层至少两层拦）+ 代理白名单。"""
 from __future__ import annotations
 
-import asyncio
 import json
-import time
-from pathlib import Path
-
-import pytest
 
 from loadn_webui import policy
-
 
 # ---------------------------------------------------------------- E3
 
@@ -93,7 +87,6 @@ async def test_e4_graduation_three_layers(client, ws_root, monkeypatch):
     各自锁定，这里验证三层联动语义）。
     """
     from loadn_webui import approve
-    from loadn_webui.config import CONFIG
     # 第一层：untrusted 指令驱动不可逆外发 → 审批门（未批准无法执行）
     sid = (await client.post("/api/sessions", json={"title": "E4 毕业考"})
            ).json()["session"]["id"]

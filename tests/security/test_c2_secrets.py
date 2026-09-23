@@ -6,11 +6,6 @@
 """
 from __future__ import annotations
 
-import os
-from pathlib import Path
-
-import pytest
-
 from loadn_webui import vault as vault_mod
 from loadn_webui.claude_runner import _spawn_env
 

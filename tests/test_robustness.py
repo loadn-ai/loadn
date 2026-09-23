@@ -1,7 +1,6 @@
 """健壮性测试：重启恢复 / token 认证 / 统计 / fetch_page 兜底脚本契约。"""
 import json
 import subprocess
-import sys
 from pathlib import Path
 
 from tests.conftest import REPO, wait_turn
@@ -89,12 +88,13 @@ def test_fetch_page_contract():
     script = REPO / "bin" / "fetch_page.py"
     if not script.exists():
         return
-    import tempfile
     import os
+    import tempfile
     with tempfile.TemporaryDirectory() as td:
         # 预置缓存文件 → 直接命中，不触碰 CDP
-        from tests.conftest import _HOME  # noqa: F401
         import hashlib
+
+        from tests.conftest import _HOME  # noqa: F401
         url = "https://cache-hit-test.example.com"
         key = hashlib.sha1(url.encode()).hexdigest()[:16]
         cache = Path(os.environ["LOADN_WEBUI_HOME"]) / "var" / "pages_cache"

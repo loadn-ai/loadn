@@ -14,7 +14,17 @@ from .base import EngineSpec
 if TYPE_CHECKING:
     from ..claude_runner import TurnCall
 
-CLAUDE_FALLBACK = str(Path.home() / ".nvm/versions/node/v22.21.0/bin/claude")
+# 探测序：PATH → nvm 最新版本目录扫描（不锁具体版本号，可移植）
+def _nvm_scan() -> str:
+    base = Path.home() / ".nvm/versions/node"
+    if base.is_dir():
+        vs = sorted(base.iterdir(), reverse=True)
+        for v in vs:
+            cand = v / "bin/claude"
+            if cand.exists():
+                return str(cand)
+    return ""
+CLAUDE_FALLBACK = _nvm_scan() or str(Path.home() / ".local/bin/claude")
 
 
 def resolve_claude_bin() -> str:

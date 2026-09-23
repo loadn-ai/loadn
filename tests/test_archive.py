@@ -4,10 +4,6 @@ from __future__ import annotations
 import io
 import zipfile
 
-import pytest
-
-from loadn_webui.config import PATHS
-
 
 async def _mk_ws(client, ws_root, title="打包测试"):
     r = await client.post("/api/sessions", json={"title": title})

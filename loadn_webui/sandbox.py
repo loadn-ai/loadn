@@ -66,8 +66,6 @@ def wrap_loadn(cmd: list[str], env: dict, *, sid_session: str,
     if not exe:
         return None
     home = Path.home()
-    venv = Path(os.environ.get("LOADN_VENV_BIN", "")).parent \
-        if os.environ.get("LOADN_VENV_BIN") else None
     # 引擎本体定位（与 engines/loadn.py resolve_bin 同序的最小复刻）
     engine_bin = (shutil.which("loadn")
                  or str(Path(sys.executable).parent / "loadn"))
@@ -142,7 +140,7 @@ def wrap_loadn(cmd: list[str], env: dict, *, sid_session: str,
 
 def _egress_uds() -> Path | None:
     """宿主代理 unix socket 路径（存在才启用断网形态）。"""
-    from .config import CONFIG, PATHS
+    from .config import CONFIG
     if CONFIG.security.egress_mode not in ("warn", "enforce"):
         return None
     uds = PATHS["run"] / "egress.sock"
@@ -201,7 +199,9 @@ def wrap_engine(cmd: list[str], env: dict, *, engine: str, sid: str,
         pass                                     # 走 wrap_loadn（同路径 bind 矩阵）
     elif engine == "claude":
         home = Path.home()
-        node = home / ".nvm/versions/node/v22.21.0"
+        # node 树从引擎 bin 派生（cmd[0] 在 node 树内）——不硬编码版本路径，
+        # 任意 nvm/fnm/系统安装位置都成立（开源可移植性）
+        node = Path(cmd[0]).resolve().parent.parent
         wrapped = _wrap_generic(
             cmd, env, cwd=cwd, extra_binds=[
                 ("ro", str(node), str(node)),
@@ -216,7 +216,7 @@ def wrap_engine(cmd: list[str], env: dict, *, engine: str, sid: str,
         return cmd, "direct-fallback"
     elif engine == "opencode":
         home = Path.home()
-        node = home / ".nvm/versions/node/v22.21.0"
+        node = Path(cmd[0]).resolve().parent.parent   # 同上：从 bin 派生
         oc = home / ".local/share/opencode"
         wrapped = _wrap_generic(
             cmd, env, cwd=cwd, extra_binds=[

@@ -18,7 +18,6 @@ def test_wrap_engine_off_mode_passthrough():
 def test_wrap_engine_generic_engines(engine, monkeypatch, tmp_path):
     """claude/opencode 分支：argv 完整性（基础矩阵+专属 binds+setenv+cmd 接尾）。"""
     monkeypatch.setattr(CONFIG.security, "sandbox", "bwrap")
-    import shutil as _sh
     monkeypatch.setattr(sandbox.shutil, "which", lambda _: "/usr/bin/bwrap")
     monkeypatch.setattr(sandbox, "_wrap_generic",
                         lambda cmd, env, cwd, extra_binds: (

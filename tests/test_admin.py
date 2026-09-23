@@ -15,8 +15,6 @@ from pathlib import Path
 import pytest
 import yaml
 
-from tests.conftest import REPO
-
 
 @pytest.fixture(scope="module", autouse=True)
 def writable_assets():
@@ -276,8 +274,8 @@ async def test_profile_builtin_tools(client):
 # ---------------------------------------------------------------- 收敛度设置
 async def test_convergence_roundtrip(client):
     import yaml as _yaml
+
     from loadn_webui import profile as profile_mod
-    from loadn_webui.config import PATHS
 
     # registry.yaml 是 symlink 的真实资产：PUT 直写且不恢复——先存原文，
     # 测试结束原样写回（否则每跑一轮全量测试就把线上超时改成 7200）

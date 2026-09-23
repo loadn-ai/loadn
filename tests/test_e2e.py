@@ -434,6 +434,7 @@ async def test_precise_replay_fresh_connect(client, monkeypatch):
 async def test_prune_events_terminal_aware(client):
     """终态感知清理：未超期不删；终态超 retain 天删光；活跃 turn 永不清。"""
     import datetime as dt
+
     from loadn_webui import db as db_mod
     sess = await _create(client, title="事件清理", first_message="你好")
     sid = sess["id"]
@@ -573,6 +574,7 @@ async def test_stop_queued_turn_skips_execution(client, ws_root, fake_calls):
 async def test_tree_skips_heavy_dirs_and_caches(client, ws_root):
     """tree() 不进 chrome*/node_modules 重目录（防 AnyIO 线程池被 rglob 占满）且有 TTL 缓存。"""
     import time as _time
+
     from loadn_webui import artifacts as art
     sess = await _create(client, title="树过滤")
     sid = sess["id"]

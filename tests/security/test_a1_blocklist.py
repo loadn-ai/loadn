@@ -8,15 +8,14 @@ from __future__ import annotations
 
 import json
 import subprocess
-from pathlib import Path
 import sys
+from pathlib import Path
 
 import pytest
 
 from loadn_webui import audit as audit_mod
 from loadn_webui import policy
 from loadn_webui.policy import ACTION_ALLOW, ACTION_BLOCK, ACTION_WARN
-
 
 # ---------------------------------------------------------------- L0 红线
 
@@ -192,7 +191,6 @@ async def test_a1_integration_hook_blocks_in_engine_turn(client, ws_root, monkey
     with db_mod.conn() as c:
         sess = db_mod.get_session(c, sid)
     hh = sess["claude_session_id"]
-    from loadn_webui.config import PATHS as _P
     import os as _os
     engine_home = _os.environ.get("LOADN_HOME") or str(Path.home() / ".loadn")
     ts_path = Path(engine_home) / "sessions" / hh / "transcript.jsonl"

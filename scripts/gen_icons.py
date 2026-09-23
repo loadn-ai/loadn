@@ -14,8 +14,8 @@
 
 用法：python3 scripts/gen_icons.py [master.png]
 """
-import sys
 import pathlib
+import sys
 
 import numpy as np
 from PIL import Image

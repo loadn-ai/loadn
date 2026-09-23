@@ -19,9 +19,9 @@ from fastapi import APIRouter
 from fastapi.responses import FileResponse, JSONResponse, Response
 
 from . import artifacts as art
-from . import workspace as ws_mod
 from . import db as db_mod
-from .config import CONFIG, PATHS
+from . import workspace as ws_mod
+from .config import CONFIG
 
 TOKEN_LEN = 20          # hex 字符数（80 bit）
 

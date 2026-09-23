@@ -1,11 +1,6 @@
 """loadn-web init 安装向导测试（R9-1）。"""
 from __future__ import annotations
 
-import json
-from pathlib import Path
-
-import pytest
-
 from loadn_webui import init_cmd
 
 

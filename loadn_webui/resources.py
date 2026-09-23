@@ -510,13 +510,11 @@ async def captcha_solve(*, image: str | Path | None = None, sitekey: str = "",
         resp = await _post(f"{TWOCAPTCHA_API}/in.php",
                            data={"key": r.twocaptcha_key, "method": "base64",
                                  "body": b64, "json": 1}, timeout=30.0)
-        method = "base64"
     elif sitekey and pageurl:
         resp = await _post(f"{TWOCAPTCHA_API}/in.php",
                            data={"key": r.twocaptcha_key, "method": "userrecaptcha",
                                  "googlekey": sitekey, "pageurl": pageurl, "json": 1},
                            timeout=30.0)
-        method = "userrecaptcha"
     else:
         raise ValueError("需要 --img（图形码）或 --sitekey + --pageurl（reCAPTCHA）")
     d = resp.json()

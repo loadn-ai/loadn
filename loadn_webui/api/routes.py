@@ -13,12 +13,11 @@ from fastapi.responses import FileResponse, JSONResponse, Response
 
 from .. import artifacts as art
 from .. import db as db_mod
-from ..config import CONFIG
 from .. import mcp_admin, settings_admin, skill_zh, skillhub
 from .. import profile as profile_mod
 from .. import skills as skills_mod
 from .. import workspace as ws_mod
-from ..config import PATHS
+from ..config import CONFIG, PATHS
 from ..engine import ENGINE
 from ..util import iso
 
@@ -845,8 +844,8 @@ def kill_all():
     """全局熔断：停全部活跃 turn + 调度器暂停（KILL_ALL 标记）+ 拒绝新任务。"""
     from .. import canary as canary_mod
     from .. import db as db_mod
-    from ..engine import ENGINE
     from ..config import PATHS
+    from ..engine import ENGINE
     stopped = 0
     with db_mod.conn() as c:
         rows = c.execute("SELECT id, session_id FROM turns WHERE"
@@ -1076,6 +1075,7 @@ def patch_schedule(jid: int, body: dict):
     new_session 的 title/profile/engine。触发字段改动会重算 due_at（cron
     真源）；done 是终态不复活——要重跑就删了重建。"""
     from datetime import datetime, timezone
+
     from ..cron import next_run_iso, parse_cron
     from ..scheduler import parse_when
     with db_mod.conn() as c:
@@ -1396,7 +1396,7 @@ def _collect_archive_files(root: Path) -> list[Path]:
             raise HTTPException(400, f"文件数超过 {_ARCHIVE_MAX_FILES}，"
                                      "请分目录打包")
         if total > _ARCHIVE_MAX_BYTES:
-            raise HTTPException(400, f"总大小超过 2GB，请分目录打包")
+            raise HTTPException(400, "总大小超过 2GB，请分目录打包")
     return out
 
 
@@ -1756,6 +1756,7 @@ def health():
     release = {}
     try:
         import json as _j
+
         from ..config import CODE_ROOT as _CR
         release = _j.loads((_CR / "RELEASE.json").read_text())
     except (OSError, ValueError, KeyError):

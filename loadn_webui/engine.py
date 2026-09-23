@@ -20,7 +20,7 @@ from . import db as db_mod
 from . import engines as engines_mod
 from . import workspace as ws_mod
 from .claude_runner import StopHandle, TurnCall, pid_alive_for_turn, run_turn
-from .config import CONFIG, PATHS
+from .config import CONFIG
 from .util import get_logger, iso
 
 log = get_logger(__name__)
@@ -271,6 +271,7 @@ class Engine:
     def _drain_hook_audit(self, sid: str, tid: int) -> None:
         """回收沙箱内 hook 判定侧车 → 审计账本（宿主侧唯一写库点）。"""
         import json as _json
+
         from . import audit as _audit
         from . import workspace as _ws
         f = _ws.ws_of(sid) / ".loadn-hook-audit.jsonl"
@@ -296,7 +297,7 @@ class Engine:
     def _spotcheck_claims(self, sid: str, tid: int, res) -> None:
         """W6.3 谎报抽查：agent 自称的 artifacts 路径核对（存在+mtime 窗）。"""
         import re as _re
-        from datetime import datetime as _dt
+
         from . import audit as _audit
         from . import workspace as _ws_mod
         text = (getattr(res, "result_text", "") or "")

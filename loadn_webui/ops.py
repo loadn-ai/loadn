@@ -477,7 +477,7 @@ def cmd_upgrade(version: str | None = None, *, wait_idle: int = 1800,
             if rb_ok:
                 print(f"✓ 已回滚到 {old}（服务正常）", file=sys.stderr)
                 return EXIT_ROLLED_BACK
-            print(f"✗✗ 回滚后 healthcheck 也失败！手动恢复见 docs/RELEASE.md L3",
+            print("✗✗ 回滚后 healthcheck 也失败！手动恢复见 docs/RELEASE.md L3",
                   file=sys.stderr)
             return EXIT_ROLLBACK_FAILED
         return EXIT_ROLLED_BACK
@@ -508,7 +508,7 @@ def _preflight(release_dir: Path) -> list[str]:
     # vault 属主警告（不阻断）
     vault = DATA_ROOT / "var" / "vault.enc"
     if vault.exists() and not os.access(vault, os.R_OK):
-        print(f"  ⚠️  {vault} 不可读（属主 root？chown user 后不再告警）")
+        print(f"  ⚠️  {vault} 不可读（属主 root？chown <运行用户> 后不再告警）")
     # 磁盘
     usage = shutil.disk_usage(DEPLOY_ROOT)
     if usage.free < 2 << 30:

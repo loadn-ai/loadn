@@ -6,13 +6,11 @@ A3b 注入提供假 note 试图让用户批准真实目标为攻击者的发信
 """
 from __future__ import annotations
 
-import json
 import os
 import subprocess
 import sys
 import time as time_mod
 
-import pytest
 import pytest_asyncio
 
 from loadn_webui import approve

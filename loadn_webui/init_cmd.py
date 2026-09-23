@@ -78,7 +78,7 @@ def cmd_init(data_root: str = "", *, force: bool = False) -> int:
         Path(os.environ.get("LOADN_WEBUI_HOME") or Path.home() / ".loadn-data")
     ).resolve()
 
-    print(f"loadn init")
+    print("loadn init")
     print(f"  数据根: {root}")
     print()
 
@@ -110,7 +110,7 @@ def cmd_init(data_root: str = "", *, force: bool = False) -> int:
         token = secrets.token_urlsafe(32)
         token_file.write_text(token + "\n")
         os.chmod(token_file, 0o600)
-        print(f"✓ API token 已生成（var/server_token）")
+        print("✓ API token 已生成（var/server_token）")
     else:
         print("✓ server_token 已存在（跳过）")
 
@@ -154,10 +154,10 @@ def _print_next_steps(root: Path) -> None:
     print("=" * 50)
     print("下一步：")
     print(f"  1. 编辑配置：vim {root}/config.yaml")
-    print(f"     （填 LLM API key——engines.loadn 段）")
+    print("     （填 LLM API key——engines.loadn 段）")
     print(f"  2. 前台测试：LOADN_WEBUI_HOME={root} loadn-web serve")
-    print(f"     浏览器打开 http://127.0.0.1:8792")
+    print("     浏览器打开 http://127.0.0.1:8792")
     print(f"  3. 生产部署：sudo cp {root}/var/loadn.service"
           " /etc/systemd/system/")
-    print(f"     sudo systemctl daemon-reload && sudo systemctl start loadn")
+    print("     sudo systemctl daemon-reload && sudo systemctl start loadn")
     print("=" * 50)

@@ -1,5 +1,4 @@
 """通知通道（P2-2）：三 provider 载荷 / 事件开关 / engine+scheduler 钩子。"""
-import asyncio
 
 import pytest
 
@@ -70,8 +69,8 @@ async def test_settings_roundtrip(tmp_path, monkeypatch):
     PATHS（不 reload config 模块——reload 会替换全局 CONFIG/PATHS 对象，
     污染同进程后续所有测试，曾导致 test_share/test_transfer 全挂）。
     """
-    from loadn_webui.config import Config
     import loadn_webui.settings_admin as sa
+    from loadn_webui.config import Config
     cfg = Config()
     monkeypatch.setattr(sa, "CONFIG", cfg)
     monkeypatch.setattr(sa, "PATHS", {"root": tmp_path})

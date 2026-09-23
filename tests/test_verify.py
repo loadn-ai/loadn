@@ -36,7 +36,6 @@ async def test_offline_checks(reg_session, tmp_path, monkeypatch):
     assert "credentials.json" in res["report"] or "凭证巡检" in res["report"]
     assert d.exists()
     # 到期窗口逻辑（纯函数直测）
-    from datetime import date
     today = date(2026, 9, 15)
     assert "已过期" in verify_mod.check_expiry({"expires": "2026-09-01"}, today, 30)
     assert "天后到期" in verify_mod.check_expiry(

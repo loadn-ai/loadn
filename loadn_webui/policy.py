@@ -16,7 +16,7 @@ from __future__ import annotations
 import fnmatch
 import json
 import re
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from pathlib import Path
 from urllib.parse import urlsplit
 
@@ -170,7 +170,6 @@ def check_command(cmd: str, *, source: str = "cli") -> Decision:
         from . import canary as _canary
         tok = _canary.hit(cmd)
         if tok:
-            from .config import PATHS as _P
             d = Decision(ACTION_BLOCK, f"外发内容含 canary 蜜罐值（{tok[:10]}…）"
                          "——疑似数据外渗，会话已熔断", matched="canary")
             _audit_decision(d, cmd, source)
@@ -378,8 +377,8 @@ def _hook_sidelog(tool: str, inp: dict, d: Decision) -> None:
     if d.action == ACTION_ALLOW:
         return                                        # 只留 block/warn 痕
     try:
-        import time as _t
-        from datetime import datetime as _dt, timezone as _tz
+        from datetime import datetime as _dt
+        from datetime import timezone as _tz
         entry = {"ts": _dt.now(_tz.utc).isoformat(timespec="seconds"),
                  "tool": tool,
                  "subject": json.dumps(inp, ensure_ascii=False, default=str)[:300],

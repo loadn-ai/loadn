@@ -11,8 +11,6 @@ import json
 import tarfile
 from pathlib import Path
 
-import pytest
-
 from loadn_webui import skill_scan
 
 
@@ -63,14 +61,12 @@ def test_b2_clean_skill_green_with_yellow_notes(tmp_path):
 
 def test_b2_tar_path_traversal_rejected(tmp_path, monkeypatch):
     """tar 路径穿越（../）条目 → 安装层拒。"""
-    from loadn_webui import skills as skills_mod
     evil = tmp_path / "evil.tar.gz"
     with tarfile.open(evil, "w:gz") as tf:
         info = tarfile.TarInfo("../escape.txt")
         data = b"pwned"
         info.size = len(data)
         tf.addfile(info, __import__("io").BytesIO(data))
-    import io as _io
     with tarfile.open(evil, "r:gz") as tf:
         for mm in tf.getmembers():
             assert (".." in Path(mm.name).parts

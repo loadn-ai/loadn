@@ -10,7 +10,7 @@ from __future__ import annotations
 import asyncio
 
 from loadn_webui.claude_runner import StopHandle
-from loadn_webui.engine import ActiveTurn, ENGINE
+from loadn_webui.engine import ENGINE, ActiveTurn
 
 
 def _delta(kind: str, payload: str) -> dict:

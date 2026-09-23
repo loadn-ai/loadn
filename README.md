@@ -31,6 +31,22 @@ drop-in subprocess engine.
 └────────────────────────────────────────────────────────────┘
 ```
 
+## Monorepo：引擎 + 平台
+
+本仓库不止是引擎——一个可以完整自托管的 **多会话 agent 平台**：
+
+| 组件 | 是什么 | 起步 |
+|---|---|---|
+| `loadn/` | 引擎（本 README 主体） | `pip install loadn` |
+| `loadn_webui/` | Web 平台：会话管理/调度/成本/分享，内置安全栈（bwrap 沙箱·物理断网·凭证库·审计账本·审批门） | `pip install -e ".[webui]"` → `loadn-web init` → `loadn-web serve` |
+| `ui/` | React 前端（管理中心含安全中心/流量/成本面板） | `cd ui && npm run build` |
+
+文档索引：[ARCHITECTURE](docs/ARCHITECTURE.md)（三平面/数据布局）·
+[EXTENDING](docs/EXTENDING.md)（定制缝地图：引擎/provider/skill/MCP/hooks）·
+[PROTOCOL](docs/PROTOCOL.md)（引擎方言契约）·
+[RELEASE](docs/RELEASE.md)（发布/升级/回滚）·
+[ATTACK_SURFACE](docs/ATTACK_SURFACE.md)（攻击面+AI-BOM）。
+
 ## Why another agent engine
 
 - **Embeddable & hackable.** ~7k lines of typed Python 3.10+, one runtime

@@ -9,8 +9,6 @@ import sys
 import types
 from pathlib import Path
 
-from pathlib import Path
-
 import pytest
 
 # 依赖本机 legacy skills 资产（web-ops 库）与真浏览器；CI 上无本机资产时跳过
@@ -23,6 +21,7 @@ from loadn_webui.util import iso
 
 HERE = Path(__file__).resolve().parent
 import os as _os
+
 OPS_PATH = str(Path(_os.environ.get("LOADN_SKILLS_EXTRA")
                     or HERE.parent / "skills") / "web-ops")
 

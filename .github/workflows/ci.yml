@@ -34,6 +34,21 @@ jobs:
         env:
           LOADN_PROVIDER: fake
 
+  ui:
+    # 前端可构建（tsc + vite build），dist 不入库但随 release 发布
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: npm
+          cache-dependency-path: ui/package-lock.json
+      - run: npm ci
+        working-directory: ui
+      - run: npm run build
+        working-directory: ui
+
   secrets:
     runs-on: ubuntu-latest
     steps:

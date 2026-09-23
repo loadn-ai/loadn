@@ -100,7 +100,6 @@ def test_e2_cross_table_chain(tmp_path, monkeypatch):
     c.executescript(audit_mod._DDL.format(t="audit_events"))
     import hashlib as _hl
     import json as _js
-    from datetime import datetime as _dt, timezone as _tz
     prev = audit_mod.GENESIS
     for i in range(3):
         ts = f"2026-09-0{i+1}T00:00:00+00:00"

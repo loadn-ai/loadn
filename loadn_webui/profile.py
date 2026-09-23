@@ -10,7 +10,6 @@ from dataclasses import dataclass, field
 
 import yaml
 
-from .config import PATHS
 from .util import get_logger
 
 log = get_logger(__name__)

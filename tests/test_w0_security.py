@@ -346,8 +346,9 @@ def test_audit_feed_and_verify(w0):
 
 def test_kill_all_clear_only_unlocks_kill_locks():
     """解除熔断：kill 锁解开、蜜罐锁保留、KILL_ALL 标记删除。"""
+    from loadn_webui import canary as canary_mod
+    from loadn_webui import db as db_mod
     from loadn_webui.api import routes as rt
-    from loadn_webui import canary as canary_mod, db as db_mod
     from loadn_webui.config import PATHS
     with db_mod.conn() as c:
         for sid in ("t-killx", "t-canaryx"):

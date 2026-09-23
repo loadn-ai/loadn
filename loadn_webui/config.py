@@ -136,7 +136,7 @@ class SecurityConfig:
     # 出口白名单（v1.1：出厂默认 enforce；存量部署可先 mode=warn 灰度两周）
     egress_allow: list = field(default_factory=lambda: [
         "api.anthropic.com", "api.bochaai.com", "open.bigmodel.cn",
-        "sms.example.test", "registry.npmjs.org", "pypi.org",
+        "registry.npmjs.org", "pypi.org",
         "ark.cn-beijing.volces.com", "2captcha.com", "capsolver.com",
         "opencode.ai", "llm-gw.internal"])
     egress_mode: str = "enforce"          # enforce | warn
@@ -191,13 +191,13 @@ class ResourcesConfig:
     sandbox_url: str = "http://127.0.0.1:21111"     # AIO 沙箱（浏览器/命令行/文件）
     sandbox_api_key: str = ""
     cdp_url: str = "http://127.0.0.1:21111/cdp"     # 沙箱内 Chrome 的 CDP 端点
-    proxy: str = "http://192.0.2.137:7890"        # clash，空=不可用
-    sms_url: str = "https://sms.example.test:30443"    # 短信查询服务
+    proxy: str = ""        # 出网代理（如 http://127.0.0.1:7890），空=不可用
+    sms_url: str = ""       # 短信查询服务端点，空=未部署
     sms_token: str = ""
-    sms_phone: str = "+86 10000000000"
+    sms_phone: str = ""
     mail_imap: str = "imap.126.com:993"             # 平台邮箱（注册/登录收验证码）
     mail_smtp: str = "smtp.126.com:465"
-    mail_user: str = "user@example.com"
+    mail_user: str = ""      # 平台邮箱账号（如 you@example.com）
     mail_auth_code: str = ""                        # 126 授权码（非登录密码）
     # 追加邮箱（收验证码用）：[{user, imap, smtp, auth_code}]；上面的单邮箱字段
     # 永远是 1 号（设置页编辑的就是它），这里放 2 号起。密钥只进 config.yaml。
@@ -209,7 +209,7 @@ class ResourcesConfig:
     bocha_key: str = ""                             # 博查中文网页搜索
     zhipu_key: str = ""                             # 智谱 Web Search API
     zhipu_engine: str = "search_pro"                # std 0.01 / pro 0.03 / pro_sogou|quark 0.05 元/次
-    adb_addr: str = "192.0.2.78:5555"             # android 真机
+    adb_addr: str = ""       # android 真机（如 192.168.x.x:5555）
     textr_email: str = ""                           # Textr Go 美国虚拟号码（收验证码）
     textr_password: str = ""
 

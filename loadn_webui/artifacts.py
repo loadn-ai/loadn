@@ -10,8 +10,8 @@ import time
 from pathlib import Path
 
 from . import db as db_mod
-from .workspace import ws_of
 from .util import get_logger
+from .workspace import ws_of
 
 log = get_logger(__name__)
 

@@ -82,7 +82,7 @@ def put_convergence(body: dict) -> dict:
     updates = body.get("profiles") or {}
     if not updates:
         raise ValueError("没有可更新的角色")
-    from .config import PATHS as _P, ROOT as _R
+    from .config import ROOT as _R
     path = _R / "profiles" / "registry.yaml"      # 写到数据根（用户定制层）
     path.parent.mkdir(parents=True, exist_ok=True)
     data = _load_yaml_conf(path)

@@ -68,6 +68,7 @@ def _free_port() -> int:
 @pytest.fixture(scope="session")
 def server_url():
     import uvicorn
+
     from loadn_webui.api.app import app
 
     port = _free_port()
@@ -93,6 +94,7 @@ def server_url():
 @pytest_asyncio.fixture()
 async def client(server_url):
     import httpx
+
     from loadn_webui.config import CONFIG
     # W0：测试服务起来后 lifespan 已生成/加载 token——存量测试统一带双头
     # （token + admin），语义等价于旧的无认证访问；W0 专项测试自建裸 client。

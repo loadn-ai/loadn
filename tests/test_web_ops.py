@@ -10,8 +10,6 @@ import tempfile
 import time
 from pathlib import Path
 
-from pathlib import Path
-
 import pytest
 
 # 依赖本机 legacy skills 资产（web-ops 库）与真浏览器；CI 上无本机资产时跳过
@@ -21,6 +19,7 @@ pytestmark = pytest.mark.skipif(
 
 HERE = Path(__file__).resolve().parent
 import os as _os
+
 _skills_root = Path(_os.environ.get("LOADN_SKILLS_EXTRA")
                     or HERE.parent / "skills")
 sys_path_hack = str(_skills_root / "web-ops")
@@ -126,7 +125,6 @@ def test_audit_diff(page):
     # ops.cmd_audit 的 diff 逻辑（漏选/多选）——进程内直接调
     import sys
     sys.path.insert(0, sys_path_hack)
-    import ops as ops_mod
     answers = {"第1题": ["选项乙"]}          # 应选乙，实际选了甲
     problems = ops_mod_diff(page, answers)
     assert any("多选" in p for p in problems) and any("漏选" in p for p in problems)

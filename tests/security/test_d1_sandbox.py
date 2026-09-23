@@ -9,7 +9,6 @@ from __future__ import annotations
 import json
 import os
 import subprocess
-import time
 import uuid
 from pathlib import Path
 
@@ -129,7 +128,7 @@ def test_d1_unshare_net_direct_blocked(tmp_path, monkeypatch):
     """P3 物理断网：uds 桥在位时 loadn 沙箱 unshare-net——直连失败、
     代理通道（uds→宿主）可达。"""
     import socket as _sock
-    import tempfile
+
     from loadn_webui.config import PATHS
     uds = PATHS["run"] / "egress.sock"
     if not uds.exists():                 # 代理未起（纯单元环境）→ 造一个假 socket 文件

@@ -8,12 +8,9 @@ from __future__ import annotations
 
 import json
 
-import pytest
-
 from loadn_webui import canary as canary_mod
 from loadn_webui import policy
 from loadn_webui.exporter.md_to_html import convert
-
 
 # ---------------------------------------------------------------- A4
 
@@ -50,9 +47,9 @@ async def test_a4_preview_endpoint_served_sanitized(client):
            ).json()["session"]["id"]
     await client.post(f"/api/sessions/{sid}/ingest?to=artifacts/",
                       files={"file": ("evil.md",
-                                      "# t\n\n<script>alert(1)</script>\n"
-                                      "<img src=x onerror=alert(2)>\n"
-                                      "![x](https://attacker.com/a.png)".encode(),
+                                      b"# t\n\n<script>alert(1)</script>\n"
+                                      b"<img src=x onerror=alert(2)>\n"
+                                      b"![x](https://attacker.com/a.png)",
                                       "text/markdown")})
     arts = (await client.get(f"/api/sessions/{sid}/artifacts")).json()["artifacts"]
     aid = next(a["id"] for a in arts if a["path"].endswith("evil.md"))

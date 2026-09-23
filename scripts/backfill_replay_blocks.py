@@ -26,7 +26,11 @@ sys.path.insert(0, str(REPO))
 from loadn_webui import db as db_mod  # noqa: E402
 from loadn_webui.config import PATHS  # noqa: E402
 from loadn_webui.engine import (  # noqa: E402
-    _clip_input, _content_text, _RESULT_CAP, _THINK_CAP, _tool_brief,
+    _RESULT_CAP,
+    _THINK_CAP,
+    _clip_input,
+    _content_text,
+    _tool_brief,
 )
 
 

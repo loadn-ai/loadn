@@ -18,7 +18,7 @@ from pathlib import Path
 import pytest
 
 from loadn_webui import sandbox
-from loadn_webui.config import CONFIG, PATHS
+from loadn_webui.config import CONFIG
 
 pytestmark = [
     pytest.mark.skipif(not sandbox.bwrap_available(), reason="bwrap 不可用"),
@@ -97,8 +97,9 @@ async def test_full_stack_user_journey(full_stack, ws_root):
 
     # ── 5. 快照回滚（写前快照→改坏→API 回滚恢复）──
     (ws / "notes" / "draft.md").write_text("正文 v1")
-    from loadn_webui import policy
     import os
+
+    from loadn_webui import policy
     old = os.getcwd(); os.chdir(ws)
     try:
         policy._snapshot_before_write(str(ws / "notes" / "draft.md"))

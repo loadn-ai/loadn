@@ -12,6 +12,7 @@ import json
 from pathlib import Path
 
 import pytest
+
 from tests.conftest import wait_turn
 
 FAKE_OC = Path(__file__).resolve().parent / "fake_opencode.py"

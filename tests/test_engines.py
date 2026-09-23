@@ -60,7 +60,6 @@ def test_claude_argv_snapshot():
 
 
 def test_hahaness_argv_snapshot():
-    from loadn_webui.config import CODE_ROOT
     from loadn_webui.engines import ENGINES
     spec = ENGINES["hahaness"]
     call = _call()
@@ -158,9 +157,9 @@ def test_opencode_no_max_turns_flag_degrades_with_warning(caplog, monkeypatch, t
 
 
 def test_opencode_bin_resolution_and_capability_bits(monkeypatch):
+    import loadn_webui.engines.opencode as oc_mod
     from loadn_webui.config import CONFIG
     from loadn_webui.engines import ENGINES
-    import loadn_webui.engines.opencode as oc_mod
     spec = ENGINES["opencode"]
     # 配置 bin > env
     monkeypatch.setattr(CONFIG.engines.opencode, "bin", "/opt/oc/opencode")

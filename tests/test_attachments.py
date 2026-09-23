@@ -1,11 +1,10 @@
 """附件上传链路：upload 加固 + messages attachments + prompt 注入 + env 注入。"""
 import json
-
 from pathlib import Path
 
-import pytest
-
-from tests.conftest import wait_turn   # 注意：不能 from tests.conftest（会二次执行 conftest 换掉 HOME）
+from tests.conftest import (
+    wait_turn,  # 注意：不能 from tests.conftest（会二次执行 conftest 换掉 HOME）
+)
 
 
 async def _mk_session(client) -> str:
@@ -111,7 +110,10 @@ async def test_attachment_validation(client):
 
 
 # ---------------------------------------------------------------- env 注入 + scan 回填
-async def test_settings_env_injection(client, ws_root):
+async def test_settings_env_injection(client, ws_root, monkeypatch):
+    from loadn_webui.config import CONFIG
+    monkeypatch.setattr(CONFIG.resources, "proxy",
+                        "http://127.0.0.1:7890")   # 显式注入（默认值已通用化）
     sid = await _mk_session(client)
     p = ws_root / sid / ".claude" / "settings.json"
     env = json.loads(p.read_text())["env"]

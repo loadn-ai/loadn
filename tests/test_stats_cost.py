@@ -1,8 +1,6 @@
 """成本统计链路：modelUsage 落库 → /api/stats/cost 三口径聚合 → 回填可恢复且幂等。"""
-import asyncio
 import json
 
-import pytest
 from tests.conftest import wait_turn
 
 
@@ -75,7 +73,8 @@ async def test_pricing_block_in_stats(client):
 
 async def test_backfill_restores_and_idempotent(client, ws_root):
     """engine 落的 models_json 清空后（模拟旧数据）能从 .out 日志恢复；重跑幂等。"""
-    from loadn_webui import backfill, db as db_mod
+    from loadn_webui import backfill
+    from loadn_webui import db as db_mod
     from loadn_webui.config import PATHS
 
     sid, _tid = await _run_one_turn(client, ws_root, "回填测试")

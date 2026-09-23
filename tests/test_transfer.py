@@ -1,5 +1,4 @@
 """文件直通道（P1-3）：ingest 端点白名单/重命名/事件 + CLI push/pull 回路。"""
-import os
 
 import pytest
 

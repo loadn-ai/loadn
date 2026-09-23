@@ -10,8 +10,6 @@ import asyncio
 import hashlib
 import json
 
-import pytest
-
 from loadn_webui import db as db_mod
 from loadn_webui.workspace import ws_of
 
