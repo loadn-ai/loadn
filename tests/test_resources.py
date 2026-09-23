@@ -68,7 +68,7 @@ async def test_settings_resources_roundtrip(client):
     assert res["bocha_key_set"] is False
     assert res["zhipu_key_set"] is False and res["zhipu_engine"] == "search_pro"
 
-    secrets = {"sandbox_api_key": "***REDACTED***", "sms_token": "tok-abcdef12345",
+    secrets = {"sandbox_api_key": "test-key", "sms_token": "tok-abcdef12345",
                "mail_auth_code": "mailcode12345",
                "twocaptcha_key": "cap12345", "bocha_key": "bocha12345",
                "zhipu_key": "zhipu12345"}
@@ -324,7 +324,7 @@ async def test_fetch_page_image_ocr(http_log, monkeypatch):
 async def test_ping_all(http_log, monkeypatch):
     from loadn_webui import resources
     from loadn_webui.config import CONFIG
-    monkeypatch.setattr(CONFIG.resources, "sandbox_api_key", "***REDACTED***")
+    monkeypatch.setattr(CONFIG.resources, "sandbox_api_key", "test-key")
     monkeypatch.setattr(CONFIG.resources, "sms_token", "t")
     monkeypatch.setattr(CONFIG.resources, "twocaptcha_key", "k")
     monkeypatch.setattr(CONFIG.resources, "bocha_key", "b")

@@ -6,3 +6,6 @@ dist/
 build/
 *.egg-info/
 .DS_Store
+
+# 运行时用户数据（DB/审计/备份）绝不入库
+var/

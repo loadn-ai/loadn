@@ -9,7 +9,7 @@ from loadn_webui.cli import main
 
 def test_put_get_mask_delete():
     vault.put("Google", username="user@example.com", password="s3cret",
-              email="alias@example.com", status="ok", notes="别名 king 同一账号")
+              email="alias@example.com", status="ok", notes="别名同一账号")
     # platform 大小写/空格规范化
     e = vault.get("google")
     assert e["password"] == "s3cret" and e["username"] == "user@example.com"

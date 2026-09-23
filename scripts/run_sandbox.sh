@@ -13,7 +13,7 @@ set -euo pipefail
 
 NAME=aio-sandbox
 PORT=127.0.0.1:21111:8080
-KEY=***REDACTED***
+KEY=${SANDBOX_KEY:-test-key}
 IMAGE=enterprise-public-cn-beijing.cr.volces.com/vefaas-public/all-in-one-sandbox:1.11.0
 
 if docker ps --format '{{.Names}}' | grep -qx "$NAME"; then

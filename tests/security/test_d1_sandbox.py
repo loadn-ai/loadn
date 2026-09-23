@@ -46,10 +46,10 @@ def test_d1_host_secrets_invisible(tmp_path):
     config.yaml、~/.claude 全家（含 settings.json=LLM 凭证零入沙箱）。"""
     p = _run_in_sandbox(
         tmp_path, str(uuid.uuid4()),
-        "for f in  /home/user/.ssh/id_rsa "
+        "for f in /home/user/.ssh/id_rsa "
         "/data/code/workdaddy/var/vault.enc /data/code/loadn/config.yaml "
-        "/data/code/workdaddy/config.yaml  /home/user/.claude/.credentials.json "
-        " /home/user/.claude/projects  /home/user/.claude/settings.json; "
+        "/data/code/workdaddy/config.yaml /home/user/.claude/.credentials.json "
+        "/home/user/.claude/projects /home/user/.claude/settings.json; "
         "do ls $f 2>&1; done")
     assert "No such file or directory" in p.stdout
     assert p.stdout.count("No such file or directory") == 7

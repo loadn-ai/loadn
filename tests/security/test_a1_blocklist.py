@@ -95,7 +95,7 @@ def test_a1_glob_warn_not_block():
 @pytest.mark.parametrize("path", [
     "var/vault.json", "var/vault.enc", "var/loadn.db",
     "../config.yaml", "/data/x/config.yaml",
-    " /home/user/.ssh/id_rsa", ".ssh/authorized_keys",
+    "/home/user/.ssh/id_rsa", ".ssh/authorized_keys",
     ".claude/.credentials.json", "/proc/self/environ",
 ])
 def test_a1_sensitive_paths_blocked(path):

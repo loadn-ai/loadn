@@ -57,13 +57,13 @@ resources:
                                           # all-in-one-sandbox 容器，21111→8080）
   sandbox_api_key: ""
   cdp_url: http://127.0.0.1:21111/cdp     # 沙箱内 Chrome CDP（fetch_page 兜底走这里）
-  proxy: http://192.0.2.57:7890        # clash，空=不可用
+  proxy: http://127.0.0.1:7890        # clash，空=不可用
   sms_url: https://sms.example.test:30443    # 真机短信查询
   sms_token: ""
-  sms_phone: "+86 10000000000"
+  sms_phone: "+86 13800000000"
   mail_imap: imap.126.com:993             # 平台邮箱（注册/登录收验证码）
   mail_smtp: smtp.126.com:465
-  mail_user: user@example.com
+  mail_user: you@example.com
   mail_auth_code: ""                      # 126 授权码（非登录密码）
   mailboxes: []                           # 追加邮箱（收验证码备用），设置页不管理：
   # - user: someone@163.com               #   agent 用 `wd r mail --box 163` 选
@@ -75,7 +75,7 @@ resources:
   vlm_model: doubao-seed-2-1-turbo-260628
   twocaptcha_key: ""
   bocha_key: ""                           # 博查中文网页搜索
-  adb_addr: 192.0.2.78:5555             # android 真机
+  adb_addr: 127.0.0.1:5555             # android 真机
   textr_email: ''                              # Textr Go 美国虚拟号码（收验证码）
   textr_password: ''
 

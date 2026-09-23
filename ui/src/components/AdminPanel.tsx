@@ -534,7 +534,7 @@ function SettingsTab() {
             placeholder="http://127.0.0.1:21111" />
           <input type="password" value={resKeys.sandbox_api_key ?? ''}
             onChange={e => setResKeys({ ...resKeys, sandbox_api_key: e.target.value })}
-            placeholder={res.sandbox_api_key_set ? `已保存（${res.sandbox_api_key_hint}），留空不改` : '***REDACTED***'} />
+            placeholder={res.sandbox_api_key_set ? `已保存（${res.sandbox_api_key_hint}），留空不改` : 'your-key'} />
         </div>
         <div className="setting-row">
           <span className="setting-k">沙箱 CDP</span>
@@ -545,7 +545,7 @@ function SettingsTab() {
         <div className="setting-row">
           <span className="setting-k">代理</span>
           <input value={res.proxy} onChange={e => setRes({ ...res, proxy: e.target.value })}
-            placeholder="http://192.0.2.57:7890（空=不可用）" />
+            placeholder="http://127.0.0.1:7890（空=不可用）" />
         </div>
         <div className="setting-row">
           <span className="setting-k">短信服务</span>
@@ -593,7 +593,7 @@ function SettingsTab() {
         <div className="setting-row">
           <span className="setting-k">adb 真机</span>
           <input value={res.adb_addr} onChange={e => setRes({ ...res, adb_addr: e.target.value })}
-            placeholder="192.0.2.78:5555" />
+            placeholder="127.0.0.1:5555" />
         </div>
         <div className="setting-row">
           <button className="btn primary sm" onClick={() => void saveResources()}>保存</button>

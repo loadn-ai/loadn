@@ -75,7 +75,7 @@
 
   if (location.protocol !== 'https:') {
     // Secure cookie 在 http 下会被浏览器拒收，提前拦住并指路
-    msg.textContent = '请改用 https://work.example.test:30443 访问';
+    msg.textContent = '请改用 https://<your-domain>:30443 访问';
     btn.disabled = true;
     return;
   }
