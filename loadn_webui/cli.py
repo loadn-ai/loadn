@@ -764,6 +764,11 @@ def main(argv: list[str] | None = None) -> int:
             r = httpx.post(f"{base}/api/admin/kill-all", headers=headers, timeout=30)
             print(r.json())
             return 0
+        except Exception as e:                         # noqa: BLE001
+            print(f"API 不可达（{e}），直接落 KILL_ALL 标记", file=sys.stderr)
+            (PATHS["run"] / "KILL_ALL").write_text("kill-all")
+            print("KILL_ALL 已落盘（调度器暂停；恢复需删除该标记）")
+            return 0
     if args.cmd == "kill-all-clear":
         import os as os_mod
 
@@ -778,11 +783,6 @@ def main(argv: list[str] | None = None) -> int:
         r = httpx.post(f"{base}/api/admin/kill-all/clear", headers=headers, timeout=30)
         print(r.json())
         return r.returncode if hasattr(r, "returncode") else 0
-        except Exception as e:                         # noqa: BLE001
-            print(f"API 不可达（{e}），直接落 KILL_ALL 标记", file=sys.stderr)
-            (PATHS["run"] / "KILL_ALL").write_text("kill-all")
-            print("KILL_ALL 已落盘（调度器暂停；恢复需删除该标记）")
-            return 0
     if args.cmd == "release":
         from . import ops as ops_mod
         if args.relcmd == "build":
