@@ -8,137 +8,99 @@ import SkillEditor from './SkillEditor';
 import SchedulesTab from './SchedulePanel';
 import InstallDialog from './InstallDialog';
 import CostTab from './CostPanel';
+import SecurityTab from './SecurityPanel';
 import { Plus, Upload, Globe, Sun, Moon } from './icons';
 
 function EgressPanel() {
-  const [rows, setRows] = useState<{ ts: string; host: string; decision: string; mode?: string }[]>([]);
+  // 产品视角：用户关心「数据流向了哪些域、各多少次、有没有被拒」，
+  // 平铺流水只是原料——聚合成域维度，行可展开看时间点
+  const [events, setEvents] = useState<{ ts: string; host: string; decision: string }[]>([]);
   const [mode, setMode] = useState('');
+  const [allow, setAllow] = useState<string[]>([]);
+  const [expanded, setExpanded] = useState<string | null>(null);
   const load = async () => {
     try {
-      const d = await api<{ events: { ts: string; host: string; decision: string }[]; mode: string }>(
-        '/api/admin/egress?n=60');
-      setRows(d.events); setMode(d.mode);
+      const d = await api<{ events: { ts: string; host: string; decision: string }[]; mode: string; allow: string[] }>(
+        '/api/admin/egress?n=100');
+      setEvents(d.events); setMode(d.mode); setAllow(d.allow ?? []);
     } catch { /* 忽略 */ }
   };
-  useEffect(() => { void load(); const t = setInterval(() => void load(), 5000); return () => clearInterval(t); }, []);
-  const allowed = rows.filter(r => r.decision.startsWith('allow')).length;
-  const denied = rows.length - allowed;
+  useEffect(() => { void load(); const t = setInterval(() => void load(), 15000); return () => clearInterval(t); }, []);
+
+  const GW = 'llm-gw.internal';
+  const byHost = new Map<string, { n: number; denied: number; last: string; times: string[] }>();
+  for (const e of events) {
+    const h = e.host || '?';
+    const cur = byHost.get(h) ?? { n: 0, denied: 0, last: '', times: [] };
+    cur.n += 1;
+    if (!String(e.decision).startsWith('allow')) cur.denied += 1;
+    cur.last = e.ts;
+    cur.times.push((e.ts || '').slice(11, 19));
+    byHost.set(h, cur);
+  }
+  const gw = byHost.get(GW);
+  byHost.delete(GW);
+  const hosts = [...byHost.entries()].sort((a, b) => b[1].n - a[1].n);
+  const deniedTotal = [...byHost.values()].reduce((s2, v) => s2 + v.denied, 0);
+  const external = hosts.filter(([, v]) => v.denied === 0).length;
+
   return (
     <div className="pad">
-      <div className="muted" style={{ marginBottom: 8 }}>
-        数据流向（W5.2）——出口代理审计 · mode=<b>{mode || '-'}</b> ·
-        近 {rows.length} 条：放行 {allowed} / 拒绝 {denied} ·
-        本任务数据已流向 {new Set(rows.filter(r => r.decision.startsWith('allow')).map(r => r.host)).size} 个域
+      <div style={{ display: 'flex', gap: 16, marginBottom: 12, flexWrap: 'wrap', fontSize: 13 }}>
+        <span>模式 <b style={{ color: mode === 'enforce' ? undefined : '#d4a017' }}>{mode || '-'}</b></span>
+        <span>窗口内请求 <b>{events.length}</b></span>
+        <span>放行域 <b style={{ color: '#3aa675' }}>{external}</b></span>
+        <span>被拒 <b style={{ color: deniedTotal ? 'var(--accent,#e5484d)' : undefined }}>{deniedTotal}</b></span>
+        {gw && <span className="muted">另有模型调用 {gw.n} 次（走内部网关，不外发）</span>}
+      </div>
+      <div className="muted" style={{ marginBottom: 10, fontSize: 12, lineHeight: 1.6 }}>
+        所有对外请求经出口代理审计；模型对话经内部安全网关转发，
+        真实 API 凭证不出控制域。点域名行查看请求时间点。
       </div>
       <table className="kv-table" style={{ width: '100%' }}>
-        <thead><tr><th>时间</th><th>目标域</th><th>判定</th></tr></thead>
+        <thead><tr><th>域名</th><th style={{ width: 70 }}>次数</th><th style={{ width: 90 }}>判定</th><th style={{ width: 90 }}>最近</th></tr></thead>
         <tbody>
-          {rows.map((r, i) => (
-            <tr key={i}>
-              <td>{(r.ts || '').slice(11, 19)}</td>
-              <td>{r.host}</td>
-              <td style={{ color: r.decision.startsWith('allow') ? undefined : 'var(--accent)' }}>
-                {r.decision}
-              </td>
-            </tr>
+          {hosts.length === 0 && (
+            <tr><td colSpan={4} className="muted" style={{ textAlign: 'center', padding: 16 }}>
+              （窗口内没有对外请求——模型调用不算外发）
+            </td></tr>
+          )}
+          {hosts.map(([h, v]) => (
+            <>
+              <tr key={h} style={{ cursor: 'pointer' }} onClick={() => setExpanded(expanded === h ? null : h)}>
+                <td>
+                  <span style={{ marginRight: 6, display: 'inline-block', transition: '.15s', transform: expanded === h ? 'rotate(90deg)' : undefined }}>›</span>
+                  {h}
+                </td>
+                <td style={{ fontVariantNumeric: 'tabular-nums' }}>{v.n}</td>
+                <td style={{ color: v.denied ? 'var(--accent,#e5484d)' : '#3aa675' }}>
+                  {v.denied ? `拒绝 ${v.denied}/${v.n}` : '放行'}
+                </td>
+                <td style={{ fontVariantNumeric: 'tabular-nums' }}>{v.last.slice(11, 19)}</td>
+              </tr>
+              {expanded === h && (
+                <tr key={h + '-x'}>
+                  <td colSpan={4} className="muted" style={{ fontSize: 12, padding: '4px 12px' }}>
+                    {v.times.slice(0, 20).join(' · ')}{v.times.length > 20 ? ' …' : ''}
+                  </td>
+                </tr>
+              )}
+            </>
           ))}
         </tbody>
       </table>
-    </div>
-  );
-}
-
-
-
-interface Posture {
-  sandbox: { mode: string; bwrap: number; direct: number; window: number };
-  policy: { approval_enforce: string };
-  egress: { mode: string; allow_count: number };
-  canary: { locked_sessions: { sid: string; reason: string }[]; kill_all: boolean };
-  vault: { platforms: number };
-  audit: { last_id: number; last_ts: string; anchors: number };
-}
-
-function Dot({ on, warn }: { on: boolean; warn?: boolean }) {
-  const color = on ? (warn ? '#d4a017' : 'var(--ok, #3aa675)') : 'var(--muted)';
-  return <span style={{ display: 'inline-block', width: 8, height: 8, borderRadius: '50%', background: color, marginRight: 6 }} />;
-}
-
-function SecurityTab() {
-  const [posture, setPosture] = useState<Posture | null>(null);
-  const [events, setEvents] = useState<{ id: number; ts: string; type: string; sid: string | null; detail_json: string }[]>([]);
-  const [typeFilter, setTypeFilter] = useState('');
-  const [verifyResult, setVerifyResult] = useState<string>('');
-  const [verifying, setVerifying] = useState(false);
-  const load = async () => {
-    try {
-      setPosture(await api<Posture>('/api/admin/security'));
-      const q = typeFilter ? `&type=${encodeURIComponent(typeFilter)}` : '';
-      const d = await api<{ events: typeof events }>(`/api/admin/audit?n=50${q}`);
-      setEvents(d.events);
-    } catch { /* 忽略 */ }
-  };
-  useEffect(() => { void load(); const t = setInterval(() => void load(), 5000); return () => clearInterval(t); }, [typeFilter]);
-  const doVerify = async () => {
-    setVerifying(true); setVerifyResult('');
-    try {
-      const d = await api<{ problems: string[] }>('/api/admin/audit/verify', { method: 'POST' });
-      setVerifyResult(d.problems.length === 0 ? '✓ 账本健康（哈希链一致，锚点全命中）' : `✗ ${d.problems.length} 个问题：\n${d.problems.slice(0, 5).join('\n')}`);
-    } catch (e) { setVerifyResult(`校验失败: ${e}`); } finally { setVerifying(false); }
-  };
-  const doKillAll = async () => {
-    if (!confirm('全局熔断：停全部活跃 turn+锁定会话+暂停调度。确定？')) return;
-    try {
-      const d = await api<{ stopped_turns: number }>('/api/admin/kill-all', { method: 'POST' });
-      alert(`已熔断：停了 ${d.stopped_turns} 个 turn。恢复：删 var/run/KILL_ALL + 解锁会话`);
-      void load();
-    } catch (e) { alert(`失败: ${e}`); }
-  };
-  if (!posture) return <div className="pad muted">加载中…</div>;
-  const cards: { name: string; ok: boolean; warn?: boolean; desc: string }[] = [
-    { name: '沙箱（W2）', ok: posture.sandbox.mode === 'bwrap', desc: posture.sandbox.mode === 'bwrap' ? `bwrap · 近 ${posture.sandbox.window} turn 全覆盖` : 'off（直跑）' },
-    { name: '策略引擎（W1）', ok: posture.policy.approval_enforce === 'enforce', warn: posture.policy.approval_enforce === 'warn', desc: `approval=${posture.policy.approval_enforce}` },
-    { name: '出口代理（W5）', ok: posture.egress.mode === 'enforce', warn: posture.egress.mode === 'warn', desc: `${posture.egress.mode} · 白名单 ${posture.egress.allow_count} 域` },
-    { name: '凭证库（W3）', ok: posture.vault.platforms > 0, desc: `vault · ${posture.vault.platforms} 平台（AES-GCM）` },
-    { name: '审计账本（W6）', ok: true, desc: `哈希链 · 尾 id=${posture.audit.last_id} · 锚 ${posture.audit.anchors}` },
-    { name: '金丝雀（W5.5）', ok: !posture.canary.kill_all, desc: posture.canary.kill_all ? '全局熔断中！' : posture.canary.locked_sessions.length ? `${posture.canary.locked_sessions.length} 会话锁定` : '未命中' },
-  ];
-  return (
-    <div className="pad">
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(200px, 1fr))', gap: 8, marginBottom: 12 }}>
-        {cards.map(c => (
-          <div key={c.name} style={{ border: '1px solid var(--border, #333)', borderRadius: 6, padding: '8px 10px' }}>
-            <div><Dot on={c.ok} warn={c.warn} />{c.name}</div>
-            <div className="muted" style={{ fontSize: 12, marginTop: 4 }}>{c.desc}</div>
+      {allow.length > 0 && (
+        <div style={{ marginTop: 12 }}>
+          <div className="muted" style={{ fontSize: 12, marginBottom: 6 }}>白名单（其余域名一律拒绝）</div>
+          <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
+            {allow.map(a => (
+              <span key={a} className="muted" style={{ fontSize: 12, border: '1px solid var(--border,#333)', borderRadius: 999, padding: '2px 10px' }}>
+                {a}
+              </span>
+            ))}
           </div>
-        ))}
-      </div>
-      <div style={{ display: 'flex', gap: 8, alignItems: 'center', marginBottom: 8 }}>
-        <button onClick={doVerify} disabled={verifying}>{verifying ? '校验中…' : '账本校验'}</button>
-        {posture.canary.kill_all
-          ? <span style={{ color: 'var(--accent)' }}>全局熔断激活（var/run/KILL_ALL）</span>
-          : <button style={{ color: 'var(--accent)' }} onClick={doKillAll}>全局熔断</button>}
-        {verifyResult && <span className="muted" style={{ whiteSpace: 'pre-wrap' }}>{verifyResult}</span>}
-      </div>
-      <div className="muted" style={{ marginBottom: 6 }}>
-        审计事件流（哈希链账本尾窗 50 条）
-        <input style={{ marginLeft: 8, width: 120 }} placeholder="按类型过滤" value={typeFilter}
-          onChange={e => setTypeFilter(e.target.value)} />
-      </div>
-      <table className="kv-table" style={{ width: '100%' }}>
-        <thead><tr><th>id</th><th>时间</th><th>类型</th><th>会话</th><th>详情</th></tr></thead>
-        <tbody>
-          {events.map(e => (
-            <tr key={e.id}>
-              <td>{e.id}</td>
-              <td>{(e.ts || '').slice(5, 19)}</td>
-              <td>{e.type}</td>
-              <td style={{ maxWidth: 140, overflow: 'hidden', textOverflow: 'ellipsis' }}>{e.sid || '-'}</td>
-              <td className="muted" style={{ maxWidth: 340, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{e.detail_json}</td>
-            </tr>
-          ))}
-        </tbody>
-      </table>
+        </div>
+      )}
     </div>
   );
 }
@@ -177,7 +139,7 @@ export default function AdminPanel({ onClose, initialTab, filterSid, onClearFilt
           ? <SchedulesTab filterSid={filterSid} onClearFilter={onClearFilter} />
           : tab === 'cost' ? <CostTab />
           : tab === 'egress' ? <EgressPanel />
-          : tab === 'security' ? <SecurityTab /> : <SettingsTab />}
+          : tab === 'security' ? <SecurityTab onClose={onClose} /> : <SettingsTab />}
     </div>
   );
 }

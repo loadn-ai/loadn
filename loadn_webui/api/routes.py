@@ -840,7 +840,38 @@ def kill_all():
     (PATHS["run"] / "KILL_ALL").write_text("kill-all")
     return {"ok": True, "stopped_turns": stopped,
             "scheduler_paused": True,
-            "hint": "恢复：删除 var/run/KILL_ALL 并逐会话 unlock"}
+            "hint": "恢复：管理中心「安全」tab 解除熔断，或 loadn-web kill-all-clear"}
+
+
+@router.post("/admin/kill-all/clear")
+def kill_all_clear():
+    """解除全局熔断：删 KILL_ALL 标记 + 解锁**因熔断锁定**的会话。
+
+    金丝雀命中的锁（reason 不含 kill）不解——那是真实警报，须人工核。
+    """
+    from .. import canary as canary_mod
+    from ..config import PATHS
+    marker = PATHS["run"] / "KILL_ALL"
+    existed = marker.exists()
+    marker.unlink(missing_ok=True)
+    unlocked, kept = [], []
+    with db_mod.conn() as c:
+        for r in c.execute(
+                "SELECT id FROM sessions WHERE status='active'").fetchall():
+            reason = canary_mod.is_locked(r["id"])
+            if not reason:
+                continue
+            if "kill" in reason:
+                canary_mod.unlock_session(r["id"])
+                unlocked.append(r["id"])
+            else:
+                kept.append({"sid": r["id"], "reason": reason})
+    from .. import audit as audit_mod
+    audit_mod.audit("kill_switch", {"action": "clear", "cleared": existed,
+                                    "unlocked": unlocked})
+    return {"ok": True, "cleared": existed, "unlocked": unlocked,
+            "kept_locked": kept,
+            "hint": "调度已恢复" if existed else "本就未熔断"}
 
 
 # ---------------------------------------------------------------- 审批（W1-2）

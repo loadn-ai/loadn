@@ -53,9 +53,13 @@ export async function api<T = any>(path: string, init?: RequestInit): Promise<T>
       ...(init?.headers as Record<string, string> ?? {}),
     },
   });
-  if (resp.status === 401 || resp.status === 403) {
-    // 403 且带 admin 语义时同样可能是 token 缺失/过期（admin 默认=token）
+  if (resp.status === 401) {
     notifyUnauthorized();
+  } else if (resp.status === 403) {
+    // 仅 admin-required 的 403 是认证问题（token 缺失/轮换）；其余 403
+    // （熔断/kill switch/canary）是业务拒绝，各有场景内文案
+    const body = await resp.clone().text().catch(() => '');
+    if (body.includes('admin required')) notifyUnauthorized();
   }
   if (!resp.ok) {
     let msg = `${resp.status}`;

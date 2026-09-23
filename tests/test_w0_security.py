@@ -340,3 +340,26 @@ def test_audit_feed_and_verify(w0):
                    headers=w0["headers"])
     assert r.status_code == 200
     assert "problems" in r.json()
+
+
+# ---------------------------------------------------------------- 熔断解除（产品化补）
+
+def test_kill_all_clear_only_unlocks_kill_locks():
+    """解除熔断：kill 锁解开、蜜罐锁保留、KILL_ALL 标记删除。"""
+    from loadn_webui.api import routes as rt
+    from loadn_webui import canary as canary_mod, db as db_mod
+    from loadn_webui.config import PATHS
+    with db_mod.conn() as c:
+        for sid in ("t-killx", "t-canaryx"):
+            c.execute("INSERT OR REPLACE INTO sessions(id) VALUES(?)", (sid,))
+    canary_mod.lock_session("t-killx", "kill-all（全局熔断）")
+    canary_mod.lock_session("t-canaryx", "canary 命中（诱饵凭证被使用）")
+    PATHS["run"].mkdir(parents=True, exist_ok=True)
+    (PATHS["run"] / "KILL_ALL").write_text("x")
+    out = rt.kill_all_clear()
+    assert out["cleared"] is True
+    assert "t-killx" in out["unlocked"]
+    assert any(k["sid"] == "t-canaryx" for k in out["kept_locked"])
+    assert canary_mod.is_locked("t-canaryx")      # 真警报不解
+    assert not canary_mod.is_locked("t-killx")
+    assert not (PATHS["run"] / "KILL_ALL").exists()

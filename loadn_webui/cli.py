@@ -696,6 +696,8 @@ def main(argv: list[str] | None = None) -> int:
     p_t.add_argument("action", choices=["show", "rotate"])
     sub.add_parser("kill-all",
                    help="全局熔断：停全部活跃 turn+暂停调度（W6.4）")
+    sub.add_parser("kill-all-clear",
+                   help="解除全局熔断（删标记+解锁 kill 锁定的会话）")
     sub.add_parser("policy-check",
                    help="策略钩子执行体：stdin 传 {tool_name,tool_input}，"
                         "exit 2=block（W1 执行点 A 物化用）")
@@ -762,6 +764,20 @@ def main(argv: list[str] | None = None) -> int:
             r = httpx.post(f"{base}/api/admin/kill-all", headers=headers, timeout=30)
             print(r.json())
             return 0
+    if args.cmd == "kill-all-clear":
+        import os as os_mod
+
+        import httpx
+
+        from .config import CONFIG
+        token = CONFIG.server.token
+        headers = ({"X-Loadn-Token": token, "X-Workdaddy-Token": token,
+                    "X-Loadn-Admin": token, "X-Workdaddy-Admin": token}
+                   if token else {})
+        base = os_mod.environ.get("LOADN_API_BASE") or f"http://127.0.0.1:{CONFIG.server.port}"
+        r = httpx.post(f"{base}/api/admin/kill-all/clear", headers=headers, timeout=30)
+        print(r.json())
+        return r.returncode if hasattr(r, "returncode") else 0
         except Exception as e:                         # noqa: BLE001
             print(f"API 不可达（{e}），直接落 KILL_ALL 标记", file=sys.stderr)
             (PATHS["run"] / "KILL_ALL").write_text("kill-all")

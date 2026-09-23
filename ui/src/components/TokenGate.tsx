@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { token, setToken } from '../api/client';
+import { setToken } from '../api/client';
 
 /** W0 token 门：任何 API 401/403（token 缺失/过期/轮换）时弹出输入框。
  * 保存后整页刷新——所有已建立的 fetch/SSE 通道按新 token 重建。 */
@@ -8,10 +8,9 @@ export default function TokenGate() {
   const [val, setVal] = useState('');
 
   useEffect(() => {
-    const on401 = () => {
-      if (!token()) return;           // 宽限期内未配 token 的 403 不弹（旧服务兼容）
-      setOpen(true);
-    };
+    const on401 = () => setOpen(true);
+      // 不再拦「无存量 token」：宽限期内 GET 全放行，浏览器可能从没存过
+      // token，直到第一个管理面操作（403 admin required）才暴露——此刻必须弹
     window.addEventListener('wd-unauthorized', on401);
     return () => window.removeEventListener('wd-unauthorized', on401);
   }, []);
@@ -32,8 +31,11 @@ export default function TokenGate() {
         <div style={{ fontSize: 13, opacity: 0.75, lineHeight: 1.6 }}>
           认证未通过（token 缺失或已轮换）。在服务器上执行
           <code style={{ background: 'rgba(127,127,127,.15)', padding: '2px 6px',
-                         borderRadius: 4, margin: '0 4px' }}>wd token show</code>
+                         borderRadius: 4, margin: '0 4px' }}>loadn-web token show</code>
           查看，或用带 <code>?token=…</code> 的链接打开。
+          <span style={{ display: 'block', marginTop: 6, fontSize: 12 }}>
+            浏览（只读）在宽限期内仍可用；管理操作需要 token。
+          </span>
         </div>
         <input
           autoFocus type="password" placeholder="粘贴 token" value={val}
@@ -58,6 +60,16 @@ export default function TokenGate() {
           }}
         >
           保存并重连
+        </button>
+        <button
+          onClick={() => setOpen(false)}
+          style={{
+            padding: '6px 0', borderRadius: 8, fontSize: 12,
+            border: 'none', cursor: 'pointer', background: 'transparent',
+            color: 'inherit', opacity: 0.6,
+          }}
+        >
+          稍后再说（只读浏览）
         </button>
       </div>
     </div>
