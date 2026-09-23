@@ -396,6 +396,8 @@ class AnthropicProvider:
                           use_cache=use_cache)
         resp = await self._client.post(self._url, json=body)
         if resp.status_code != 200:
+            if resp.status_code == 400:
+                _dump_body(body, "chat")
             raise _status_error(resp, resp.content)
         d = resp.json()
         usage = {k: v for k, v in (d.get("usage") or {}).items() if k in _USAGE_KEYS}
@@ -440,6 +442,24 @@ def _loads(payload: str) -> dict:
     except (json.JSONDecodeError, ValueError):
         return {}
     return parsed if isinstance(parsed, dict) else {}
+
+
+def _dump_body(body: dict, tag: str) -> None:
+    """400 JSON decode 类错误：请求体落盘取证（$LOADN_HOME/debug/）。
+
+    上游网关偶发拒收合法 JSON（实测 body.9860: JSON decode error），
+    内存态上下文死无对证——落盘才能定位毒字符。
+    """
+    import os
+    import time
+    try:
+        home = os.environ.get("LOADN_HOME") or os.path.expanduser("~/.loadn")
+        d = Path(home) / "debug"
+        d.mkdir(parents=True, exist_ok=True)
+        out = d / f"body400-{tag}-{int(time.time() * 1000)}.json"
+        out.write_text(json.dumps(body, ensure_ascii=False, indent=1))
+    except OSError:
+        pass
 
 
 def _status_error(resp: httpx.Response, raw: bytes) -> httpx.HTTPStatusError:
