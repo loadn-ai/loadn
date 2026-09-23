@@ -61,15 +61,16 @@ docker exec -u loadn -e LOADN_WEBUI_HOME=/home/loadn/.loadn-data \
 echo "[verify] 3/5 带鉴权建会话 + 查详情"
 SID=$(curl -sf -X POST "http://127.0.0.1:$PORT/api/sessions" \
     -H "X-Loadn-Token: $TOK" -H "Content-Type: application/json" \
-    -d '{"title": "verify-local"}' | python3 -c 'import json,sys; print(json.load(sys.stdin)["id"])')
+    -d '{"title": "verify-local"}' \
+    | python3 -c 'import json,sys; print(json.load(sys.stdin)["session"]["id"])')
 curl -sf "http://127.0.0.1:$PORT/api/sessions/$SID" -H "X-Loadn-Token: $TOK" \
-    | python3 -c 'import json,sys; d=json.load(sys.stdin); assert d["id"], d; print(f"  ok sid={d[\"id\"]}")'
+    | python3 -c 'import json,sys; d=json.load(sys.stdin); assert d["id"], d; print("  ok sid=" + d["id"])'
 curl -sf -X DELETE "http://127.0.0.1:$PORT/api/sessions/$SID?purge=1" \
     -H "X-Loadn-Token: $TOK" -H "X-Loadn-Admin: $TOK" >/dev/null
 
 echo "[verify] 4/5 安全中心档位三态"
 curl -sf "http://127.0.0.1:$PORT/api/admin/security" -H "X-Loadn-Token: $TOK" \
-    | python3 -c 'import json,sys; s=json.load(sys.stdin)["sandbox"]; assert s["requested"]=="vm-bwrap" and s["effective"]=="vm-bwrap", s; print(f"  ok posture={s[\"requested\"]}")'
+    | python3 -c 'import json,sys; s=json.load(sys.stdin)["sandbox"]; assert s["requested"]=="vm-bwrap" and s["effective"]=="vm-bwrap", s; print("  ok posture=" + s["requested"])'
 
 echo "[verify] 5/5 匿名拒绝（W0 生效证明）"
 code=$(curl -s -o /dev/null -w '%{http_code}' "http://127.0.0.1:$PORT/api/sessions")
