@@ -557,11 +557,34 @@ def _wait_idle(timeout_s: int, *, yes: bool = False) -> bool:
         print(f"  {n} 个活跃 turn，等待…（{int(time.monotonic()-t0)}s/{timeout_s}s）")
         time.sleep(30)
     if yes:
-        print("  超时但 --yes：强切（turn 子进程靠 KillMode=process 幸存+收养）")
+        # 实测勘误：沙箱 turn 带 --die-with-parent，主进程死=沙箱同死，
+        # 「KillMode=process 幸存+收养」对沙箱 turn 不成立——强切必打断
+        active = _active_turns()
+        print(f"  超时但 --yes：强切（将打断 {len(active)} 个活跃 turn）",
+              file=sys.stderr)
+        for t in active[:5]:
+            print(f"     · turn {t['id']}  {t['session_id']}", file=sys.stderr)
+        if active:
+            _log(f"upgrade FORCE-SWITCH sacrificing turns: "
+                 f"{[t['id'] for t in active]}")
         return True
     print(f"  超时 {timeout_s}s——仍非 idle。加 --yes 强切或延长 --wait-idle",
           file=sys.stderr)
     return False
+
+
+def _active_turns() -> list[dict]:
+    """当前 queued/running 的 turn（强切点名用）。"""
+    db = DATA_ROOT / "var" / "loadn.db"
+    try:
+        conn = sqlite3.connect(f"file:{db}?mode=ro", uri=True, timeout=5)
+        rows = conn.execute(
+            "SELECT id, session_id FROM turns WHERE status IN"
+            " ('queued','running') ORDER BY id").fetchall()
+        conn.close()
+        return [{"id": r[0], "session_id": r[1]} for r in rows]
+    except sqlite3.Error:
+        return []
 
 
 def _healthcheck(timeout_s: int, *, expect: str | None = None) -> bool:
