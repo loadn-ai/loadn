@@ -714,6 +714,58 @@ def delete_session(sid: str, purge: bool = False):
 
 
 # ---------------------------------------------------------------- schedules（定时调度）
+# ---------------------------------------------------------------- 安全中心（W0-W6 姿态总览）
+@router.get("/admin/security")
+def security_posture():
+    """六机制姿态+沙箱覆盖率+熔断状态+vault 计数+账本尾（管理面读）。
+
+    只回计数/模式/键名——vault 值、canary token 一律不出现在响应里。
+    """
+    from .. import audit as audit_mod
+    from .. import canary as canary_mod
+    from .. import vault as vault_mod
+    snaps = audit_mod.tail(100, "snapshot")
+    bwrap_n = sum(1 for r in snaps
+                  if json.loads(r["detail_json"]).get("mode") == "bwrap")
+    locked = []
+    with db_mod.conn() as c:
+        for r in c.execute(
+                "SELECT id FROM sessions WHERE status='active'").fetchall():
+            reason = canary_mod.is_locked(r["id"])
+            if reason:
+                locked.append({"sid": r["id"], "reason": reason})
+    rows = audit_mod.tail(1)
+    return {
+        "sandbox": {"mode": CONFIG.security.sandbox,
+                    "bwrap": bwrap_n, "direct": len(snaps) - bwrap_n,
+                    "window": len(snaps)},
+        "policy": {"approval_enforce": CONFIG.security.approval_enforce},
+        "egress": {"mode": CONFIG.security.egress_mode,
+                   "allow_count": len(CONFIG.security.egress_allow)},
+        "canary": {"locked_sessions": locked,
+                   "kill_all": (PATHS["run"] / "KILL_ALL").exists()},
+        "vault": {"platforms": len(vault_mod.list_platforms())},
+        "audit": {"last_id": rows[0]["id"] if rows else 0,
+                  "last_ts": rows[0]["ts"] if rows else "",
+                  "anchors": len(audit_mod.anchors())},
+    }
+
+
+@router.get("/admin/audit")
+def audit_feed(n: int = 50, type: str | None = None):
+    """审计事件流（管理面读；type 过滤同 audit tail）。"""
+    from .. import audit as audit_mod
+    rows = audit_mod.tail(max(1, min(n, 200)), type)
+    return {"events": [dict(r) for r in rows]}
+
+
+@router.post("/admin/audit/verify")
+def audit_verify():
+    """账本哈希链全量校验（管理面写语义——昂贵操作走双头防滥用）。"""
+    from .. import audit as audit_mod
+    return {"problems": audit_mod.verify()}
+
+
 # ---------------------------------------------------------------- 数据流向（W5.2）
 @router.get("/admin/egress")
 def egress_recent(n: int = 50):

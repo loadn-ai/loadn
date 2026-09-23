@@ -289,3 +289,54 @@ def test_generated_token_file_0600(server_url):
     p = PATHS["var"] / "server_token"
     assert p.exists(), "lifespan 应已生成 token 文件"
     assert stat.S_IMODE(p.stat().st_mode) == 0o600
+
+
+# ---------------------------------------------------------------- R9.1 安全中心+头双名
+
+def test_header_dual_name_loadn_primary(w0):
+    """前端 R9 改发 X-Loadn-*——主名必须可用（宽限期掩盖过失配）。"""
+    r = _get(w0, "/api/health", headers={"X-Loadn-Token": w0["token"]})
+    assert r.status_code == 200
+
+
+def test_header_dual_name_admin(w0):
+    """X-Loadn-Admin 也要过管理面（kill-all POST）。"""
+    r = httpx.post(w0["url"] + "/api/admin/audit/verify", timeout=10,
+                   headers={"X-Loadn-Token": w0["token"],
+                            "X-Loadn-Admin": w0["token"]})
+    assert r.status_code == 200
+
+
+def test_admin_prefix_now_gated(w0):
+    """回归：/api/admin/* 非 GET 必须吃 admin 双头（曾漏在前缀表外）。"""
+    r = httpx.post(w0["url"] + "/api/admin/audit/verify", timeout=10,
+                   headers={"X-Loadn-Token": w0["token"]})
+    assert r.status_code == 403
+
+
+def test_session_kill_gated(w0):
+    """会话级 kill（后缀判定）也要 admin 双头。"""
+    r = httpx.post(w0["url"] + "/api/sessions/nonexistent/kill", timeout=10,
+                   headers={"X-Loadn-Token": w0["token"]})
+    assert r.status_code == 403          # admin 门先于 404
+
+
+def test_security_posture_shape(w0):
+    """姿态端点：六段齐+不泄密（无 vault 值/canary token 字样）。"""
+    r = _get(w0, "/api/admin/security", headers=w0["headers"])
+    assert r.status_code == 200
+    d = r.json()
+    for k in ("sandbox", "policy", "egress", "canary", "vault", "audit"):
+        assert k in d, f"姿态缺 {k}"
+    assert "platforms" in d["vault"] and "secrets" not in str(d).lower()
+
+
+def test_audit_feed_and_verify(w0):
+    """审计流端点（GET，token 面）+ verify（POST，admin 面）。"""
+    r = _get(w0, "/api/admin/audit?n=5", headers=w0["headers"])
+    assert r.status_code == 200
+    assert "events" in r.json()
+    r = httpx.post(w0["url"] + "/api/admin/audit/verify", timeout=30,
+                   headers=w0["headers"])
+    assert r.status_code == 200
+    assert "problems" in r.json()

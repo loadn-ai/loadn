@@ -44,7 +44,11 @@ _TICKETS: dict[str, float] = {}
 
 # 管理面前缀（W0.4）：非 GET/HEAD/OPTIONS 一律要求 X-Workdaddy-Admin。
 _ADMIN_PREFIXES = ("/api/skills", "/api/skillhub", "/api/tools",
-                   "/api/settings", "/api/schedules")
+                   "/api/settings", "/api/schedules", "/api/admin")
+
+# 会话级破坏性端点（W6.4）：路径形如 /api/sessions/{sid}/kill，前缀表
+# 表达不了通配，按末段判定（kill/rollback/unlock 非法 GET 一律双头）
+_SESSION_ADMIN_SUFFIXES = ("kill", "rollback", "unlock")
 
 # 宽限期告警限流（5 分钟一条，防日志刷屏）
 _GRACE_WARN_EVERY_S = 300
@@ -140,7 +144,10 @@ def check_auth(request: Request) -> bool:
     auth = request.headers.get("Authorization", "")
     if auth.startswith("Bearer ") and hmac.compare_digest(auth[7:], token):
         return True
-    if hmac.compare_digest(request.headers.get("X-Workdaddy-Token", ""), token):
+    # 双名：X-Loadn-*（R9 品牌名）+ X-Workdaddy-*（存量 CLI/脚本兼容层）
+    supplied = (request.headers.get("X-Loadn-Token", "")
+                or request.headers.get("X-Workdaddy-Token", ""))
+    if hmac.compare_digest(supplied, token):
         return True
     if hmac.compare_digest(request.query_params.get("token", ""), token):
         return True
@@ -166,7 +173,10 @@ def _grace_warn(request: Request) -> None:
 def _is_admin_plane(path: str, method: str) -> bool:
     if method in ("GET", "HEAD", "OPTIONS"):
         return False
-    return path.startswith(_ADMIN_PREFIXES)
+    if path.startswith(_ADMIN_PREFIXES):
+        return True
+    return (path.startswith("/api/sessions/")
+            and path.rsplit("/", 1)[-1] in _SESSION_ADMIN_SUFFIXES)
 
 
 app = FastAPI(title="loadn webui", lifespan=lifespan)
@@ -188,7 +198,8 @@ async def auth_middleware(request: Request, call_next):
         # 1) 管理面：独立 admin 头（先查，无宽限）
         if _is_admin_plane(path, request.method):
             admin = admin_token_value()
-            supplied = request.headers.get("X-Workdaddy-Admin", "")
+            supplied = (request.headers.get("X-Loadn-Admin", "")
+                        or request.headers.get("X-Workdaddy-Admin", ""))
             if not supplied or not hmac.compare_digest(supplied, admin):
                 return JSONResponse({"error": "admin required"}, status_code=403)
             return await call_next(request)

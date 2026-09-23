@@ -48,7 +48,102 @@ function EgressPanel() {
   );
 }
 
-export type AdminTab = 'skills' | 'tools' | 'settings' | 'schedules' | 'cost' | 'egress';
+
+
+interface Posture {
+  sandbox: { mode: string; bwrap: number; direct: number; window: number };
+  policy: { approval_enforce: string };
+  egress: { mode: string; allow_count: number };
+  canary: { locked_sessions: { sid: string; reason: string }[]; kill_all: boolean };
+  vault: { platforms: number };
+  audit: { last_id: number; last_ts: string; anchors: number };
+}
+
+function Dot({ on, warn }: { on: boolean; warn?: boolean }) {
+  const color = on ? (warn ? '#d4a017' : 'var(--ok, #3aa675)') : 'var(--muted)';
+  return <span style={{ display: 'inline-block', width: 8, height: 8, borderRadius: '50%', background: color, marginRight: 6 }} />;
+}
+
+function SecurityTab() {
+  const [posture, setPosture] = useState<Posture | null>(null);
+  const [events, setEvents] = useState<{ id: number; ts: string; type: string; sid: string | null; detail_json: string }[]>([]);
+  const [typeFilter, setTypeFilter] = useState('');
+  const [verifyResult, setVerifyResult] = useState<string>('');
+  const [verifying, setVerifying] = useState(false);
+  const load = async () => {
+    try {
+      setPosture(await api<Posture>('/api/admin/security'));
+      const q = typeFilter ? `&type=${encodeURIComponent(typeFilter)}` : '';
+      const d = await api<{ events: typeof events }>(`/api/admin/audit?n=50${q}`);
+      setEvents(d.events);
+    } catch { /* 忽略 */ }
+  };
+  useEffect(() => { void load(); const t = setInterval(() => void load(), 5000); return () => clearInterval(t); }, [typeFilter]);
+  const doVerify = async () => {
+    setVerifying(true); setVerifyResult('');
+    try {
+      const d = await api<{ problems: string[] }>('/api/admin/audit/verify', { method: 'POST' });
+      setVerifyResult(d.problems.length === 0 ? '✓ 账本健康（哈希链一致，锚点全命中）' : `✗ ${d.problems.length} 个问题：\n${d.problems.slice(0, 5).join('\n')}`);
+    } catch (e) { setVerifyResult(`校验失败: ${e}`); } finally { setVerifying(false); }
+  };
+  const doKillAll = async () => {
+    if (!confirm('全局熔断：停全部活跃 turn+锁定会话+暂停调度。确定？')) return;
+    try {
+      const d = await api<{ stopped_turns: number }>('/api/admin/kill-all', { method: 'POST' });
+      alert(`已熔断：停了 ${d.stopped_turns} 个 turn。恢复：删 var/run/KILL_ALL + 解锁会话`);
+      void load();
+    } catch (e) { alert(`失败: ${e}`); }
+  };
+  if (!posture) return <div className="pad muted">加载中…</div>;
+  const cards: { name: string; ok: boolean; warn?: boolean; desc: string }[] = [
+    { name: '沙箱（W2）', ok: posture.sandbox.mode === 'bwrap', desc: posture.sandbox.mode === 'bwrap' ? `bwrap · 近 ${posture.sandbox.window} turn 全覆盖` : 'off（直跑）' },
+    { name: '策略引擎（W1）', ok: posture.policy.approval_enforce === 'enforce', warn: posture.policy.approval_enforce === 'warn', desc: `approval=${posture.policy.approval_enforce}` },
+    { name: '出口代理（W5）', ok: posture.egress.mode === 'enforce', warn: posture.egress.mode === 'warn', desc: `${posture.egress.mode} · 白名单 ${posture.egress.allow_count} 域` },
+    { name: '凭证库（W3）', ok: posture.vault.platforms > 0, desc: `vault · ${posture.vault.platforms} 平台（AES-GCM）` },
+    { name: '审计账本（W6）', ok: true, desc: `哈希链 · 尾 id=${posture.audit.last_id} · 锚 ${posture.audit.anchors}` },
+    { name: '金丝雀（W5.5）', ok: !posture.canary.kill_all, desc: posture.canary.kill_all ? '全局熔断中！' : posture.canary.locked_sessions.length ? `${posture.canary.locked_sessions.length} 会话锁定` : '未命中' },
+  ];
+  return (
+    <div className="pad">
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(200px, 1fr))', gap: 8, marginBottom: 12 }}>
+        {cards.map(c => (
+          <div key={c.name} style={{ border: '1px solid var(--border, #333)', borderRadius: 6, padding: '8px 10px' }}>
+            <div><Dot on={c.ok} warn={c.warn} />{c.name}</div>
+            <div className="muted" style={{ fontSize: 12, marginTop: 4 }}>{c.desc}</div>
+          </div>
+        ))}
+      </div>
+      <div style={{ display: 'flex', gap: 8, alignItems: 'center', marginBottom: 8 }}>
+        <button onClick={doVerify} disabled={verifying}>{verifying ? '校验中…' : '账本校验'}</button>
+        {posture.canary.kill_all
+          ? <span style={{ color: 'var(--accent)' }}>全局熔断激活（var/run/KILL_ALL）</span>
+          : <button style={{ color: 'var(--accent)' }} onClick={doKillAll}>全局熔断</button>}
+        {verifyResult && <span className="muted" style={{ whiteSpace: 'pre-wrap' }}>{verifyResult}</span>}
+      </div>
+      <div className="muted" style={{ marginBottom: 6 }}>
+        审计事件流（哈希链账本尾窗 50 条）
+        <input style={{ marginLeft: 8, width: 120 }} placeholder="按类型过滤" value={typeFilter}
+          onChange={e => setTypeFilter(e.target.value)} />
+      </div>
+      <table className="kv-table" style={{ width: '100%' }}>
+        <thead><tr><th>id</th><th>时间</th><th>类型</th><th>会话</th><th>详情</th></tr></thead>
+        <tbody>
+          {events.map(e => (
+            <tr key={e.id}>
+              <td>{e.id}</td>
+              <td>{(e.ts || '').slice(5, 19)}</td>
+              <td>{e.type}</td>
+              <td style={{ maxWidth: 140, overflow: 'hidden', textOverflow: 'ellipsis' }}>{e.sid || '-'}</td>
+              <td className="muted" style={{ maxWidth: 340, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{e.detail_json}</td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </div>
+  );
+}
+
+export type AdminTab = 'skills' | 'tools' | 'settings' | 'schedules' | 'cost' | 'egress' | 'security';
 
 export interface SkillItem {
   name: string; description: string; mtime: string; disabled: boolean;
@@ -75,12 +170,14 @@ export default function AdminPanel({ onClose, initialTab, filterSid, onClearFilt
         <button className={`tab ${tab === 'schedules' ? 'on' : ''}`} onClick={() => setTab('schedules')}>定时</button>
         <button className={`tab ${tab === 'cost' ? 'on' : ''}`} onClick={() => setTab('cost')}>成本</button>
         <button className={`tab ${tab === 'egress' ? 'on' : ''}`} onClick={() => setTab('egress')}>流量</button>
+        <button className={`tab ${tab === 'security' ? 'on' : ''}`} onClick={() => setTab('security')}>安全</button>
       </div>
       {tab === 'skills' ? <SkillsTab /> : tab === 'tools' ? <ToolsTab />
         : tab === 'schedules'
           ? <SchedulesTab filterSid={filterSid} onClearFilter={onClearFilter} />
           : tab === 'cost' ? <CostTab />
-          : tab === 'egress' ? <EgressPanel /> : <SettingsTab />}
+          : tab === 'egress' ? <EgressPanel />
+          : tab === 'security' ? <SecurityTab /> : <SettingsTab />}
     </div>
   );
 }

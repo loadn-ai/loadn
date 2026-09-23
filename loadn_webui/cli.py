@@ -287,7 +287,8 @@ async def _approval_gate_http(method: str, path: str, body: dict | None = None,
     import httpx
     from .config import CONFIG, PATHS
     token = CONFIG.server.token
-    headers = {"X-Workdaddy-Token": token} if token else {}
+    headers = ({"X-Loadn-Token": token, "X-Workdaddy-Token": token}
+               if token else {})
     base = (os_mod.environ.get("LOADN_API_BASE")
             or f"http://127.0.0.1:{CONFIG.server.port}")
     url = f"{base}{path}"
@@ -723,7 +724,8 @@ def main(argv: list[str] | None = None) -> int:
                 print(f"宽限期:  剩 {left:.1f} 天（到期后未认证请求 401）")
             else:
                 print("宽限期:  无（立即强制认证）")
-            print("通道:    Authorization: Bearer / X-Workdaddy-Token 头 / ?token=（兼容）"
+            print("通道:    Authorization: Bearer / X-Loadn-Token 头 / ?token="
+                  "（X-Workdaddy-* 兼容）"
                   " / SSE ?ticket=")
         else:
             import secrets as secrets_mod
@@ -752,7 +754,9 @@ def main(argv: list[str] | None = None) -> int:
 
         from .config import CONFIG, PATHS
         token = CONFIG.server.token
-        headers = {"X-Workdaddy-Token": token, "X-Workdaddy-Admin": token} if token else {}
+        headers = ({"X-Loadn-Token": token, "X-Workdaddy-Token": token,
+                    "X-Loadn-Admin": token, "X-Workdaddy-Admin": token}
+                   if token else {})
         base = os_mod.environ.get("LOADN_API_BASE") or f"http://127.0.0.1:{CONFIG.server.port}"
         try:
             r = httpx.post(f"{base}/api/admin/kill-all", headers=headers, timeout=30)
