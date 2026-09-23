@@ -214,8 +214,11 @@ class EgressProxy:
             return
         try:
             clen = int(headers.get("content-length", "0") or 0)
-            body = await asyncio.wait_for(reader.read(clen), timeout=60) \
-                if clen else b""
+            # readexactly 而非 read：read(n) 只保证「最多 n」——大请求体跨
+            # TCP 分段时首读只拿到第一段，body 截断转上游=JSON decode error
+            # （实测 body.9860 = 首段长度；对话越大越必炸）
+            body = await asyncio.wait_for(reader.readexactly(clen),
+                                          timeout=60) if clen else b""
             fwd = {k: v for k, v in headers.items()
                    if k not in ("host", "authorization", "content-length",
                                 "transfer-encoding", "proxy-connection",
@@ -235,12 +238,18 @@ class EgressProxy:
                 f"{k}: {v}\r\n" for k, v in up_resp.headers.items()
                 if k.lower() in ("content-type", "request-id",
                                  "anthropic-ratelimit-requests-remaining"))
-            head = (f"HTTP/1.1 {status} OK\r\n{rh}"
+            from http import HTTPStatus
+            try:
+                reason = HTTPStatus(status).phrase
+            except ValueError:
+                reason = "OK"
+            head = (f"HTTP/1.1 {status} {reason}\r\n{rh}"
                     f"Content-Length: {len(resp_body)}\r\n"
                     f"Connection: close\r\n\r\n")
             writer.write(head.encode("latin1") + resp_body)
             await writer.drain()
-        except (OSError, ValueError, _hx.HTTPError, asyncio.TimeoutError) as e:
+        except (OSError, ValueError, _hx.HTTPError, asyncio.TimeoutError,
+                asyncio.IncompleteReadError) as e:
             log.exception("LLM 网关转发失败")
             msg = f"gateway error: {type(e).__name__}".encode()
             head = (b"HTTP/1.1 502 Bad Gateway\r\n"

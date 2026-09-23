@@ -144,3 +144,61 @@ async def test_host_mismatch_enforced(proxy):
         writer.close()
     finally:
         await proxy.stop()
+
+
+async def test_llm_gateway_large_body_integrity(monkeypatch):
+    """回归：大请求体跨 TCP 分段必须完整转发（read→readexactly 实修）。
+
+    旧实现 reader.read(clen) 首读只拿第一段——上游收到截断 JSON 报
+    body.NNNN: JSON decode error；假上游读满 content-length 并验 JSON。
+    """
+    import json as _json
+    payload = {"system": "x" * 40, "messages": [
+        {"role": "user", "content": "y" * 200_000}]}     # 200KB+ 必跨分段
+    raw = _json.dumps(payload).encode()
+    upstream_seen = {}
+
+    async def fake_handler(reader, writer):
+        line = await reader.readline()
+        headers = {}
+        while True:
+            h = await reader.readline()
+            if h in (b"\r\n", b"\n", b""):
+                break
+            k, _, v = h.decode().partition(":")
+            headers[k.strip().lower()] = v.strip()
+        n = int(headers.get("content-length", "0"))
+        body = b""
+        while len(body) < n:                     # 读满（readexactly 语义）
+            chunk = await reader.read(65536)
+            if not chunk:
+                break
+            body += chunk
+        upstream_seen["body_len"] = len(body)
+        try:
+            _json.loads(body)
+            upstream_seen["valid"] = True
+        except Exception:                        # noqa: BLE001
+            upstream_seen["valid"] = False
+        writer.write(b"HTTP/1.1 200 OK\r\nContent-Length: 2\r\n\r\nok")
+        await writer.drain()
+        writer.close()
+
+    srv = await asyncio.start_server(fake_handler, "127.0.0.1", 0)
+    up_port = srv.sockets[0].getsockname()[1]
+    monkeypatch.setattr(egress_proxy, "_UPSTREAM",
+                        (f"http://127.0.0.1:{up_port}", "REAL"))
+    monkeypatch.setattr(CONFIG.security, "egress_mode", "enforce")
+    px = egress_proxy.EgressProxy(port=0)
+    port = await px.start()
+    try:
+        r = await httpx.AsyncClient(
+            proxy=f"http://127.0.0.1:{port}", timeout=30).post(
+            "http://llm-gw.internal/v1/messages", content=raw,
+            headers={"content-type": "application/json"})
+        assert r.status_code == 200
+        assert upstream_seen["body_len"] == len(raw), "上游收到的体长不对（截断）"
+        assert upstream_seen["valid"] is True, "上游收到非法 JSON"
+    finally:
+        await px.stop()
+        srv.close()

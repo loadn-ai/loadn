@@ -105,6 +105,10 @@ def wrap_loadn(cmd: list[str], env: dict, *, sid_session: str,
             ]
     archive.mkdir(parents=True, exist_ok=True)
     argv += ["--bind", str(archive), str(archive)]
+    # 取证落盘（provider 400 dump 到 $LOADN_HOME/debug）需要可写
+    debug_dir = engine_home / "debug"
+    debug_dir.mkdir(parents=True, exist_ok=True)
+    argv += ["--bind", str(debug_dir), str(debug_dir)]
     for f in ("config.json", "settings.json"):
         src = engine_home / f
         if src.exists():
