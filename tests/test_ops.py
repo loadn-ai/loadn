@@ -179,3 +179,20 @@ def test_preflight_missing_data(fake_env, monkeypatch):
     monkeypatch.setattr(ops, "DATA_ROOT", fake_env["data"] / "nonexistent")
     problems = ops._preflight(d)
     assert any("数据根" in p for p in problems)
+
+
+def test_backup_retention_version_downgrade(fake_env, monkeypatch):
+    """备份保留：版本回退（1.x→0.x）时刚写的备份不许被文件名排序自删。"""
+    import time as _time
+    bk = fake_env["data"] / "var" / "backups"
+    bk.mkdir(parents=True)
+    # 预置 3 份「更新」的旧备份（mtime 更晚，但文件名排序在 v0.3.0 之后）
+    for i, v in enumerate(("v1.0.0", "v1.0.2", "v1.0.3")):
+        f = bk / f"db-pre-{v}.db"
+        f.write_bytes(b"x" * 8)
+        stamp = _time.time() + 100 + i   # mtime 在未来也无所谓，只要有序
+        import os as _os
+        _os.utime(f, (stamp, stamp))
+    ops._backup_db("v0.3.0")
+    assert (bk / "db-pre-v0.3.0.db").exists(), "新备份被保留了"
+    assert len(list(bk.glob("db-pre-*.db"))) == 3, "总量仍是 3 份"

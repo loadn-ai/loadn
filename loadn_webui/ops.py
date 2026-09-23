@@ -78,10 +78,12 @@ def _ops_lock():
     fh = OPS_LOCK.open("w")
     try:
         fcntl.flock(fh, fcntl.LOCK_EX | fcntl.LOCK_NB)
-        yield
     except OSError:
         print("✗ 另一个 ops 命令正在运行（ops.lock 被持有）", file=sys.stderr)
+        fh.close()
         raise SystemExit(EXIT_PRECONDITION)
+    try:
+        yield
     finally:
         fh.close()
 
@@ -526,9 +528,11 @@ def _backup_db(target: str) -> Path:
         src_conn.backup(dst_conn)
     src_conn.close()
     dst_conn.close()
-    # 保留 3 份（按名称排序，最旧的删）
-    old_files = sorted(backups.glob("db-pre-*.db"))
-    for f in old_files[:-3]:
+    # 保留 3 份：按 mtime 排序 + 刚写的 dst 永在保护集（文件名排序在
+    # 版本号回退时会判反新旧，v0.3.0 备份把自己删掉的实测教训）
+    old_files = sorted((f for f in backups.glob("db-pre-*.db") if f != dst),
+                       key=lambda f: f.stat().st_mtime)
+    for f in old_files[:-2]:
         f.unlink()
     print(f"  备份 → {dst}（{dst.stat().st_size >> 20}MB）")
     return dst
