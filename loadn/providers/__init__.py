@@ -21,10 +21,12 @@ from loadn.types import Message, ToolDef
 class Chunk:
     """provider 流式增量（对齐 Anthropic SSE delta 分类）。
 
-    kind ∈ text_delta | thinking_delta | input_json_delta | usage | stop | error
+    kind ∈ text_delta | thinking_delta | signature_delta | input_json_delta |
+    usage | stop | error
     """
     kind: str
     text: str = ""                # text_delta / thinking_delta 载荷
+    signature: str = ""           # signature_delta：thinking 延续性签名（增量）
     tool_use_id: str = ""         # input_json_delta：所属 tool_use
     tool_name: str = ""           # input_json_delta 首片：工具名
     partial_json: str = ""        # input_json_delta：参数增量

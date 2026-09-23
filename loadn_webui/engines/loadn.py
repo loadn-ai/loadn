@@ -17,7 +17,7 @@ from pathlib import Path
 from typing import TYPE_CHECKING
 
 from ..config import CONFIG
-from .base import EngineSpec
+from .base import EngineSpec, summarize_transcript_tail
 from .claude import _uuid_or_new
 
 if TYPE_CHECKING:
@@ -95,3 +95,9 @@ class LoadnSpec(EngineSpec):
             return time.time() - p.stat().st_mtime if p.exists() else None
         except OSError:
             return None
+
+    def session_tail(self, session_id: str, *, max_chars: int = 1800) -> str:
+        # 缺文件 → ''（summarize 内 OSError 兜底）
+        return summarize_transcript_tail(
+            loadn_home() / "sessions" / session_id / "transcript.jsonl",
+            max_chars=max_chars)

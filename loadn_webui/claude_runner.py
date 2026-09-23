@@ -364,9 +364,11 @@ async def run_turn(call: TurnCall, stop: StopHandle | None = None) -> TurnProcRe
 
     # W2-a 执行沙箱（security.sandbox=bwrap 时包裹；同路径 bind 保协议通道）
     from . import sandbox as sandbox_mod
+    from . import workspace as _ws_mod
     from .audit import audit as _audit
     cmd, sbx_mode = sandbox_mod.wrap_engine(
-        cmd, env, engine=spec.name, sid=call.session_id, cwd=Path(call.cwd))
+        cmd, env, engine=spec.name, sid=call.session_id, cwd=Path(call.cwd),
+        project_root=_ws_mod.project_root_of(call.sid))
     if sbx_mode != "direct":
         _audit("sandbox_violation" if sbx_mode == "direct-fallback" else "snapshot",
                {"mode": sbx_mode, "engine": spec.name, "sid": call.sid},

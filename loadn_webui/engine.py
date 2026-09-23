@@ -37,16 +37,22 @@ def _msg_attachments(blocks_json: str | None) -> list[dict]:
         return []
 
 
-def _attachment_block(atts: list[dict]) -> str:
-    """附件 → 追加进 prompt 的说明块；content 里存干净文本，组 prompt 时拼装。"""
+def _attachment_block(atts: list[dict], inputs_dir: Path | None = None) -> str:
+    """附件 → 追加进 prompt 的说明块；content 里存干净文本，组 prompt 时拼装。
+
+    路径给绝对位置：项目子任务的 inputs/ 是项目根共享目录，不在 cwd 下，
+    相对路径会引导 agent 找错地方。
+    """
     if not atts:
         return ""
-    lines = ["", "", "【附件】用户随本消息上传了以下文件到工作区："]
+    lines = ["", "", "【附件】用户随本消息上传了以下文件："]
     for a in atts:
         kind = "图片，可直接用 Read 查看" if a.get("is_image") \
             else "文档，先用 file-parse skill 解析后再引用"
         size = f"，约 {a['kb']}KB" if a.get("kb") is not None else ""
-        lines.append(f"- {a['path']}（{kind}{size}）")
+        loc = str(Path(inputs_dir or "") / Path(a["path"]).name) \
+            if inputs_dir is not None else a["path"]
+        lines.append(f"- {loc}（{kind}{size}）")
     lines.append("不要凭文件名猜测附件内容。")
     return "\n".join(lines)
 
@@ -392,9 +398,13 @@ class Engine:
         spec = engines_mod.resolve(sess["engine_override"] or prof.engine)
         sess = self._align_engine(sid, sess, spec)
 
-        prompt = msg["content"] + _attachment_block(_msg_attachments(msg["blocks_json"]))
-        if _anchor:
-            prompt = f"{_anchor}\n\n{prompt}"
+        # anchor 优先级：显式传入（轮换重试路径）> 轮换暂存 pending_anchor
+        # （token 轮换在上一 turn 收尾写入；本 turn 注入即清，一次性）
+        anchor = _anchor or (sess["pending_anchor"] or "")
+        prompt = msg["content"] + _attachment_block(
+            _msg_attachments(msg["blocks_json"]), ws_mod.inputs_dir_of(sid))
+        if anchor:
+            prompt = f"{anchor}\n\n{prompt}"
 
         resume = bool(sess["session_fresh"] == 0)
         claude_sid = sess["claude_session_id"]
@@ -413,6 +423,8 @@ class Engine:
                 if cur.rowcount != 1:
                     log.info("turn %s 已停止/撤回（非 queued），跳过执行", tid)
                     return
+                if sess["pending_anchor"]:
+                    db_mod.update_session(c, sid, pending_anchor=None)
             at = ActiveTurn(turn_id=tid, session_id=sid, stop=StopHandle(),
                             started_at=time.time())
             self.active[tid] = at
@@ -445,7 +457,7 @@ class Engine:
                 turn_id=tid, sid=sid, env_extra=extra_env, on_event=on_event,
                 on_spawned=_on_spawned)
             res = await run_turn(call, at.stop)
-            await self._finish(sid, tid, at, sess, res, anchor=_anchor)
+            await self._finish(sid, tid, at, sess, res, anchor=anchor)
         finally:
             self.active.pop(tid, None)
 
@@ -547,9 +559,11 @@ class Engine:
                                      "status": t.get("status", "pending")}
                                     for t in inp["todos"] if isinstance(t, dict)]
                         self._emit(at, sid, "todos", {"turn_id": tid, "todos": at.todos})
-                    self.publish(sid, "tool_use",
-                                 {"turn_id": tid, "id": b.get("id"), "name": name,
-                                  "brief": brief, "input": detail}, tid)
+                    # quiet 收口（与上其余事件一致）：收养静默重放期不重发
+                    # tool_use（session_events 已有停机前的事件，重发=双份）
+                    self._emit(at, sid, "tool_use",
+                               {"turn_id": tid, "id": b.get("id"), "name": name,
+                                "brief": brief, "input": detail})
         elif t == "user":
             for b in (ev.get("message") or {}).get("content") or []:
                 if not (isinstance(b, dict) and b.get("type") == "tool_result"):
@@ -621,6 +635,25 @@ class Engine:
             self._emit(at, sid, "files", {"turn_id": tid, "files": files})
 
     # ------------------------------------------------------------ 收尾
+    @staticmethod
+    def _rotation_anchor(spec, old_session_id: str, reason: str) -> str:
+        """会话轮换的交接 anchor：磁盘台账指引 + 旧会话 transcript 尾部摘要
+        （用户最后指令/todos 终态/最后输出）——新会话冷启动也能无损接力，
+        不再是纯「去读盘」的一句话。transcript 不可得（resume 被拒的本就
+        没有）→ 摘要段留空，仅剩磁盘指引。"""
+        tail = ""
+        if old_session_id:
+            try:
+                tail = spec.session_tail(old_session_id)
+            except Exception:  # noqa: BLE001 — anchor 组装永不抛
+                log.exception("session_tail 提取失败 engine=%s", spec.name)
+        parts = [f"（上一 {spec.name} 会话已轮换（{reason}）。"]
+        if tail:
+            parts.append(f"旧会话收尾时的状态：\n{tail}")
+        parts.append("请先读工作区 PROGRESS.md、state.json 与 notes/，结合以上信息"
+                     "无损续作当前请求，不要重做已完成步骤。）")
+        return "\n\n".join(parts)
+
     async def _finish(self, sid: str, tid: int, at: ActiveTurn, sess, res, anchor: str) -> None:
         status = "done"
         if res.stopped:
@@ -645,6 +678,7 @@ class Engine:
                     return
                 log.warning("turn %s resume 连败 %d 次，轮换新 %s 会话重试",
                             tid, fails, spec.name)
+                old_sid = sess["claude_session_id"] or ""   # 换新 id 前留档
                 with db_mod.conn() as c:
                     db_mod.update_session(c, sid, claude_session_id=spec.new_session_id(),
                                           session_fresh=1, resume_failures=0)
@@ -654,8 +688,7 @@ class Engine:
                 await asyncio.sleep(1)
                 await self._run_turn(
                     sid, tid,
-                    _anchor=f"（上一 {spec.name} 会话已轮换：请先读 PROGRESS.md、state.json 与 notes/，"
-                            "凭磁盘状态无损续作，不要重做已完成步骤。）")
+                    _anchor=self._rotation_anchor(spec, old_sid, "resume_rejected"))
                 return
             # fresh（--session-id）也秒拒。特例「already in use」：transcript 已存在
             # （上轮 interrupted/被杀，未及翻 resume 位）→ 原 id 转 resume 重试，上下文
@@ -723,10 +756,15 @@ class Engine:
             prof = profile_mod.get(sess["profile"])
             thr = prof.rotate_input_tokens
             if thr and (usage.get("input_tokens") or 0) > thr:
+                # 轮换不再纯冷启动：旧会话 transcript 尾部摘要暂存 pending_anchor
+                # （turn 已收尾，transcript 完整），下一 turn 注入 prompt 后即清
+                old_sid = res.session_id or sess["claude_session_id"] or ""
                 with db_mod.conn() as c:
-                    db_mod.update_session(c, sid,
-                                          claude_session_id=spec.new_session_id(),
-                                          session_fresh=1)
+                    db_mod.update_session(
+                        c, sid, claude_session_id=spec.new_session_id(),
+                        session_fresh=1,
+                        pending_anchor=self._rotation_anchor(spec, old_sid,
+                                                            "context_inflation"))
                 rotate_reason = "context_inflation"
 
         # ---- SSE 终态事件
@@ -838,6 +876,9 @@ class Engine:
                             db_mod.update_turn(c, t["id"], status="interrupted",
                                                error="server_restart", finished_at=iso())
                         out["interrupted"] += 1
+                        # 半程内容抢救（fire-and-forget）：turn 保持 interrupted，
+                        # 但停机前已产出的 assistant 内容从输出日志补进 messages
+                        asyncio.create_task(self._salvage_interrupted(sid, t))
             for t in ts:
                 if t["status"] == "queued":
                     self.requeue(sid, t["id"])
@@ -864,6 +905,61 @@ class Engine:
         except OSError:
             return False
         return "\"type\": \"result\"" in tail_txt or "\"type\":\"result\"" in tail_txt
+
+    async def _salvage_interrupted(self, sid: str, turn: dict) -> None:
+        """中断 turn 的半程内容补记账：静默重放输出日志重建 at，把停机前
+        已产出的 assistant 内容（文本/工具块）写入 messages——不补记账时
+        消息流从 user 直接跳到中断，续作与回放都看不到断点前发生了什么。
+
+        turn 保持 interrupted；不注册 active（进程已死，注册会让 steer
+        误判运行中吞掉插话）。幂等：已有该 turn 的 assistant 消息则跳过。
+        """
+        from .claude_runner import LogTail, _Sink
+        log_out = turn["log_out"]
+        if not log_out or not Path(log_out).exists():
+            return
+        spec = engines_mod.resolve(turn["engine"] or "claude")
+        tid = turn["id"]
+        at = ActiveTurn(turn_id=tid, session_id=sid, stop=StopHandle(),
+                        started_at=time.time(), quiet=True)
+        try:
+            with db_mod.conn() as c:
+                sess = db_mod.get_session(c, sid)
+            if sess is None:
+                return
+
+            async def on_event(ev: dict) -> None:
+                await self._consume(sid, tid, at, ev)
+
+            sink = _Sink(spec.adapter(), on_event)
+            tail = LogTail(Path(log_out))
+            try:
+                while True:
+                    lines = tail.poll()
+                    if not lines:
+                        break
+                    for raw in lines:
+                        await sink.feed_raw(raw)
+            finally:
+                tail.close()
+            content = "\n\n".join(t for t in at.texts if t.strip())
+            if not (content or at.blocks):
+                return
+            prefix = "⚠️ （服务重启中断——以下为停机前已产出的部分内容，任务未完成）"
+            content = f"{prefix}\n\n{content}" if content else prefix
+            with db_mod.conn() as c:
+                exists = c.execute(
+                    "SELECT id FROM messages WHERE session_id=? AND turn_id=? "
+                    "AND role='assistant'", (sid, tid)).fetchone()
+                if not exists:
+                    db_mod.add_message(c, session_id=sid, turn_id=tid,
+                                       role="assistant", content=content,
+                                       blocks_json=json.dumps(at.blocks,
+                                                              ensure_ascii=False))
+            self.publish(sid, "interrupted_salvaged",
+                         {"turn_id": tid, "chars": len(content)}, tid)
+        except Exception:  # noqa: BLE001 — 补记账是尽力而为
+            log.exception("中断补记账失败 sid=%s turn=%s", sid, tid)
 
     async def _replay_and_finish_async(self, sid: str, turn: dict) -> bool:
         """pid 已死但日志完整的 turn：静默重放重建状态 → 正常 _finish 补记账

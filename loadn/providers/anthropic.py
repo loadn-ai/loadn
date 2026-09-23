@@ -11,7 +11,9 @@
   侧 usage 波，message_stop 发全量 usage + stop_reason；tool 参数以
   input_json_delta 增量透传，由 JsonAccumulator（loop 持有）拼装——provider
   不做参数装配，流式/非流式对 loop 呈现同一消费形态。
-- thinking 的 signature_delta 不透传（loadn 不验证签名），仅 warning 一次。
+- thinking 的 signature_delta 透传为 signature_delta chunk：ChunkAssembler 并入
+  ThinkingBlock.signature，历史 thinking 块带签名回传——严格 Anthropic 端点凭
+  签名验证思维链续传（不回签名的网关宽容忽略；签名缺失时 to_dict 自然省略）。
 - 读超时不设（read=None）：判死交给 loop 的 stall 逻辑，provider 层不掺和。
 """
 from __future__ import annotations
@@ -265,9 +267,9 @@ class AnthropicProvider:
     def _thinking_budget(self, max_tokens: int) -> int | None:
         """cfg extra["thinking_budget"] → 合法 budget（不合规则不设）。
 
-        API 硬约束：budget ≥1024 且 < max_tokens（否则 400）。注：loadn
-        不透传 thinking signature，GLM 网关宽容——严格 Anthropic 端点需要
-        history 剥离/签名透传，不在本旋钮范围。
+        API 硬约束：budget ≥1024 且 < max_tokens（否则 400）。thinking
+        signature 已透传（v0.8）：历史 thinking 块带签名回传，严格端点的
+        思维链续传校验可过；网关不回签名时 to_dict 自然省略。
         """
         raw = self.extra.get("thinking_budget")
         if not raw:
@@ -293,7 +295,6 @@ class AnthropicProvider:
         stop_reason = ""
         message_id = ""
         blocks: dict[int, dict] = {}          # index → {type,id,name,named}
-        warned_signature = False
         per_req_headers = {}
         if self._stealth:
             # retry-count 按请求注入（客户端级头是静态的，这个头随重试递增——
@@ -349,12 +350,13 @@ class AnthropicProvider:
                                 partial_json=delta.get("partial_json") or "",
                             )
                         elif dtype == "signature_delta":
-                            # thinking 签名不透传：loadn 不验证 signature，
-                            # 延续性由网关自行处理——仅提示一次
-                            if not warned_signature:
-                                warned_signature = True
-                                logger.warning(
-                                    "thinking signature_delta 丢弃（loadn 不透传 signature）")
+                            # thinking 延续性签名透传：ChunkAssembler 并入
+                            # ThinkingBlock.signature，随历史回传网关——严格
+                            # Anthropic 端点（thinking+tool_use）凭签名验证
+                            # 思维链续传；宽容网关（GLM）忽略无碍
+                            got_content = True
+                            yield Chunk(kind="signature_delta",
+                                        signature=delta.get("signature") or "")
                     elif event == "message_delta":
                         d = _loads(payload)
                         stop_reason = (d.get("delta") or {}).get("stop_reason") or stop_reason
@@ -415,7 +417,8 @@ class AnthropicProvider:
                 chunks.append(Chunk(kind="text_delta", text=block.get("text") or ""))
             elif btype == "thinking":
                 chunks.append(Chunk(kind="thinking_delta",
-                                    text=block.get("thinking") or ""))
+                                    text=block.get("thinking") or "",
+                                    signature=block.get("signature") or ""))
             elif btype == "tool_use":
                 # 完整 input 一次性作为单片 JSON 增量——JsonAccumulator 装配路径不变
                 chunks.append(Chunk(

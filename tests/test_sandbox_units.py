@@ -20,7 +20,7 @@ def test_wrap_engine_generic_engines(engine, monkeypatch, tmp_path):
     monkeypatch.setattr(CONFIG.security, "sandbox", "bwrap")
     monkeypatch.setattr(sandbox.shutil, "which", lambda _: "/usr/bin/bwrap")
     monkeypatch.setattr(sandbox, "_wrap_generic",
-                        lambda cmd, env, cwd, extra_binds: (
+                        lambda cmd, env, cwd, extra_binds, project_root=None: (
                             ["bwrap"] + [x for m, s, d in extra_binds for x in (m, s)]
                             + [f"{k}={v}" for k, v in env.items()] + cmd))
     cmd, mode = sandbox.wrap_engine(["engine-bin", "run"], {"K": "V"},
@@ -44,7 +44,7 @@ def test_wrap_engine_loadn_routes(monkeypatch, tmp_path):
     monkeypatch.setattr(CONFIG.security, "sandbox", "bwrap")
     called = {}
     monkeypatch.setattr(sandbox, "wrap_loadn",
-                        lambda cmd, env, sid_session, cwd: called.update(
+                        lambda cmd, env, sid_session, cwd, project_root=None: called.update(
                             cmd=cmd, sid=sid_session) or ["wrapped"])
     cmd, mode = sandbox.wrap_engine(
         ["loadn", "-p", "--session-id", "aaaa-bbbb", "hi"], {},
@@ -69,6 +69,29 @@ def test_wrap_generic_full_argv(tmp_path):
     assert sandbox._wrap_generic(
         ["/bin/echo"], {}, cwd=tmp_path,
         extra_binds=[("ro", str(tmp_path / "absent"), "")]) is None
+
+
+def test_project_binds_order_and_gating(tmp_path):
+    """_project_binds：None 直通；项目根 ro + 共享 inputs rw，且先于 cwd bind。"""
+    assert sandbox._project_binds([], None) == []
+    proj = tmp_path / "proj"
+    (proj / "inputs").mkdir(parents=True)
+    task_ws = proj / "tasks" / "01-x"
+    task_ws.mkdir(parents=True)
+    argv: list = []
+    sandbox._project_binds(argv, proj)
+    argv += ["--bind", str(task_ws), str(task_ws)]
+    i_root = argv.index("--ro-bind")            # 第一个 ro-bind 是项目根
+    assert argv[i_root + 1] == str(proj)
+    i_in = argv.index("--bind")
+    assert argv[i_in + 1] == str(proj / "inputs")
+    assert i_root < i_in < argv.index("--bind", i_in + 1)   # 根→inputs→cwd 次序
+    # inputs 目录不存在 → 只挂根 ro
+    proj2 = tmp_path / "proj2"
+    proj2.mkdir()
+    argv2: list = []
+    sandbox._project_binds(argv2, proj2)
+    assert str(proj2) in argv2 and str(proj2 / "inputs") not in argv2
 
 
 def test_egress_uds_gating(monkeypatch, tmp_path):

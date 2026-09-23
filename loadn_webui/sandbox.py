@@ -58,8 +58,21 @@ def _resolve_in(ws: Path, p: Path) -> bool:
         return False
 
 
+def _project_binds(argv: list[str], project_root: Path | None) -> list[str]:
+    """项目子任务的项目根挂载：宪法等 ro（祖先链可读到项目 CLAUDE.md）+
+    共享 inputs/ rw。必须在任务目录 bind 之前插入——后挂的父目录会遮住
+    已挂子目录的 rw 视图。"""
+    if project_root is None:
+        return []
+    argv += ["--ro-bind", str(project_root), str(project_root)]
+    shared = project_root / "inputs"
+    if shared.is_dir():
+        argv += ["--bind", str(shared), str(shared)]
+    return argv
+
+
 def wrap_loadn(cmd: list[str], env: dict, *, sid_session: str,
-               cwd: Path) -> list[str] | None:
+               cwd: Path, project_root: Path | None = None) -> list[str] | None:
     """loadn 引擎的 bwrap 包裹。返回完整 argv；环境不可用时返回 None
     （调用方回落直跑并审计 sandbox_violation 计 warn）。"""
     exe = shutil.which("bwrap")
@@ -98,6 +111,9 @@ def wrap_loadn(cmd: list[str], env: dict, *, sid_session: str,
             "--ro-bind-try", str(venv_dir.parent / "loadn_webui"),
             str(venv_dir.parent / "loadn_webui"),
             # workspace 同路径 rw（inputs 子目录 ro 由策略层后续收紧）
+            ]
+    _project_binds(argv, project_root)
+    argv += [
             "--bind", str(ws), str(ws),
             # 本会话引擎档案（resume/判死需要；其他会话不可见）
             ]
@@ -148,10 +164,12 @@ def _egress_uds() -> Path | None:
 
 
 def _wrap_generic(cmd: list[str], env: dict, *, cwd: Path,
-                  extra_binds: list[tuple[str, str, str]]) -> list[str] | None:
+                  extra_binds: list[tuple[str, str, str]],
+                  project_root: Path | None = None) -> list[str] | None:
     """通用 bwrap 骨架（W2-a2）：基础系统 ro + workspace rw + 引擎专属 binds。
 
     extra_binds: [(mode, src, dst)] mode ∈ ro|rw|try-ro
+    project_root: 项目子任务的项目根（宪法 ro + 共享 inputs rw；先于 cwd 挂载）
     """
     exe = shutil.which("bwrap")
     if not exe:
@@ -166,6 +184,9 @@ def _wrap_generic(cmd: list[str], env: dict, *, cwd: Path,
             "--ro-bind-try", "/opt", "/opt",
             "--ro-bind-try", "/run/systemd/resolve", "/run/systemd/resolve",
             "--proc", "/proc", "--dev", "/dev", "--tmpfs", "/tmp",
+            ]
+    _project_binds(argv, project_root)
+    argv += [
             "--bind", str(ws), str(ws),
             "--clearenv", "--share-net", "--unshare-ipc", "--unshare-pid",
             "--die-with-parent"]
@@ -184,13 +205,14 @@ def _wrap_generic(cmd: list[str], env: dict, *, cwd: Path,
 
 
 def wrap_engine(cmd: list[str], env: dict, *, engine: str, sid: str,
-                cwd: Path) -> tuple[list[str], str]:
+                cwd: Path, project_root: Path | None = None) -> tuple[list[str], str]:
     """spawn 入口：按引擎/profile 选包裹。返回 (argv, mode)。
 
     mode: "bwrap" | "direct"（不可用回落，audit 留痕由调用方记）。
     claude：nvm node 树 ro（CLI 运行时）+ ~/.claude/projects rw（档案）+
     ~/.claude/settings.json ro（网关 env 段=M1 known-gap）+ 全局 CLAUDE.md ro。
     opencode：node 树 ro + ~/.local/share/opencode rw（档案）。
+    project_root：项目子任务的项目根（宪法 ro + 共享 inputs rw）。
     """
     from .config import CONFIG
     if CONFIG.security.sandbox != "bwrap":
@@ -203,7 +225,7 @@ def wrap_engine(cmd: list[str], env: dict, *, engine: str, sid: str,
         # 任意 nvm/fnm/系统安装位置都成立（开源可移植性）
         node = Path(cmd[0]).absolute().parent.parent
         wrapped = _wrap_generic(
-            cmd, env, cwd=cwd, extra_binds=[
+            cmd, env, cwd=cwd, project_root=project_root, extra_binds=[
                 ("ro", str(node), str(node)),
                 ("rw", str(home / ".claude/projects"), str(home / ".claude/projects")),
                 # settings.json 不挂（网关 env 由 spawn 注入；token 零入沙箱）
@@ -219,7 +241,7 @@ def wrap_engine(cmd: list[str], env: dict, *, engine: str, sid: str,
         node = Path(cmd[0]).absolute().parent.parent   # 同上：从 bin 派生
         oc = home / ".local/share/opencode"
         wrapped = _wrap_generic(
-            cmd, env, cwd=cwd, extra_binds=[
+            cmd, env, cwd=cwd, project_root=project_root, extra_binds=[
                 ("try-ro", str(node), str(node)),
                 ("rw", str(oc), str(oc)),
                 ("try-ro", str(home / ".config/opencode"),
@@ -237,7 +259,8 @@ def wrap_engine(cmd: list[str], env: dict, *, engine: str, sid: str,
         if a in ("--session-id", "--resume") and i + 1 < len(cmd):
             sid_session = cmd[i + 1]
             break
-    wrapped = wrap_loadn(cmd, env, sid_session=sid_session, cwd=Path(cwd))
+    wrapped = wrap_loadn(cmd, env, sid_session=sid_session, cwd=Path(cwd),
+                         project_root=project_root)
     if wrapped is None:
         log.warning("bwrap 不可用，%s 引擎直跑（sandbox=off 回落，审计记录）", engine)
         return cmd, "direct-fallback"

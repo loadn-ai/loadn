@@ -121,7 +121,10 @@ async def test_happy_path_full():
     assert texts == ["Hel", "lo"]
     thinks = [c.text for c in chunks if c.kind == "thinking_delta"]
     assert thinks == ["先想想"]
-    assert not any(c.kind == "error" for c in chunks)   # signature_delta 被吞掉
+    # signature_delta 透传（v0.8 thinking 续传）：不再丢弃
+    sigs = [(c.signature, c.text) for c in chunks if c.kind == "signature_delta"]
+    assert sigs == [("EqQC", "")]
+    assert not any(c.kind == "error" for c in chunks)
 
     # ---- 双 tool_use：input_json_delta 分片 + 首片带名
     deltas = [c for c in chunks if c.kind == "input_json_delta"]
@@ -393,6 +396,69 @@ def test_provider_config_env_thinking_budget(monkeypatch):
     monkeypatch.setenv("LOADN_THINKING_BUDGET", "not-a-number")
     cfg2 = provider_config()
     assert "thinking_budget" not in cfg2["extra"]
+
+
+# ---------------------------------------------------------------- thinking 续传
+async def test_thinking_signature_roundtrip():
+    """signature_delta → Chunk 流 → ChunkAssembler → ThinkingBlock.signature →
+    历史 thinking 带签名回传网关（严格端点凭签名验证思维链续传）。"""
+    from loadn.core.loop import ChunkAssembler
+    from loadn.types import ThinkingBlock
+    stream = b"".join([
+        sse("message_start", {"message": {"id": "m", "usage": {"input_tokens": 3}}}),
+        sse("content_block_start", {"index": 0, "content_block": {"type": "thinking"}}),
+        sse("content_block_delta", {"index": 0, "delta": {
+            "type": "thinking_delta", "thinking": "分步推理"}}),
+        sse("content_block_delta", {"index": 0, "delta": {
+            "type": "signature_delta", "signature": "sig-A"}}),
+        sse("content_block_delta", {"index": 0, "delta": {
+            "type": "signature_delta", "signature": "+sig-B"}}),
+        sse("content_block_stop", {"index": 0}),
+        sse("message_delta", {"delta": {"stop_reason": "end_turn"},
+                              "usage": {"output_tokens": 2}}),
+        sse("message_stop", {}),
+    ])
+    provider, _ = make_provider(
+        lambda req: httpx.Response(200, content=stream, headers=SSE_HEADERS))
+    asm = ChunkAssembler()
+    async for c in provider.chat([Message(role="user", content=[TextBlock("x")])],
+                                 [], "s"):
+        asm.feed(c)
+    blk = next(b for b in asm.blocks() if isinstance(b, ThinkingBlock))
+    assert blk.thinking == "分步推理"
+    assert blk.signature == "sig-A+sig-B"          # 增量累积
+
+    # 历史回传：带签名 thinking 原样出现在请求体 messages
+    provider2, captured = make_provider(
+        lambda req: httpx.Response(200, content=sse("message_stop", {}),
+                                   headers=SSE_HEADERS))
+    await collect(provider2.chat(
+        [Message(role="user", content=[TextBlock("问")]),
+         Message(role="assistant", content=[blk])], [], "s"))
+    hist = captured["body"]["messages"][1]["content"][0]
+    # 末消息末块带缓存断点标记（三断点之二）——签名断言看子集
+    assert {k: hist[k] for k in ("type", "thinking", "signature")} == {
+        "type": "thinking", "thinking": "分步推理", "signature": "sig-A+sig-B"}
+
+
+async def test_nonstream_signature_piggyback():
+    """非流式：thinking 块的 signature 搭 thinking_delta chunk 下发并装配。"""
+    from loadn.core.loop import ChunkAssembler
+    from loadn.types import ThinkingBlock
+    payload = {
+        "id": "msg_s", "model": "glm-5.3", "stop_reason": "end_turn",
+        "content": [{"type": "thinking", "thinking": "想想",
+                     "signature": "sig-NS"},
+                    {"type": "text", "text": "答"}],
+        "usage": {"input_tokens": 1, "output_tokens": 1},
+    }
+    provider, _ = make_provider(lambda req: httpx.Response(200, json=payload))
+    asm = ChunkAssembler()
+    async for c in provider.chat([Message(role="user", content=[TextBlock("x")])],
+                                 [], "", stream=False):
+        asm.feed(c)
+    tb = next(b for b in asm.blocks() if isinstance(b, ThinkingBlock))
+    assert tb.signature == "sig-NS"
 
 
 # ---------------------------------------------------------------- 缓存断点

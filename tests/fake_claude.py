@@ -45,7 +45,7 @@ def main() -> int:
         prompt = argv[-1] if argv else ""
         with open(log, "a") as f:
             f.write(json.dumps({"argv": argv, "session": session_flag,
-                                "prompt": prompt[:200], "cwd": os.getcwd()},
+                                "prompt": prompt[:4000], "cwd": os.getcwd()},
                                ensure_ascii=False) + "\n")
 
     prompt = argv[-1] if argv else ""

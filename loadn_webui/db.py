@@ -1,7 +1,8 @@
 """SQLite 状态库（WAL）：sessions / messages / turns / artifacts / session_events / kv。
 
-铁律承袭 papergo/kaggo：无头 claude 会话不直接碰这个库——它们读写
-workspace/<sid>/ 的 state.json 与 PROGRESS.md，由 engine 同步。
+铁律承袭 papergo/kaggo：无头 claude 会话不直接碰这个库——台账走
+workspace 的 state.json 与 PROGRESS.md（agent 按宪法 §2 自维护，DB 不
+做同步；轮换/唤醒 anchor 引导 agent 读盘续作）。
 
 活跃性在 turn 层（queued→running→done|error|stopped|interrupted），
 sessions 只有 active/archived（会话永续，可随时 --resume 续聊），
@@ -23,7 +24,7 @@ from .config import PATHS
 
 # R7 回滚门禁：每次加列/加表 +1；RELEASE.json 记此值，rollback 时比对。
 # additive-only 契约：只加列/加表（旧代码可跑新 schema，多余列无害）。
-SCHEMA_REV = 1
+SCHEMA_REV = 2
 from .util import iso
 
 SCHEMA = """
@@ -38,6 +39,7 @@ CREATE TABLE IF NOT EXISTS sessions (
   claude_session_id TEXT,           -- 当前引擎的会话 id（claude/loadn=UUID，opencode=ses_…）
   session_fresh INTEGER DEFAULT 1,  -- 1=从未启动，下次 --session-id；0=--resume
   resume_failures INTEGER DEFAULT 0,-- resume 连续失败计数（≥2 轮换新会话）
+  pending_anchor TEXT,              -- 会话轮换后暂存的交接 anchor（下一 turn 注入 prompt 后清空）
   workspace TEXT,
   skills_json TEXT,                 -- 挂载的 skill 名单
   mcp_json TEXT,                    -- 会话级 MCP 覆盖（合并全局后落 .mcp.json）
@@ -217,9 +219,12 @@ def _migrate(c: sqlite3.Connection) -> None:
         c.execute("ALTER TABLE scheduled_jobs ADD COLUMN engine TEXT")
     scols = {r["name"] for r in c.execute("PRAGMA table_info(sessions)")}
     if "project_id" not in scols:
-        # 项目子任务（共享工作区）：NULL = 独立会话（存量全部如此，零迁移）
+        # 项目子任务（独立任务目录）：NULL = 独立会话（存量全部如此，零迁移）
         c.execute("ALTER TABLE sessions ADD COLUMN project_id TEXT")
         c.execute("CREATE INDEX IF NOT EXISTS idx_sess_project ON sessions(project_id)")
+    if "pending_anchor" not in scols:
+        # 会话轮换（resume 连败/token 超限）的交接 anchor：注入下一 turn prompt
+        c.execute("ALTER TABLE sessions ADD COLUMN pending_anchor TEXT")
     if "pinned" not in scols:
         c.execute("ALTER TABLE sessions ADD COLUMN pinned INTEGER DEFAULT 0")
     if "category_id" not in scols:

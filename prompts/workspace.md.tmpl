@@ -6,13 +6,16 @@
 ## 1. 工作区契约
 
 ```
-inputs/      用户上传的输入材料（只读尊重）
+inputs/      用户上传的输入材料（只读尊重；项目子任务时为项目共享目录，见 $LOADN_INPUTS）
 artifacts/   最终交付物（报告/导出/成果）——用户在界面上只看这里
 work/        中间产物：数据、草稿、脚本、缓存
 notes/       研究中间笔记、引用缓存
 logs/        交接与阶段日志
 ```
 
+- **项目子任务注意**：你的工作区是项目内私有任务目录（PROGRESS.md/state.json/
+  notes/artifacts 均任务级）；`inputs/` 与项目宪法在项目根（$LOADN_PROJECT_ROOT），
+  兄弟任务共享 inputs——不要动别人的任务目录。
 - **交付物必须落 `artifacts/`**：文件名用英文 slug，配一份同名 `.md`（除非本身即 md）。
 - 中间过程不要堆在根目录；保持根目录只有 CLAUDE.md / state.json / PROGRESS.md 与约定目录。
 - **用户附件落在 `inputs/`**：消息末尾【附件】块列出本轮上传——图片（png/jpg/gif/webp）

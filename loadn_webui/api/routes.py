@@ -618,13 +618,12 @@ def session_live(sid: str):
 
 @router.patch("/sessions/{sid}")
 async def patch_session(sid: str, body: dict):
-    sess = _get_session_or_404(sid)
+    _get_session_or_404(sid)     # 404 探测（行内容不需要）
     if "project_id" in body:
         # 移动 = 只改 DB 不搬文件 → artifacts/shares 相对路径悬空指向不存在的
         # 目录。v1 禁止；要归组就在目标项目下新建子任务。
         raise HTTPException(400, "暂不支持移动会话到项目（工作区不迁移）；"
                                  "请在项目下新建子任务")
-    in_project = bool(sess.get("project_id"))
     updates = {}
     if "title" in body:
         updates["title"] = str(body["title"])[:80]
@@ -661,12 +660,12 @@ async def patch_session(sid: str, body: dict):
     skills = body.get("skills")
     if skills is not None:
         updates["skills_json"] = json.dumps([str(s) for s in skills], ensure_ascii=False)
-        if not in_project:
-            ws_mod.rerender(sid, skills=[str(s) for s in skills])
+        # v0.6：子任务目录私有（settings/skills 任务级）——rerender 对子任务
+        # 只重挂任务目录不碰项目宪法；项目属主会话仍走全量重渲染
+        ws_mod.rerender(sid, skills=[str(s) for s in skills])
     if "mcp" in body:
         updates["mcp_json"] = json.dumps(body.get("mcp") or {}, ensure_ascii=False)
-        if not in_project:   # 共享 .mcp.json 属项目——子任务改写会换掉兄弟的 MCP
-            ws_mod.write_mcp_json(ws_mod.ws_of(sid), body.get("mcp") or {})
+        ws_mod.write_mcp_json(ws_mod.ws_of(sid), body.get("mcp") or {})
     if "engine" in body:
         # 聊天框内核切换：会话级覆盖（下一 turn 生效；id 迁移由引擎的
         # _align_engine 在 turn 启动时处理）。null/空串 = 回到跟随配置。
@@ -948,7 +947,7 @@ def unlock_session(sid: str):
 
 
 @router.post("/admin/kill-all")
-def kill_all():
+async def kill_all():
     """全局熔断：停全部活跃 turn + 调度器暂停（KILL_ALL 标记）+ 拒绝新任务。"""
     from .. import canary as canary_mod
     from .. import db as db_mod
@@ -959,7 +958,7 @@ def kill_all():
         rows = c.execute("SELECT id, session_id FROM turns WHERE"
                          " status IN ('running','queued')").fetchall()
     for r in rows:
-        if ENGINE.stop_turn(r["id"]):
+        if await ENGINE.stop_turn(r["id"]):
             stopped += 1
         canary_mod.lock_session(r["session_id"], "kill-all（全局熔断）")
     (PATHS["run"] / "KILL_ALL").write_text("kill-all")
@@ -1552,7 +1551,8 @@ def download_archive(sid: str, path: str = ""):
 @router.post("/sessions/{sid}/upload")
 async def upload(sid: str, file: UploadFile = File(...)):
     _get_session_or_404(sid)
-    dst_dir = ws_mod.ws_of(sid) / "inputs"
+    # 附件落共享输入目录：项目子任务 → 项目根 inputs/（兄弟任务共读）
+    dst_dir = ws_mod.inputs_dir_of(sid)
     dst_dir.mkdir(parents=True, exist_ok=True)
     name = Path(file.filename or "upload.bin").name or "upload.bin"
     stem, suffix = name.rsplit(".", 1) if "." in name else (name, "")
@@ -1619,7 +1619,9 @@ async def ingest_file(sid: str, file: UploadFile = File(...), to: str = "artifac
 
     if to not in _INGEST_DIRS:
         return _err(400, f"to 只能是 {'/'.join(_INGEST_DIRS)}")
-    dst_dir = ws_mod.ws_of(sid) / to.rstrip("/")
+    # inputs/ 是共享目录（项目根）；artifacts/notes/work 是任务级
+    dst_dir = (ws_mod.inputs_dir_of(sid) if to == "inputs/"
+               else ws_mod.ws_of(sid) / to.rstrip("/"))
     dst_dir.mkdir(parents=True, exist_ok=True)
     name = Path(file.filename or "upload.bin").name or "upload.bin"
     stem, suffix = name.rsplit(".", 1) if "." in name else (name, "")

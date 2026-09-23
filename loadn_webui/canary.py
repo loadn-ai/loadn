@@ -31,9 +31,14 @@ def _canary_dir() -> Path:
     return PATHS["var"] / "canaries"
 
 
-def plant(sid: str) -> list[str]:
-    """布置会话 canary：workspace 文件 + 平台登记（值返回给检测器缓存）。"""
-    ws = PATHS["workspace"] / sid
+def plant(sid: str, ws: Path | None = None) -> list[str]:
+    """布置会话 canary：workspace 文件 + 平台登记（值返回给检测器缓存）。
+
+    ws：目标工作区（缺省 workspace/<sid>，独立会话形态）。项目子任务的
+    任务目录不在 PATHS["workspace"]/<sid> 下，须由 scaffold 显式传入——
+    否则蜜罐布进没人读的幽灵目录（v0.6 修复：旧版子任务实际无 canary）。
+    """
+    ws = ws or (PATHS["workspace"] / sid)
     vals = {
         "aws": secrets.token_hex(8).upper()[:14],
         "ghp": secrets.token_hex(20),

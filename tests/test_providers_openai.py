@@ -144,6 +144,48 @@ async def test_stream_roundtrip_multiturn():
     assert stop2.stop_reason == "end_turn"          # stop → end_turn
 
 
+async def test_thinking_history_knob():
+    """extra["thinking_history"]：默认历史 thinking 不回传；开启后按
+    reasoning_content 回放（截断 16k），纯 thinking 的 assistant 消息不丢。"""
+    msgs = [Message(role="user", content=[TextBlock(text="问")]),
+            Message(role="assistant", content=[
+                ThinkingBlock(thinking="推" * 30000, signature="sig"),
+                TextBlock(text="答"),
+                ToolUseBlock(id="c1", name="Bash", input={"command": "ls"})]),
+            Message(role="user", content=[
+                ToolResultBlock(tool_use_id="c1", content="ok")])]
+
+    # 默认关：无 reasoning_content
+    prov_off, cap_off = make_provider(
+        lambda r: httpx.Response(200, content=DONE, headers=SSE_HEADERS))
+    await collect(prov_off.chat(msgs, [], "s"))
+    assert all("reasoning_content" not in m for m in cap_off["body"]["messages"])
+    assert "thinking" not in json.dumps(cap_off["body"]["messages"])
+
+    # 开启：回放 + 截断 + 结构不变
+    prov_on, cap_on = make_provider(
+        lambda r: httpx.Response(200, content=DONE, headers=SSE_HEADERS),
+        extra={"thinking_history": True})
+    await collect(prov_on.chat(msgs, [], "s"))
+    amsg = cap_on["body"]["messages"][2]
+    assert len(amsg["reasoning_content"]) == 16000
+    assert amsg["reasoning_content"].startswith("推")
+    assert amsg["content"] == "答"
+    assert amsg["tool_calls"][0]["id"] == "c1"
+
+    # 纯 thinking 无文本/工具的 assistant 消息：开启后不丢，关闭时仍丢
+    only = [Message(role="assistant", content=[ThinkingBlock(thinking="只想")])]
+    prov_on2, cap_on2 = make_provider(
+        lambda r: httpx.Response(200, content=DONE, headers=SSE_HEADERS),
+        extra={"thinking_history": True})
+    await collect(prov_on2.chat(only, [], ""))
+    assert cap_on2["body"]["messages"][0].get("reasoning_content") == "只想"
+    prov_off2, cap_off2 = make_provider(
+        lambda r: httpx.Response(200, content=DONE, headers=SSE_HEADERS))
+    await collect(prov_off2.chat(only, [], ""))
+    assert not cap_off2["body"]["messages"]
+
+
 async def test_tool_role_user_fallback():
     provider, captured = make_provider(lambda req: httpx.Response(
         200, content=b"".join([

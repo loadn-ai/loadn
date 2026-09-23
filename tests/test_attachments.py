@@ -69,10 +69,11 @@ async def test_message_with_attachments(client, fake_calls, ws_root):
     turn = await wait_turn(client, sid, tid)
     assert turn["status"] == "done"
 
-    # prompt 里注入【附件】块（fake 记录 prompt 字段）
+    # prompt 里注入【附件】块（fake 记录 prompt 字段；路径为绝对定位）
     prompt = fake_calls()[-1]["prompt"]
     assert "解析这两个文件" in prompt and "【附件】" in prompt
-    assert "- inputs/chart.png（图片，可直接用 Read 查看" in prompt
+    assert "inputs/chart.png（图片，可直接用 Read 查看" in prompt
+    assert prompt.count("/inputs/chart.png") == 1   # 绝对路径唯一出现
     assert "spec.pdf（文档" in prompt
 
     # DB content 干净、blocks_json 存附件

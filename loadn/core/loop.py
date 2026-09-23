@@ -95,6 +95,7 @@ class ChunkAssembler:
     def __init__(self) -> None:
         self.text_parts: list[str] = []
         self.thinking_parts: list[str] = []
+        self.signature_parts: list[str] = []        # thinking 延续性签名（anthropic 透传）
         self.tools_meta: dict[str, str] = {}        # tool_use_id → name
         self.tools_json: dict[str, list[str]] = {}  # tool_use_id → partial_json 片段
         self.usage: dict = {}
@@ -114,7 +115,11 @@ class ChunkAssembler:
             self._reg("text")
         elif c.kind == "thinking_delta":
             self.thinking_parts.append(c.text)
+            if c.signature:     # 非流式通道：签名搭 thinking_delta 便车下发
+                self.signature_parts.append(c.signature)
             self._reg("thinking")
+        elif c.kind == "signature_delta":
+            self.signature_parts.append(c.signature)
         elif c.kind == "input_json_delta":
             if c.tool_name:
                 self.tools_meta.setdefault(c.tool_use_id, c.tool_name)
@@ -137,7 +142,9 @@ class ChunkAssembler:
         for key in self._order:
             if key == "thinking":
                 if thinking:
-                    out.append(ThinkingBlock(thinking=thinking))
+                    out.append(ThinkingBlock(
+                        thinking=thinking,
+                        signature="".join(self.signature_parts)))
             elif key == "text":
                 if text:
                     out.append(TextBlock(text=text))

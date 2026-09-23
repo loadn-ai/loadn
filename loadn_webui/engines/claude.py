@@ -9,7 +9,7 @@ from pathlib import Path
 from typing import TYPE_CHECKING
 
 from ..config import CONFIG
-from .base import EngineSpec
+from .base import EngineSpec, summarize_transcript_tail
 
 if TYPE_CHECKING:
     from ..claude_runner import TurnCall
@@ -80,3 +80,12 @@ class ClaudeSpec(EngineSpec):
             return time.time() - max(mtimes) if mtimes else None
         except OSError:
             return None
+
+    def session_tail(self, session_id: str, *, max_chars: int = 1800) -> str:
+        try:
+            hits = sorted((Path.home() / ".claude" / "projects")
+                          .glob(f"*/{session_id}.jsonl"),
+                          key=lambda p: p.stat().st_mtime)
+            return summarize_transcript_tail(hits[-1], max_chars=max_chars) if hits else ""
+        except OSError:
+            return ""

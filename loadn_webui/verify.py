@@ -19,7 +19,6 @@ import json
 from datetime import date, datetime
 from pathlib import Path
 
-from .config import PATHS
 from .util import get_logger
 
 log = get_logger(__name__)
@@ -29,7 +28,8 @@ REQUIRED_FIELDS = ("id", "platform", "title", "verify_url")
 
 def load_registry(sid: str) -> tuple[list[dict], list[str]]:
     """读 credentials.json → (条目列表, schema 问题列表)。"""
-    p = Path(PATHS["workspace"]) / sid / "artifacts" / "credentials.json"
+    from .workspace import ws_of
+    p = ws_of(sid) / "artifacts" / "credentials.json"
     if not p.exists():
         return [], [f"未找到 {p}（先按 schema 建注册表）"]
     try:

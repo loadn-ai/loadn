@@ -22,6 +22,9 @@ from .util import iso, slugify
 
 # 工作区目录契约（与 prompts/workspace.md.tmpl 保持一致）
 SESSION_DIRS = ["inputs", "artifacts", "work", "notes", "logs"]
+# 项目子任务的私有任务目录集：inputs 不在其中——附件与共享材料统一落项目根
+# inputs/（兄弟任务共读），PROGRESS.md/state.json/notes/artifacts 全任务级
+TASK_DIRS = ["artifacts", "work", "notes", "logs"]
 
 # Z.AI 网关服务端注入的 MCP 工具（GLM Coding Plan 自带 web_reader/4_5v 视觉）。
 # 2026-09-10 实测：调用在网关服务端执行，不经客户端派发，permissions.disallow 拦不住
@@ -89,22 +92,55 @@ def write_mcp_json(ws: Path, session_mcp: dict | None) -> None:
         p.unlink(missing_ok=True)
 
 
+def project_root_of(sid: str) -> Path | None:
+    """会话所属项目的根目录（共享 inputs/宪法属主）；非子任务返回 None。
+
+    项目首任务（promote 升级）workspace 即项目根本身——返回值与其 ws 相同，
+    调用方按需比较。
+    """
+    from . import db as db_mod
+    try:
+        with db_mod.conn() as c:
+            row = db_mod.get_session(c, sid)
+            if row is not None and row["project_id"]:
+                proj = db_mod.get_project(c, row["project_id"])
+                if proj is not None:
+                    return Path(proj["workspace"])
+    except Exception:
+        pass
+    return None
+
+
+def inputs_dir_of(sid: str) -> Path:
+    """附件上传/共享输入目录：项目子任务 → 项目根 inputs/（兄弟共读）；
+    独立会话 → 本工作区 inputs/。"""
+    proj = project_root_of(sid)
+    return (proj / "inputs") if proj is not None else (ws_of(sid) / "inputs")
+
+
 def session_env(ws: Path, sid: str) -> dict:
     """引擎无关的会话环境变量（.claude/settings.json env 块的共享子集）。
 
     claude CLI 经 settings.json 读；loadn/opencode 由 engine.py 经
     TurnCall.env_extra 注入 spawn 环境——同一份内容，不双轨漂移。
+    项目子任务：artifacts/notes/work 指任务目录，inputs/项目根指路（共享），
+    另带 LOADN_PROJECT_ROOT 供 agent 访问项目级材料。
     """
     fetch = CODE_ROOT / "scripts" / "fetch_page.py"
     import sys as _sys
     _cli = (shutil.which("wd") or shutil.which("loadn-web")
             or str(Path(_sys.executable).parent / "loadn-web"))
     cli = Path(_cli)
+    proj = project_root_of(sid)
+    inputs = (proj / "inputs") if proj is not None else (ws / "inputs")
     env = {
         "LOADN_SESSION_ID": sid, "WORKDADDY_SESSION_ID": sid,
         "LOADN_ARTIFACTS": str(ws / "artifacts"), "WORKDADDY_ARTIFACTS": str(ws / "artifacts"),
         "LOADN_NOTES": str(ws / "notes"), "WORKDADDY_NOTES": str(ws / "notes"),
         "LOADN_WORK": str(ws / "work"), "WORKDADDY_WORK": str(ws / "work"),
+        "LOADN_INPUTS": str(inputs), "WORKDADDY_INPUTS": str(inputs),
+        **({"LOADN_PROJECT_ROOT": str(proj), "WORKDADDY_PROJECT_ROOT": str(proj)}
+           if proj is not None else {}),
         **({"LOADN_FETCH_PAGE": str(fetch), "WORKDADDY_FETCH_PAGE": str(fetch)} if fetch.exists() else {}),
         **({"LOADN_CLI": str(cli), "WORKDADDY_CLI": str(cli)} if cli.exists() else {}),
         **({"LOADN_CDP_URL": CONFIG.resources.cdp_url, "WORKDADDY_CDP_URL": CONFIG.resources.cdp_url}
@@ -186,13 +222,41 @@ def write_constitution(ws: Path, text: str) -> None:
     (ws / "AGENTS.md").write_text(text)
 
 
+def _init_ledger_files(ws: Path, sid: str, title: str, prof: profile_mod.Profile) -> None:
+    """state.json / PROGRESS.md 初始桩（不存在才写——重建场景不覆盖已有台账）。
+
+    引擎会话 id 不落 state.json：真相在 DB sessions.claude_session_id，
+    写个随机 uuid 进来只会误导 agent（v0.5 前的陈旧字段，已删）。
+    """
+    if not (ws / "state.json").exists():
+        (ws / "state.json").write_text(json.dumps({
+            "session_id": sid, "title": title, "profile": prof.name,
+            "updated_at": iso(), "history": [],
+        }, ensure_ascii=False, indent=2))
+    if not (ws / "PROGRESS.md").exists():
+        (ws / "PROGRESS.md").write_text(
+            f"# {title}\n\n- session: `{sid}` ｜ profile: {prof.name}\n"
+            f"- created: {iso()}\n\n## 进展\n")
+
+
+def _plant_canary(ws: Path, sid: str) -> None:
+    # W5.5：会话 canary 蜜罐（泄露指示物；命中即熔断）
+    try:
+        from . import canary as _canary
+        if not (ws / "notes" / ".canary_tokens.md").exists():
+            _canary.plant(sid, ws=ws)
+            _canary.invalidate_cache()
+    except Exception:                                  # noqa: BLE001
+        pass
+
+
 def scaffold(sid: str, title: str, prof: profile_mod.Profile, skill_names: list[str],
              session_mcp: dict | None = None, *, project: bool = False) -> Path:
     """创建 workspace/<sid>/ 全套目录与初始文件。
 
     project=True：本次 scaffold 的目录是项目属主目录（宪法 SESSION_ID=pid、
     TITLE=项目名、settings env 写 PROJECT_ID）——子任务创建时不走这里
-    （见 create_session 的 project_id 分支：只补目录，绝不覆盖共享文件）。
+    （见 create_session 的 project_id 分支：scaffold_task_dir 建私有任务目录）。
     """
     ws = PATHS["workspace"] / sid
     ws.mkdir(parents=True, exist_ok=True)
@@ -203,24 +267,28 @@ def scaffold(sid: str, title: str, prof: profile_mod.Profile, skill_names: list[
     write_mcp_json(ws, session_mcp)
     write_settings(ws, sid, prof, project=project)
     write_constitution(ws, render_claude_md(sid, title, prof, mounted))
-    if not (ws / "state.json").exists():
-        (ws / "state.json").write_text(json.dumps({
-            "session_id": sid, "title": title, "profile": prof.name,
-            "claude_session_id": str(uuid.uuid4()),
-            "updated_at": iso(), "history": [],
-        }, ensure_ascii=False, indent=2))
-    if not (ws / "PROGRESS.md").exists():
-        (ws / "PROGRESS.md").write_text(
-            f"# {title}\n\n- session: `{sid}` ｜ profile: {prof.name}\n"
-            f"- created: {iso()}\n\n## 进展\n")
-    # W5.5：会话 canary 蜜罐（泄露指示物；命中即熔断）
-    try:
-        from . import canary as _canary
-        if not (ws / "notes" / ".canary_tokens.md").exists():
-            _canary.plant(sid)
-            _canary.invalidate_cache()
-    except Exception:                                  # noqa: BLE001
-        pass
+    _init_ledger_files(ws, sid, title, prof)
+    _plant_canary(ws, sid)
+    return ws
+
+
+def scaffold_task_dir(ws: Path, sid: str, title: str, prof: profile_mod.Profile,
+                      skill_names: list[str], session_mcp: dict | None) -> Path:
+    """项目子任务的私有任务目录脚手架（v0.6 起子任务不再共享项目 cwd）。
+
+    与 scaffold 的差异：①目录集用 TASK_DIRS（无 inputs——共享材料在项目根
+    inputs/，env $LOADN_INPUTS 指路）；②不落 CLAUDE.md/AGENTS.md——宪法属
+    项目根，引擎经祖先链加载（claude CLI 与 loadn context.py 均向上收集）；
+    ③settings 是任务级的（SESSION_ID=本任务，宪法不改）。
+    """
+    ws.mkdir(parents=True, exist_ok=True)
+    for d in TASK_DIRS:
+        (ws / d).mkdir(parents=True, exist_ok=True)
+    skills_mod.mount(ws, skill_names)
+    write_mcp_json(ws, session_mcp)
+    write_settings(ws, sid, prof)
+    _init_ledger_files(ws, sid, title, prof)
+    _plant_canary(ws, sid)
     return ws
 
 
@@ -228,13 +296,20 @@ def rerender(sid: str, title: str | None = None, prof_name: str | None = None,
              skills: list[str] | None = None) -> None:
     """profile/skills 变化后重渲染宪法（下一 turn 生效）。
 
-    守卫：项目子任务直接跳过——共享宪法/settings/skills 挂载属项目，
-    子任务改写会覆盖别的子任务正在用的文件（改项目配置走项目端点）。
+    项目子任务：宪法/settings 属项目根不动，但 v0.6 起任务目录是私有的——
+    重挂任务级 skills + 刷新任务级 settings（env/禁用工具随 profile 变化）。
     """
     from . import db as db_mod
     with db_mod.conn() as c:
         row = db_mod.get_session(c, sid)
     if row is not None and row["project_id"]:
+        ws = ws_of(sid)
+        prof = profile_mod.get(prof_name or row["profile"] or "assistant")
+        if skills is None:
+            skills = sorted(p.name for p in (ws / ".claude" / "skills").glob("*")
+                            if p.is_dir() or p.is_symlink())
+        skills_mod.mount(ws, skills)
+        write_settings(ws, sid, prof)
         return
     ws = ws_path(sid)
     st = read_state(sid)
@@ -264,8 +339,8 @@ def ws_path(sid: str) -> Path:
 def ws_of(sid: str) -> Path:
     """会话真实工作区：sessions.workspace 列 → 回落 workspace/<sid>。
 
-    项目子任务共享项目目录（workspace 列指过去）；独立会话两处同值。
-    不缓存（测试隔离 + 主键查询廉价）。
+    独立会话/项目属主两处同值；项目子任务指向 <项目根>/tasks/<NN>-<slug>/
+    私有任务目录（v0.6 起，不再共享项目 cwd）。不缓存（测试隔离 + 主键查询廉价）。
     """
     from . import db as db_mod
     try:
@@ -283,16 +358,6 @@ def read_state(sid: str) -> dict:
         return json.loads((ws_path(sid) / "state.json").read_text())
     except (OSError, json.JSONDecodeError):
         return {}
-
-
-def write_state(sid: str, **fields) -> None:
-    st = read_state(sid)
-    st.update(fields)
-    st["updated_at"] = iso()
-    p = ws_path(sid) / "state.json"
-    tmp = p.with_suffix(".json.tmp")
-    tmp.write_text(json.dumps(st, ensure_ascii=False, indent=2))
-    tmp.replace(p)
 
 
 def _new_unique_id(title: str) -> str:
@@ -325,15 +390,34 @@ def create_project(title: str, prof: profile_mod.Profile, skills: list[str] | No
     return pid, ws
 
 
+def _next_task_slot(proj_ws: Path, title: str) -> Path:
+    """项目根下分配 tasks/<NN>-<slug>/ 任务目录（NN=现有最大序号+1，目录可读且稳定）。"""
+    tasks = proj_ws / "tasks"
+    tasks.mkdir(parents=True, exist_ok=True)
+    n = 1
+    try:
+        for p in tasks.iterdir():
+            if p.is_dir() and p.name[:2].isdigit():
+                n = max(n, int(p.name[:2]) + 1)
+    except OSError:
+        pass
+    base = "-".join(slugify(title).split("-")[:4])[:40] or "task"
+    ws = tasks / f"{n:02d}-{base}"
+    while ws.exists():                       # 极端撞名（同号重名）：尾号递增
+        ws = ws.with_name(f"{ws.name}-{uuid.uuid4().hex[:4]}")
+    return ws
+
+
 def create_session(title: str, prof: profile_mod.Profile, skills: list[str] | None,
                    session_mcp: dict | None = None, *,
                    project_id: str | None = None) -> tuple[str, Path]:
     """建会话（API 入口）：脚手架 + DB 行。返回 (sid, ws)。
 
-    project_id 非空 = 项目子任务（CC 多窗口语义）：workspace 指向项目目录
-    **只补缺失目录，不写任何共享文件**（宪法/settings/.mcp.json/state.json/
-    PROGRESS.md/skills 挂载全属项目——覆盖会让兄弟子任务静默换宪法）。
-    对话历史/引擎会话/SSE 全按 sid 独立。
+    project_id 非空 = 项目子任务：**独立任务目录** <项目根>/tasks/<NN>-<slug>/
+    （v0.6 起，旧版共享项目 cwd 的「CC 多窗口语义」废除——PROGRESS/state/
+    notes/artifacts/记忆全部任务级，杜绝兄弟任务上下文串扰）。项目根只保留
+    共享物：宪法（CLAUDE.md，祖先链加载）+ inputs/。对话历史/引擎会话/SSE
+    全按 sid 独立（旧版即如此）。
     """
     from . import db as db_mod
 
@@ -343,16 +427,20 @@ def create_session(title: str, prof: profile_mod.Profile, skills: list[str] | No
             proj = db_mod.get_project(c, project_id)
         if proj is None:
             raise KeyError(f"project not found: {project_id}")
-        ws = Path(proj["workspace"])
-        if not (ws / "CLAUDE.md").exists():
+        pws = Path(proj["workspace"])
+        if not (pws / "CLAUDE.md").exists():
             # 项目目录被手删：按项目存的配置整套重建（scaffold 全套）
             scaffold(proj["id"], proj["title"], profile_mod.get(proj["profile"]),
                      json.loads(proj["skills_json"] or "[]"),
                      json.loads(proj["mcp_json"] or "{}"), project=True)
-        else:
-            for d in SESSION_DIRS:
-                (ws / d).mkdir(parents=True, exist_ok=True)
+        (pws / "inputs").mkdir(parents=True, exist_ok=True)   # 共享输入目录
         sid = _new_unique_id(title)
+        ws = _next_task_slot(pws, title)
+        scaffold_task_dir(ws, sid, title, prof,
+                          skills if skills is not None
+                          else json.loads(proj["skills_json"] or "[]"),
+                          session_mcp if session_mcp is not None
+                          else json.loads(proj["mcp_json"] or "{}"))
         with db_mod.conn() as c:
             db_mod.create_session(
                 c, id=sid, title=title, profile=prof.name,

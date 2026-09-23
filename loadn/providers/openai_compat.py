@@ -5,9 +5,11 @@
   assistant 的 tool_use → tool_calls（arguments 为 JSON 字符串）；user 的
   tool_result → role=tool 消息带 tool_call_id（端点不认 role=tool 时经
   cfg["extra"]["tool_role"]="user" 降级为 user 文本 + 附加说明）。
-- 历史 thinking 块请求侧直接丢弃、只透传 text：chat-completions 的
+- 历史 thinking 块默认丢弃、只透传 text：chat-completions 的
   reasoning_content 没有 signature 概念，思维链无法验证续传，回传只会
-  浪费 token 甚至触发端点报错。
+  浪费 token 甚至触发端点报错。cfg extra["thinking_history"]=true 时按
+  reasoning_content 回放（每消息截断 _THINKING_HISTORY_CAP）——接受
+  reasoning_content 回传的端点（DeepSeek/GLM 类）长推理链续传的旋钮。
 - 响应侧 delta.reasoning_content → thinking_delta；tool_calls[i].function
   .arguments 增量 → input_json_delta（id/name 取该 index 首片）；finish_reason
   映射到 Anthropic 语义（tool_calls→tool_use、stop→end_turn、length→
@@ -35,13 +37,22 @@ from loadn.providers.retry import (
     is_retriable_exc,
     retry_call,
 )
-from loadn.types import Message, TextBlock, ToolDef, ToolResultBlock, ToolUseBlock
+from loadn.types import (
+    Message,
+    TextBlock,
+    ThinkingBlock,
+    ToolDef,
+    ToolResultBlock,
+    ToolUseBlock,
+)
 
 logger = logging.getLogger(__name__)
 
 # finish_reason → Anthropic stop_reason（未知值原样透传）
 _FINISH_MAP = {"stop": "end_turn", "tool_calls": "tool_use",
                "length": "max_tokens", "content_filter": "refusal"}
+# thinking_history 回放时单条 assistant 消息的 reasoning_content 上限
+_THINKING_HISTORY_CAP = 16000
 _MISSING_USAGE_WARN = (
     "chat-completions 端点未回 usage（不支持 stream_options.include_usage？），"
     "stop.usage 置空 {}")
@@ -60,6 +71,8 @@ class OpenAICompatProvider:
         self.extra = extra
         self.model = api_model_name(cfg.get("model") or "glm-5.3")
         self.tool_role = str(extra.get("tool_role", "tool") or "tool")
+        # 历史 thinking 回放旋钮（默认关：部分端点拒收 reasoning_content）
+        self.thinking_history = bool(extra.get("thinking_history"))
         base = (cfg.get("base_url") or "").rstrip("/")
         if not base:
             raise ValueError("OpenAICompatProvider: cfg['base_url'] 未配置")
@@ -140,8 +153,14 @@ class OpenAICompatProvider:
             if msg.role == "assistant":
                 text = "\n".join(b.text for b in msg.content
                                  if isinstance(b, TextBlock))
-                # thinking 块丢弃：reasoning_content 无 signature，历史思维
-                # 无法验证续传，回传既费 token 也可能被端点拒绝——只透传 text
+                # 历史 thinking 默认丢弃（reasoning_content 无 signature，
+                # 回传既费 token 也可能被端点拒绝）；thinking_history 开启
+                # 时回放（截断）——接受回传的端点上长推理链可续传
+                reasoning = ""
+                if self.thinking_history:
+                    reasoning = "\n".join(
+                        b.thinking for b in msg.content
+                        if isinstance(b, ThinkingBlock))[:_THINKING_HISTORY_CAP]
                 calls = [{
                     "id": b.id,
                     "type": "function",
@@ -149,8 +168,10 @@ class OpenAICompatProvider:
                                  "arguments": json.dumps(b.input,
                                                          ensure_ascii=False)},
                 } for b in msg.content if isinstance(b, ToolUseBlock)]
-                if text or calls:
+                if text or calls or reasoning:
                     item: dict = {"role": "assistant"}
+                    if reasoning:
+                        item["reasoning_content"] = reasoning
                     if text:
                         item["content"] = text
                     if calls:
