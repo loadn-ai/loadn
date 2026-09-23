@@ -14,8 +14,10 @@ export default function SessionView({ onMenu }: { onMenu: () => void }) {
   // selector 订阅：delta 风暴下 currentSid 引用不变 → 不连带重渲染 ChatStream/
   // RightPanel/Composer 整个子树（它们各自字段级订阅）
   const currentSid = useStore(s => s.currentSid);
-  // 桌面默认开右面板；窄屏它是遮盖式抽屉，默认收起（点「工作区」滑出）
-  const [showPanel, setShowPanel] = useState(() => window.innerWidth > 900);
+  // 面板开合在 store（桌面默认开；窄屏遮盖式抽屉默认收起）——侧边栏
+  // 「属性」入口要能从外部强开（移动端抽屉同路滑出）
+  const showPanel = useStore(s => s.panelOpen);
+  const setPanelOpen = useStore(s => s.setPanelOpen);
   const [tabs, setTabs] = useState<MainTab[]>([{ key: 'chat' }]);
   const [active, setActive] = useState('chat');
   const s = useStore(st => st.sessions.find(x => x.id === st.currentSid));
@@ -66,7 +68,7 @@ export default function SessionView({ onMenu }: { onMenu: () => void }) {
             {fmtTokens(s.usage?.total)} tok · ${(s.usage?.cost_usd ?? 0).toFixed(2)}
           </span>
           <span className={`conn ${useStore.getState().connected ? 'ok' : ''}`} title="SSE 连接状态" />
-          <button className="btn ghost" onClick={() => setShowPanel(v => !v)}>
+          <button className="btn ghost" onClick={() => setPanelOpen(!showPanel)}>
             {showPanel ? '隐藏面板' : '工作区'}
           </button>
         </div>
@@ -94,7 +96,7 @@ export default function SessionView({ onMenu }: { onMenu: () => void }) {
             ? <><ChatStream onOpenFile={openFile} /><Composer /></>
             : <FilePreview key={activeFile} sid={currentSid} path={activeFile} />}
         </div>
-        {showPanel && <div className="scrim panel" onClick={() => setShowPanel(false)} />}
+        {showPanel && <div className="scrim panel" onClick={() => setPanelOpen(false)} />}
         {showPanel && <RightPanel onOpenFile={openFile} />}
       </div>
     </div>

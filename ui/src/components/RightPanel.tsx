@@ -1,16 +1,18 @@
 import { useEffect, useState } from 'react';
 import { useStore } from '../stores/sessions';
-import { api, withToken, fmtTime } from '../api/client';
+import { api, withToken } from '../api/client';
+import PropertiesPanel from './PropertiesPanel';
 import { Folder, FileDoc, ChevronDown, ChevronRight, Download } from './icons';
 
-type Tab = 'artifacts' | 'files' | 'details';
+type Tab = 'properties' | 'artifacts' | 'files';
 
 export default function RightPanel({ onOpenFile }: { onOpenFile: (path: string) => void }) {
-  const [tab, setTab] = useState<Tab>('artifacts');
+  // tab 状态在 store：侧边栏「属性」入口要能从外部切过来
+  const tab = useStore(s => s.rightTab);
+  const setTab = useStore(s => s.setRightTab);
   // 字段级订阅：live turn 每个 delta 都 set 全店，无 selector 的整店订阅会让
   // 550 张产物卡每 token 重渲染一遍，面板直接卡死（"产物打不开"的根因）
   const artifacts = useStore(s => s.artifacts);
-  const turns = useStore(s => s.turns);
   const currentSid = useStore(s => s.currentSid);
   const [tree, setTree] = useState<{ path: string; dir: boolean; size: number | null }[]>([]);
 
@@ -31,16 +33,16 @@ export default function RightPanel({ onOpenFile }: { onOpenFile: (path: string) 
   return (
     <aside className="right-panel">
       <div className="panel-tabs">
-        {(['artifacts', 'files', 'details'] as Tab[]).map(t => (
+        {(['properties', 'artifacts', 'files'] as Tab[]).map(t => (
           <button key={t} className={`tab ${tab === t ? 'on' : ''}`} onClick={() => setTab(t)}>
-            {t === 'artifacts' ? `产物 (${artifacts.length})` : t === 'files' ? '工作区' : '详情'}
+            {t === 'properties' ? '属性' : t === 'artifacts' ? `产物 (${artifacts.length})` : '工作区'}
           </button>
         ))}
       </div>
       <div className="panel-body">
+        {tab === 'properties' && <PropertiesPanel />}
         {tab === 'artifacts' && <ArtifactsTab onOpenFile={onOpenFile} />}
         {tab === 'files' && <FilesTab tree={tree} onOpenFile={onOpenFile} />}
-        {tab === 'details' && <DetailsTab turns={turns} />}
       </div>
     </aside>
   );
@@ -201,35 +203,6 @@ function FileNode({ node, depth, onOpen }: { node: TreeNode; depth: number; onOp
          onClick={e => e.stopPropagation()}>
         <Download size={12} />
       </a>
-    </div>
-  );
-}
-
-function DetailsTab({ turns }: { turns: any[] }) {
-  const s = useStore(st => st.sessions.find(x => x.id === st.currentSid));
-  if (!s) return null;
-  const skills: string[] = s.skills_json ? JSON.parse(s.skills_json) : [];
-  return (
-    <div className="details-tab">
-      <div className="kv"><span>会话 ID</span><code>{s.id}</code></div>
-      <div className="kv"><span>claude 会话</span><code>{s.claude_session_id?.slice(0, 13)}…</code></div>
-      <div className="kv"><span>角色</span><code>{s.profile}</code></div>
-      <div className="kv"><span>skills</span><code>{skills.join(', ') || '-'}</code></div>
-      <div className="kv"><span>tokens</span><code>in {useStore.getState().sessions.find(x => x.id === s.id)?.usage?.in ?? '-'} / out {useStore.getState().sessions.find(x => x.id === s.id)?.usage?.out ?? '-'}</code></div>
-      <h4>turns</h4>
-      <table className="turns-table">
-        <tbody>
-          {turns.map(t => (
-            <tr key={t.id} className={`ts-${t.status}`}>
-              <td>#{t.id}</td>
-              <td>{t.status}</td>
-              <td>{t.duration_s != null ? `${Math.round(t.duration_s)}s` : ''}</td>
-              <td>{t.cost_usd != null ? `$${t.cost_usd.toFixed(3)}` : ''}</td>
-              <td>{fmtTime(t.started_at)}</td>
-            </tr>
-          ))}
-        </tbody>
-      </table>
     </div>
   );
 }

@@ -66,6 +66,10 @@ def write_mcp_json(ws: Path, session_mcp: dict | None) -> None:
     import hashlib
     merged = dict(CONFIG.mcp.servers or {})
     merged.update(session_mcp or {})
+    # 会话级禁用哨兵：值 False = 本会话关掉这个全局 server（属性面板三态
+    # 切换）——从合并结果剔除。真实 server 配置恒为 truthy dict，不会误伤
+    for name in [k for k, v in merged.items() if v is False]:
+        del merged[name]
     p = ws / ".mcp.json"
     if merged:
         p.write_text(json.dumps({"mcpServers": merged}, ensure_ascii=False, indent=2))

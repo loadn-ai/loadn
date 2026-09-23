@@ -24,7 +24,7 @@ from .config import PATHS
 
 # R7 回滚门禁：每次加列/加表 +1；RELEASE.json 记此值，rollback 时比对。
 # additive-only 契约：只加列/加表（旧代码可跑新 schema，多余列无害）。
-SCHEMA_REV = 2
+SCHEMA_REV = 3
 from .util import iso
 
 SCHEMA = """
@@ -48,6 +48,7 @@ CREATE TABLE IF NOT EXISTS sessions (
   engine TEXT DEFAULT 'claude',     -- 本会话锁定的执行引擎（engines/ 注册名）
   engine_session_ids TEXT,          -- 非当前引擎的会话 id 存档 JSON map（引擎切换可取回）
   engine_override TEXT,             -- 聊天框切换的会话级覆盖（NULL = 跟随 profile/默认）
+  params_json TEXT,                 -- 会话级参数覆盖 JSON（model/effort/max_turns/…；NULL = 跟随 profile）
   created_at TEXT, updated_at TEXT
 );
 
@@ -225,6 +226,9 @@ def _migrate(c: sqlite3.Connection) -> None:
     if "pending_anchor" not in scols:
         # 会话轮换（resume 连败/token 超限）的交接 anchor：注入下一 turn prompt
         c.execute("ALTER TABLE sessions ADD COLUMN pending_anchor TEXT")
+    if "params_json" not in scols:
+        # 会话级参数覆盖（属性面板）：NULL = 全部跟随 profile
+        c.execute("ALTER TABLE sessions ADD COLUMN params_json TEXT")
     if "pinned" not in scols:
         c.execute("ALTER TABLE sessions ADD COLUMN pinned INTEGER DEFAULT 0")
     if "category_id" not in scols:

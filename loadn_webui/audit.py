@@ -237,16 +237,23 @@ def anchors() -> list[dict]:
 
 # ---------------------------------------------------------------- 读 / 校验
 
-def tail(n: int = 20, type_: str | None = None) -> list[dict]:
-    """最近事件（loadn-web audit tail / 调试用）。"""
+def tail(n: int = 20, type_: str | None = None,
+         sid: str | None = None) -> list[dict]:
+    """最近事件（loadn-web audit tail / 调试用；sid 可选只出该会话的）。"""
     with _conn() as c:
         out: list[dict] = []
         for t in reversed(_all_tables(c)):            # 新表在前
             q = f"SELECT * FROM {t}"
             args: list = []
+            conds = []
             if type_:
-                q += " WHERE type=?"
+                conds.append("type=?")
                 args.append(type_)
+            if sid:
+                conds.append("sid=?")
+                args.append(sid)
+            if conds:
+                q += " WHERE " + " AND ".join(conds)
             q += " ORDER BY id DESC LIMIT ?"
             args.append(n)
             out.extend(dict(r) for r in c.execute(q, args))

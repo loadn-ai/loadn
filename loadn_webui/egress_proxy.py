@@ -97,13 +97,19 @@ def _maybe_reload_policy() -> None:
         log.warning("config.yaml 解析失败，egress 策略保持旧值")
 
 
-def _record(host: str, decision: str, mode: str, port: int = 0) -> None:
+def _record(host: str, decision: str, mode: str, port: int = 0,
+            sid: str | None = None) -> None:
     audit("egress_request",
-          {"host": host, "decision": decision, "mode": mode, "port": port})
-    # W5.2 数据流向事件（面板轮询源：audit tail；SSE 推送后续）
+          {"host": host, "decision": decision, "mode": mode, "port": port},
+          sid=sid or None)
+    # W5.2 数据流向事件（面板轮询源：audit tail；SSE 推送后续）。
+    # payload 带 sid：会话属性面板凭它只刷新本会话的外联流水
     try:
         from .engine import ENGINE
-        ENGINE.publish("*", "egress", {"host": host, "decision": decision})
+        payload = {"host": host, "decision": decision}
+        if sid:
+            payload["sid"] = sid
+        ENGINE.publish("*", "egress", payload)
     except Exception:                                  # noqa: BLE001
         pass
 
@@ -224,12 +230,12 @@ class EgressProxy:
         from . import egress_grants
         mode = CONFIG.security.egress_mode
         if _allowed(host):
-            _record(host, "allow", mode, port)
+            _record(host, "allow", mode, port, sid)
             return True
         if sid and egress_grants.allowed(sid, host):
-            _record(host, "allow-grant", mode, port)
+            _record(host, "allow-grant", mode, port, sid)
             return True
-        _record(host, "deny", mode, port)
+        _record(host, "deny", mode, port, sid)
         return mode != "enforce"          # warn：拒绝只记录，放行直通
 
     async def _connect(self, reader, writer, target: str,
@@ -265,7 +271,7 @@ class EgressProxy:
             await self._llm_gateway(reader, writer, method, u, headers)
             return
         if host_hdr and u.hostname and host_hdr.lower() != u.hostname.lower():
-            _record(host, "deny-mismatch", CONFIG.security.egress_mode)
+            _record(host, "deny-mismatch", CONFIG.security.egress_mode, sid=sid)
             if CONFIG.security.egress_mode == "enforce":
                 writer.write(b"HTTP/1.1 403 Host mismatch\r\n\r\n")
                 await writer.drain()

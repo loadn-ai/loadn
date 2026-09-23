@@ -13,7 +13,9 @@ export interface SessionInfo {
   project_id?: string | null; project_title?: string | null;
   starred?: number; pinned?: number; category_id?: number | null;
   session_fresh: number; claude_session_id: string | null;
-  skills_json?: string; cost_usd: number;
+  skills_json?: string; mcp_json?: string | null;
+  params_json?: string | null; workspace?: string;
+  cost_usd: number;
   profile_auto?: boolean;
   engine?: string | null;
   engine_override?: string | null;
@@ -25,6 +27,17 @@ export interface SessionInfo {
                 every_s?: number | null; cron?: string | null;
                 fires?: number; max_fires?: number } | null;
   created_at: string; updated_at: string;
+}
+
+/** 会话级参数（属性面板「模型参数」）：值类型收敛为 string|number|null */
+export type ParamsMap = Record<string, string | number | null>;
+
+/** detail 响应里属性面板要的附加字段（openSession/patch 后灌入） */
+export interface SessionExtras {
+  params: ParamsMap;
+  params_effective: ParamsMap;
+  params_profile: ParamsMap;
+  skills_available: string[];
 }
 
 export interface TurnInfo {
@@ -107,6 +120,11 @@ interface Store {
   es: EventSource | null;
   connected: boolean;
   theme: 'dark' | 'light';
+  /** 属性面板（右面板第一 tab）：detail 附加字段 + tab/面板开合 + egress 刷新信号 */
+  sessionExtras: SessionExtras | null;
+  rightTab: 'properties' | 'artifacts' | 'files';
+  panelOpen: boolean;
+  egressTick: number;
 
   loadSessions: () => Promise<void>;
   loadMeta: () => Promise<void>;
@@ -115,6 +133,15 @@ interface Store {
   openSession: (sid: string) => Promise<void>;
   closeSession: () => void;
   createSession: (body: Record<string, unknown>) => Promise<SessionInfo>;
+  setRightTab: (t: Store['rightTab']) => void;
+  setPanelOpen: (v: boolean) => void;
+  /** 通用会话 PATCH（属性面板各段共用）；成功后刷新列表行 + extras */
+  patchSession: (sid: string, patch: Record<string, unknown>) => Promise<void>;
+  patchParams: (sid: string, params: ParamsMap) => Promise<void>;
+  patchSkills: (sid: string, skills: string[]) => Promise<void>;
+  patchMcp: (sid: string, mcp: Record<string, unknown>) => Promise<void>;
+  /** 侧边栏「属性」入口：当前会话直接切 tab+开面板，否则先打开会话 */
+  openProps: (sid: string) => Promise<void>;
   loadProjects: () => Promise<void>;
   createProject: (title: string, categoryId?: number) => Promise<ProjectInfo>;
   createSubtask: (pid: string) => Promise<SessionInfo>;
@@ -162,6 +189,14 @@ export const useStore = create<Store>((set, get) => ({
   live: null,
   approvals: [], es: null, connected: false,
   theme: initialTheme(),
+  sessionExtras: null,
+  rightTab: 'artifacts',
+  // 桌面默认开右面板；窄屏它是遮盖式抽屉，默认收起（原 SessionView 本地态）
+  panelOpen: typeof window !== 'undefined' && window.innerWidth > 900,
+  egressTick: 0,
+
+  setRightTab(t) { set({ rightTab: t }); },
+  setPanelOpen(v) { set({ panelOpen: v }); },
 
   async loadApprovals() {
     const sid = get().currentSid;
@@ -202,11 +237,13 @@ export const useStore = create<Store>((set, get) => ({
 
   async openSession(sid) {
     get().closeSession();
-    set({ currentSid: sid, messages: [], turns: [], artifacts: [], live: null });
+    set({ currentSid: sid, messages: [], turns: [], artifacts: [], live: null,
+          sessionExtras: null });
     localStorage.setItem('wd_sid', sid);   // 刷新/重开恢复
-    const d = await api<{ messages: MessageInfo[]; turns: TurnInfo[]; artifacts: ArtifactInfo[] }>(
+    const d = await api<{ messages: MessageInfo[]; turns: TurnInfo[]; artifacts: ArtifactInfo[] } & SessionExtras>(
       `/api/sessions/${encodeURIComponent(sid)}`);
     set({ messages: d.messages, turns: d.turns, artifacts: d.artifacts });
+    fillExtras(set, sid, d);
     // 进行中 turn：凭 /live 重建元信息（turnId/status/startedAt/todos——计时与停止按钮）。
     // 过程节点（items）不播种：SSE 新连接会精准回放本 turn 尾部事件（sse.py：
     // 断线补发在无 Last-Event-ID 时即全量），两路叠加会把流水算两遍（实测
@@ -253,7 +290,7 @@ export const useStore = create<Store>((set, get) => ({
     const { es } = get();
     if (es) { es.close(); }
     localStorage.removeItem('wd_sid');
-    set({ es: null, connected: false, currentSid: null });
+    set({ es: null, connected: false, currentSid: null, sessionExtras: null });
   },
 
   async createSession(body) {
@@ -261,6 +298,27 @@ export const useStore = create<Store>((set, get) => ({
       method: 'POST', body: JSON.stringify(body) });
     await get().loadSessions();
     return d.session;
+  },
+
+  async patchSession(sid, patch) {
+    const d = await api<{ ok: boolean; session: SessionInfo }>(
+      `/api/sessions/${encodeURIComponent(sid)}`, {
+        method: 'PATCH', body: JSON.stringify(patch) });
+    set(s => ({ sessions: s.sessions.map(x => x.id === sid ? { ...x, ...d.session } : x) }));
+    if (get().currentSid === sid) await refreshExtras(get, set, sid);
+  },
+
+  async patchParams(sid, params) { await get().patchSession(sid, { params }); },
+
+  async patchSkills(sid, skills) { await get().patchSession(sid, { skills }); },
+
+  async patchMcp(sid, mcp) { await get().patchSession(sid, { mcp }); },
+
+  async openProps(sid) {
+    // 当前会话：只切视图；其他会话：打开后再展示（openSession 异步铺数据）
+    set({ panelOpen: true, rightTab: 'properties' });
+    if (get().currentSid !== sid) await get().openSession(sid);
+    else set({ rightTab: 'properties', panelOpen: true });
   },
 
   async loadProjects() {
@@ -528,6 +586,35 @@ function destFlags(dest: Exclude<MoveDest, 'archive'>):
        :                      { pinned: 0, starred: 0, category_id: dest.cat };
 }
 
+type SetFn = (partial: Partial<Store> | ((s: Store) => Partial<Store>)) => void;
+type DetailLike = SessionExtras & Partial<Pick<SessionInfo, 'skills_json' | 'mcp_json' | 'params_json'>>;
+
+/** detail 响应 → 属性面板 extras + 会话行上的挂接字段同步 */
+function fillExtras(set: SetFn, sid: string, d: DetailLike) {
+  set(s => ({
+    sessionExtras: {
+      params: d.params ?? {},
+      params_effective: d.params_effective ?? {},
+      params_profile: d.params_profile ?? {},
+      skills_available: d.skills_available ?? [],
+    },
+    sessions: s.sessions.map(x => x.id === sid
+      ? { ...x, skills_json: d.skills_json ?? x.skills_json,
+          mcp_json: d.mcp_json ?? x.mcp_json,
+          params_json: d.params_json ?? x.params_json }
+      : x),
+  }));
+}
+
+/** PATCH 后轻量重拉 detail：extras 与行内挂接字段回到服务端真相 */
+async function refreshExtras(get: () => Store, set: SetFn, sid: string) {
+  try {
+    const d = await api<DetailLike>(`/api/sessions/${encodeURIComponent(sid)}`);
+    if (get().currentSid !== sid) return;
+    fillExtras(set, sid, d);
+  } catch { /* 拉取失败保持旧值（面板还能用手头数据） */ }
+}
+
 /** 文本/思考条目追加：delta=true 时续写到末条同类项（流式滚屏），
  *  否则整块新起一条（回放/无流式引擎的既有语义）。 */
 function appendText(items: StreamItem[], kind: 'text' | 'thinking',
@@ -641,6 +728,10 @@ function handleEvent(
       break;
     case 'files':
       // 右侧面板刷新信号（简化：不实时展开文件树，由面板自取）
+      break;
+    case 'egress':
+      // 数据流向推送（payload 带 sid）：本会话的外联变化 → 属性面板刷新信号
+      if (data?.sid === sid) set(s => ({ egressTick: s.egressTick + 1 }));
       break;
     case 'turn_deleted':
       // 排队消息被撤回（本标签页或别处操作）→ 拉全量同步，乐观消息一并消失

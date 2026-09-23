@@ -577,11 +577,39 @@ def session_detail(sid: str):
         sess["schedules"] = [db_mod.to_dict(r) for r in db_mod.list_jobs(c, sid)]
     sess["artifacts"] = art.list_artifacts(sid)
     sess["skills_available"] = [s["name"] for s in skills_mod.available()]
+    # 属性面板「模型参数」三件套：覆盖 / 生效值 / profile 侧默认（占位提示用）
+    from .. import params as params_mod
+    prof = profile_mod.get(sess["profile"])
+    sess["params"] = params_mod.load(sess.get("params_json"))
+    sess["params_effective"] = params_mod.effective(prof, sess["params"])
+    sess["params_profile"] = params_mod.defaults(prof)
     from ..scheduler import next_wake
     sess["next_wake"] = next_wake(sid)
     with db_mod.conn() as c:
         sess["profile_auto"] = bool(db_mod.kv_get(c, f"profile_auto:{sid}"))
     return sess
+
+
+@router.get("/sessions/{sid}/egress")
+def session_egress(sid: str, n: int = 50):
+    """会话外联视图（属性面板「安全与外联」段）：模式/白名单/本会话临时
+    授权/最近外联事件。会话面 GET 不经 admin 门（单用户部署双令牌同发）。
+
+    事件只含新版权起的记录（旧 egress_request 行无会话归属，append-only
+    不可回填）——UI 文案已注明。
+    """
+    _get_session_or_404(sid)
+    n = max(1, min(200, n))
+    from .. import audit as audit_mod
+    from .. import egress_grants
+    events = []
+    for r in audit_mod.tail(n, "egress_request", sid=sid):
+        d = json.loads(r["detail_json"])
+        events.append({"ts": r["ts"], **d})
+    return {"mode": CONFIG.security.egress_mode,
+            "allow": CONFIG.security.egress_allow,
+            "grants": egress_grants.list_active(sid=sid),
+            "events": events}
 
 
 @router.get("/sessions/{sid}/live")
@@ -679,6 +707,14 @@ async def patch_session(sid: str, body: dict):
                 raise HTTPException(400, f"未知引擎：{name}"
                                     f"（可用：{sorted(engines_mod.ENGINES)}）")
             updates["engine_override"] = name
+    if "params" in body:
+        # 会话级参数覆盖（属性面板「模型参数」）：整体替换语义（与 skills/
+        # mcp 一致），null = 全清跟随 profile；下一 turn 生效
+        from .. import params as params_mod
+        try:
+            updates["params_json"] = params_mod.validate(body.get("params"))
+        except ValueError as e:
+            raise HTTPException(400, str(e)) from e
     if updates:
         # 纯分区标记（收藏/置顶/分类）不 touch：分区操作不该把会话顶到「最近」最上
         pure_partition = {"starred", "pinned", "category_id"}

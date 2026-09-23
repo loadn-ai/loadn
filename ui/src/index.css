@@ -489,6 +489,20 @@ button:focus-visible, .tab:focus-visible, .chip:focus-visible {
 .turns-table td { padding: 5px 6px; border-bottom: 1px solid var(--border); }
 .ts-done { color: var(--text-dim); } .ts-error { color: var(--red); } .ts-stopped { color: var(--yellow); }
 
+/* ---------------- 属性面板（右面板第一 tab） ---------------- */
+.props-tab { font-size: 13px; }
+.props-section { margin: 0 0 18px; }
+.props-section > h4 {
+  margin: 0 0 8px; font-size: 12.5px; font-weight: 600;
+  display: flex; align-items: center; gap: 6px;
+}
+.props-section .setting-row { margin: 8px 0; }
+.props-num { width: 110px; min-width: 90px; flex-shrink: 0; }
+.props-section select.props-num { width: auto; }
+.chips { display: flex; flex-wrap: wrap; gap: 6px; }
+.chip.off { opacity: .55; }
+.chip.off:hover { opacity: .8; }
+
 /* ---------------- 按钮 / 弹窗 ---------------- */
 .btn { display: inline-flex; align-items: center; justify-content: center; gap: 6px;
   border: 1px solid var(--border); background: var(--bg2); color: var(--text); padding: 8px 16px;

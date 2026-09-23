@@ -489,6 +489,7 @@ function SessionRow({ sid, onClick, current, archived = false }: {
   const renameSession = useStore(s => s.renameSession);
   const promoteSession = useStore(s => s.promoteSession);
   const moveSession = useStore(s => s.moveSession);
+  const openProps = useStore(s => s.openProps);
   const createCategory = useStore(s => s.createCategory);
   const [editing, setEditing] = useState(false);
   const [menuEl, setMenuEl] = useState<HTMLElement | null>(null);
@@ -510,11 +511,15 @@ function SessionRow({ sid, onClick, current, archived = false }: {
   };
 
   const items: MenuEntry[] = archived ? [
+    { key: 'props', label: '属性', icon: Settings,
+      onClick: () => void openProps(s.id) },
     { key: 'restore', label: '恢复为进行中', icon: Undo,
       onClick: () => void restoreSession(s.id) },
     { key: 'purge', label: '彻底删除（含工作区）', icon: Trash, danger: true,
       onClick: () => void purge() },
   ] : [
+    { key: 'props', label: '属性（参数/安全/挂接）', icon: Settings,
+      onClick: () => void openProps(s.id) },
     { key: 'move', label: '移动到…', icon: ArrowRight, subTitle: '移动到',
       sub: moveEntries(bucketOf(s), d => void moveSession(s.id, d), categories, createCategory) },
     { key: 'rename', label: '改名', icon: Pencil, onClick: () => setEditing(true) },

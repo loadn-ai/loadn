@@ -256,6 +256,51 @@ def test_cli_gateway_mediated_vs_direct():
     assert not d.ok
 
 
+# ---------------------------------------------------------------- 会话归属（属性面板）
+def test_record_sid_attribution():
+    """_record 带 sid → 审计行有归属（tail sid 过滤可见）；无 sid 不进会话视图。"""
+    import json as _json
+
+    from loadn_webui import audit as audit_mod
+    egress_proxy._record("sid-attr.example.com", "deny", "enforce", 443,
+                         sid="sess-attr")
+    rows = audit_mod.tail(5, "egress_request", sid="sess-attr")
+    assert rows, "带 sid 的外联事件应可按会话过滤"
+    d = _json.loads(rows[0]["detail_json"])
+    assert d["host"] == "sid-attr.example.com" and d["decision"] == "deny"
+    # 无 sid 调用（共享 TCP 通道）不落会话归属
+    egress_proxy._record("nosid.example.com", "allow", "enforce")
+    assert all(_json.loads(r["detail_json"])["host"] != "nosid.example.com"
+               for r in audit_mod.tail(20, "egress_request", sid="sess-attr"))
+
+
+def test_tail_sid_filter_chain_mixed():
+    """新旧行混合（无 sid 旧形态 + 带 sid 新形态）：过滤只出新行，链校验全量过。"""
+    import json as _json
+
+    from loadn_webui import audit as audit_mod
+    egress_proxy._record("legacy.example.com", "allow", "enforce")
+    egress_proxy._record("owned.example.com", "deny", "enforce",
+                         sid="sess-mix")
+    only = audit_mod.tail(10, "egress_request", sid="sess-mix")
+    assert [_json.loads(r["detail_json"])["host"] for r in only] \
+        == ["owned.example.com"]
+    assert audit_mod.verify() == []                      # 混合链仍自洽
+
+
+def test_list_active_sid_filter_keeps_gc():
+    """sid 过滤只影响输出；他人会话的过期项仍被惰性回收（GC 唯一入口）。"""
+    egress_grants.grant("sess-own", "own.example.com", 7200)
+    egress_grants.grant("sess-other", "other.example.com", 7200)
+    egress_grants.grant("sess-other", "dead.example.com", 7200)
+    egress_grants._GRANTS["sess-other"]["dead.example.com"] = time.time() - 1
+    mine = egress_grants.list_active(sid="sess-own")
+    assert [g["host"] for g in mine] == ["own.example.com"]
+    assert "dead.example.com" not in egress_grants._GRANTS["sess-other"]
+    egress_grants.revoke("sess-own", "own.example.com")
+    egress_grants.revoke("sess-other", "other.example.com")
+
+
 # ---------------------------------------------------------------- 会话级 socket
 async def test_session_uds_preferred(monkeypatch, tmp_path):
     from loadn_webui import sandbox

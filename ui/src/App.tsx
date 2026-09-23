@@ -32,6 +32,9 @@ export default function App() {
     : path.startsWith('#/admin/tools') ? 'tools'
     : path.startsWith('#/admin/settings') ? 'settings'
     : path.startsWith('#/admin/schedules') ? 'schedules'
+    : path.startsWith('#/admin/security') ? 'security'
+    : path.startsWith('#/admin/resources') ? 'resources'
+    : path.startsWith('#/admin/egress') ? 'egress'
     : (path === '#/admin/cost' || path === '#/cost') ? 'cost'
     : undefined;
   // #/admin/schedules?sid=xxx → 管理页定时 tab + 会话过滤（会话头徽章跳转目标）

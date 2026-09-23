@@ -98,7 +98,7 @@ export async function connectSse(
 ): Promise<EventSource> {
   const events = ['turn_queued', 'turn_started', 'text', 'thinking', 'tool_use', 'tool_result',
     'todos', 'files', 'steer', 'turn_done', 'turn_error', 'turn_stopped', 'turn_deleted',
-    'session_rotated', 'session_meta', 'resync', 'ping'];
+    'session_rotated', 'session_meta', 'resync', 'egress', 'ping'];
   let backoff = 1000;
 
   const open = async (): Promise<EventSource> => {

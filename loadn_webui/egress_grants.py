@@ -77,16 +77,19 @@ def allowed(sid: str, host: str) -> bool:
     return False
 
 
-def list_active() -> list[dict]:
-    """活跃授权清单（管理面展示；顺手清过期项）。"""
+def list_active(sid: str | None = None) -> list[dict]:
+    """活跃授权清单（管理面展示；顺手清过期项）。sid 给定时只出该会话——
+    过期回收仍全量走（惰性 GC 只有这一个入口，会话视图不能替它省略）。"""
     now = time.time()
     out: list[dict] = []
-    for sid, hosts in list(_GRANTS.items()):
+    for osid, hosts in list(_GRANTS.items()):
         for host, exp in list(hosts.items()):
             if exp <= now:
                 del hosts[host]
                 continue
-            out.append({"sid": sid, "host": host,
+            if sid and osid != sid:
+                continue
+            out.append({"sid": osid, "host": host,
                         "expires_at": datetime.fromtimestamp(exp)
                         .isoformat(timespec="seconds")})
     return sorted(out, key=lambda g: g["expires_at"])
