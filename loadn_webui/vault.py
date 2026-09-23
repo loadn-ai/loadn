@@ -21,6 +21,7 @@ import os
 import secrets
 from pathlib import Path
 
+from .audit import audit
 from .config import PATHS
 from .util import get_logger, iso
 
@@ -167,6 +168,88 @@ def verify() -> dict:
     return out
 
 
+# ---------------------------------------------------------------- 资源密钥
+# 基础设施密钥（sandbox api key / 短信 token / 邮箱授权码 / 搜索与验证码
+# 平台 key…）不落 config.yaml 明文——统一进本库的保留条目。
+RES_ENTRY = "__resources__"
+RES_SECRET_FIELDS = ("sandbox_api_key", "sms_token", "mail_auth_code",
+                     "vlm_api_key", "twocaptcha_key", "bocha_key",
+                     "zhipu_key", "textr_password")
+_RES_CACHE: dict = {}
+
+
+def get_res_secret(name: str) -> str:
+    """资源密钥读取（内存缓存；空串=未配置）。调用链路统一走这里，
+    任何地方不再直接读 CONFIG.resources 的密钥字段。"""
+    if name not in _RES_CACHE:
+        e = get(RES_ENTRY) or {}
+        _RES_CACHE[name] = str(e.get(name) or "")
+    return _RES_CACHE[name]
+
+
+def set_res_secret(name: str, value: str) -> None:
+    if name not in RES_SECRET_FIELDS:
+        raise ValueError(f"非资源密钥字段: {name}")
+    data = load()
+    e = data.get(RES_ENTRY) or {}
+    e[name] = value
+    data[RES_ENTRY] = e
+    save(data)                       # 直写整库（put 的账号字段白名单不适用）
+    _RES_CACHE.pop(name, None)
+    audit("vault", {"action": "res_secret_set", "field": name})
+
+
+def res_secret_states() -> dict:
+    """各资源密钥是否已配置（布尔，不回值）。"""
+    e = get(RES_ENTRY) or {}
+    return {k: bool(e.get(k)) for k in RES_SECRET_FIELDS}
+
+
+def migrate_res_secrets() -> list[str]:
+    """一次性迁移：CONFIG.resources 里遗留的明文密钥 → vault，随后清空
+    内存与 config.yaml（明文字段覆写为空）。返回迁移的字段名。"""
+    from .config import CONFIG
+    moved = []
+    data = load()
+    entry = data.get(RES_ENTRY) or {}
+    for k in RES_SECRET_FIELDS:
+        v = str(getattr(CONFIG.resources, k, "") or "").strip()
+        if v:
+            entry[k] = v
+            setattr(CONFIG.resources, k, "")
+            moved.append(k)
+    if moved:
+        data[RES_ENTRY] = entry
+        save(data)
+    if moved:
+        _wipe_config_secrets()
+        audit("vault", {"action": "res_secret_migrate", "fields": moved})
+    _RES_CACHE.clear()
+    return moved
+
+
+def _wipe_config_secrets() -> None:
+    """config.yaml 的密钥字段清空（原地重写；明文由文件系统层自然覆盖）。"""
+    import yaml
+
+    from .config import PATHS
+    p = PATHS["root"] / "config.yaml"
+    try:
+        data = yaml.safe_load(p.read_text()) or {}
+    except yaml.YAMLError:
+        return
+    res = data.get("resources")
+    if not isinstance(res, dict):
+        return
+    dirty = False
+    for k in RES_SECRET_FIELDS:
+        if res.get(k):
+            res[k] = ""
+            dirty = True
+    if dirty:
+        p.write_text(yaml.safe_dump(data, allow_unicode=True, sort_keys=False))
+
+
 def norm_platform(name: str) -> str:
     return (name or "").strip().lower().replace(" ", "-")
 
@@ -206,6 +289,8 @@ def list_platforms() -> list[dict]:
     """全部条目概览（不含 password/recovery 明文，只带 has_password 标记）。"""
     out = []
     for key, e in sorted(load().items()):
+        if key == RES_ENTRY:
+            continue                     # 基础设施密钥保留条目不进账号列表
         row = {"platform": key}
         for f in SAFE_FIELDS:
             row[f] = e.get(f) or ""

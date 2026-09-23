@@ -34,6 +34,7 @@ TYPES = (
     "skill_install", "skill_scan",
     "canary_hit", "sandbox_violation",
     "rollback", "kill_switch", "snapshot",
+    "vault",                      # 凭证库/资源密钥写入与迁移（W3）
     "anomaly",
 )
 

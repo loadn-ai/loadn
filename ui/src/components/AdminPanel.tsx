@@ -9,6 +9,7 @@ import SchedulesTab from './SchedulePanel';
 import InstallDialog from './InstallDialog';
 import CostTab from './CostPanel';
 import SecurityTab from './SecurityPanel';
+import ResourcesTab from './ResourcesPanel';
 import { Plus, Upload, Globe, Sun, Moon } from './icons';
 
 function EgressPanel() {
@@ -105,7 +106,7 @@ function EgressPanel() {
   );
 }
 
-export type AdminTab = 'skills' | 'tools' | 'settings' | 'schedules' | 'cost' | 'egress' | 'security';
+export type AdminTab = 'skills' | 'tools' | 'settings' | 'schedules' | 'cost' | 'egress' | 'security' | 'resources';
 
 export interface SkillItem {
   name: string; description: string; mtime: string; disabled: boolean;
@@ -133,13 +134,15 @@ export default function AdminPanel({ onClose, initialTab, filterSid, onClearFilt
         <button className={`tab ${tab === 'cost' ? 'on' : ''}`} onClick={() => setTab('cost')}>成本</button>
         <button className={`tab ${tab === 'egress' ? 'on' : ''}`} onClick={() => setTab('egress')}>流量</button>
         <button className={`tab ${tab === 'security' ? 'on' : ''}`} onClick={() => setTab('security')}>安全</button>
+        <button className={`tab ${tab === 'resources' ? 'on' : ''}`} onClick={() => setTab('resources')}>资源</button>
       </div>
       {tab === 'skills' ? <SkillsTab /> : tab === 'tools' ? <ToolsTab />
         : tab === 'schedules'
           ? <SchedulesTab filterSid={filterSid} onClearFilter={onClearFilter} />
           : tab === 'cost' ? <CostTab />
           : tab === 'egress' ? <EgressPanel />
-          : tab === 'security' ? <SecurityTab onClose={onClose} /> : <SettingsTab />}
+          : tab === 'security' ? <SecurityTab onClose={onClose} />
+          : tab === 'resources' ? <ResourcesTab /> : <SettingsTab />}
     </div>
   );
 }

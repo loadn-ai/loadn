@@ -60,6 +60,21 @@ def http_log(monkeypatch):
 
 
 # ---------------------------------------------------------------- 设置 API
+@pytest.fixture(autouse=True)
+def _isolate_res_cache():
+    """资源密钥缓存测试隔离（模块级 _RES_CACHE 跨用例泄漏=串味）。"""
+    from loadn_webui import vault
+    vault._RES_CACHE.clear()
+    yield
+    vault._RES_CACHE.clear()
+
+
+def _sec_set(monkeypatch, name: str, value: str):
+    """测试注入资源密钥：改 vault 缓存（不真写盘）。"""
+    from loadn_webui import vault
+    monkeypatch.setitem(vault._RES_CACHE, name, value)
+
+
 async def test_settings_resources_roundtrip(client):
     r = await client.get("/api/settings")
     assert r.status_code == 200
@@ -80,14 +95,18 @@ async def test_settings_resources_roundtrip(client):
     for k in secrets:
         assert res[f"{k}_set"] is True
         assert secrets[k] not in json.dumps(res)          # 明文永不回传
-        assert res[f"{k}_hint"].endswith(secrets[k][-5:])
+        assert res[f"{k}_hint"] == "已加密保存"            # 只报状态不报尾缀
     assert res["ocr_url"] == "http://127.0.0.1:8686"      # 尾斜杠剥掉
     assert res["zhipu_engine"] == "search_std"
 
-    # 落盘（tmp HOME）
+    # 密钥入 vault（AES-GCM），config.yaml 不落明文
+    import yaml as _y
+
+    from loadn_webui import vault as vault_mod
     from loadn_webui.config import PATHS
-    data = yaml.safe_load((PATHS["root"] / "config.yaml").read_text())
-    assert data["resources"]["bocha_key"] == "bocha12345"
+    assert vault_mod.get_res_secret("bocha_key") == "bocha12345"
+    data = _y.safe_load((PATHS["root"] / "config.yaml").read_text())
+    assert not (data.get("resources") or {}).get("bocha_key")
 
     # 留空 = 保持不变
     r = await client.put("/api/settings/resources", json={"adb_addr": "192.0.2.99:5555"})
@@ -104,8 +123,7 @@ async def test_settings_resources_roundtrip(client):
 # ---------------------------------------------------------------- 智谱搜索
 async def test_zhipu_search(http_log, monkeypatch):
     from loadn_webui import resources
-    from loadn_webui.config import CONFIG
-    monkeypatch.setattr(CONFIG.resources, "zhipu_key", "zp-key")
+    _sec_set(monkeypatch, "zhipu_key", "zp-key")
 
     captured = {}
 
@@ -147,7 +165,7 @@ async def test_zhipu_search(http_log, monkeypatch):
         await resources.zhipu_search("x")
 
     # 未配置 → 不发网络
-    monkeypatch.setattr(CONFIG.resources, "zhipu_key", "")
+    _sec_set(monkeypatch, "zhipu_key", "")
     with pytest.raises(RuntimeError, match="未配置智谱"):
         await resources.zhipu_search("x")
 
@@ -324,11 +342,11 @@ async def test_fetch_page_image_ocr(http_log, monkeypatch):
 async def test_ping_all(http_log, monkeypatch):
     from loadn_webui import resources
     from loadn_webui.config import CONFIG
-    monkeypatch.setattr(CONFIG.resources, "sandbox_api_key", "test-key")
-    monkeypatch.setattr(CONFIG.resources, "sms_token", "t")
-    monkeypatch.setattr(CONFIG.resources, "twocaptcha_key", "k")
-    monkeypatch.setattr(CONFIG.resources, "bocha_key", "b")
-    monkeypatch.setattr(CONFIG.resources, "zhipu_key", "z")
+    _sec_set(monkeypatch, "sandbox_api_key", "test-key")
+    _sec_set(monkeypatch, "sms_token", "t")
+    _sec_set(monkeypatch, "twocaptcha_key", "k")
+    _sec_set(monkeypatch, "bocha_key", "b")
+    _sec_set(monkeypatch, "zhipu_key", "z")
     monkeypatch.setattr(CONFIG.titlegen, "api_key", "ark-key")   # vlm 回退
     monkeypatch.setattr(CONFIG.resources, "proxy", "http://127.0.0.1:7890")
 
@@ -354,8 +372,8 @@ async def test_ping_all(http_log, monkeypatch):
     assert out["vlm"]["msg"].startswith("已配置")
 
     # 未配置 → 不发网络
-    monkeypatch.setattr(CONFIG.resources, "bocha_key", "")
-    monkeypatch.setattr(CONFIG.resources, "zhipu_key", "")
+    _sec_set(monkeypatch, "bocha_key", "")
+    _sec_set(monkeypatch, "zhipu_key", "")
     out = await resources.ping_all(["bocha", "zhipu"])
     assert out["bocha"]["ok"] is False and "未配置" in out["bocha"]["msg"]
     assert out["zhipu"]["ok"] is False and "未配置" in out["zhipu"]["msg"]
@@ -404,7 +422,7 @@ async def test_ocr_parse_poll(tmp_path, http_log):
 async def test_vlm_ask_payload(tmp_path, http_log, monkeypatch):
     from loadn_webui import resources
     from loadn_webui.config import CONFIG
-    monkeypatch.setattr(CONFIG.resources, "vlm_api_key", "")      # 回退 titlegen
+    _sec_set(monkeypatch, "vlm_api_key", "")      # 回退 titlegen
     monkeypatch.setattr(CONFIG.titlegen, "api_key", "sk-fallback")
     img = tmp_path / "x.png"
     img.write_bytes(b"\x89PNG fake")
@@ -437,7 +455,7 @@ async def test_vlm_ask_payload(tmp_path, http_log, monkeypatch):
 async def test_sms_wait(http_log, monkeypatch):
     from loadn_webui import resources
     from loadn_webui.config import CONFIG
-    monkeypatch.setattr(CONFIG.resources, "sms_token", "t")
+    _sec_set(monkeypatch, "sms_token", "t")
     monkeypatch.setattr(CONFIG.resources, "sms_url", "https://sms.test:30443")
     old = {"ts": "2026-09-03T10:00:00+08:00", "body": "旧验证码 111"}
     new = {"ts": "2026-09-03T10:05:00+08:00", "body": "新验证码 222"}
@@ -516,7 +534,7 @@ async def test_mail_wait(monkeypatch):
 async def test_mail_requires_auth_code(monkeypatch, capsys):
     from loadn_webui import cli, resources
     from loadn_webui.config import CONFIG
-    monkeypatch.setattr(CONFIG.resources, "mail_auth_code", "")
+    _sec_set(monkeypatch, "mail_auth_code", "")
     monkeypatch.setattr(CONFIG.resources, "mailboxes", [])
     with pytest.raises(RuntimeError, match="授权码"):
         await resources.mail_send("a@b.c", "标题", "正文")
@@ -528,7 +546,7 @@ def test_mailbox_selection(monkeypatch):
     from loadn_webui import resources
     from loadn_webui.config import CONFIG
     monkeypatch.setattr(CONFIG.resources, "mail_user", "user@example.com")
-    monkeypatch.setattr(CONFIG.resources, "mail_auth_code", "c1")
+    _sec_set(monkeypatch, "mail_auth_code", "c1")
     monkeypatch.setattr(CONFIG.resources, "mailboxes", [
         {"user": "user2@example.com", "auth_code": "c2",
          "imap": "imap.163.com:993", "smtp": "smtp.163.com:465"},
@@ -550,8 +568,7 @@ def test_mailbox_selection(monkeypatch):
 # ---------------------------------------------------------------- captcha
 async def test_captcha_solve(tmp_path, http_log, monkeypatch):
     from loadn_webui import resources
-    from loadn_webui.config import CONFIG
-    monkeypatch.setattr(CONFIG.resources, "twocaptcha_key", "capkey")
+    _sec_set(monkeypatch, "twocaptcha_key", "capkey")
     img = tmp_path / "cap.png"
     img.write_bytes(b"png")
     answers = iter(["CAPCHA_NOT_READY", "OK|TOK123"])
@@ -585,22 +602,22 @@ async def test_cli_r(monkeypatch, capsys):
     async def fake_search(q, *, n=10, freshness=None):
         return [{"name": "结果一", "url": "https://a", "snippet": "s", "siteName": "", "date": ""}]
     monkeypatch.setattr(resources, "bocha_search", fake_search)
+    _sec_set(monkeypatch, "zhipu_key", "")   # 隔离：前序用例可能已写 vault
     rc = await asyncio.to_thread(cli.main, ["r", "search", "测试", "--json"])
     assert rc == 0 and "结果一" in capsys.readouterr().out
 
     # --via zhipu 走智谱；auto 未配 key 落博查
-    from loadn_webui.config import CONFIG
 
     async def fake_zhipu(q, *, n=10, engine=None, recency=None, domain=None):
         return [{"name": "智谱结果", "url": "https://z", "snippet": "s",
                  "siteName": "知乎", "date": "2026-09-01"}]
     monkeypatch.setattr(resources, "zhipu_search", fake_zhipu)
-    monkeypatch.setattr(CONFIG.resources, "zhipu_key", "")
+    _sec_set(monkeypatch, "zhipu_key", "")
     rc = await asyncio.to_thread(cli.main, ["r", "search", "q", "--via", "zhipu",
                                             "--se", "search_std", "--json"])
     out = capsys.readouterr().out
     assert rc == 0 and "智谱结果" in out
-    monkeypatch.setattr(CONFIG.resources, "zhipu_key", "k")
+    _sec_set(monkeypatch, "zhipu_key", "k")
     rc = await asyncio.to_thread(cli.main, ["r", "search", "q", "--json"])
     assert "智谱结果" in capsys.readouterr().out      # auto → zhipu
 
@@ -615,8 +632,7 @@ async def test_cli_r(monkeypatch, capsys):
     assert rc == 0 and '"method": "cdp"' in out
 
     # 未配置 → stderr + exit 1
-    from loadn_webui.config import CONFIG
-    monkeypatch.setattr(CONFIG.resources, "sms_token", "")
+    _sec_set(monkeypatch, "sms_token", "")
     rc = await asyncio.to_thread(cli.main, ["r", "sms", "--n", "5"])
     assert rc == 1 and "错误" in capsys.readouterr().err
 
@@ -631,3 +647,52 @@ async def test_new_skills_default_mounted(client, ws_root):
     sid = r.json()["session"]["id"]
     mounted = {p.name for p in (ws_root / sid / ".claude" / "skills").iterdir()}
     assert {"file-parse", "web-hands-on", "mobile-sms", "email-inbox"} <= mounted
+
+
+# ---------------------------------------------------------------- 资源中心（v0.4.2）
+
+async def test_res_secrets_migrate_to_vault(tmp_path, monkeypatch):
+    """config.yaml 明文密钥 → vault 一次性迁移：值入 vault、yaml 清空。"""
+    from loadn_webui import vault
+    from loadn_webui.config import CONFIG, PATHS
+    cfg = PATHS["root"] / "config.yaml"
+    cfg.write_text(yaml.safe_dump({
+        "resources": {"bocha_key": "bk-123", "sms_token": "st-456",
+                      "ocr_url": "http://127.0.0.1:8686"}}))
+    monkeypatch.setattr(CONFIG.resources, "bocha_key", "bk-123")
+    monkeypatch.setattr(CONFIG.resources, "sms_token", "st-456")
+    monkeypatch.setattr(CONFIG.resources, "ocr_url", "http://127.0.0.1:8686")
+    vault._RES_CACHE.clear()
+    moved = vault.migrate_res_secrets()
+    assert set(moved) == {"bocha_key", "sms_token"}
+    assert vault.get_res_secret("bocha_key") == "bk-123"
+    assert vault.get_res_secret("sms_token") == "st-456"
+    data = yaml.safe_load(cfg.read_text())
+    assert not data["resources"]["bocha_key"] and not data["resources"]["sms_token"]
+    assert data["resources"]["ocr_url"] == "http://127.0.0.1:8686"  # 非密钥不动
+    vault._RES_CACHE.clear()
+
+
+async def test_admin_resources_no_secret_leak(client):
+    """GET /admin/resources：密钥只有布尔状态，值零出现。"""
+    r = await client.get("/api/admin/resources")
+    assert r.status_code == 200
+    body = r.text
+    assert '"set"' in body
+    for f in ("sms_token", "bocha_key", "mail_auth_code"):
+        assert f'"{f}": "' not in body
+
+
+async def test_vault_entry_crud_and_reserved(client):
+    """凭证条目 CRUD + 保留条目防护。"""
+    r = await client.post("/api/admin/vault/entry",
+                          json={"platform": "TestPlat", "username": "u",
+                                "password": "p@ss"})
+    assert r.status_code == 200
+    r = await client.get("/api/admin/vault")
+    plats = [p["platform"] for p in r.json()["platforms"]]
+    assert "testplat" in plats and "__resources__" not in plats  # norm 小写
+    r = await client.delete("/api/admin/vault/entry/testplat")
+    assert r.status_code == 200 and r.json()["ok"] is True
+    r = await client.delete("/api/admin/vault/entry/__resources__")
+    assert r.status_code == 400                     # 保留条目不可删

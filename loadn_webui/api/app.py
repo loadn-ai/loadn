@@ -91,6 +91,11 @@ async def lifespan(app: FastAPI):
     _mig = migrate_legacy_db()   # R2.5：旧 var/workdaddy.db → var/loadn.db（copy）
     if _mig is not None:
         log.info("[R2.5] 旧库迁移完成 → %s", _mig)
+    # 资源密钥明文 → vault（一次性；迁移后 config.yaml 密钥字段清空）
+    from .. import vault as vault_mod
+    _moved = vault_mod.migrate_res_secrets()
+    if _moved:
+        log.info("[资源密钥] config.yaml 明文已迁 vault（AES-GCM）：%s", _moved)
     # W5.1：出口白名单代理（引擎 env 通道接管；enforce 由 security.egress_mode）
     from ..egress_proxy import EgressProxy
     try:

@@ -33,11 +33,12 @@ def get_settings() -> dict:
     tg = CONFIG.titlegen
     r = CONFIG.resources
     res: dict = {k: getattr(r, k) for k in _RES_PLAIN}
+    from . import vault as vault_mod
+    states = vault_mod.res_secret_states()
     for k in _RES_SECRETS:
-        v = getattr(r, k)
-        res[f"{k}_set"] = bool(v)
-        res[f"{k}_hint"] = f"…{v[-5:]}" if v else ""
-    if not r.vlm_api_key and CONFIG.titlegen.api_key:
+        res[f"{k}_set"] = states.get(k, False)
+        res[f"{k}_hint"] = "已加密保存" if states.get(k) else ""
+    if not states.get("vlm_api_key") and CONFIG.titlegen.api_key:
         res["vlm_api_key_hint"] = "继承自动标题 key"
     nf = CONFIG.notify
     return {
@@ -234,12 +235,13 @@ def put_resources(body: dict) -> dict:
         if k == "adb_addr" and v and ":" not in v:
             raise ValueError("adb_addr 需要 host:port 形式")
         updates[k] = v
+    from . import vault as vault_mod
     for k in _RES_SECRETS:
         v = str(body.get(k) or "").strip()
-        if v:                                      # 留空 = 保持不变
-            updates[k] = v
+        if v:                                      # 密钥进 vault（AES-GCM），不落 yaml
+            vault_mod.set_res_secret(k, v)
     if not updates:
-        raise ValueError("没有可更新的字段")
+        return get_settings()                      # 只改了密钥：已入 vault
     _write_section("resources", updates)
     for k, v in updates.items():
         setattr(CONFIG.resources, k, v)

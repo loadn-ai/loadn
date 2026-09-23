@@ -713,6 +713,114 @@ def delete_session(sid: str, purge: bool = False):
 
 
 # ---------------------------------------------------------------- schedules（定时调度）
+# ---------------------------------------------------------------- 资源中心（原生功能）
+_RES_SERVICE_FIELDS = (
+    ("ocr_url", "OCR 服务", "识别"),
+    ("sandbox_url", "AIO 沙箱", "浏览器/命令行/文件"),
+    ("cdp_url", "沙箱 Chrome CDP", "浏览器驱动"),
+    ("proxy", "出网代理", "clash 等"),
+    ("sms_url", "短信查询服务", "真机验证码"),
+    ("sms_phone", "短信手机号", ""),
+    ("mail_imap", "主邮箱 IMAP", ""),
+    ("mail_smtp", "主邮箱 SMTP", ""),
+    ("mail_user", "主邮箱账号", ""),
+    ("vlm_api_base", "视觉模型 API", ""),
+    ("vlm_model", "视觉模型", ""),
+    ("zhipu_engine", "智谱搜索档位", ""),
+    ("adb_addr", "Android 真机", ""),
+    ("textr_email", "Textr 账号", ""),
+)
+
+
+@router.get("/admin/resources")
+def resources_overview():
+    """资源中心总览：服务端点+密钥状态（布尔）/ MCP servers / 凭证库。
+
+    密钥值永不出现在响应——只有「已加密保存」与否。
+    """
+    from .. import mcp_admin
+    from .. import vault as vault_mod
+    r = CONFIG.resources
+    states = vault_mod.res_secret_states()
+    services = [
+        {"key": k, "label": lb, "note": nt, "value": str(getattr(r, k) or ""),
+         "kind": "endpoint" if k.endswith(("_url", "_base")) or k in
+         ("proxy", "sms_phone", "mail_imap", "mail_smtp", "mail_user",
+          "vlm_model", "zhipu_engine", "adb_addr", "textr_email") else "secret"}
+        for k, lb, nt in _RES_SERVICE_FIELDS]
+    secrets = [{"key": k, "set": states.get(k, False)}
+               for k in vault_mod.RES_SECRET_FIELDS]
+    return {"services": services, "secrets": secrets,
+            "mcp": mcp_admin.list_servers(),
+            "vault": {"platforms": vault_mod.list_platforms(),
+                      "verify": vault_mod.verify()}}
+
+
+@router.post("/admin/resources/service")
+def resources_set_service(body: dict):
+    """改服务端点/参数（明文字段——非密钥）。走 settings 网关校验。"""
+    from . import settings_admin
+    key = str(body.get("key") or "")
+    if key not in {k for k, _, _ in _RES_SERVICE_FIELDS}:
+        raise HTTPException(400, f"未知资源字段: {key}")
+    try:
+        return settings_admin.put_resources({key: str(body.get("value") or "")})
+    except ValueError as e:
+        raise HTTPException(400, str(e)) from e
+
+
+@router.post("/admin/resources/secret")
+def resources_set_secret(body: dict):
+    """写资源密钥 → vault（AES-GCM）。值不回显、不落 yaml。"""
+    from .. import vault as vault_mod
+    key = str(body.get("key") or "")
+    val = str(body.get("value") or "").strip()
+    if not val:
+        raise HTTPException(400, "密钥值不能为空")
+    try:
+        vault_mod.set_res_secret(key, val)
+    except ValueError as e:
+        raise HTTPException(400, str(e)) from e
+    return {"ok": True, "key": key, "set": True}
+
+
+@router.post("/admin/resources/test")
+async def resources_test(body: dict):
+    """探测服务连通（ping 子集）。"""
+    from .. import resources
+    only = body.get("only") or None
+    if isinstance(only, list):
+        only = [t for t in only if isinstance(t, str)][:20]
+    return {"results": await resources.ping_all(only)}
+
+
+@router.post("/admin/vault/entry")
+def vault_put_entry(body: dict):
+    """凭证库写条目（新增/更新）。密码/恢复码只写不回。"""
+    from .. import vault as vault_mod
+    platform = str(body.get("platform") or "").strip()
+    if not platform or platform == vault_mod.RES_ENTRY:
+        raise HTTPException(400, "platform 非法")
+    fields = {}
+    for f in ("username", "email", "phone", "twofa", "status", "notes",
+              "password", "recovery"):
+        v = body.get(f)
+        if v is not None and str(v).strip():
+            fields[f] = str(v).strip()
+    if not fields:
+        raise HTTPException(400, "没有可写字段")
+    vault_mod.put(platform, **fields)
+    return {"ok": True, "platform": platform}
+
+
+@router.delete("/admin/vault/entry/{platform}")
+def vault_delete_entry(platform: str):
+    from .. import vault as vault_mod
+    if platform == vault_mod.RES_ENTRY:
+        raise HTTPException(400, "保留条目不可删")
+    return {"ok": vault_mod.delete(platform)}
+
+
 # ---------------------------------------------------------------- 安全中心（W0-W6 姿态总览）
 @router.get("/admin/security")
 def security_posture():

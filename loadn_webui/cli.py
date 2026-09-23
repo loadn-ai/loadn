@@ -426,7 +426,8 @@ async def _run_r(args) -> int:
         from .config import CONFIG
         via = args.via
         if via == "auto":
-            via = "zhipu" if CONFIG.resources.zhipu_key else "bocha"
+            from .vault import get_res_secret as _grs
+            via = "zhipu" if _grs("zhipu_key") else "bocha"
         if via == "zhipu":
             hits = await resources.zhipu_search(
                 args.query, n=args.n, engine=args.se or None,

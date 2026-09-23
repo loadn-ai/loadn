@@ -15,6 +15,12 @@ from pathlib import Path
 
 from .config import CONFIG, PATHS
 
+
+def _sec(name: str) -> str:
+    """资源密钥统一入口（vault AES-GCM，带缓存）——config 明文已退役。"""
+    from . import vault as vault_mod
+    return vault_mod.get_res_secret(name)
+
 BOCHA_API_BASE = "https://api.bochaai.com"
 ZHIPU_WEB_SEARCH_API = "https://open.bigmodel.cn/api/paas/v4/web_search"
 TWOCAPTCHA_API = "https://2captcha.com"
@@ -112,7 +118,7 @@ def vlm_endpoint() -> tuple[str, str, str]:
     base = (r.vlm_api_base or CONFIG.titlegen.api_base).rstrip("/")
     # 兼容整段 endpoint 粘贴
     base = base.removesuffix("/chat/completions")
-    key = r.vlm_api_key or CONFIG.titlegen.api_key
+    key = _sec("vlm_api_key") or CONFIG.titlegen.api_key
     return base, key, r.vlm_model
 
 
@@ -153,14 +159,13 @@ async def vlm_ask(images: list[str | Path], prompt: str, *, model: str | None = 
 async def bocha_search(query: str, *, n: int = 10, freshness: str | None = None
                        ) -> list[dict]:
     """博查中文网页搜索 → [{name,url,snippet,siteName,date}]。key 无效/未配抛错。"""
-    r = _res()
-    if not r.bocha_key:
+    if not _sec("bocha_key"):
         raise RuntimeError("未配置博查 key（resources.bocha_key）")
     body: dict = {"query": query, "count": n, "summary": True}
     if freshness:
         body["freshness"] = freshness
     resp = await _post(f"{BOCHA_API_BASE}/v1/web-search",
-                       headers={"Authorization": f"Bearer {r.bocha_key}"},
+                       headers={"Authorization": f"Bearer {_sec('bocha_key')}"},
                        json=body, timeout=20.0)
     d = resp.json()
     if resp.status_code != 200:
@@ -186,7 +191,7 @@ async def zhipu_search(query: str, *, n: int = 10, engine: str | None = None,
     oneWeek/oneYear；domain 限定站点。key 无效/未配抛错。
     """
     r = _res()
-    if not r.zhipu_key:
+    if not _sec("zhipu_key"):
         raise RuntimeError("未配置智谱 key（resources.zhipu_key）")
     body: dict = {"search_engine": engine or r.zhipu_engine,
                   "search_query": query, "count": n, "content_size": "medium"}
@@ -195,7 +200,7 @@ async def zhipu_search(query: str, *, n: int = 10, engine: str | None = None,
     if domain:
         body["search_domain_filter"] = domain
     resp = await _post(ZHIPU_WEB_SEARCH_API,
-                       headers={"Authorization": f"Bearer {r.zhipu_key}"},
+                       headers={"Authorization": f"Bearer {_sec('zhipu_key')}"},
                        json=body, timeout=20.0)
     d = resp.json()
     if resp.status_code != 200:
@@ -215,10 +220,10 @@ async def zhipu_search(query: str, *, n: int = 10, engine: str | None = None,
 async def sms_recent(kw: str = "", n: int = 20) -> dict:
     """查询真机最近短信 → {"count","items":[{id,ts,receive_time,sender,body,...}]}。"""
     r = _res()
-    if not r.sms_token:
+    if not _sec("sms_token"):
         raise RuntimeError("未配置短信服务 token（resources.sms_token）")
     resp = await _get(f"{r.sms_url.rstrip('/')}/recent",
-                      params={"token": r.sms_token, "n": str(n), "kw": kw},
+                      params={"token": _sec("sms_token"), "n": str(n), "kw": kw},
                       timeout=20.0)
     if resp.status_code != 200:
         raise RuntimeError(f"短信查询失败 ({resp.status_code}): {resp.text[:150]}")
@@ -290,7 +295,7 @@ def _all_mailboxes() -> list[dict]:
     """全部邮箱配置：单邮箱字段永远排第 1（设置页编辑的就是它），其后接
     config resources.mailboxes 追加项；同地址条目以单邮箱字段为准。"""
     r = _res()
-    boxes = [{"user": r.mail_user, "auth_code": r.mail_auth_code,
+    boxes = [{"user": r.mail_user, "auth_code": _sec("mail_auth_code"),
               "imap": r.mail_imap, "smtp": r.mail_smtp}]
     for b in r.mailboxes or []:
         if not isinstance(b, dict) or not b.get("user") or b["user"] == r.mail_user:
@@ -499,8 +504,7 @@ async def captcha_solve(*, image: str | Path | None = None, sitekey: str = "",
                         pageurl: str = "", timeout_s: float = 180.0,
                         interval: float = 5.0) -> str:
     """过验证码：图形码（本地图片）或 reCAPTCHA（sitekey+pageurl）→ token。"""
-    r = _res()
-    if not r.twocaptcha_key:
+    if not _sec("twocaptcha_key"):
         raise RuntimeError("未配置 2captcha key（resources.twocaptcha_key）")
     if image:
         p = Path(image)
@@ -508,11 +512,11 @@ async def captcha_solve(*, image: str | Path | None = None, sitekey: str = "",
             raise FileNotFoundError(f"验证码图片不存在: {p}")
         b64 = base64.b64encode(p.read_bytes()).decode()
         resp = await _post(f"{TWOCAPTCHA_API}/in.php",
-                           data={"key": r.twocaptcha_key, "method": "base64",
+                           data={"key": _sec("twocaptcha_key"), "method": "base64",
                                  "body": b64, "json": 1}, timeout=30.0)
     elif sitekey and pageurl:
         resp = await _post(f"{TWOCAPTCHA_API}/in.php",
-                           data={"key": r.twocaptcha_key, "method": "userrecaptcha",
+                           data={"key": _sec("twocaptcha_key"), "method": "userrecaptcha",
                                  "googlekey": sitekey, "pageurl": pageurl, "json": 1},
                            timeout=30.0)
     else:
@@ -524,7 +528,7 @@ async def captcha_solve(*, image: str | Path | None = None, sitekey: str = "",
     t0 = time.monotonic()
     while True:
         q = await _get(f"{TWOCAPTCHA_API}/res.php",
-                       params={"key": r.twocaptcha_key, "action": "get", "id": cid},
+                       params={"key": _sec("twocaptcha_key"), "action": "get", "id": cid},
                        timeout=20.0)
         body = q.text.strip()
         if body.startswith("OK|"):
@@ -763,7 +767,7 @@ async def _fetch_via_cdp(url: str, *, wait: float, html_out: Path) -> str:
     env = dict(os.environ)
     r = _res()
     env["LOADN_CDP_URL"] = env["WORKDADDY_CDP_URL"] = r.cdp_url           # 配置单一真源（沙箱 Chrome）
-    env["LOADN_CDP_TOKEN"] = env["WORKDADDY_CDP_TOKEN"] = r.sandbox_api_key  # /cdp 需 Bearer；9222 留空
+    env["LOADN_CDP_TOKEN"] = env["WORKDADDY_CDP_TOKEN"] = _sec("sandbox_api_key")  # /cdp 需 Bearer；9222 留空
     env["LOADN_WEBUI_HOME"] = env["WORKDADDY_HOME"] = str(PATHS["root"])
     proc = await asyncio.create_subprocess_exec(
         str(Path(__file__).resolve().parent.parent.parent / "scripts" / "fetch_page.py"),
@@ -893,19 +897,19 @@ async def _ping_one(name: str) -> dict:
             ok = resp.status_code == 200
             msg = "ok" if ok else f"HTTP {resp.status_code}"
         elif name == "sandbox":
-            if not r.sandbox_api_key:
+            if not _sec("sandbox_api_key"):
                 return {"ok": False, "msg": "未配置 sandbox_api_key"}
             resp = await _get(f"{r.sandbox_url.rstrip('/')}/health",
-                              headers={"Authorization": f"Bearer {r.sandbox_api_key}"},
+                              headers={"Authorization": f"Bearer {_sec('sandbox_api_key')}"},
                               timeout=8.0)
             ok = resp.status_code == 200
             msg = "ok" if ok else f"HTTP {resp.status_code}"
         elif name == "sandbox_mcp":
-            if not r.sandbox_api_key:
+            if not _sec("sandbox_api_key"):
                 return {"ok": False, "msg": "未配置 sandbox_api_key"}
             resp = await _post(
                 f"{r.sandbox_url.rstrip('/')}/mcp",
-                headers={"Authorization": f"Bearer {r.sandbox_api_key}",
+                headers={"Authorization": f"Bearer {_sec('sandbox_api_key')}",
                          "Accept": "application/json, text/event-stream"},
                 json={"jsonrpc": "2.0", "id": 1, "method": "initialize",
                       "params": {"protocolVersion": "2025-03-26", "capabilities": {},
@@ -922,13 +926,13 @@ async def _ping_one(name: str) -> dict:
             ok = resp.status_code == 204
             msg = "ok" if ok else f"HTTP {resp.status_code}"
         elif name == "sms":
-            if not r.sms_token:
+            if not _sec("sms_token"):
                 return {"ok": False, "msg": "未配置 sms_token"}
             d = await sms_recent("", n=1)
             msg = f"ok（库存 {d.get('count', '?')} 条）"
             ok = True
         elif name == "mail":
-            if not r.mail_auth_code:
+            if not _sec("mail_auth_code"):
                 return {"ok": False, "msg": "未配置 mail_auth_code"}
 
             def _cnt(mb: dict) -> tuple[str, int]:
@@ -954,21 +958,21 @@ async def _ping_one(name: str) -> dict:
             ok = bool(key)
             msg = f"已配置（{model}）" if ok else "未配置 key"
         elif name == "twocaptcha":
-            if not r.twocaptcha_key:
+            if not _sec("twocaptcha_key"):
                 return {"ok": False, "msg": "未配置"}
             resp = await _get(f"{TWOCAPTCHA_API}/res.php",
-                              params={"key": r.twocaptcha_key, "action": "getbalance"},
+                              params={"key": _sec("twocaptcha_key"), "action": "getbalance"},
                               timeout=15.0)
             body = resp.text.strip()
             ok = not body.startswith("ERROR")
             msg = f"余额 ${body}" if ok else body
         elif name == "bocha":
-            if not r.bocha_key:
+            if not _sec("bocha_key"):
                 return {"ok": False, "msg": "未配置"}
             await bocha_search("connectivity", n=1)
             msg, ok = "ok", True
         elif name == "zhipu":
-            if not r.zhipu_key:
+            if not _sec("zhipu_key"):
                 return {"ok": False, "msg": "未配置"}
             hits = await zhipu_search("connectivity", n=1, engine="search_std")
             msg, ok = f"ok（{r.zhipu_engine}，探测 std {len(hits)} 条）", True
