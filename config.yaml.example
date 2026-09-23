@@ -79,6 +79,18 @@ resources:
   textr_email: ''                              # Textr Go 美国虚拟号码（收验证码）
   textr_password: ''
 
+# 安全平面（全部有出厂默认——不需要可整段删掉；详见 docs/ATTACK_SURFACE.md）
+security:
+  # W2 执行沙箱档位（枚举，加载期校验；解析/探测/降档见 loadn_webui/sandbox.py）：
+  #   off            降级档：直跑（诚实标注「本机文件未隔离」；W1/W3/W6 仍生效）
+  #   bwrap          Linux 原生 bwrap 档（服务器/生产形态；探测 bwrap+user namespace，
+  #                  不可用 fail-closed 降 off + sandbox_violation 审计）
+  #   vm-bwrap       桌面 VM 执行域（loadn desktop 置备时写入——平台运行于 VM 内，
+  #                  执行语义=bwrap，该值同时是「VM 执行域」的报告标记）
+  #   seatbelt / appcontainer / remote   原生轻量档/远程执行器（占位未实现，降 off+审计）
+  sandbox: bwrap
+  egress_mode: enforce   # enforce=白名单强制 | warn=只记录放行
+
 # 成本分析页价目（留空 = 用 workdaddy/pricing.py 内置 z.ai 官方价目，2026-09 调研）。
 # api/plan_credits 覆盖即**整表替换**（非深合并），键结构：
 #   api: {模型名: {input: $/M, cache_read: $/M, output: $/M}}

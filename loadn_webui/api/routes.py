@@ -877,8 +877,13 @@ def security_posture():
             if reason:
                 locked.append({"sid": r["id"], "reason": reason})
     rows = audit_mod.tail(1)
+    from .. import sandbox as sandbox_mod
+    tier = sandbox_mod.tier_status()
     return {
         "sandbox": {"mode": CONFIG.security.sandbox,
+                    "requested": tier["requested"],
+                    "effective": tier["effective"],
+                    "reason": tier["reason"],
                     "bwrap": bwrap_n, "direct": len(snaps) - bwrap_n,
                     "window": len(snaps)},
         "policy": {"approval_enforce": CONFIG.security.approval_enforce},
@@ -1955,7 +1960,9 @@ def health():
     except OSError:
         pass
     # claude_bin/claude_version 顶层字段保留（前端兼容）；engines 为全引擎状态
+    from .. import sandbox as sandbox_mod
     return {"release": release,"claude_bin": engines.get("claude", {}).get("bin"),
             "claude_version": engines.get("claude", {}).get("version"),
             "engines": engines, "default_engine": engines_mod.default_engine(),
+            "sandbox": sandbox_mod.tier_status(),
             "disk_free_gb": disk_free_gb, "time": iso()}

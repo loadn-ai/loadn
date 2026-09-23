@@ -55,4 +55,8 @@ hook 审计丢失（新增侧车文件+宿主 turn 终回收入账）；两处 `
    ——如诱导用户人工外传——不在技术防线内，宪法 Rule of Two+审批门兜底）
 3. Bash 工具写路径快照（写目标不可静态知——/tmp 系统临时区由沙箱
    tmpfs 隔离+workspace 写入有快照）
-4. desktop 壳（M3+ 形态扩展）与认证路径（合规阶段）不在 1.0.0 范围
+4. desktop 壳与认证路径的路线已定：非 Linux 桌面形态走 **VM 执行域**（U1：
+   整 Linux rootfs 跑在 WSL2 / VZ 里，W2-W6 逐字节等价；desktop/image 出
+   双平台 rootfs 资产）。原生 seatbelt/AppContainer 档位仅在枚举中占位
+   ——请求即降档 off 并审计（`sandbox_tier` 行 + direct-fallback 遥测），
+   不存在「以为隔离了其实没有」的静默缺口。

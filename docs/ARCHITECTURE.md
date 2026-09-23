@@ -78,7 +78,7 @@ env：`LOADN_WEBUI_HOME`（平台数据根）、`LOADN_HOME`（引擎数据根�
 |---|---|---|
 | W0 | token 认证 + Host 白名单 + 管理面双头 + SSE ticket | api/app.py |
 | W1 | 确定性策略：L0 红线 / bashlex AST 出口域 / 确认码审批门 | policy.py approve.py |
-| W2 | bwrap 文件系统沙箱 + unshare-net（唯一出口=代理 uds） | sandbox.py |
+| W2 | bwrap 文件系统沙箱 + unshare-net（唯一出口=代理 uds）；跨平台为**统一档位枚举** `SANDBOX_TIERS = off / bwrap / vm-bwrap / seatbelt / appcontainer / remote`（config.yaml `security.sandbox`，非法值拒启）——`vm-bwrap` 执行语义=bwrap（桌面形态整 Linux VM 内跑完整执行域，见 desktop/）；seatbelt/appcontainer/remote 为占位档，**fail-closed 降级 off 并审计**（`sandbox_tier` 账本行 + snapshot `direct-fallback` 遥测 + /api/health `sandbox.{requested,effective,reason}` 三态） | sandbox.py config.py |
 | W3 | 凭证 AES-GCM 库 + spawn env 白名单 | vault.py |
 | W4 | 供应链扫描（skill 安装八类检查 + MCP 哈希锁） | skill_scan.py |
 | W5 | 出口代理 enforce + LLM 凭证网关注入（真 token 不进沙箱）+ 蜜罐 | egress_proxy.py canary.py |

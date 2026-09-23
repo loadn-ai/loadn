@@ -125,6 +125,18 @@ class TitleGenConfig:
     model: str = "doubao-seed-2-0-mini-260428"
 
 
+# W2 沙箱档位统一枚举（跨平台三方案 A/B/C 的归一）：
+#   off           降级档：直跑（诚实标注「本机文件未隔离」，W1/W3/W6 仍生效）
+#   bwrap         Linux 原生 bwrap 档（服务器/生产形态）
+#   vm-bwrap      桌面 VM 执行域（loadn desktop 置备的 Linux VM 内跑平台；
+#                 执行语义=bwrap，requested 值本身即「运行于 VM」的报告标记）
+#   seatbelt      mac 原生轻量档（长期可选，未实现 → 降档 off+审计）
+#   appcontainer  win 原生轻量档（长期可选，未实现 → 降档 off+审计）
+#   remote        远程执行器档（企业场景，未实现 → 降档 off+审计）
+# 解析/探测/降档见 sandbox.py resolve_tier()；枚举校验在 load_config()。
+SANDBOX_TIERS = ("off", "bwrap", "vm-bwrap", "seatbelt", "appcontainer", "remote")
+
+
 @dataclass
 class SecurityConfig:
     """W1 确定性权限平面（v1.1 §6.2）。策略在模型之外；出厂即生效。"""
@@ -151,7 +163,7 @@ class SecurityConfig:
     # 不可逆动作确认码门（M0 关门最终形态=enforce：skill 文档已审批化）；
     # warn 仅作迁移期显式配置
     approval_enforce: str = "enforce"
-    # W2-a 执行沙箱：off（默认，双轨——doctor 通过+真机验证后切 bwrap）| bwrap
+    # W2-a 执行沙箱档位（SANDBOX_TIERS；默认 off 双轨——doctor 通过+真机验证后切 bwrap）
     sandbox: str = "off"
     # W5.1 出口代理端口（0=随机绑定，lifespan 回写实际值；生产可固定 8793）
     egress_proxy_port: int = 0
@@ -264,6 +276,16 @@ def load_config() -> Config:
                 sec = data.get(name)
                 if isinstance(sec, dict):
                     _apply_section(obj, sec)
+    # W2 档位枚举 fail-closed：安全关键配置的笔误不允许静默降级为直跑——
+    # 启动即报错（旧部署仅用过 off|bwrap，均在枚举内，无迁移面）。
+    # yaml 1.1 坑：裸 off/on 解析为布尔——False 归一化回 "off"（手写 yaml 的
+    # `sandbox: off` 是存量合法写法；True 无对应档，走枚举报错）
+    if isinstance(cfg.security.sandbox, bool):
+        cfg.security.sandbox = "off" if cfg.security.sandbox is False else "on"
+    if cfg.security.sandbox not in SANDBOX_TIERS:
+        raise ValueError(
+            f"security.sandbox={cfg.security.sandbox!r} 不在档位枚举 "
+            f"{SANDBOX_TIERS} 内（config.yaml）——拒绝启动，请修正后重试")
     env_bin = os.environ.get("WORKDADDY_CLAUDE_BIN")
     if env_bin:
         cfg.claude.claude_bin = env_bin

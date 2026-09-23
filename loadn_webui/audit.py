@@ -34,6 +34,7 @@ TYPES = (
     "egress_policy",                 # 出口白名单变更/临时授权（allowlist-*/grant/revoke）
     "skill_install", "skill_scan",
     "canary_hit", "sandbox_violation",
+    "sandbox_tier",                    # W2 档位解析留痕（启动时 requested/effective/reason）
     "rollback", "kill_switch", "snapshot",
     "vault",                      # 凭证库/资源密钥写入与迁移（W3）
     "anomaly",

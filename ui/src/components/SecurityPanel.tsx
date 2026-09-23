@@ -7,13 +7,30 @@ import { api } from '../api/client';
 import { useStore } from '../stores/sessions';
 
 interface Posture {
-  sandbox: { mode: string; bwrap: number; direct: number; window: number };
+  sandbox: { mode: string; requested?: string; effective?: string; reason?: string;
+    bwrap: number; direct: number; window: number };
   policy: { approval_enforce: string };
   egress: { mode: string; allow_count: number };
   canary: { locked_sessions: { sid: string; reason: string }[]; kill_all: boolean };
   vault: { platforms: number };
   audit: { last_id: number; last_ts: string; anchors: number };
 }
+
+/** 档位枚举 → 展示（与后端 config.SANDBOX_TIERS 对齐） */
+const TIER_ZH: Record<string, string> = {
+  'off': '降级档（直跑）',
+  'bwrap': 'bwrap 隔离',
+  'vm-bwrap': '桌面 VM 执行域',
+  'seatbelt': 'mac 原生（seatbelt）',
+  'appcontainer': 'win 原生（AppContainer）',
+  'remote': '远程执行器',
+};
+const REASON_ZH: Record<string, string> = {
+  'bwrap-unavailable': 'bwrap / user namespace 不可用',
+  'seatbelt-not-implemented': 'seatbelt 档尚未实现（长期可选）',
+  'appcontainer-not-implemented': 'AppContainer 档尚未实现（长期可选）',
+  'remote-not-implemented': '远程执行器档尚未实现',
+};
 
 interface AuditEvent {
   id: number; ts: string; type: string;
@@ -25,7 +42,7 @@ const TYPE_ZH: Record<string, string> = {
   approval_request: '审批请求', approval_decision: '审批决定',
   permission_decision: '权限决定', skill_scan: 'Skill 扫描',
   canary_hit: '蜜罐命中', kill_switch: '熔断', anomaly: '异常',
-  sandbox_violation: '沙箱违规', rollback: '回滚', policy_change: '策略变更',
+  sandbox_violation: '沙箱违规', sandbox_tier: '沙箱档位', rollback: '回滚', policy_change: '策略变更',
 };
 const FILTERS: { key: string; label: string }[] = [
   { key: '', label: '全部' },
@@ -174,7 +191,25 @@ export default function SecurityPanel({ onClose }: { onClose: () => void }) {
 
   if (!posture) return <div className="pad muted">加载中…</div>;
 
-  const sandboxOk = posture.sandbox.mode === 'bwrap';
+  // 档位三态：effective 是实际生效档（旧后端无该字段时回落 mode）
+  const sbxReq = posture.sandbox.requested ?? posture.sandbox.mode;
+  const sbxEff = posture.sandbox.effective ?? posture.sandbox.mode;
+  const sbxReason = posture.sandbox.reason ?? '';
+  const sandboxOk = sbxEff === 'bwrap' || sbxEff === 'vm-bwrap';
+  // 请求了隔离但被降档（探测失败/未实现）→ 黄条显著告警；显式 off 是用户选择 → 灰态+诚实标注
+  const sandboxWarn = !sandboxOk && !!sbxReason;
+  const sandboxTop = sandboxOk
+    ? sbxEff === 'vm-bwrap'
+      ? `VM 满档 · bwrap · 近 ${posture.sandbox.window} 个任务全覆盖`
+      : `已隔离 · 近 ${posture.sandbox.window} 个任务全覆盖`
+    : sandboxWarn
+      ? `降级：${TIER_ZH[sbxReq] ?? sbxReq} 未生效，当前直跑`
+      : '降级档（直跑）· 本机文件未隔离';
+  const sandboxHint = sandboxOk
+    ? sbxEff === 'vm-bwrap' ? '执行域整个运行在桌面 Linux 虚拟机内，与服务器安全语义逐字节一致。' : undefined
+    : sandboxWarn
+      ? `原因：${REASON_ZH[sbxReason] ?? sbxReason}。可在 config.yaml 的 security.sandbox 改为可用档位后重启。`
+      : '引擎在本机直跑。审批/出口管控/审计/蜜罐仍然生效，但文件不隔离：在 config.yaml 的 security.sandbox 设为 bwrap 后重启可开启。';
   const policyOk = posture.policy.approval_enforce === 'enforce';
   const policyWarn = posture.policy.approval_enforce === 'warn';
   const egressOk = posture.egress.mode === 'enforce';
@@ -182,10 +217,10 @@ export default function SecurityPanel({ onClose }: { onClose: () => void }) {
   const cards: { key: CardKey; name: string; ok: boolean; warn?: boolean; icon: string;
     top: string; sub: string; hint?: string; danger?: boolean }[] = [
     {
-      key: 'sandbox', name: '沙箱隔离', ok: sandboxOk, icon: '📦',
-      top: sandboxOk ? `已隔离 · 近 ${posture.sandbox.window} 个任务全覆盖` : '未启用（直跑）',
+      key: 'sandbox', name: '沙箱隔离', ok: sandboxOk, warn: sandboxWarn, icon: '📦',
+      top: sandboxTop,
       sub: 'AI 执行的命令被关在隔离环境里，碰不到系统其它文件与真实网络。',
-      hint: sandboxOk ? undefined : '在 config.yaml 的 security.sandbox 设为 bwrap 后重启。',
+      hint: sandboxHint,
     },
     {
       key: 'approvals', name: '敏感操作审批', ok: policyOk, warn: policyWarn, icon: '🔐',
@@ -264,7 +299,7 @@ export default function SecurityPanel({ onClose }: { onClose: () => void }) {
       {/* ---- 卡片详情面板 ---- */}
       {open && (
         <div style={{ ...card, marginBottom: 14, background: 'rgba(127,127,127,.04)' }}>
-          {open === 'sandbox' && <SandboxDetail events={events} jump={jump} />}
+          {open === 'sandbox' && <SandboxDetail events={events} jump={jump} tier={posture.sandbox} />}
           {open === 'approvals' && <ApprovalsDetail events={events} jump={jump} />}
           {open === 'egress' && <EgressDetail />}
           {open === 'vault' && <VaultDetail />}
@@ -359,11 +394,23 @@ function DetailHead({ title, note }: { title: string; note?: string }) {
   );
 }
 
-function SandboxDetail({ events, jump }: { events: AuditEvent[]; jump: (s: string | null) => void }) {
+function SandboxDetail({ events, jump, tier }: {
+  events: AuditEvent[]; jump: (s: string | null) => void;
+  tier: { requested?: string; effective?: string; reason?: string; mode: string };
+}) {
   const snaps = events.filter(e => e.type === 'snapshot').slice(0, 12);
+  const req = tier.requested ?? tier.mode;
+  const eff = tier.effective ?? tier.mode;
+  const reason = tier.reason ?? '';
   return (
     <div>
       <DetailHead title="近期任务的隔离记录" note="点会话名跳转；「直跑」=未进沙箱（应排查）" />
+      <div style={{ fontSize: 12, color: 'var(--text-dim)', margin: '0 0 8px', lineHeight: 1.7 }}>
+        当前档位：<b>{TIER_ZH[eff] ?? eff}</b>
+        {req !== eff && `（请求 ${TIER_ZH[req] ?? req}${reason ? ` · ${REASON_ZH[reason] ?? reason}，已降档` : ''}）`}
+        。档位在 config.yaml 的 security.sandbox 配置（枚举：off / bwrap /
+        vm-bwrap / seatbelt / appcontainer / remote），重启生效。
+      </div>
       <table className="kv-table" style={{ width: '100%' }}>
         <thead><tr><th style={{ width: 96 }}>时间</th><th style={{ width: 80 }}>引擎</th><th style={{ width: 110 }}>隔离</th><th>会话</th></tr></thead>
         <tbody>

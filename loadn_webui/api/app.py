@@ -106,6 +106,9 @@ async def lifespan(app: FastAPI):
         CONFIG.security.egress_proxy_port = await _EGRESS[0].start()
     except OSError:
         log.exception("egress 代理绑定失败（多实例/端口占用）——本实例无代理")
+    # W2：沙箱档位启动解析（探测→降档 fail-closed）+ sandbox_tier 审计留痕
+    from .. import sandbox as sandbox_mod
+    sandbox_mod.resolve_and_audit()
     # 单实例闸（2026-09-17 事故）：双 serve 抢端口时，败者在 bind 失败前也会先跑
     # lifespan——孤儿清理/中断恢复会直接误伤胜者正在跑的 turn（systemd
     # Restart=always 每 5s 拉起僵尸实例，几小时内三批把活跃 turn 标成

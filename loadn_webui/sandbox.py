@@ -15,7 +15,9 @@
 - 网络：--share-net 过渡（unshare-net 等 W5.1 代理，M1 切换）。
 - 安全语义：symlink 先 resolve 再校验相对工作区（出界拒），D1 用例锁定。
 
-上线形态：security.sandbox = off（默认，双轨）| bwrap；doctor 探测可用性。
+上线形态：security.sandbox ∈ config.SANDBOX_TIERS（off 默认双轨 | bwrap 生产 |
+vm-bwrap 桌面 VM 执行域 | seatbelt/appcontainer/remote 占位未实现）；resolve_tier()
+探测降档 fail-closed + sandbox_tier 审计，doctor 展示解析结果。
 """
 from __future__ import annotations
 
@@ -48,6 +50,74 @@ def bwrap_available() -> bool:
         return p.returncode == 0
     except (OSError, subprocess.TimeoutExpired):
         return False
+
+
+# ---- W2 档位解析（A/B/C 三方案归一的枚举层） ----
+# 探测/解析进程内缓存：bwrap_available() 真跑一次子进程（10s 超时），不能
+# 每 spawn 都探测；sandbox 是重启语义配置（egress 白名单才热更），进程内
+# 不会变值 → 按 requested 值缓存解析结果即可。
+_probe_cache: bool | None = None
+_resolve_cache: dict[str, tuple[str, str]] = {}
+_warned: set[str] = set()
+
+
+def _reset_tier_cache() -> None:
+    """测试用：清空探测/解析/告警去重缓存（monkeypatch 环境后须重解析）。"""
+    global _probe_cache
+    _probe_cache = None
+    _resolve_cache.clear()
+    _warned.clear()
+
+
+def resolve_tier(requested: str | None = None) -> tuple[str, str]:
+    """档位解析：requested → (effective, reason)。
+
+    统一规则（fail-closed）：探测不到/未实现的档位降为 off，reason 描述
+    原因（空串=未降档）。vm-bwrap 执行语义=bwrap（平台运行于 loadn desktop
+    置备的 Linux VM 内，requested 值本身即「VM 执行域」的报告标记）；
+    seatbelt/appcontainer/remote 是枚举占位（原生轻量档/远程执行器，长期
+    可选），未实现 → 降档 off 并审计。
+    """
+    from .config import CONFIG
+    req = requested if requested is not None else CONFIG.security.sandbox
+    if req in _resolve_cache:
+        return _resolve_cache[req]
+    global _probe_cache
+    if req == "off":
+        out = ("off", "")
+    elif req in ("bwrap", "vm-bwrap"):
+        if _probe_cache is None:
+            _probe_cache = bwrap_available()
+        out = (req, "") if _probe_cache else ("off", "bwrap-unavailable")
+    elif req == "seatbelt":
+        out = ("off", "seatbelt-not-implemented")
+    elif req == "appcontainer":
+        out = ("off", "appcontainer-not-implemented")
+    elif req == "remote":
+        out = ("off", "remote-not-implemented")
+    else:                              # 防御（load_config 已校验枚举）
+        out = ("off", f"unknown-tier:{req}")
+    _resolve_cache[req] = out
+    return out
+
+
+def tier_status() -> dict:
+    """当前档位三态（/api/health 与安全中心展示用）。"""
+    from .config import CONFIG
+    req = CONFIG.security.sandbox
+    eff, reason = resolve_tier(req)
+    return {"requested": req, "effective": eff, "reason": reason}
+
+
+def resolve_and_audit() -> dict:
+    """启动时档位解析 + 审计留痕（app lifespan 调用；降档显著告警）。"""
+    from .audit import audit
+    st = tier_status()
+    audit("sandbox_tier", dict(st))
+    if st["reason"]:
+        log.warning("沙箱档位降级：%s → %s（%s）——引擎将直跑，本机文件未隔离",
+                    st["requested"], st["effective"], st["reason"])
+    return st
 
 
 def _resolve_in(ws: Path, p: Path) -> bool:
@@ -224,7 +294,8 @@ def wrap_engine(cmd: list[str], env: dict, *, engine: str, sid: str,
                 owner_sid: str = "") -> tuple[list[str], str]:
     """spawn 入口：按引擎/profile 选包裹。返回 (argv, mode)。
 
-    mode: "bwrap" | "direct"（不可用回落，audit 留痕由调用方记）。
+    mode: "bwrap" | "direct"（配置显式 off）| "direct-fallback"（想要隔离
+    但档位降级/挂载缺失，audit 留痕由调用方记 sandbox_violation）。
     claude：nvm node 树 ro（CLI 运行时）+ ~/.claude/projects rw（档案）+
     ~/.claude/settings.json ro（网关 env 段=M1 known-gap）+ 全局 CLAUDE.md ro。
     opencode：node 树 ro + ~/.local/share/opencode rw（档案）。
@@ -232,8 +303,15 @@ def wrap_engine(cmd: list[str], env: dict, *, engine: str, sid: str,
     owner_sid：平台会话 id（loadn 引擎会话级 egress socket 用）。
     """
     from .config import CONFIG
-    if CONFIG.security.sandbox != "bwrap":
-        return cmd, "direct"
+    tier, reason = resolve_tier()
+    if tier == "off":
+        if reason and reason not in _warned:
+            _warned.add(reason)
+            log.warning("沙箱档位 %s 未生效（%s），引擎直跑（文件未隔离，审计记录）",
+                        CONFIG.security.sandbox, reason)
+        # 想要隔离但降档 → direct-fallback（复用既有 sandbox_violation 遥测
+        # 口径）；显式 off 才是诚意的 direct
+        return cmd, "direct-fallback" if reason else "direct"
     if engine in ("loadn", "hahaness"):  # hahaness=alias（旧引擎名会话）
         pass                                     # 走 wrap_loadn（同路径 bind 矩阵）
     elif engine == "claude":

@@ -7,8 +7,17 @@ from loadn_webui import sandbox
 from loadn_webui.config import CONFIG
 
 
-def test_wrap_engine_off_mode_passthrough():
-    CONFIG.security.sandbox = "off"
+@pytest.fixture(autouse=True)
+def _fresh_tier_cache():
+    """W2 档位解析缓存按 requested 值进程内常驻——测试间必须复位
+    （否则前一个用例的探测结果/降档原因串进下一个）。"""
+    sandbox._reset_tier_cache()
+    yield
+    sandbox._reset_tier_cache()
+
+
+def test_wrap_engine_off_mode_passthrough(monkeypatch):
+    monkeypatch.setattr(CONFIG.security, "sandbox", "off")
     cmd, mode = sandbox.wrap_engine(["echo", "hi"], {}, engine="claude",
                                     sid="s", cwd="/tmp")
     assert (cmd, mode) == (["echo", "hi"], "direct")
@@ -18,6 +27,7 @@ def test_wrap_engine_off_mode_passthrough():
 def test_wrap_engine_generic_engines(engine, monkeypatch, tmp_path):
     """claude/opencode 分支：argv 完整性（基础矩阵+专属 binds+setenv+cmd 接尾）。"""
     monkeypatch.setattr(CONFIG.security, "sandbox", "bwrap")
+    monkeypatch.setattr(sandbox, "bwrap_available", lambda: True)   # 探测与 which 解耦
     monkeypatch.setattr(sandbox.shutil, "which", lambda _: "/usr/bin/bwrap")
     monkeypatch.setattr(sandbox, "_wrap_generic",
                         lambda cmd, env, cwd, extra_binds, project_root=None: (
@@ -34,6 +44,7 @@ def test_wrap_engine_generic_fallback_when_bwrap_missing(monkeypatch, tmp_path):
     """bwrap 不存在 → direct-fallback（审计留痕路径）。"""
     monkeypatch.setattr(CONFIG.security, "sandbox", "bwrap")
     monkeypatch.setattr(sandbox.shutil, "which", lambda _: None)
+    monkeypatch.setattr(sandbox, "bwrap_available", lambda: False)  # 档位探测同败
     cmd, mode = sandbox.wrap_engine(["x"], {}, engine="opencode",
                                     sid="s", cwd=str(tmp_path))
     assert (cmd, mode) == (["x"], "direct-fallback")
@@ -42,6 +53,7 @@ def test_wrap_engine_generic_fallback_when_bwrap_missing(monkeypatch, tmp_path):
 def test_wrap_engine_loadn_routes(monkeypatch, tmp_path):
     """loadn 引擎走 wrap_loadn（同路径 bind 矩阵）。"""
     monkeypatch.setattr(CONFIG.security, "sandbox", "bwrap")
+    monkeypatch.setattr(sandbox, "bwrap_available", lambda: True)
     called = {}
     monkeypatch.setattr(sandbox, "wrap_loadn",
                         lambda cmd, env, sid_session, cwd, project_root=None, \

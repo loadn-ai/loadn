@@ -1,0 +1,71 @@
+# loadn desktop 执行域 rootfs（W2 统一方案 U1：桌面满档 = 内嵌 Linux VM）
+#
+# 同一镜像出两种产物（build-rootfs.sh）：
+#   win : docker export → rootfs-wsl-<ver>.tar.gz → `wsl --import`（WSL2 自带内核）
+#   mac : 同 rootfs → ext4 磁盘镜像 + vmlinuz/initrd（Virtualization.framework/vfkit 启动）
+# 平台负载（release tarball + wheelhouse）由 build-payload.sh 生成后经构建上下文
+# COPY 进 /opt/loadn-payload，VM 内首启由 loadn-vm-install.sh 幂等安装。
+#
+# 安全语义：VM 内即 Linux——bwrap/unshare-net/uds/socat/EgressProxy 与生产
+# 服务器逐字节同套（desktop/README 论证：不移植沙箱，把 Linux 搬进来）。
+FROM debian:bookworm-slim
+
+ARG LOADN_VERSION=dev
+LABEL org.opencontainers.image.title="loadn-desktop-exec-domain"
+LABEL org.opencontainers.image.version="${LOADN_VERSION}"
+
+ENV DEBIAN_FRONTEND=noninteractive LANG=C.UTF-8
+
+# ---- 基础系统 + 沙箱/网络工具 + python3.11 + systemd ----
+# bashlex 依赖的 bash 解析、bwrap+iproute2（沙箱内 lo up）、socat（TCP↔uds 桥）
+# 都是平台 spawn 链的硬依赖；linux-image-cloud+initramfs 供 VZ 启动（WSL 忽略）。
+RUN apt-get update && apt-get install -y --no-install-recommends \
+        bash ca-certificates curl gnupg git ripgrep procps \
+        bubblewrap socat iproute2 less \
+        python3 python3-venv python3-pip \
+        systemd systemd-sysv \
+        e2fsprogs \
+        linux-image-cloud-amd64 initramfs-tools-core \
+    && rm -rf /var/lib/apt/lists/*
+
+# ---- node 20 + 引擎 CLI（nodesource 官方源；/usr/bin 供 PATH 与 which 解析）----
+RUN curl -fsSL https://deb.nodesource.com/setup_20.x | bash - \
+    && apt-get install -y --no-install-recommends nodejs \
+    && rm -rf /var/lib/apt/lists/* \
+    && npm install -g @anthropic-ai/claude-code opencode-ai \
+    && npm cache clean --force
+
+# ---- 运行用户（数据根 /home/loadn/.loadn-data；wsl 默认用户同名）----
+RUN useradd -m -u 1000 -s /bin/bash loadn \
+    && mkdir -p /home/loadn/.loadn-data \
+    && chown -R loadn:loadn /home/loadn
+
+# ---- VM 装配脚本 + systemd 单元 + wsl.conf ----
+COPY loadn-vm-install.sh loadn-vm-start.sh /usr/local/sbin/
+RUN chmod 0755 /usr/local/sbin/loadn-vm-install.sh /usr/local/sbin/loadn-vm-start.sh
+COPY loadn-vm.service /etc/systemd/system/loadn-vm.service
+COPY wsl.conf /etc/wsl.conf
+# docker 内无运行中的 systemd——手工链接代替 systemctl enable（两种 VM 通用）
+RUN mkdir -p /etc/systemd/system/multi-user.target.wants \
+    && ln -sfn /etc/systemd/system/loadn-vm.service \
+        /etc/systemd/system/multi-user.target.wants/loadn-vm.service \
+    # 空机器 id：VZ 首启 systemd 自动生成（WSL 忽略）；避免镜像克隆告警
+    && : > /etc/machine-id
+
+# ---- VZ 网络与时间（virtio-net DHCP + timesyncd；WSL2 自带注入共存无害）----
+RUN mkdir -p /etc/systemd/network \
+    && printf '[Match]\nName=en* eth*\n\n[Network]\nDHCP=yes\n' \
+        > /etc/systemd/network/10-dhcp.network \
+    && ln -sfn /lib/systemd/system/systemd-networkd.service \
+        /etc/systemd/system/multi-user.target.wants/systemd-networkd.service \
+    && ln -sfn /lib/systemd/system/systemd-networkd.socket \
+        /etc/systemd/system/sockets.target.wants/systemd-networkd.socket \
+    && ln -sfn /lib/systemd/system/systemd-timesyncd.service \
+        /etc/systemd/system/multi-user.target.wants/systemd-timesyncd.service
+
+# ---- 平台负载（build-payload.sh 产出的 release tarball + 离线 wheelhouse）----
+COPY payload/ /opt/loadn-payload/
+RUN chmod -R a+rX /opt/loadn-payload
+
+# 提取 VZ 启动件（内核/initrd 由 build-rootfs.sh 从镜像内拷出，随 ext4 分发）
+CMD ["/usr/local/sbin/loadn-vm-start.sh"]

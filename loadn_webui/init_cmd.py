@@ -67,7 +67,9 @@ engines:
 
 security:
   # 全部有安全默认值——不需要可整段删掉
-  sandbox: bwrap        # off=bypass | bwrap=文件系统隔离
+  # 档位枚举：off（直跑）| bwrap（Linux 隔离）| vm-bwrap（桌面 VM 执行域，
+  # loadn desktop 置备）| seatbelt/appcontainer/remote（占位，未实现）
+  sandbox: bwrap
   egress_mode: enforce  # enforce=白名单 | warn=只记录
 """
 

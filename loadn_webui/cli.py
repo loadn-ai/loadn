@@ -935,15 +935,18 @@ def main(argv: list[str] | None = None) -> int:
         from . import engines as engines_mod
         from .config import PATHS
 
-        def CONFIG_SECURITY():
-            from .config import CONFIG as _C
-            return _C.security
         ok = True
         print(f"root:      {PATHS['root']}")
         print(f"db:        {PATHS['db']}")
         from . import sandbox as sandbox_mod
-        print(f"bwrap:     {'ok' if sandbox_mod.bwrap_available() else '不可用（sandbox 将回落直跑）'}"
-              f"（security.sandbox={CONFIG_SECURITY().sandbox}）")
+        # W2 档位解析：requested → effective（探测失败/未实现档 fail-closed 降 off）
+        tier = sandbox_mod.tier_status()
+        tier_note = (f"security.sandbox={tier['requested']} → 生效 {tier['effective']}"
+                     + (f"（降档：{tier['reason']}）" if tier["reason"] else ""))
+        if tier["reason"]:
+            ok = False   # 请求隔离但被降档 → doctor FAIL（引导修环境）
+        print(f"bwrap:     {'ok' if sandbox_mod.bwrap_available() else '不可用（bwrap 档将回落直跑）'}"
+              f"（{tier_note}）")
         for name, spec in engines_mod.ENGINES.items():
             h = spec.health()
             print(f"{name + ':':10s}{h['bin']}")
