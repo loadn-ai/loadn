@@ -958,8 +958,15 @@ def main(argv: list[str] | None = None) -> int:
         print("fastapi:   ok")
         import docx  # noqa: F401
         print("exporter:  ok (python-docx + markdown)")
+        from .config import behavior_dirs
         for k in ("profiles", "prompts", "skills"):
-            p = PATHS[k]
+            # profiles/prompts 走 behavior_dirs 搜索（数据根覆盖代码根），
+            # skills 走 PATHS overlay——PATHS 无 profiles/prompts 键（存量 KeyError）
+            if k == "skills":
+                p = PATHS["skills"]
+            else:
+                dirs = behavior_dirs(k)
+                p = dirs[0] if dirs else PATHS["root"] / k
             print(f"{k + ':':10s}{p} {'ok' if p.exists() else 'MISSING'}")
             if not p.exists():
                 ok = False

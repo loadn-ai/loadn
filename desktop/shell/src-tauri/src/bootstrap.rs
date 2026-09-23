@@ -38,9 +38,22 @@ fn try_run(app: &AppHandle) -> Result<()> {
     provider.start(&a, &data_dir)?;
 
     splash::phase(app, &Phase::WaitingHealth { elapsed_s: 0 });
+    // 先经 exec 通道等 token 落地（首启含 venv 离线装配，需数分钟），再带
+    // token 探活——W0 之下 /api/health 同样要鉴权，无凭证的探测只会 401 循环
+    let read_token = || {
+        provider
+            .exec_stdout(
+                "sed -n 's/^  token: \"\\(.*\\)\"/\\1/p' /home/loadn/.loadn-data/config.yaml",
+            )
+            .unwrap_or_default()
+    };
+    let mut token = String::new();
     let mut ok = false;
-    for i in 0..90u16 {
-        if provider.healthy().unwrap_or(false) {
+    for i in 0..150u16 {
+        if token.is_empty() {
+            token = read_token();
+        }
+        if !token.is_empty() && provider.healthy(&token).unwrap_or(false) {
             ok = true;
             break;
         }
@@ -48,16 +61,10 @@ fn try_run(app: &AppHandle) -> Result<()> {
         splash::phase(app, &Phase::WaitingHealth { elapsed_s: (i + 1) * 2 });
     }
     if !ok {
-        anyhow::bail!("执行域 180 秒未就绪（/api/health 不通）——重试或查看 VM 日志");
+        anyhow::bail!("执行域 300 秒未就绪（token 未落地或 /api/health 不通）——重试或查看 VM 日志");
     }
 
-    // token 读回 → 一次性 URL 注入（前端 client.ts 已支持 ?token= 引导）
-    let token = provider
-        .exec_stdout("sed -n 's/^  token: \"\\(.*\\)\"/\\1/p' /home/loadn/.loadn-data/config.yaml")
-        .context("读取首启 token 失败")?;
-    if token.is_empty() {
-        anyhow::bail!("token 读回为空（config.yaml 未按预期生成）");
-    }
+    // token → 一次性 URL 注入（前端 client.ts 已支持 ?token= 引导）
     let url = Url::parse(&format!("{}/?token={}", provider.endpoint(), token))?;
     app.get_webview_window("main")
         .context("主窗口缺失")?

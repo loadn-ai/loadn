@@ -36,9 +36,16 @@ pub trait VmProvider: Send + Sync {
         format!("http://127.0.0.1:{APP_PORT}")
     }
 
-    /// 就绪判定（默认 /api/health 200 且 release 版本非空）
-    fn healthy(&self) -> Result<bool> {
-        let v = crate::httpx::get_json("127.0.0.1", APP_PORT, "/api/health", std::time::Duration::from_secs(3))?;
+    /// 就绪判定（/api/health 带 token 200 且 release 版本非空——W0 之下健康
+    /// 端点同样要鉴权，token 由 bootstrap 先经 exec 通道取得）
+    fn healthy(&self, token: &str) -> Result<bool> {
+        let v = crate::httpx::get_json(
+            "127.0.0.1",
+            APP_PORT,
+            "/api/health",
+            std::time::Duration::from_secs(3),
+            Some(token),
+        )?;
         Ok(v.get("release").and_then(|r| r.get("version")).is_some())
     }
 }

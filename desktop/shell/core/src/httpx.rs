@@ -5,11 +5,20 @@ use std::io::{Read, Write};
 use std::net::TcpStream;
 use std::time::Duration;
 
-pub fn get_json(host: &str, port: u16, path: &str, timeout: Duration) -> Result<serde_json::Value> {
+pub fn get_json(
+    host: &str,
+    port: u16,
+    path: &str,
+    timeout: Duration,
+    token: Option<&str>,
+) -> Result<serde_json::Value> {
     let mut s = TcpStream::connect((host, port)).context("连接执行域")?;
     s.set_read_timeout(Some(timeout))?;
     s.set_write_timeout(Some(timeout))?;
-    write!(s, "GET {path} HTTP/1.1\r\nHost: {host}:{port}\r\nConnection: close\r\n\r\n")?;
+    let auth = token
+        .map(|t| format!("X-Loadn-Token: {t}\r\n"))
+        .unwrap_or_default();
+    write!(s, "GET {path} HTTP/1.1\r\nHost: {host}:{port}\r\n{auth}Connection: close\r\n\r\n")?;
     let mut buf = Vec::new();
     s.read_to_end(&mut buf)?;
     let text = String::from_utf8_lossy(&buf);
@@ -51,7 +60,7 @@ mod tests {
             let _ = write!(s, "HTTP/1.1 200 OK\r\nContent-Length: 29\r\n\r\n{{\"release\":{{\"version\":\"v1\"}}}}X");
             let _ = s.shutdown(std::net::Shutdown::Both);
         });
-        let v = get_json("127.0.0.1", port, "/", Duration::from_secs(3)).unwrap();
+        let v = get_json("127.0.0.1", port, "/", Duration::from_secs(3), None).unwrap();
         assert_eq!(v["release"]["version"], "v1");
     }
 }
