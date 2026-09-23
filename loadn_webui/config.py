@@ -138,7 +138,9 @@ class SecurityConfig:
         "api.anthropic.com", "api.bochaai.com", "open.bigmodel.cn",
         "registry.npmjs.org", "pypi.org",
         "ark.cn-beijing.volces.com", "2captcha.com", "capsolver.com",
-        "opencode.ai", "llm-gw.internal"])
+        "opencode.ai", "llm-gw.internal",
+        "github.com", "githubusercontent.com",
+        "arxiv.org"])   # 后缀匹配：export.arxiv.org（API/PDF）一并覆盖
     egress_mode: str = "enforce"          # enforce | warn
     # SSRF 内网敏感域（fetch_page 等宿主中介抓取的禁入后缀清单）——私网/回环/
     # 链路本地 IP 段无条件拦截，这里只补「解析得到公网 IP 但属于平台侧通道」的域
