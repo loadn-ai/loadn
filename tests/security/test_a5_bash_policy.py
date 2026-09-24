@@ -99,9 +99,22 @@ def test_a5_3b_engine_skips_broken_source(tmp_path: Path, monkeypatch):
                          "bash_rules": [{"prefix": ["git"], "decision": "bogus"}]}}),
         encoding="utf-8")
     eng = PermissionEngine.load(tmp_path, mode="default")
-    assert eng.bash_rules == []                        # 坏源拒载
+    assert eng.bash_rules == []                        # 坏源拒载（非空转：透出已接线）
     assert "Bash:ls *" in eng.allow                    # 串规则保留
     assert eng.check("Bash", {"command": "ls -la"}).allowed
+    # 对照：合法 bash_rules 正常加载并生效（非 bashlex 首行语义）
+    (tmp_path / ".loadn").mkdir()
+    (tmp_path / ".loadn" / "settings.json").write_text(json.dumps(
+        {"permissions": {"bash_rules": [
+            {"prefix": ["cargo", ["build", "test"]], "decision": "allow",
+             "match": ["cargo build"], "not_match": ["cargo publish"]}]}}),
+        encoding="utf-8")
+    from loadn.core import trust
+    trust.admit(tmp_path)                           # 项目源过信任门（B5 语义）
+    eng2 = PermissionEngine.load(tmp_path, mode="default")
+    assert len(eng2.bash_rules) == 1
+    assert eng2.check("Bash", {"command": "cargo build --release"}).allowed
+    assert not eng2.check("Bash", {"command": "cargo publish"}).allowed
 
 
 # ---------------------------------------------------------------- A5-4

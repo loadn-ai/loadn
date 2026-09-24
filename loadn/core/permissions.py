@@ -140,20 +140,17 @@ class PermissionEngine:
                                     "阻止）[policy:degraded]", degraded=True)
         return Decision(False, "工具 Bash 需要确认（headless 无交互，已阻止）；"
                                "请换无需确认的方案或说明需要用户操作")
-        # ③ ask：acceptEdits 对文件写免问
-        if self.mode == "acceptEdits" and tool in EDIT_TOOLS:
-            return Decision(True)
-        # headless 无交互弹窗：ask 即 deny（回填提示让模型改道）
-        return Decision(False, f"工具 {tool} 需要确认（headless 无交互，已阻止）；"
-                               "请换无需确认的方案或说明需要用户操作")
 
 
 def _read_rules(path: Path) -> dict:
     try:
         data = json.loads(path.read_text(encoding="utf-8"))
         perms = (data or {}).get("permissions") or {}
-        return {"deny": [str(x) for x in perms.get("deny") or []],
-                "allow": [str(x) for x in perms.get("allow") or []]}
+        out = {"deny": [str(x) for x in perms.get("deny") or []],
+               "allow": [str(x) for x in perms.get("allow") or []]}
+        if perms.get("bash_rules") is not None:
+            out["bash_rules"] = perms["bash_rules"]      # P0-4 原样透出（解析在 load）
+        return out
     except (OSError, json.JSONDecodeError, ValueError):
         return {}
 
