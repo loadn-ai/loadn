@@ -63,7 +63,15 @@ def _backup_dir(date: str | None = None) -> Path:
 
 def cmd_backup_run(full_workspace: bool = False) -> int:
     """执行备份（手动或 cron 调用）。"""
-    dst = _backup_dir()
+    base = _backup_dir()
+    # 备份不可变纪律（T2 修）：同秒重入不得混写已有目录——restore 的
+    # 「先备份当前状态」若撞上恢复源同秒目录，会把当前（可能已损坏的）
+    # workspace rsync 进恢复源，恢复等于没恢复。已含 manifest=完成品，换名。
+    dst = base
+    for i in range(1, 100):
+        if not (dst / "manifest.json").exists():
+            break
+        dst = base.with_name(base.name + f"-{i}")
     dst.mkdir(parents=True, exist_ok=True)
     data_root = PATHS["root"]
     errors = []
