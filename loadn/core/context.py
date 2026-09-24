@@ -31,30 +31,23 @@ from loadn.constants import (
     MEMORY_TOTAL_MAX_CHARS,
 )
 
-CORE_PROMPT = """你是 loadn——一个在终端里干活的工程 agent。你通过工具调用来完成
-任务：读文件、改代码、跑命令、查资料。工作纪律：
+_PROMPTS_DIR = Path(__file__).resolve().parent.parent / "prompts"
 
-- 动手前先看：改任何文件前先 Read 它；不确定目录结构先 Bash ls 或 Glob。
-- 小步快跑：一次工具调用做一件事；改动可验证就立刻验证（跑测试/编译/执行）。
-- 长命令必后台：预计超过 1 分钟的命令（编译/训练/大批量安装/长下载）用 Bash
-  的 run_in_background 丢后台；忘了也没关系——前台命令跑满 60s 会被
-  自动转后台并返回 task_id 与输出文件。转后台后**先继续干下一步能做的事**，
-  稍后用 tail 收结果，不要原地空转轮询。
-- 编译必并行：make/编译/大安装一律带 -j$(nproc)（容器限核也无害），串行
-  编译是白白烧时间。
-- 错误自查：工具报错时先读错误信息自救（这是正常的反馈循环），连续 3 次同
-  参数调用无进展就换策略或向用户汇报阻塞。
-- 不侦查测试：发现运行时行为与源码不符（mock/monkeypatch/隐藏测试）是任务
-  环境的常态，不要花时间逆向排查测试实现——按任务描述本身交付，把时间花在
-  产出物上。
-- 交互程序用 InteractiveShell：REPL/终端游戏/安装向导这类要对话的程序，用
-  InteractiveShell 的 steps 一次脚本化多轮 send/expect（transcript 一次带回），
-  不要每轮交互调一次工具，也不要用 Bash 硬等交互程序。
-- 结果导向：任务完成即收束输出；最终回复用简洁中文总结做了什么、改了哪些
-  文件、有什么未尽事项。要澄清就把问题写进回复等用户下一条消息，不要空转。
-- 安全底线：不删不可恢复的数据；不把密钥写进文件或命令行参数；外部网络
-  失败时说明情况而不是编造结果。
-"""
+
+def _core_prompt_for(model: str | None) -> str:
+    """per-model prompt 变体（P1-7，codex per-model prompt 文件同构）。
+
+    slug 归一化复用 P1-5（glm-5.3[1m]→glm-5.3）；未知 slug 回退 generic。
+    """
+    slug = (model or "").split("[", 1)[0].strip() or "generic"
+    p = _PROMPTS_DIR / "models" / f"{slug}.md"
+    if not p.exists():
+        p = _PROMPTS_DIR / "models" / "generic.md"
+    try:
+        return p.read_text(encoding="utf-8")
+    except OSError:
+        return "你是 loadn——一个在终端里干活的工程 agent。"
+CORE_PROMPT = _core_prompt_for(None)      # 兼容旧引用（伪装变换等）
 
 TOOL_NOTES = {
     "Bash": f"执行 shell 命令（前台 {BASH_AUTO_BG_S}s 自动转后台；可带 cwd/env 每调用参数，cwd 限工作区子树内）。预计 >1 分钟的命令主动 run_in_background；转后台后先干别的、稍后 tail 输出文件收结果。编译/make/安装必带 -j$(nproc)。输出超 3 万字符截断。",
@@ -94,13 +87,15 @@ def _stealth_system(core_prompt: str) -> str:
 
 
 class ContextAssembler:
-    def __init__(self, cwd: Path, tools: list[str] | None = None) -> None:
+    def __init__(self, cwd: Path, tools: list[str] | None = None,
+                 model: str | None = None) -> None:
+        self.model = model             # P1-7：per-model prompt 变体选择
         self.cwd = Path(cwd)
         self.tools = tools or []
 
     def build(self, *, with_env: bool = True) -> str:
         """组装完整 system（追加顺序即注入顺序；预算软约束超了截环境块）。"""
-        parts: list[str] = [_stealth_system(CORE_PROMPT)]
+        parts: list[str] = [_stealth_system(_core_prompt_for(self.model))]
         # 2) 工具规范段
         notes = [f"- {name}：{TOOL_NOTES[name]}" for name in self.tools
                  if name in TOOL_NOTES]

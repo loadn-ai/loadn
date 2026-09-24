@@ -50,6 +50,15 @@ def upsert_session(c: sqlite3.Connection, sid: str, *, title: str = "", cwd: str
         (sid, title, cwd, parent_id, now, now, now))
 
 
+def set_title(c: sqlite3.Connection, sid: str, title: str) -> None:
+    """P1-7 引擎侧标题写（仅当现题为空——不覆盖用户手改）。"""
+    row = c.execute("SELECT title FROM sessions WHERE id=?", (sid,)).fetchone()
+    if row and (row["title"] or "").strip():
+        return
+    c.execute("UPDATE sessions SET title=?, updated_at=? WHERE id=?",
+              (title[:80], time.time(), sid))
+
+
 def add_usage(c: sqlite3.Connection, sid: str, usage: dict, model_usage: dict | None,
               model: str) -> None:
     """turn 级 usage 累加进会话行（usage 四键 snake + per-model camel）。"""
