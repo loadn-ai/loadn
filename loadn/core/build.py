@@ -49,6 +49,14 @@ async def build_agent(cwd: Path, *, session_id: str | None = None,
     cfg = cfg or provider_config()
     disallow = set(disallow or [])
 
+    # P3-5a：loadn.ext 扩展先于一切装配加载——register_provider 进全局
+    # 注册面（build_provider 生效）、register_tool/on 后面接线
+    from loadn.core import ext as ext_mod
+    ext = ext_mod.load_extensions(cwd)
+    from loadn import providers as _prov
+    for pname, factory in ext.providers.items():
+        _prov.register_provider(pname, factory)
+
     # CC-Fingerprint 工具面整形：伪装通道隐藏 loadn 特有工具（形状出戏）
     # + 注册 CC 名单内的 stub 工具（BashOutput/KillShell 映射真实后台治理）
     from loadn.providers.fingerprint import stealth_mode
@@ -63,6 +71,14 @@ async def build_agent(cwd: Path, *, session_id: str | None = None,
         from loadn.tools.cc_stubs import cc_stub_tools
         for t in cc_stub_tools():
             tools[t.name] = t
+
+    # 扩展工具（同名=整体替换内置——pi 语义，留痕可见）
+    for name, t in ext.tools.items():
+        if name in disallow:
+            continue
+        if name in tools:
+            log.info("loadn.ext：扩展整体替换内置工具 %s", name)
+        tools[name] = t
 
     # Skill 工具（发现非空才注册——空 enum 不进装配；AUTO_REGISTER=False）
     skills = discover_skills(cwd)
@@ -119,6 +135,9 @@ async def build_agent(cwd: Path, *, session_id: str | None = None,
     # Bash 超限全文落盘位置：session scratch 目录（transcript.dir）——不落
     # cwd/logs（会改 git status → 打掉 system 缓存断点）
     core.ctx.extras["scratch_dir"] = str(session.transcript.dir)
+    # P3-5a：扩展事件 handler 挂进 HookRunner（AgentCore 已自建 runner）
+    if ext.handlers:
+        ext_mod.apply_handlers(core.hooks, ext.handlers)
     # 伪装层会话 id（metadata.user_id 的 session 后缀稳定派生；对主 provider
     # 与 planner/子代理的 provider 实例统一注入）
     if hasattr(provider, "_stealth_sid"):
