@@ -152,7 +152,8 @@ async def test_discover_http_config(tmp_path, monkeypatch):
     # broken 走 MockTransport 拦不住（URL 不同）——改为直接注 fake client
     import loadn.mcp.client as mc
 
-    def factory(name, url, headers=None, client=None, sleep=None):
+    def factory(name, url, headers=None, client=None, sleep=None,
+                oauth_conf=None):
         c, _ = _mock(_handler_json)
         return HTTPMCPConnection(name, url, headers=headers, client=c)
 

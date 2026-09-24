@@ -137,10 +137,11 @@ class HTTPMCPConnection:
 
     def __init__(self, name: str, url: str, headers: dict | None = None,
                  client: httpx.AsyncClient | None = None,
-                 sleep=asyncio.sleep) -> None:
+                 sleep=asyncio.sleep, oauth_conf: dict | None = None) -> None:
         self.name = name
         self.url = url
         self.headers = dict(headers or {})
+        self.oauth_conf = dict(oauth_conf or {})   # P1-1b：preapproved 等
         self._client = client or httpx.AsyncClient(timeout=30.0)
         self._owns_client = client is None
         self._session_id: str | None = None
@@ -152,6 +153,7 @@ class HTTPMCPConnection:
             "protocolVersion": _MCP_PROTOCOL,
             "capabilities": {},
             "clientInfo": {"name": "loadn", "version": "0.1.0"}}
+        await self._ensure_token()                    # P1-1b：缓存 token 预挂
         last: Exception | None = None
         for attempt in range(len(self.RETRY_DELAYS_S) + 1):
             if attempt:
@@ -162,6 +164,12 @@ class HTTPMCPConnection:
                 self._session_id = resp.headers.get("mcp-session-id") \
                     or self._session_id
                 break
+            except httpx.HTTPStatusError as e:
+                if e.response.status_code == 401 and attempt == 0:
+                    # 401 → OAuth 流（一次性；成功则带 Bearer 重试本轮）
+                    await self._oauth_and_retry(e.response)
+                    continue
+                last = e
             except Exception as e:                    # noqa: BLE001
                 last = e
         else:
@@ -170,6 +178,26 @@ class HTTPMCPConnection:
                 f"{len(self.RETRY_DELAYS_S)} 档后放弃）：{last}")
         await self._post("notifications/initialized", None,
                          expect_response=False)
+
+    async def _ensure_token(self) -> None:
+        """store 里的缓存 token 预挂 Authorization（有则免一次 401 往返）。"""
+        from loadn.mcp.oauth import FileTokenStore
+        tok = FileTokenStore().get(self.url)
+        if tok and "Authorization" not in self.headers:
+            self.headers["Authorization"] = f"Bearer {tok}"
+
+    async def _oauth_and_retry(self, response: httpx.Response) -> None:
+        """401 → WWW-Authenticate → OAuth 流 → 挂 Bearer（失败抛=降级跳过）。"""
+        from loadn.mcp.oauth import OAuthFlow
+        challenge = response.headers.get("www-authenticate", "")
+        if "resource_metadata" not in challenge:
+            return                      # 非 OAuth 形态 401：留给普通重试/放弃
+        preapproved = bool(self.oauth_conf.get("preapproved"))
+        flow = OAuthFlow(
+            self._client,
+            approve_fn=(lambda url: True) if preapproved else None)
+        token = await flow.obtain(self.url, challenge)
+        self.headers["Authorization"] = f"Bearer {token}"
 
     async def _post(self, method: str, params: dict | None,
                     *, expect_response: bool = True,
@@ -269,7 +297,8 @@ async def discover(cwd: Path) -> tuple[dict[str, Tool], list]:
                 continue
             conn: object = HTTPMCPConnection(
                 name, str(conf["url"]),
-                headers=dict(conf.get("headers") or {}))
+                headers=dict(conf.get("headers") or {}),
+                oauth_conf=dict(conf.get("oauth") or {}))
         elif stype == "stdio" and conf.get("command"):
             conn = StdioMCPConnection(name, conf["command"],
                                       list(conf.get("args") or []),
