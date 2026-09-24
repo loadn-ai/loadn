@@ -22,11 +22,18 @@ from loadn import constants
 
 
 class StreamJsonEmitter:
-    """AgentCore 的 emit 回调 → stdout NDJSON（flush 每行，供父进程逐行读）。"""
+    """AgentCore 的 emit 回调 → stdout NDJSON（flush 每行，供父进程逐行读）。
 
-    def __init__(self, model: str = "", tools: list[str] | None = None) -> None:
+    P2-3 协议版本化：protocol="v2"（--protocol v2）时 v2 增量事件
+    （permission_request / tool_use_failure）以原生形态外发，v1 桥
+    （manifest.v1_bridge）同时给兼容行；默认 v1——旧宿主零感知。
+    """
+
+    def __init__(self, model: str = "", tools: list[str] | None = None,
+                 protocol: str = "v1") -> None:
         self.model = model
         self.tools = tools or []
+        self.protocol = protocol
         self.session_id = ""        # CLI 在 run 前注入（result 事件字段）
         self._init_sent = False
         self._msg_n = 0
@@ -68,6 +75,20 @@ class StreamJsonEmitter:
             # 用户插话被注入（消费回执）：宿主据此把该条从待回队列摘除
             self._emit({"type": "steer", "session_id": self.session_id,
                         "text": event.get("text") or ""})
+        elif t == "permission_request":
+            # P2-3 v2：ask 语义上抛（宿主审批面/webui approve 消费）。
+            # v1 桥=None：旧宿主不识，静默不双发（判死兜底只认 result）
+            if self.protocol == "v2":
+                self._emit({"type": "permission_request",
+                            "session_id": self.session_id,
+                            **(event.get("payload") or {})})
+        elif t == "tool_use_failure":
+            # P2-3 v2：失败终态原生事件；v1 桥=user（tool_result is_error
+            # 形态照发——与 loop 既有回填一致，此处只是原生增量行）
+            if self.protocol == "v2":
+                self._emit({"type": "tool_use_failure",
+                            "session_id": self.session_id,
+                            **(event.get("payload") or {})})
         elif t == "turn":
             self.send_result(event["summary"])
 
