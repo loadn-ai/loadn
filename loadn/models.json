@@ -1,0 +1,37 @@
+{
+  "version": 1,
+  "notes": "模型目录（P1-5 数据化）：窗口/输出上限/缓存 TTL/价格单一真源。数据变更走 PR（版本化）。null=未知（消费方按保守默认处理，不得臆造）。[1m]/[2m] 变体后缀是客户端窗口覆盖标记，不在此列（见 core/models.py 变体解析）。",
+  "models": {
+    "claude-opus-4-8": {
+      "context_window": 200000,
+      "max_output": 32000,
+      "prompt_cache_ttl_s": 300
+    },
+    "claude-sonnet-4-6": {
+      "context_window": 200000,
+      "max_output": 64000,
+      "prompt_cache_ttl_s": 300
+    },
+    "claude-haiku-4-5": {
+      "context_window": 200000,
+      "max_output": 64000,
+      "prompt_cache_ttl_s": 300
+    },
+    "claude-fable-5": {
+      "context_window": 200000,
+      "max_output": 64000,
+      "prompt_cache_ttl_s": 300
+    },
+    "glm-5.3": {
+      "context_window": 200000,
+      "max_output": null,
+      "prompt_cache_ttl_s": null,
+      "notes": "GLM 网关侧窗口档位以订阅为准；TTL 未知 → P1-6 按 5min 默认+可配"
+    },
+    "glm-4.6": {
+      "context_window": 128000,
+      "max_output": null,
+      "prompt_cache_ttl_s": null
+    }
+  }
+}

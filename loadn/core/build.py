@@ -124,7 +124,8 @@ async def build_agent(cwd: Path, *, session_id: str | None = None,
                        mcp_conns=mcp_conns, supervisor=supervisor)
 
 
-_WINDOW_HINTS = (("[1m]", 1_000_000), ("[2m]", 2_000_000))
+# P1-5：窗口单一真源移至 loadn/models.json（core/models.py 读口）；
+# _WINDOW_HINTS 两点猜测 + 静默 200k 的旧形态已废
 
 
 def _planner_provider(cfg: dict):
@@ -135,9 +136,6 @@ def _planner_provider(cfg: dict):
 
 
 def _window_of(model: str) -> int:
-    """按模型名推断上下文窗口（[1m] 变体 → 1M；默认 200k）。"""
-    low = (model or "").lower()
-    for hint, n in _WINDOW_HINTS:
-        if hint in low:
-            return n
-    return 200_000
+    """上下文窗口：目录 > [Nm] 变体覆盖 > 保守 fallback 128k+warning。"""
+    from loadn.core import models as models_mod
+    return models_mod.window_of(model)
