@@ -14,7 +14,7 @@ from pathlib import Path
 
 import pytest
 
-from loadn.core import bash_policy as bp
+from loadn import bash_policy as bp
 from loadn.core.permissions import PermissionEngine
 
 pytestmark = pytest.mark.skipif(
