@@ -139,6 +139,11 @@ def _write_guarded(path: Path, key: str, new_text: str, ctx: ToolContext) -> Non
     if diff_text:
         ctx.extras.setdefault("turn_diff", []).append(
             {"path": str(path), "diff": diff_text, "hash": diff_hash})
+    try:
+        from loadn.core import autolint
+        autolint.after_edit(ctx.cwd, path, ctx)
+    except Exception:                                  # noqa: BLE001
+        pass
 
 
 def _unified_diff(path: Path, old_text: str, new_text: str) -> list[str]:
