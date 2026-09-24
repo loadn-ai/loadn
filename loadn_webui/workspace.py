@@ -6,6 +6,7 @@
 from __future__ import annotations
 
 import json
+import os
 import shutil
 import sys
 import uuid
@@ -112,6 +113,29 @@ def write_mcp_json(ws: Path, session_mcp: dict | None) -> None:
         lp.write_text(json.dumps(locks, ensure_ascii=False, indent=2))
     else:
         p.unlink(missing_ok=True)
+    write_egress_snapshot(ws)
+
+
+def write_egress_snapshot(ws: Path, mode: str | None = None) -> None:
+    """会话 egress 快照（.loadn/egress.json）——hook 门与 proxy 对齐的桥。
+
+    背景：bwrap 沙箱内 policy-check hook 读不到数据根 config.yaml（挂载
+    矩阵不含它），会拿出厂默认白名单误拦已放行的域。快照落 ws（rw 挂载
+    天然可见），hook 回退链「快照 > CONFIG」；全局白名单/档位变更时
+    rematerialize_sessions 刷新全部活跃会话（会话 params.egress 档由
+    调用方并入 mode 传入）。**只读快照**——agent 改它不生效（proxy 才是
+    真门）。
+    """
+    from .config import CONFIG
+    from .net_policy import normalized_allow
+    merged = mode if mode in ("off", "warn", "enforce") else None
+    payload = {"mode": merged or str(CONFIG.security.egress_mode),
+               "allow": normalized_allow(CONFIG.security.egress_allow),
+               "updated_at": iso()}
+    d = ws / ".loadn"
+    d.mkdir(exist_ok=True)
+    (d / "egress.json").write_text(
+        json.dumps(payload, ensure_ascii=False, indent=1), encoding="utf-8")
 
 
 def project_root_of(sid: str) -> Path | None:
@@ -169,6 +193,14 @@ def session_env(ws: Path, sid: str) -> dict:
            if CONFIG.resources.cdp_url else {}),
         **({"LOADN_PROXY": CONFIG.resources.proxy, "WORKDADDY_PROXY": CONFIG.resources.proxy}
            if CONFIG.resources.proxy else {}),
+        # 跨项目只读数据共享指路（bwrap 档 ro-bind 同路径；off 档无挂载
+        # 边界但路径本可读——env 让 agent 知道 sanctioned 的共享面在哪。
+        # resolve 与 _shared_binds 挂载点同口径——symlink 路径不悬空）
+        **({"LOADN_SHARED_RO": os.pathsep.join(
+            str(Path(p).expanduser().resolve())
+            for p in CONFIG.security.shared_readonly
+            if Path(p).expanduser().exists())}
+           if CONFIG.security.shared_readonly else {}),
     }
     return env
 

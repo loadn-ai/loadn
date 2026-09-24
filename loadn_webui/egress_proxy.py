@@ -53,9 +53,10 @@ _UPSTREAM = None
 
 
 def _allowed(host: str) -> bool:
+    from .net_policy import normalized_allow
     host = (host or "").lower().rstrip(".")
     return any(host == a or host.endswith("." + a)
-               for a in CONFIG.security.egress_allow)
+               for a in normalized_allow(CONFIG.security.egress_allow))
 
 
 _POLICY_MTIME: int | None = None

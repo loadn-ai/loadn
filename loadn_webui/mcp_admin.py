@@ -125,12 +125,15 @@ def delete_server(name: str) -> dict:
 
 
 def rematerialize_sessions() -> int:
-    """全局 servers 变化后重写所有 active 会话的 .mcp.json（全局+会话级合并）。"""
+    """全局 servers/egress 变化后重写所有 active 会话的 .mcp.json + egress 快照。"""
+    from . import params as params_mod
     from . import workspace as ws_mod
     n = 0
     seen: set[str] = set()          # 共享工作区 dedupe：同项目子任务只写一次
     with db_mod.conn() as c:
-        rows = c.execute("SELECT id, mcp_json FROM sessions WHERE status='active'").fetchall()
+        rows = c.execute(
+            "SELECT id, mcp_json, params_json FROM sessions"
+            " WHERE status='active'").fetchall()
     for r in rows:
         try:
             sess_mcp = json.loads(r["mcp_json"] or "{}")
@@ -142,6 +145,10 @@ def rematerialize_sessions() -> int:
             continue
         seen.add(key)
         ws_mod.write_mcp_json(ws, sess_mcp)
+        # egress 快照带会话档合并（hook 门对齐——沙箱内 hook 读这份）
+        ov = params_mod.load(r["params_json"])
+        ws_mod.write_egress_snapshot(
+            ws, mode=(ov.get("egress") if isinstance(ov, dict) else None))
         n += 1
     return n
 

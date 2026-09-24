@@ -723,6 +723,11 @@ async def patch_session(sid: str, body: dict):
             updates["params_json"] = params_mod.validate(body.get("params"))
         except ValueError as e:
             raise HTTPException(400, str(e)) from e
+        # egress 档变更同步进会话快照（hook 门对齐——沙箱内读快照）
+        ov = params_mod.load(updates["params_json"])
+        ws_mod.write_egress_snapshot(
+            ws_mod.ws_of(sid),
+            mode=(ov.get("egress") if isinstance(ov, dict) else None))
     if updates:
         # 纯分区标记（收藏/置顶/分类）不 touch：分区操作不该把会话顶到「最近」最上
         pure_partition = {"starred", "pinned", "category_id"}

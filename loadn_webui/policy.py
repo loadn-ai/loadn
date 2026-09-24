@@ -88,12 +88,35 @@ _WARN_GLOBS = ["*curl*|*sh*", "*wget*|*bash*", "*curl*|*bash*", "*wget*|*sh*",
 _NET_CMDS = {"curl", "wget"}
 
 
-def _egress_allow() -> set[str]:
+def _egress_policy(cwd) -> tuple[str, list[str]]:
+    """hook 侧生效策略（与 proxy._gate 同面——两道门语义对齐的落点）。
+
+    回退链：**会话快照** cwd/.loadn/egress.json（平台物化，含会话
+    params.egress 合并档——bwrap 沙箱内 hook 读不到数据根 config.yaml，
+    快照在 ws 里随 rw 挂载天然可见）> 进程内 CONFIG（直跑/快照缺席）。
+    白名单过统一归一化（带 scheme/端口/通配符的手编条目不再永不匹配）。
+    """
+    import json as _json
+
     from .config import CONFIG
-    return {h.lower() for h in (CONFIG.security.egress_allow or [])}
+    from .net_policy import normalized_allow
+    snap = Path(cwd) / ".loadn" / "egress.json"
+    try:
+        data = _json.loads(snap.read_text(encoding="utf-8"))
+        mode = str(data.get("mode") or CONFIG.security.egress_mode)
+        if mode not in ("off", "warn", "enforce"):
+            mode = CONFIG.security.egress_mode
+        allow = normalized_allow(data.get("allow")
+                                 if isinstance(data.get("allow"), list)
+                                 else None) or normalized_allow(
+            CONFIG.security.egress_allow)
+        return mode, allow
+    except (OSError, ValueError):
+        return (str(CONFIG.security.egress_mode),
+                normalized_allow(CONFIG.security.egress_allow))
 
 
-def _host_allowed(url: str, allow: set[str]) -> bool:
+def _host_allowed(url: str, allow) -> bool:
     try:
         host = (urlsplit(url).hostname or "").lower()
     except ValueError:
@@ -188,7 +211,10 @@ def check_command(cmd: str, *, source: str = "cli") -> Decision:
         _audit_decision(d, cmd, source)
         return d
 
-    allow = _egress_allow()
+    # L1 网络门与 proxy._gate 同面（两道门语义对齐）：off/warn 档不在这里
+    # 拦网络命令——warn 由 proxy 层记事件放行，off 全放；只有 enforce 才
+    # 在命令级预检（agent 提前拿到可读拒绝文案自救，省一次执行）
+    egress_mode, allow = _egress_policy(Path.cwd())
     for words in _iter_command_words(trees[0] if trees else None):
         if not words:
             continue
@@ -199,7 +225,7 @@ def check_command(cmd: str, *, source: str = "cli") -> Decision:
             _audit_decision(d, cmd, source)
             return d
         # L1 网络类：目标域 ∈ egress.allow
-        if name in _NET_CMDS:
+        if name in _NET_CMDS and egress_mode == "enforce":
             urls = [w for w in words[1:]
                     if w.startswith(("http://", "https://")) or
                     (not w.startswith("-") and "." in w and "/" in w)]
@@ -356,13 +382,15 @@ def cli_gateway(argv_words: list[str], subcommand: str) -> Decision:
         return d
     if subcommand == "browser":
         urls = [w for w in argv_words if w.startswith(("http://", "https://"))]
-        allow = _egress_allow()
-        for u in urls:
-            if not _host_allowed(u, allow):
-                d = Decision(ACTION_BLOCK, f"{subcommand} 目标域不在白名单: {u}",
-                             matched=u)
-                _audit_decision(d, sig, "cli-gateway")
-                return d
+        egress_mode, allow = _egress_policy(Path.cwd())
+        if egress_mode == "enforce":
+            for u in urls:
+                if not _host_allowed(u, allow):
+                    d = Decision(ACTION_BLOCK,
+                                 f"{subcommand} 目标域不在白名单: {u}",
+                                 matched=u)
+                    _audit_decision(d, sig, "cli-gateway")
+                    return d
     if subcommand in CONFIG.security.irreversible_tools:
         # W1-2 approvals 落地前的占位告警（fail-closed 版随 approvals 上线）
         audit("permission_decision",
