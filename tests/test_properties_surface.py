@@ -58,13 +58,14 @@ async def test_mcp_session_disable_sentinel(client, monkeypatch, tmp_path):
         sid = r.json()["session"]["id"]
         ws = ws_mod.ws_of(sid)
         assert set(json.loads(
-            (ws / ".mcp.json").read_text())["mcpServers"]) == {"global-a", "global-b"}
+            (ws / ".mcp.json").read_text())["mcpServers"]) == {
+                "global-a", "global-b", "browser"}   # browser=平台 CUA 注入（P2-5）
 
         # 哨兵 false = 本会话禁用该全局 server
         r = await client.patch(f"/api/sessions/{sid}", json={"mcp": {"global-b": False}})
         assert r.status_code == 200
         merged = json.loads((ws / ".mcp.json").read_text())["mcpServers"]
-        assert set(merged) == {"global-a"}
+        assert set(merged) == {"global-a", "browser"}   # CUA 注入常驻
         # DB 侧哨兵原样保留（三态还原依据）
         d = (await client.get(f"/api/sessions/{sid}")).json()
         assert json.loads(d["mcp_json"]) == {"global-b": False}
@@ -72,13 +73,13 @@ async def test_mcp_session_disable_sentinel(client, monkeypatch, tmp_path):
         # 全局 server 变更触发的 rematerialize 走同一合并——哨兵语义保持
         assert mcp_admin.rematerialize_sessions() >= 1
         merged = json.loads((ws / ".mcp.json").read_text())["mcpServers"]
-        assert set(merged) == {"global-a"}
+        assert set(merged) == {"global-a", "browser"}   # CUA 注入常驻
 
         # 删键（mcp 覆盖清空）恢复全局
         r = await client.patch(f"/api/sessions/{sid}", json={"mcp": {}})
         assert r.status_code == 200
         merged = json.loads((ws / ".mcp.json").read_text())["mcpServers"]
-        assert set(merged) == {"global-a", "global-b"}
+        assert set(merged) == {"global-a", "global-b", "browser"}
     finally:
         # 还原全局配置并重物化，别把 monkeypatch 的假 server 留在共享工作区树
         CONFIG.mcp.servers = real_servers

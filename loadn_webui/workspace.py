@@ -70,6 +70,12 @@ def write_mcp_json(ws: Path, session_mcp: dict | None) -> None:
     # 切换）——从合并结果剔除。真实 server 配置恒为 truthy dict，不会误伤
     for name in [k for k, v in merged.items() if v is False]:
         del merged[name]
+    # P2-5：浏览器 CUA（平台侧 MCP server 注入——引擎零改动拿到 browser.*）
+    if "browser" not in merged and CONFIG.resources.cdp_url:
+        merged["browser"] = {
+            "command": str(Path(sys.executable).parent / "loadn-web"),
+            "args": ["_browser-mcp"],
+        }
     p = ws / ".mcp.json"
     if merged:
         p.write_text(json.dumps({"mcpServers": merged}, ensure_ascii=False, indent=2))

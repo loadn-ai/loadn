@@ -41,6 +41,8 @@ ACTION_TYPES = {
     # 执行侧规则化（P0-4b）：批准 = 把 token 前缀规则写进会话工作区
     # .loadn/policy.json（下轮生效，同类命令不再 ask）
     "bash_allow": "放行 Bash 命令规则",
+    # 浏览器侧（P2-5）：公网域首次 browser.open 的确认门
+    "browser_open": "浏览器打开外部域",
 }
 
 
@@ -63,6 +65,8 @@ def _render_summary(action_type: str, params: dict) -> str:
         note = (params.get("justification") or "")[:60]
         return (f"放行命令规则：{' '.join(str(x) for x in prefix) or '?'}"
                 + (f"（{note}）" if note else ""))
+    if action_type == "browser_open":
+        return f"浏览器打开外部域：{params.get('host', '?')}"
     if action_type == "egress":
         ttl = int(params.get("ttl_s") or 7200)
         h, m = ttl // 3600, (ttl % 3600) // 60
