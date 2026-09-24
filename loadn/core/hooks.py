@@ -29,8 +29,11 @@ class HookOutcome:
 
 class HookRunner:
     def __init__(self, hooks: dict[str, list[str]] | None = None) -> None:
-        # {event: [command, …]}
+        # {event: [command, …]}（外部命令钩子）
         self.hooks = hooks or {}
+        # P3-5a 总线化：进程内扩展 handler（loadn.ext 的 on()——与外部
+        # 命令钩子同语义同优先面；fire() 里先于外部命令跑）
+        self.handlers: dict[str, list] = {}
 
     @classmethod
     def load(cls, cwd: Path) -> HookRunner:
@@ -62,11 +65,28 @@ class HookRunner:
         return cls(merged)
 
     def has(self, event: str) -> bool:
-        return bool(self.hooks.get(event))
+        return bool(self.hooks.get(event) or self.handlers.get(event))
 
     async def fire(self, event: str, payload: dict) -> HookOutcome:
-        """顺序跑该事件的全部钩子；首个 block 即短路返回。"""
+        """顺序跑该事件的全部钩子；首个 block 即短路返回。
+
+        P3-5a：进程内扩展 handler 先于外部命令（同语义——返回
+        {"decision":"block","reason":…} 阻断；{"input":…}/{"output":…}
+        覆盖，与命令钩子的 exit 2 / stdout JSON 完全同构）。
+        """
+        from .ext import dispatch
         out = HookOutcome()
+        res = await dispatch(self.handlers.get(event), payload)
+        if res is not None:
+            if res.get("decision") == "block":
+                out.blocked = True
+                out.block_reason = str(res.get("reason")
+                                        or "extension blocked")[:2000]
+                return out
+            if isinstance(res.get("input"), dict):
+                out.input_override = res["input"]
+            if isinstance(res.get("output"), str):
+                out.output_override = res["output"]
         for command in self.hooks.get(event) or []:
             try:
                 res = await _run_hook(command, payload)

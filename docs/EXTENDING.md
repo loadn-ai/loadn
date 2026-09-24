@@ -13,6 +13,7 @@
 | 角色档案 | profiles/*.yaml | §6 |
 | 新会话的工作区模板 | prompts/ | §7 |
 | 端口/沙箱/白名单/通知 | config.yaml | §8 |
+| **代码级扩展（工具/事件/provider）** | **loadn.ext 协议** | **§9** |
 
 ## 1. 加一个引擎（平台侧最大的扩展缝）
 
@@ -106,6 +107,52 @@ egress_allow 白名单）、`resources`（外部资源端点与密钥）、`noti
 （bark/Server酱/Telegram 运维通知）、`pricing`（成本页价目覆盖）。
 字段语义见 `loadn_webui/config.py` 各 dataclass 的注释（默认值均为
 通用值；个人部署的私有端点写在自己的 config.yaml 里，不回传上游）。
+
+## 9. 代码级扩展：`loadn.ext` 协议（P3-5）
+
+上面八条缝都是数据/声明式；要写代码的扩展收敛为**一个入口**——
+扩展 = 一个 Python 模块，暴露 `load(ext)`，`ext` 面三个方法：
+
+```python
+# my_ext.py —— 三个方法按需用，全可选
+def load(ext):
+    # ① 事件订阅（closed 事件集：PreToolUse/PostToolUse/Stop/
+    #    SessionStart/SessionEnd/TurnEnd——与 hooks 同面）
+    ext.on("PreToolUse", lambda p: (
+        {"decision": "block", "reason": "…"}     # 阻断（回填给模型）
+        if p["tool"] == "Bash" and "rm -rf /" in p["input"].get("command", "")
+        else None))                              # None=不干预
+    # handler 也可返回 {"input": {...}} / {"output": "…"} 改写
+    #（PreToolUse 改入参 / PostToolUse 改输出——与外部命令钩子的
+    # stdout JSON 完全同语义）；async handler 原生支持。
+
+    # ② 注册工具（Tool 实例：name/description/input_schema/execute）
+    ext.register_tool(MyTool())
+    # 与内置工具**同名 = 整体替换**（不改编擎代码改内置行为，
+    # 替换有 log 留痕）——见 examples/replace_grep.py
+
+    # ③ 注册 provider 工厂（factory(cfg) -> Provider）
+    ext.register_provider("mine", lambda cfg: MyProvider(cfg))
+    # 生效：env LOADN_PROVIDER=mine 或 config.json 的 provider 字段
+```
+
+**放置位置**（信任面同 hooks——这是任意代码执行面）：
+- 全局：`$LOADN_HOME/extensions/*.py`
+- 项目级：`.loadn/extensions/*.py`（P0-2 信任门——clone 的仓库不得自带；
+  未过门整目录跳过并告警）
+- overlay：env `LOADN_EXT_EXTRA`（os.pathsep 分隔多目录；私有扩展与
+  开源部署分离，同 `LOADN_SKILLS_EXTRA` 哲学）
+
+加载顺序 = 全局 < 项目级 < overlay（后加载同名工具覆盖先加载）。
+单个扩展加载失败只告警不炸会话（同 MCP discover 纪律）。
+
+**首批示例 10 个**（`examples/`，全部可运行、CI 冒烟
+`tests/test_ext.py::test_all_examples_load_and_smoke`）：
+hello_tool（新工具）、replace_grep（同名替换内置）、permission_gate
+（PreToolUse block）、audit_log（PostToolUse JSONL 留痕）、
+block_secret_write（私钥落盘门）、uppercase_read（输出改写）、
+turn_notifier（Stop 观察）、todo_guard（入参校验）、custom_provider
+（provider 工厂）、git_checkpoint（写路径检查点）。
 
 ## 贡献回上游
 

@@ -140,9 +140,15 @@ def provider_config() -> dict:
 
 
 def build_provider(cfg: dict | None = None):
-    """按配置实例化 provider（fake 走 env 控制文件；anthropic/openai 惰性导入）。"""
+    """按配置实例化 provider（fake 走 env 控制文件；anthropic/openai 惰性导入）。
+
+    P3-5a：loadn.ext 的 register_provider 注册的工厂优先（EXTRA_PROVIDERS
+    ——env ``LOADN_PROVIDER=<name>`` 或 config.json ``provider`` 字段生效）。
+    """
     cfg = cfg or provider_config()
     kind = cfg.get("provider") or "anthropic"
+    if kind in EXTRA_PROVIDERS:
+        return EXTRA_PROVIDERS[kind](cfg)
     if kind == "fake":
         from loadn.providers.fake import FakeProvider
         return FakeProvider()
@@ -151,3 +157,15 @@ def build_provider(cfg: dict | None = None):
         return OpenAICompatProvider(cfg)
     from loadn.providers.anthropic import AnthropicProvider
     return AnthropicProvider(cfg)
+
+
+# P3-5a：loadn.ext register_provider 的注册面（进程内注册——工厂吃 cfg
+# 返回 Provider 实例；同名后注册覆盖先注册）
+EXTRA_PROVIDERS: dict[str, callable] = {}
+
+
+def register_provider(name: str, factory) -> None:
+    """ext 模块加载路径的便捷注册口（ExtensionAPI.register_provider 同宿主）。"""
+    if not name or not callable(factory):
+        raise ValueError("register_provider 需要非空 name 与 callable factory")
+    EXTRA_PROVIDERS[name] = factory
