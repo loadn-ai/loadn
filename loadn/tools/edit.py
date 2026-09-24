@@ -123,11 +123,22 @@ def _apply_one(text: str, old: str, new: str, replace_all: bool, *,
 
 
 def _write_guarded(path: Path, key: str, new_text: str, ctx: ToolContext) -> None:
-    """写前 mtime 复查（堵 Read→写窗口内外部改动）后落盘并刷新登记。"""
+    """写前 mtime 复查（堵 Read→写窗口内外部改动）后落盘并刷新登记。
+
+    P3-1：写前快照 + 写后 unified diff 旁挂 ctx.extras['turn_diff']
+    （list，工具结果尾部拼接；预算/截断语义见 core/turn_diff.py）。
+    """
     if path.stat().st_mtime != ctx.files_touched[key]:
         raise ToolError(f"文件在编辑期间被外部变更，已放弃写入（请重读重试）：{path}")
-    path.write_bytes(new_text.encode("utf-8"))
+    from loadn.core import turn_diff as td
+    before = td.snapshot(path)
+    payload = new_text.encode("utf-8")
+    path.write_bytes(payload)
     ctx.files_touched[key] = path.stat().st_mtime
+    diff_text, diff_hash = td.compute(path, before, payload)
+    if diff_text:
+        ctx.extras.setdefault("turn_diff", []).append(
+            {"path": str(path), "diff": diff_text, "hash": diff_hash})
 
 
 def _unified_diff(path: Path, old_text: str, new_text: str) -> list[str]:
