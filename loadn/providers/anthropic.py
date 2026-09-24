@@ -90,6 +90,11 @@ class AnthropicProvider:
         extra = cfg.get("extra") or {}
         self.extra = extra
         self.model = api_model_name(cfg.get("model") or "glm-5.3")
+        # P1-6 cache-warm 可重放性：thinking budget 派生自 max_tokens——
+        # 重放压 max_tokens 会改 budget → 缓存键变 → 保温无意义（pi
+        # isReplayable 同构）
+        self.replayable_for_cache = self._thinking_budget(
+            int(self.extra.get("max_tokens", 4096))) is None
         # 缓存断点状态：_cache_enabled 总闸（disable_prompt_cache 可关）；
         # _system_blocks_ok 在网关 400 点名 system 时翻假（降级为字符串 system）
         self._cache_enabled = not bool(extra.get("disable_prompt_cache"))
@@ -135,11 +140,15 @@ class AnthropicProvider:
     async def chat(self, messages: list[Message], tools: list[ToolDef],
                    system: str, *, stream: bool = True,
                    model: str | None = None,
-                   use_cache: bool = True) -> AsyncIterator[Chunk]:
+                   use_cache: bool = True,
+                   max_output_override: int | None = None
+                   ) -> AsyncIterator[Chunk]:
         """一轮 assistant 响应的完整 chunk 流（以 stop/error 收尾，或抛流中断）。
 
         model：per-call 覆盖（摘要/planner 用小模型场景）；None = 实例默认。
         use_cache：False = 辅助请求不打缓存断点（不污染主会话缓存路由）。
+        max_output_override：P1-6 cache-warm 的单 token 重放——只压
+        max_tokens，其余请求体逐字节一致（断点命中前提）。
         """
         use_cache = use_cache and self._cache_enabled
         if self._stealth:
@@ -148,14 +157,16 @@ class AnthropicProvider:
 
         async def _once() -> AsyncIterator[Chunk]:
             if stream:
-                async for chunk in self._stream_once(messages, tools, system,
-                                                     model=model,
-                                                     use_cache=use_cache):
+                async for chunk in self._stream_once(
+                        messages, tools, system, model=model,
+                        use_cache=use_cache,
+                        max_output_override=max_output_override):
                     yield chunk
             else:
-                for chunk in await self._nonstream_once(messages, tools, system,
-                                                        model=model,
-                                                        use_cache=use_cache):
+                for chunk in await self._nonstream_once(
+                        messages, tools, system, model=model,
+                        use_cache=use_cache,
+                        max_output_override=max_output_override):
                     yield chunk
 
         try:
@@ -200,7 +211,8 @@ class AnthropicProvider:
     # ------------------------------------------------------------ 请求体
     def _body(self, messages: list[Message], tools: list[ToolDef],
               system: str, *, stream: bool, model: str | None = None,
-              use_cache: bool = True) -> dict:
+              use_cache: bool = True,
+              max_output_override: int | None = None) -> dict:
         model_name = api_model_name(model) if model else self.model
         if self._stealth and "max_tokens" not in self.extra:
             # 伪装档位：max_tokens 用 CC 习惯值（thinking 预算校验同此基数）
@@ -208,6 +220,8 @@ class AnthropicProvider:
             max_tokens = CC_PROFILE.max_tokens_for(model_name)
         else:
             max_tokens = int(self.extra.get("max_tokens", MODEL_MAX_OUTPUT_TOKENS))
+        if max_output_override is not None:      # 重放只压输出，body 其余不动
+            max_tokens = max_output_override
         body: dict = {
             "model": api_model_name(model) if model else self.model,
             "max_tokens": max_tokens,
@@ -286,9 +300,11 @@ class AnthropicProvider:
     # ------------------------------------------------------------ 流式
     async def _stream_once(self, messages: list[Message], tools: list[ToolDef],
                            system: str, *, model: str | None = None,
-                           use_cache: bool = True) -> AsyncIterator[Chunk]:
+                           use_cache: bool = True,
+                      max_output_override: int | None = None) -> AsyncIterator[Chunk]:
         body = self._body(messages, tools, system, stream=True, model=model,
-                          use_cache=use_cache)
+                          use_cache=use_cache,
+                          max_output_override=max_output_override)
         got_content = False
         terminal = False
         usage: dict = {}
@@ -390,13 +406,15 @@ class AnthropicProvider:
     # ------------------------------------------------------------ 非流式
     async def _nonstream_once(self, messages: list[Message], tools: list[ToolDef],
                               system: str, *, model: str | None = None,
-                              use_cache: bool = True) -> list[Chunk]:
+                              use_cache: bool = True,
+                         max_output_override: int | None = None) -> list[Chunk]:
         """单次 JSON 响应 → 一次性发全量 chunks + stop（与流式同形态）。
 
         伪装通道不出现（chat() 强制流式）；保留为非伪装通道的原始路径。
         """
         body = self._body(messages, tools, system, stream=False, model=model,
-                          use_cache=use_cache)
+                          use_cache=use_cache,
+                          max_output_override=max_output_override)
         resp = await self._client.post(self._url, json=body)
         if resp.status_code != 200:
             if resp.status_code == 400:

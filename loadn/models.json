@@ -1,21 +1,27 @@
 {
   "version": 1,
-  "notes": "模型目录（P1-5 数据化）：窗口/输出上限/缓存 TTL/价格单一真源。数据变更走 PR（版本化）。null=未知（消费方按保守默认处理，不得臆造）。[1m]/[2m] 变体后缀是客户端窗口覆盖标记，不在此列（见 core/models.py 变体解析）。",
+  "notes": "模型目录（P1-5 数据化）：窗口/输出上限/缓存 TTL/价格单一真源。数据变更走 PR（版本化）。null=未知（消费方按保守默认处理，不得臆造）。[1m]/[2m] 变体后缀是客户端窗口覆盖标记，不在此列（见 core/models.py 变体解析）。 价格为公开列表价 $/M（cache read=0.1x、write=1.25x 乘数在 cache_warmer 常量）；null=未知（保温经济学不可算→不发）。",
   "models": {
     "claude-opus-4-8": {
       "context_window": 200000,
       "max_output": 32000,
-      "prompt_cache_ttl_s": 300
+      "prompt_cache_ttl_s": 300,
+      "input_price_per_m": 15.0,
+      "output_price_per_m": 75.0
     },
     "claude-sonnet-4-6": {
       "context_window": 200000,
       "max_output": 64000,
-      "prompt_cache_ttl_s": 300
+      "prompt_cache_ttl_s": 300,
+      "input_price_per_m": 3.0,
+      "output_price_per_m": 15.0
     },
     "claude-haiku-4-5": {
       "context_window": 200000,
       "max_output": 64000,
-      "prompt_cache_ttl_s": 300
+      "prompt_cache_ttl_s": 300,
+      "input_price_per_m": 1.0,
+      "output_price_per_m": 5.0
     },
     "claude-fable-5": {
       "context_window": 200000,

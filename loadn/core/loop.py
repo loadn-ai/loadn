@@ -246,6 +246,11 @@ class AgentCore:
         self.loop_guard = LoopGuard()
         self._grind_nudges = 0        # 完工自检已续战次数（GRIND_MAX_NUDGES 封顶）
         self._tool_execs = 0          # 累计工具执行数（口头交付检测）
+        # P1-6 cache-warm：空闲期保温（长命进程语义；详见 core/cache_warmer）
+        self._warmer = None
+        self._warmer_task = None
+        self._last_replay = None      # 上一轮精确请求的闭包（字节一致重放）
+        self._last_input_tokens = 0
         self._gate_tool_execs = -1    # 上次关卡评估时的工具数（-1=尚未关卡过）
         # 随时插话（steering）：宿主把用户插话追加到 LOADN_STEER_FILE，
         # 主循环每轮 LLM 调用前轮询——运行中消息不等排队、下一轮即生效。
@@ -316,6 +321,7 @@ class AgentCore:
                        stop: StopFlag | None = None,
                        stream_events: bool = False) -> TurnSummary:
         t0 = time.time()
+        self._warmer_bump()               # P1-6：新 turn 即失效在途保温
         summary = TurnSummary()
         emit = emit or _noop_emit
 
@@ -387,10 +393,11 @@ class AgentCore:
                 overflowed = False
                 while True:
                     try:
+                        _tools_def = [t.def_() for t in self.tools.values()]
+                        _msgs_snap = list(messages)      # P1-6 重放快照
+                        _sys_snap = system
                         async for c in self.provider.chat(
-                                messages,
-                                [t.def_() for t in self.tools.values()],
-                                system):
+                                messages, _tools_def, system):
                             asm.feed(c)
                             if synth is not None:
                                 for ev in synth.feed(c):
@@ -410,6 +417,7 @@ class AgentCore:
                             # 不该挤掉两次流重试额度）
                             compress_used = True
                             try:
+                                self._warmer_bump()    # 压缩改写 messages：旧断点失效
                                 messages, did = await self.compactor.compact(
                                     messages,
                                     context_window=self.settings.context_window,
@@ -457,6 +465,14 @@ class AgentCore:
                                     for k in ("input_tokens",
                                               "cache_read_input_tokens",
                                               "cache_creation_input_tokens")}
+                # P1-6：捕获本轮精确请求（messages 快照在 chat 前），供空闲重放
+                self._last_replay = (
+                    lambda m=list(_msgs_snap), tl=list(_tools_def), sy=_sys_snap:
+                    self.provider.chat(m, tl, sy, max_output_override=1))
+                self._last_input_tokens = (
+                    last_input_usage.get("input_tokens", 0)
+                    + last_input_usage.get("cache_read_input_tokens", 0)
+                    + last_input_usage.get("cache_creation_input_tokens", 0))
 
                 msg = Message(role="assistant", content=blocks)
                 messages.append(msg)
@@ -548,6 +564,7 @@ class AgentCore:
 
                 # ⑥ 压缩复查（工具批后上下文增长点；last-call 口径防误触发）
                 if self.compactor is not None and not self.settings.no_compact:
+                    self._warmer_bump()        # 压缩改写 messages：旧断点失效
                     messages, did = await self.compactor.maybe_compact(
                         messages, last_input_usage,
                         self.settings.context_window)
@@ -604,6 +621,7 @@ class AgentCore:
                 "duration_ms": int(summary.duration_s * 1000)}, fsync=True)
             self.session.record_usage(summary)
             await _fire(emit, {"type": "turn", "summary": summary})
+            self._warmer_schedule()          # P1-6：空闲保温（长命进程）
         return summary
 
     # ------------------------------------------------------------ 完工自检
@@ -778,6 +796,42 @@ class AgentCore:
                                    "todos": [t.to_dict() for t in state.todos]})
         return blk, name
 
+    # ------------------------------------------------------------ P1-6 cache-warm
+    def _warmer_bump(self) -> None:
+        """失效在途保温（新 turn / 压缩改写 messages——旧断点已无意义）。"""
+        if self._warmer is not None:
+            self._warmer.bump()
+        if self._warmer_task is not None:
+            self._warmer_task.cancel()
+            self._warmer_task = None
+
+    def _warmer_schedule(self) -> None:
+        """turn 成功后挂起空闲保温任务（长命进程：REPL / P2-1 daemon）。"""
+        from loadn.core.cache_warmer import CacheWarmer, warm_enabled
+        self._warmer_bump()
+        if not (warm_enabled() and self._last_replay
+                and self._last_input_tokens > 0):
+            return
+        model = getattr(self.provider, "model_name", "") or ""
+        if not getattr(self.provider, "replayable_for_cache", True):
+            return                      # thinking-budget 模型：重放键变，不保温
+        self._warmer = CacheWarmer(
+            replay_fn=self._last_replay, model=model,
+            record_usage=self._record_warm_usage)
+        self._warmer_task = asyncio.get_event_loop().create_task(
+            self._warmer.run_idle(self._last_input_tokens))
+
+    def _record_warm_usage(self, usage: dict) -> None:
+        """保温用量入账（cache_warm 分类标记；索引库 json 原样落）。"""
+        model = getattr(self.provider, "model_name", "") or ""
+        summary = TurnSummary()
+        summary.usage = dict(usage)
+        summary.model_usage = {model: dict(usage)}
+        try:
+            self.session.record_usage(summary)
+        except Exception:                                  # noqa: BLE001
+            pass
+
     # ------------------------------------------------------------ 记账
     @staticmethod
     def _merge_usage(summary: TurnSummary, asm: ChunkAssembler) -> None:
@@ -809,3 +863,4 @@ def _inline(content) -> str:
     if isinstance(content, str):
         return content[:TOOL_RESULT_INLINE_MAX]
     return json.dumps(content, ensure_ascii=False)[:TOOL_RESULT_INLINE_MAX]
+
