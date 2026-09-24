@@ -22,7 +22,11 @@ async def run_repl(bundle, emitter, fmt: str, stop) -> int:
         if line in ("/exit", "/quit"):
             return 0
         if line == "/help":
-            print("/exit /resume <sid> /fork /compact /todos")
+            print("/exit /resume <sid> /fork /compact /todos /undo")
+            continue
+        if line == "/undo":
+            from loadn.core import autocommit as ac
+            print(ac.undo(core.cwd, core.session.session_id))
             continue
         if line == "/todos":
             for t in core.session.state.todos:

@@ -651,6 +651,10 @@ class AgentCore:
                               for d in diffs]} if diffs else {})},
                 fsync=True)
             self.session.record_usage(summary)
+            # P3-10：auto-commit 影子分支（off 默认零副作用）
+            from . import autocommit as ac
+            ac.commit_turn(self.cwd, self.session.session_id,
+                           summary.num_turns)
             await _fire(emit, {"type": "turn", "summary": summary})
             self._warmer_schedule()          # P1-6：空闲保温（长命进程）
             self._memory_extract()          # P1-4b：后台记忆抽取（同步快路径）
