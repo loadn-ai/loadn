@@ -201,6 +201,14 @@ def session_env(ws: Path, sid: str) -> dict:
             for p in CONFIG.security.shared_readonly
             if Path(p).expanduser().exists())}
            if CONFIG.security.shared_readonly else {}),
+        # 宿主机资源桥接全量指路（path:mode；ro=只读共享、rw=可写授权、
+        # dev=设备节点）。与 _shared_binds 挂载同源——agent 据此知道哪些
+        # 宿主资源是被显式授权可用的
+        **({"LOADN_HOST_BRIDGES": os.pathsep.join(
+            f"{Path(b['path']).expanduser()}:{b.get('mode', 'ro')}"
+            for b in CONFIG.security.resource_bridges
+            if str(b.get("path") or "").strip())}
+           if CONFIG.security.resource_bridges else {}),
     }
     return env
 
@@ -307,8 +315,11 @@ def _init_ledger_files(ws: Path, sid: str, title: str, prof: profile_mod.Profile
 
 
 def _plant_canary(ws: Path, sid: str) -> None:
-    # W5.5：会话 canary 蜜罐（泄露指示物；命中即熔断）
+    # W5.5：会话 canary 蜜罐（泄露指示物；命中即熔断）。
+    # security.canary_enabled=False → 不布放（检测面同步关闭，fail-soft）
     try:
+        if not CONFIG.security.canary_enabled:
+            return
         from . import canary as _canary
         if not (ws / "notes" / ".canary_tokens.md").exists():
             _canary.plant(sid, ws=ws)

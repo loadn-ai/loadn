@@ -139,9 +139,28 @@ SANDBOX_TIERS = ("off", "bwrap", "vm-bwrap", "seatbelt", "appcontainer", "remote
 
 @dataclass
 class SecurityConfig:
-    """W1 确定性权限平面（v1.1 §6.2）。策略在模型之外；出厂即生效。"""
-    # L0 红线正则（覆盖=追加；文本+AST 双拦）
+    """W1 确定性权限平面（v1.1 §6.2）。策略在模型之外；出厂即生效。
+
+    v0.6.5 起安全机制全量显式可调（追加语义 fail-closed——内置防护表
+    永不因配置清空；笔误拒绝启动而非静默降级）。**宪法红线不可配置项**：
+    审计链（零开关）、审批确认码门本体（码/hash/single-use/TTL 校验）、
+    信任门、SSRF 私网段、skills 供应链锁、bash 解析失败=block。
+    """
+    # L0 红线追加正则（内置表之外**追加**；文本+AST 双拦；坏正则拒绝启动）
     hard_blocklist_l0: list = field(default_factory=list)
+    # L0 红线追加命令名（如内部危险二进制）
+    l0_extra_cmd_names: list = field(default_factory=list)
+    # 网络类命令集（命令级白名单门管到哪些下载器；默认 curl/wget——
+    # 收窄=漏拦其他下载器，放宽如 aria2c/axel 自担）
+    net_cmds: list = field(default_factory=lambda: ["curl", "wget"])
+    # glob 兜底 warn 形态追加（只 warn 不拦——低风险可调面）
+    glob_warn_patterns: list = field(default_factory=list)
+    # 敏感路径黑名单追加（内置 vault/db/audit/.ssh/.aws 等之外**追加**；
+    # Write/Edit/Bash 目标命中即拦）
+    sensitive_path_patterns: list = field(default_factory=list)
+    sensitive_abs_paths: list = field(default_factory=list)
+    # canary 蜜罐（布放+外渗检测；关=失去检测面，物理层仍在 egress enforce）
+    canary_enabled: bool = True
     # 不可逆工具（W1-2 approvals 确认码门；先网关告警）
     irreversible_tools: list = field(default_factory=lambda: [
         "mail", "sms", "wechat", "pay", "account_write", "browser_export"])
@@ -167,10 +186,10 @@ class SecurityConfig:
     # 链路本地 IP 段无条件拦截，这里只补「解析得到公网 IP 但属于平台侧通道」的域
     ssrf_deny_hosts: list = field(default_factory=lambda: [
         "llm-gw.internal", "sms.woldy.net"])
+    # 审批卡默认 TTL 秒（60-86400；确认码一次性+过期 fail-closed 语义不变）
     approval_ttl_s: int = 600
-    approval_cooldown_after: int = 5
     # 不可逆动作确认码门（M0 关门最终形态=enforce：skill 文档已审批化）；
-    # warn 仅作迁移期显式配置
+    # warn 仅作迁移期显式配置（枚举 fail-closed：笔误拒绝启动）
     approval_enforce: str = "enforce"
     # W2-a 执行沙箱档位（SANDBOX_TIERS；默认 off 双轨——doctor 通过+真机验证后切 bwrap）
     sandbox: str = "off"
@@ -184,6 +203,11 @@ class SecurityConfig:
     # + env $LOADN_SHARED_RO 指路（os.pathsep 分隔）。off 档无挂载边界，
     # env 仍注入（边界退化为约定——与 off 档语义一致）。写权限永不开放
     shared_readonly: list = field(default_factory=list)
+    # 宿主机资源桥接（显式授权面；每项 {path: 绝对路径, mode: ro|rw|dev}）：
+    # ro/rw=目录或文件 bind（同路径），dev=设备节点 --dev-bind（GPU render
+    # node 等）。rw=任务可写宿主该路径——显式配置即显式授权，默认空。
+    # shared_readonly 是 ro 特例（兼容保留）；env $LOADN_HOST_BRIDGES 全量指路
+    resource_bridges: list = field(default_factory=list)
 
 
 @dataclass
@@ -316,6 +340,44 @@ def load_config() -> Config:
     if not 15 <= int(cfg.security.egress_ask_wait_s or 120) <= 600:
         raise ValueError("security.egress_ask_wait_s 需为 15-600 的秒数"
                          "（config.yaml）——拒绝启动")
+    # ---- v0.6.5 安全配置面 fail-closed 校验（笔误拒绝启动，不静默降级）
+    if cfg.security.approval_enforce not in ("enforce", "warn"):
+        raise ValueError(f"security.approval_enforce="
+                         f"{cfg.security.approval_enforce!r} 非法"
+                         "（enforce | warn，config.yaml）——拒绝启动")
+    if not 60 <= int(cfg.security.approval_ttl_s or 600) <= 86400:
+        raise ValueError("security.approval_ttl_s 需为 60-86400 的秒数"
+                         "（config.yaml）——拒绝启动")
+    import re as _re
+    _LIST_FIELDS = ("hard_blocklist_l0", "l0_extra_cmd_names", "net_cmds",
+                    "glob_warn_patterns", "sensitive_path_patterns",
+                    "sensitive_abs_paths", "shared_readonly")
+    for f in _LIST_FIELDS:
+        v = getattr(cfg.security, f)
+        if v is None or not isinstance(v, list) \
+                or not all(isinstance(x, str) and x.strip() for x in v):
+            raise ValueError(f"security.{f} 需为非空字符串列表"
+                             "（config.yaml；None/非列表会静默清空防护——"
+                             "拒绝启动）")
+    for pat in cfg.security.hard_blocklist_l0:
+        try:
+            _re.compile(pat)
+        except _re.error as e:
+            raise ValueError(f"security.hard_blocklist_l0 正则非法 {pat!r}："
+                             f"{e}（config.yaml）——拒绝启动") from None
+    if not cfg.security.net_cmds:
+        raise ValueError("security.net_cmds 不能为空（命令级网络门将失效；"
+                         "要放开整个门请用 egress_mode: off|warn，config.yaml）")
+    if cfg.security.resource_bridges is None or not isinstance(
+            cfg.security.resource_bridges, list):
+        raise ValueError("security.resource_bridges 需为列表"
+                         "（config.yaml）——拒绝启动")
+    for b in cfg.security.resource_bridges:
+        if not isinstance(b, dict) or not str(b.get("path") or "").strip() \
+                or b.get("mode") not in ("ro", "rw", "dev"):
+            raise ValueError(f"security.resource_bridges 条目非法 {b!r}"
+                             "（需 {path: 绝对路径, mode: ro|rw|dev}，"
+                             "config.yaml）——拒绝启动")
     env_bin = os.environ.get("WORKDADDY_CLAUDE_BIN")
     if env_bin:
         cfg.claude.claude_bin = env_bin

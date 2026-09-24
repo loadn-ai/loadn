@@ -143,19 +143,42 @@ def _project_binds(argv: list[str], project_root: Path | None) -> list[str]:
 
 
 def _shared_binds(argv: list[str]) -> list[str]:
-    """跨项目只读数据共享（security.shared_readonly）：每个存在的绝对
-    路径同路径 ro-bind。顺序纪律同 _project_binds——先于任务 ws 挂载。
+    """宿主机资源桥接（v0.6.5 通用面）：shared_readonly（ro 特例，兼容
+    保留）+ resource_bridges（ro|rw|dev）。顺序纪律同 _project_binds——
+    先于任务 ws 挂载。
 
-    只读永不放开写；env $LOADN_SHARED_RO 同源指路（off 档挂载缺席时
-    env 仍在——off 本无边界，指路让 agent 知道去哪读）。
+    - ro/rw：目录或文件**同路径 bind**（rw=任务可写宿主该路径——显式
+      配置即显式授权，默认空）
+    - dev：设备节点 --dev-bind（GPU render node /dev/dri 等；矩阵已挂
+      --dev /dev 基座）
+    - env $LOADN_SHARED_RO（ro 子集，兼容）+ $LOADN_HOST_BRIDGES（全量
+      path:mode）同源指路（off 档挂载缺席 env 仍在——off 本无边界）
     """
     from .config import CONFIG
-    for p in CONFIG.security.shared_readonly or []:
-        q = Path(str(p)).expanduser()
+    # bridges 先录（同路径去重=bridge 语义优先），shared_readonly 兜底 ro
+    entries: list[tuple[str, str]] = []
+    for b in CONFIG.security.resource_bridges or []:
+        entries.append((str(b.get("path") or ""), str(b.get("mode") or "ro")))
+    entries += [(str(p), "ro") for p in CONFIG.security.shared_readonly or []]
+    seen: set[str] = set()
+    for raw, mode in entries:
+        if not raw.strip() or raw in seen:
+            continue                                    # 去重：bridge 优先
+        q = Path(raw).expanduser()
+        if mode == "dev":
+            if q.exists():
+                argv += ["--dev-bind", str(q), str(q)]
+                seen.add(raw)
+            else:
+                log.warning("resource_bridges 设备不存在（跳过）：%s", raw)
+            continue
         if q.is_dir() or q.is_file():
-            argv += ["--ro-bind", str(q.resolve()), str(q.resolve())]
+            flag = "--ro-bind" if mode == "ro" else "--bind"
+            argv += [flag, str(q.resolve()), str(q.resolve())]
+            seen.add(raw)
         else:
-            log.warning("shared_readonly 路径不存在（跳过挂载）：%s", p)
+            log.warning("resource_bridges/shared 路径不存在（跳过挂载）：%s",
+                        raw)
     return argv
 
 

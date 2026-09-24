@@ -129,21 +129,45 @@ egress_allow 白名单 / shared_readonly）、`resources`（外部资源端点�
 白名单条目手编容错：`https://x.com:8443/api`、`*.cdn.x.com`、大写、
 尾点都会归一化后再匹配（原文保留在 yaml，不回写）。
 
-**跨项目数据共享**（`security.shared_readonly`，绝对路径列表）：
+**跨项目数据共享与宿主机资源桥接**（`security.shared_readonly` +
+`security.resource_bridges`）：
 
 ```yaml
 security:
-  shared_readonly:
-    - /data/papers          # 其他项目/任务的数据根
-    - /mnt/datasets/common
+  shared_readonly:            # 只读数据共享（ro 特例，兼容面）
+    - /data/papers
+  resource_bridges:           # 宿主资源桥（显式授权面，默认空）
+    - path: /mnt/datasets/common
+      mode: ro                # ro=只读 bind | rw=可写授权 | dev=设备节点
+    - path: /dev/dri          # GPU render nodes（--dev-bind）
+      mode: dev
 ```
 
-- bwrap 档：每个路径**只读**挂载进沙箱（同路径 ro-bind），新任务/新项目
-  可直接 Read/Grep 这些目录；写权限永不开放
-- 引擎 env `$LOADN_SHARED_RO`（os.pathsep 分隔）指路——agent 知道
-  sanctioned 的共享面在哪（`sandbox: off` 档无挂载边界，env 指路仍在，
-  边界退化为约定，与 off 档语义一致）
+- bwrap 档：ro/rw 同路径 bind、dev 设备节点 `--dev-bind` 挂进沙箱；
+  同路径 bridge 语义优先于 shared_readonly
+- env 指路：`$LOADN_SHARED_RO`（ro 子集）+ `$LOADN_HOST_BRIDGES`
+  （全量 `path:mode`）——agent 知道哪些宿主资源被显式授权可用
 - 同项目内共享继续用项目根 `inputs/`（rw，`$LOADN_INPUTS` 指路）
+
+**安全机制显式配置面**（v0.6.5 起全部可在 config.yaml `security:` 调节；
+**追加语义 fail-closed**——内置防护表永不因配置清空，笔误拒绝启动）：
+
+| 配置项 | 默认 | 说明 |
+|---|---|---|
+| `hard_blocklist_l0` | `[]` | L0 红线**追加**正则（坏正则拒启动） |
+| `l0_extra_cmd_names` | `[]` | L0 红线追加命令名 |
+| `net_cmds` | `[curl, wget]` | 命令级网络门管哪些下载器（收紧自担漏拦） |
+| `glob_warn_patterns` | `[]` | glob 兜底 warn 形态追加 |
+| `sensitive_path_patterns` / `sensitive_abs_paths` | `[]` | 敏感路径黑名单追加 |
+| `canary_enabled` | `true` | 蜜罐布放+外渗检测开关 |
+| `approval_enforce` | `enforce` | enforce \| warn（枚举校验拒笔误） |
+| `approval_ttl_s` | `600` | 审批卡 TTL（60-86400） |
+| `codemode_enabled` / `lsp_enabled` | `false` | 受限执行域 / LSP 诊断 |
+| `sandbox` / `shared_readonly` / `resource_bridges` | `off` / `[]` / `[]` | 沙箱档位 / 共享 / 桥接 |
+
+**不可配置项**（宪法红线）：审计链（零开关）、审批确认码门本体
+（码/hash/single-use/TTL 校验）、项目信任门、SSRF 私网段、skills 供应链
+锁、bash 解析失败=block——这些机制的强度不因配置降低。
 
 ## 9. 代码级扩展：`loadn.ext` 协议（P3-5）
 

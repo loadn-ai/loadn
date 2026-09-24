@@ -29,6 +29,15 @@ log = get_logger(__name__)
 
 DEFAULT_TTL_S = 600
 
+
+def default_ttl_s() -> int:
+    """审批卡默认 TTL（security.approval_ttl_s 接线；范围校验在 load_config）。"""
+    from .config import CONFIG
+    try:
+        return int(CONFIG.security.approval_ttl_s or DEFAULT_TTL_S)
+    except (TypeError, ValueError):
+        return DEFAULT_TTL_S
+
 ACTION_TYPES = {
     "mail_send": "发邮件",
     "account_write": "写凭证",
@@ -58,6 +67,8 @@ def _render_summary(action_type: str, params: dict) -> str:
         return f"发短信 → {params.get('to', '?')}：{(params.get('text') or '')[:60]}"
     if action_type == "pay":
         return f"支付 {params.get('amount', '?')} → {params.get('to', '?')}"
+    if action_type == "wechat_send":
+        return f"发微信 → {params.get('to', '?')}：{(params.get('text') or '')[:60]}"
     if action_type == "wechat_export":
         return f"导出登录态：{params.get('target', '?')}"
     if action_type == "bash_allow":
