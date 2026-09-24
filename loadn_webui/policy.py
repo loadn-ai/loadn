@@ -46,11 +46,34 @@ class Decision:
 # 文本级正则（AST 展平后对单命令再匹配一次；两路都拦）
 _L0_TEXT = [
     (r"\bmkfs(\.\w+)?\b", "格式化文件系统"),
-    (r"\bmkfs(\.\w+)?\b", "格式化文件系统"),
     (r":\(\)\s*\{.*\};\s*:", "fork bomb"),
     (r"\bdd\b[^|;&]*\bof=/dev/(sd|nvme|vd|mmcblk)", "dd 直写块设备"),
     (r"\bchmod\s+(-[a-zA-Z]+\s+)*-?R[a-zA-Z]*\s+777\s+/(?:\s|$)", "全盘开放权限"),
 ]
+
+
+def _l0_text():
+    """内置红线 ∪ security.hard_blocklist_l0（追加语义——配置清不掉内置表）。"""
+    from .config import CONFIG
+    extra = [(p, "hard_blocklist_l0 自定义红线")
+             for p in (CONFIG.security.hard_blocklist_l0 or [])]
+    return _L0_TEXT + extra
+
+
+def _l0_cmd_names() -> set[str]:
+    from .config import CONFIG
+    return _L0_CMD_NAMES | set(CONFIG.security.l0_extra_cmd_names or ())
+
+
+def _net_cmds() -> set[str]:
+    from .config import CONFIG
+    return set(CONFIG.security.net_cmds) or {"curl", "wget"}
+
+
+def _warn_globs() -> list[str]:
+    from .config import CONFIG
+    return [*_WARN_GLOBS, *(CONFIG.security.glob_warn_patterns or [])]
+
 
 def _rm_redline(cmd: str) -> bool:
     """rm 递归强删根/家目录：flag 段含 r+f 且首个目标以 / 或 ~ 开头。
@@ -177,21 +200,23 @@ def check_command(cmd: str, *, source: str = "cli") -> Decision:
     if not cmd:
         return Decision(ACTION_ALLOW)
 
-    # 1) L0 文本层
+    # 1) L0 文本层（内置 ∪ hard_blocklist_l0 追加）
     if _rm_redline(cmd):
         d = Decision(ACTION_BLOCK, "递归强删根/家目录（L0 红线）", matched="rm-rf")
         _audit_decision(d, cmd, source)
         return d
-    for pat, why in _L0_TEXT:
+    for pat, why in _l0_text():
         if re.search(pat, cmd):
             d = Decision(ACTION_BLOCK, f"{why}（L0 红线）", matched=pat)
             _audit_decision(d, cmd, source)
             return d
 
-    # 1.5) canary 外渗检测（W5.5）：内容命中蜜罐值 → block + 会话熔断
+    # 1.5) canary 外渗检测（W5.5；security.canary_enabled 可关——关=失去
+    # 检测面，物理层仍在 egress enforce）：内容命中蜜罐值 → block
     try:
         from . import canary as _canary
-        tok = _canary.hit(cmd)
+        from .config import CONFIG as _cfg
+        tok = _canary.hit(cmd) if _cfg.security.canary_enabled else None
         if tok:
             d = Decision(ACTION_BLOCK, f"外发内容含 canary 蜜罐值（{tok[:10]}…）"
                          "——疑似数据外渗，会话已熔断", matched="canary")
@@ -219,13 +244,13 @@ def check_command(cmd: str, *, source: str = "cli") -> Decision:
         if not words:
             continue
         name = Path(words[0]).name
-        # L0 命令名级
-        if name in _L0_CMD_NAMES:
+        # L0 命令名级（内置 ∪ l0_extra_cmd_names）
+        if name in _l0_cmd_names():
             d = Decision(ACTION_BLOCK, f"{words[0]}（L0 红线命令）", matched=name)
             _audit_decision(d, cmd, source)
             return d
-        # L1 网络类：目标域 ∈ egress.allow
-        if name in _NET_CMDS and egress_mode == "enforce":
+        # L1 网络类（net_cmds 可调）：目标域 ∈ egress.allow
+        if name in _net_cmds() and egress_mode == "enforce":
             urls = [w for w in words[1:]
                     if w.startswith(("http://", "https://")) or
                     (not w.startswith("-") and "." in w and "/" in w)]
@@ -236,8 +261,8 @@ def check_command(cmd: str, *, source: str = "cli") -> Decision:
                     _audit_decision(d, cmd, source)
                     return d
 
-    # 3) glob 兜底：只 warn
-    for g in _WARN_GLOBS:
+    # 3) glob 兜底（内置 ∪ glob_warn_patterns）：只 warn
+    for g in _warn_globs():
         if fnmatch.fnmatch(cmd, "*" + g + "*"):
             d = Decision(ACTION_WARN, f"命中下载执行形态特征（{g}）——放行留痕",
                          matched=g)
@@ -257,6 +282,19 @@ _SENSITIVE_PATH_PATTERNS = [
 _SENSITIVE_ABS = ("/proc/self/environ",)
 
 
+def _sensitive_patterns() -> list[str]:
+    """内置敏感路径 ∪ security.sensitive_path_patterns（追加语义）。"""
+    from .config import CONFIG
+    return [*_SENSITIVE_PATH_PATTERNS,
+            *(CONFIG.security.sensitive_path_patterns or [])]
+
+
+def _sensitive_abs() -> set[str]:
+    from .config import CONFIG
+    return set(_SENSITIVE_ABS) | set(
+        CONFIG.security.sensitive_abs_paths or ())
+
+
 def check_path(path: str) -> Decision:
     """敏感路径黑名单（W3.4 双保险的无沙箱侧；沙箱物理不挂载为主）。
 
@@ -265,13 +303,13 @@ def check_path(path: str) -> Decision:
     p = (path or "").strip()
     if not p:
         return Decision(ACTION_ALLOW)
-    if p in _SENSITIVE_ABS:
+    if p in _sensitive_abs():
         d = Decision(ACTION_BLOCK, f"敏感路径（{p}）", matched=p)
         _audit_decision(d, p, "path")
         return d
     norm = p.replace("\\", "/")
     parts = [x for x in norm.split("/") if x not in ("", ".")]
-    for pat in _SENSITIVE_PATH_PATTERNS:
+    for pat in _sensitive_patterns():
         segs = [x for x in pat.split("/") if x]
         n = len(segs)
         for i in range(len(parts) - n + 1):
