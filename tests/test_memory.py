@@ -15,6 +15,7 @@ from pathlib import Path
 
 import pytest
 
+import tests.helpers as H
 from loadn.core import memory as mem
 
 
@@ -121,3 +122,61 @@ async def test_extraction_after_turn_writes_memory(tmp_path):
             text += c.text
     assert "uv" in text
     assert mem.remember(tmp_path, text[:20], text, origin_session="s1")
+
+
+# ---------------------------------------------------------------- loop 全链（P1-4b）
+async def test_turn_triggers_extraction(tmp_path):
+    """run_turn 成功 → 后台抽取任务跑完（await 收尾）→ 记忆库出现条目。"""
+    import asyncio
+
+    from loadn.core.loop import AgentCore, LoopSettings
+    from loadn.providers import Chunk
+    provider = H.ScriptedProvider([
+        # 主轮（含丰富用户语料）→ 触发抽取
+        [Chunk(kind="text_delta", text="好的，已完成"),
+         __import__("loadn.providers.fake", fromlist=["Chunk"]).Chunk(
+             kind="stop", usage={"input_tokens": 80, "output_tokens": 10},
+             stop_reason="end_turn", model="fake")],
+        # 抽取轮（small_model 侧道调用吃到这一轮）：JSON 数组输出
+        [Chunk(kind="text_delta",
+               text='[{"summary": "偏好 ruff", "content": "lint 一律用 ruff"}]'),
+         __import__("loadn.providers.fake", fromlist=["Chunk"]).Chunk(
+             kind="stop", usage={"input_tokens": 20, "output_tokens": 10},
+             stop_reason="end_turn", model="fake")],
+    ])
+    session = __import__("loadn.core.session", fromlist=["SessionManager"]).SessionManager.create(
+        tmp_path, home=tmp_path / "home")
+    core = AgentCore(provider=provider, tools={}, session=session,
+                     cwd=tmp_path, settings=LoopSettings(max_turns=5))
+    await core.run_turn("这个项目以后 lint 一律用 ruff 检查，请记住这个约定")
+    # 后台任务调度了：等一拍让它完成
+    for _ in range(10):
+        await asyncio.sleep(0)
+    entries = mem.load_entries(tmp_path)
+    assert any("ruff" in (e["summary"] + e.get("content", ""))
+               for e in entries)
+    # 边界已推进（再跑一轮不重复抽取——segment 空）
+    assert mem.boundary_of(tmp_path)
+
+
+async def test_direct_write_channel(tmp_path):
+    """「记住 X」直写入库；该轮不再自动抽取（无 small_model 调用）。"""
+    from loadn.core.memory import extract_and_store
+    session = __import__("loadn.core.session", fromlist=["SessionManager"]).SessionManager.create(
+        tmp_path, home=tmp_path / "home")
+    session.append_user("记住：这个仓库构建用 uv 而不是 pip")
+    provider = H.ScriptedProvider([[]])   # 不应被调用（直写短路）
+    n = await extract_and_store(provider, tmp_path, session)
+    assert n == 1
+    entries = mem.load_entries(tmp_path)
+    assert any("uv" in e["summary"] + e.get("content", "") for e in entries)
+
+
+async def test_forget_channel(tmp_path):
+    from loadn.core.memory import extract_and_store
+    mem.remember(tmp_path, "偏好 pytest", "测试框架 pytest", origin_session="s")
+    session = __import__("loadn.core.session", fromlist=["SessionManager"]).SessionManager.create(
+        tmp_path, home=tmp_path / "home")
+    session.append_user("忘掉 pytest 偏好")
+    await extract_and_store(H.ScriptedProvider([[]]), tmp_path, session)
+    assert all("pytest" not in e["summary"] for e in mem.load_entries(tmp_path))
