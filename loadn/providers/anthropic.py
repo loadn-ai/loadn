@@ -126,7 +126,13 @@ class AnthropicProvider:
                 # Z.AI 网关两种鉴权头都收，一并带上（与 claude CLI 行为一致）
                 headers["x-api-key"] = api_key
                 headers["authorization"] = f"Bearer {api_key}"
-        self._client = httpx.AsyncClient(
+        # P1-3 VCR 磁带：env 配置时包 CassetteTransport（显式注入优先）
+        from loadn.providers.cassette import maybe_cassette_client
+        self._client = maybe_cassette_client(
+            "anthropic",
+            headers=headers,
+            timeout=httpx.Timeout(connect=15.0, read=None, write=60.0, pool=15.0),
+        ) or httpx.AsyncClient(
             headers=headers,
             transport=transport or extra.get("transport"),
             timeout=httpx.Timeout(connect=15.0, read=None, write=60.0, pool=15.0),
