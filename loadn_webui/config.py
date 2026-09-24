@@ -176,6 +176,8 @@ class SecurityConfig:
     sandbox: str = "off"
     # W5.1 出口代理端口（0=随机绑定，lifespan 回写实际值；生产可固定 8793）
     egress_proxy_port: int = 0
+    # P3-4 codemode 受限执行域（默认关——显式选择）
+    codemode_enabled: bool = False
 
 
 @dataclass
