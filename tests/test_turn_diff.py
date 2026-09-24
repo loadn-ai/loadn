@@ -10,7 +10,11 @@ from __future__ import annotations
 
 import time
 
+import pytest
+
 from loadn.core import turn_diff as td
+
+pytestmark = [pytest.mark.coverage("engine.turndiff")]
 
 
 # ---------------------------------------------------------------- 纯函数

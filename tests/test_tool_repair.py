@@ -10,12 +10,16 @@ from __future__ import annotations
 
 import json
 
+import pytest
+
 import tests.helpers as H
 from loadn.core import tool_repair as tr
 from loadn.core.loop import AgentCore, LoopSettings
 from loadn.core.session import SessionManager
 from loadn.providers import Chunk
 from loadn.providers.fake import _fake_model, _stop_chunk
+
+pytestmark = [pytest.mark.coverage("engine.repair")]
 
 
 # ---------------------------------------------------------------- 纯函数

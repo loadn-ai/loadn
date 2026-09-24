@@ -18,6 +18,8 @@ import pytest
 import tests.helpers as H
 from loadn.core import memory as mem
 
+pytestmark = [pytest.mark.coverage("engine.memory")]
+
 
 @pytest.fixture(autouse=True)
 def _home(tmp_path: Path, monkeypatch):

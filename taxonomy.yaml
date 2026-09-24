@@ -54,19 +54,20 @@ subsystems:
       - {id: d1, level: M3, label: bwrap 沙箱, coverage: sec.d1}
       - {id: e2, level: M4, label: 审计哈希链, coverage: sec.e2}
       # 声明有、暂无专属 coverage（记分卡标红的对象——诚实面）
-      - {id: c1, level: M2, label: 蜜罐诱饵, coverage: ""}
-      - {id: e3, level: M2, label: 回滚保护, coverage: ""}
+      - {id: c1, level: M2, label: 蜜罐诱饵, coverage: sec.c1}
+      - {id: e3, level: M2, label: 回滚保护, coverage: sec.e3}
   - id: engine
     label: 引擎
     capabilities:
       - {id: tools, level: M4, label: 文件/搜索工具组, coverage: engine.tools}
       - {id: compact, level: M3, label: 上下文压缩, coverage: engine.compact}
-      - {id: memory, level: M2, label: 长期记忆, coverage: ""}
-      - {id: repair, level: M2, label: 纯文本工具修复, coverage: ""}
-      - {id: warmer, level: M1, label: prompt-cache 保活, coverage: ""}
+      - {id: memory, level: M2, label: 长期记忆, coverage: engine.memory}
+      - {id: repair, level: M2, label: 纯文本工具修复, coverage: engine.repair}
+      - {id: warmer, level: M1, label: prompt-cache 保活, coverage: engine.warmer}
       - {id: daemon, level: M2, label: 多传输 daemon, coverage: engine.daemon}
+      - {id: codemode, level: M2, label: 受限执行域, coverage: engine.codemode}
       - {id: repomap, level: M2, label: 仓库地图, coverage: engine.repomap}
-      - {id: turndiff, level: M2, label: turn 级 diff, coverage: ""}
+      - {id: turndiff, level: M2, label: turn 级 diff, coverage: engine.turndiff}
   - id: proto
     label: 协议
     capabilities:
