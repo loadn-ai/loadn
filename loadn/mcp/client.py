@@ -11,6 +11,8 @@ import json
 import os
 from pathlib import Path
 
+import httpx
+
 from loadn.tools.base import Tool, ToolContext, ToolError
 from loadn.util import get_logger
 
@@ -139,7 +141,7 @@ class HTTPMCPConnection:
         self.name = name
         self.url = url
         self.headers = dict(headers or {})
-        self._client = client or __import__("httpx").AsyncClient(timeout=30.0)
+        self._client = client or httpx.AsyncClient(timeout=30.0)
         self._owns_client = client is None
         self._session_id: str | None = None
         self._sleep = sleep          # 测试注入（退避计时断言）
