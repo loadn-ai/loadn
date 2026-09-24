@@ -118,10 +118,117 @@ class StdioMCPConnection:
                 self.proc.kill()
 
 
+class HTTPMCPConnection:
+    """streamable-HTTP MCP server 连接（P1-1a，codex rmcp 同构）。
+
+    协议：POST JSON-RPC 到单端点，Accept: application/json, text/event-stream；
+    响应两种形态——纯 JSON，或 SSE 流（`data:` 行携带 JSON-RPC 消息，取
+    id 匹配的一条）。initialize 响应带 `Mcp-Session-Id` 头则后续请求回带
+    （2025-06-18 语义）。httpx.AsyncClient（单依赖红线内）。
+
+    初始化重试：250ms/1000ms 两档退避（codex STREAMABLE_HTTP_RETRY_DELAYS_MS
+    同构）——HTTP 通道抖动常见，重试两档仍失败才降级跳过。
+    """
+
+    RETRY_DELAYS_S = (0.25, 1.0)
+    RPC_TIMEOUT_S = 60.0
+
+    def __init__(self, name: str, url: str, headers: dict | None = None,
+                 client: httpx.AsyncClient | None = None,
+                 sleep=asyncio.sleep) -> None:
+        self.name = name
+        self.url = url
+        self.headers = dict(headers or {})
+        self._client = client or __import__("httpx").AsyncClient(timeout=30.0)
+        self._owns_client = client is None
+        self._session_id: str | None = None
+        self._sleep = sleep          # 测试注入（退避计时断言）
+
+    async def start(self) -> None:
+        """initialize（带两档重试）+ initialized 通知。"""
+        payload = {
+            "protocolVersion": _MCP_PROTOCOL,
+            "capabilities": {},
+            "clientInfo": {"name": "loadn", "version": "0.1.0"}}
+        last: Exception | None = None
+        for attempt in range(len(self.RETRY_DELAYS_S) + 1):
+            if attempt:
+                await self._sleep(self.RETRY_DELAYS_S[attempt - 1])
+            try:
+                resp = await self._post("initialize", payload, raw=True)
+                self._decode(resp, _RPC_ID[0])       # 校验非 error（丢结果体）
+                self._session_id = resp.headers.get("mcp-session-id") \
+                    or self._session_id
+                break
+            except Exception as e:                    # noqa: BLE001
+                last = e
+        else:
+            raise ConnectionError(
+                f"MCP http {self.name} initialize 失败（重试 "
+                f"{len(self.RETRY_DELAYS_S)} 档后放弃）：{last}")
+        await self._post("notifications/initialized", None,
+                         expect_response=False)
+
+    async def _post(self, method: str, params: dict | None,
+                    *, expect_response: bool = True,
+                    raw: bool = False) -> httpx.Response | dict:
+        _RPC_ID[0] += 1
+        req: dict = {"jsonrpc": "2.0", "id": _RPC_ID[0], "method": method}
+        if params is not None:
+            req["params"] = params
+        headers = {"Accept": "application/json, text/event-stream",
+                   "Content-Type": "application/json", **self.headers}
+        if self._session_id:
+            headers["Mcp-Session-Id"] = self._session_id
+        r = await self._client.post(self.url, json=req, headers=headers)
+        r.raise_for_status()
+        if raw or not expect_response:
+            return r
+        return self._decode(r, req["id"])
+
+    @staticmethod
+    def _decode(r: httpx.Response, want_id: int) -> dict:
+        """JSON 或 SSE 形态解码；SSE 取 id 匹配的首条消息。"""
+        ctype = (r.headers.get("content-type") or "").lower()
+        if "text/event-stream" in ctype:
+            for line in r.text.splitlines():
+                if not line.startswith("data:"):
+                    continue
+                try:
+                    msg = json.loads(line[5:].strip())
+                except json.JSONDecodeError:
+                    continue
+                if msg.get("id") == want_id:
+                    if "error" in msg:
+                        raise RuntimeError(f"MCP http error: {msg['error']}")
+                    return msg.get("result") or {}
+            raise TimeoutError(f"SSE 流中无 id={want_id} 的响应")
+        msg = r.json()
+        if msg.get("id") != want_id and "error" in msg:
+            raise RuntimeError(f"MCP http error: {msg['error']}")
+        if "error" in msg:
+            raise RuntimeError(f"MCP http error: {msg['error']}")
+        return msg.get("result") or {}
+
+    async def _rpc(self, method: str, params: dict | None) -> dict:
+        return await self._post(method, params)       # 与 stdio 同名同语义
+
+    async def list_tools(self) -> list[dict]:
+        res = await self._rpc("tools/list", {})
+        return res.get("tools") or []
+
+    async def call_tool(self, tool: str, args: dict) -> dict:
+        return await self._rpc("tools/call", {"name": tool, "arguments": args})
+
+    async def stop(self) -> None:
+        if self._owns_client:
+            await self._client.aclose()
+
+
 class MCPTool(Tool):
     """远端 MCP 工具的本地包装（mcp__<server>__<tool>）。"""
 
-    def __init__(self, conn: StdioMCPConnection, spec: dict) -> None:
+    def __init__(self, conn, spec: dict) -> None:
         self.conn = conn
         self.remote_name = spec.get("name") or ""
         self.name = f"mcp__{conn.name}__{self.remote_name}"
@@ -142,19 +249,33 @@ def _text_of(res: dict) -> str:
     return "\n".join(p for p in parts if p)
 
 
-async def discover(cwd: Path) -> tuple[dict[str, Tool], list[StdioMCPConnection]]:
-    """启动 .mcp.json 里全部 server 并列工具。单个失败降级警告，不炸会话。"""
+async def discover(cwd: Path) -> tuple[dict[str, Tool], list]:
+    """启动 .mcp.json 里全部 server 并列工具。单个失败降级警告，不炸会话。
+
+    transport（P1-1a 起）：stdio（command/args/env）与 http
+    （{"type":"http","url":…,"headers":…}，oauth 段会话 2 接入）。
+    """
     tools: dict[str, Tool] = {}
-    conns: list[StdioMCPConnection] = []
+    conns: list = []
     for name, conf in load_mcp_config(cwd).items():
-        if not isinstance(conf, dict) or not conf.get("command"):
+        if not isinstance(conf, dict):
             continue
-        if str(conf.get("type", "stdio")) != "stdio":
-            log.warning("MCP %s 非 stdio 类型（%s），暂不支持，跳过", name, conf.get("type"))
+        stype = str(conf.get("type", "stdio" if conf.get("command") else ""))
+        if stype == "http" or (stype == "streamable-http" and conf.get("url")):
+            if not conf.get("url"):
+                log.warning("MCP %s type=http 缺 url，跳过", name)
+                continue
+            conn: object = HTTPMCPConnection(
+                name, str(conf["url"]),
+                headers=dict(conf.get("headers") or {}))
+        elif stype == "stdio" and conf.get("command"):
+            conn = StdioMCPConnection(name, conf["command"],
+                                      list(conf.get("args") or []),
+                                      conf.get("env") or {})
+        else:
+            log.warning("MCP %s 未知类型 %r（或缺 command/url），跳过",
+                        name, stype or None)
             continue
-        conn = StdioMCPConnection(name, conf["command"],
-                                  list(conf.get("args") or []),
-                                  conf.get("env") or {})
         try:
             await conn.start()
             for spec in await conn.list_tools():
