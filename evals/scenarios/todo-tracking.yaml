@@ -1,0 +1,20 @@
+name: todo-tracking
+suites: [smoke]
+description: TodoWrite 清单落 transcript + 状态更新
+prompt: 建任务清单并推进
+tools_enabled: [TodoWrite]
+script:
+  - - tool: TodoWrite
+      input:
+        todos:
+          - {id: "1", subject: "调研", status: completed}
+          - {id: "2", subject: "实现", status: in_progress}
+  - - tool: TodoWrite
+      input:
+        todos:
+          - {id: "1", subject: "调研", status: completed}
+          - {id: "2", subject: "实现", status: completed}
+final_text_text: "全部完成"
+assert_events:
+  - {type: assistant, count_min: 2}
+assert_result_subtype: success
