@@ -627,6 +627,7 @@ class AgentCore:
             self.session.record_usage(summary)
             await _fire(emit, {"type": "turn", "summary": summary})
             self._warmer_schedule()          # P1-6：空闲保温（长命进程）
+            self._memory_extract()          # P1-4b：后台记忆抽取（同步快路径）
         return summary
 
     # ------------------------------------------------------------ 完工自检
@@ -800,6 +801,23 @@ class AgentCore:
                 await _fire(emit, {"type": "todos",
                                    "todos": [t.to_dict() for t in state.todos]})
         return blk, name
+
+    # ------------------------------------------------------------ P1-4b memory
+    def _memory_extract(self) -> None:
+        """turn 成功后的记忆抽取（后台语义；同步执行——fake/小模型路径快，
+        真实网关下 small_model 一次短调用可接受，失败静默不炸主循环）。"""
+        from loadn.core import memory as mem_mod
+        small = getattr(self.compactor, "small_model", None) \
+            if self.compactor else None
+        import asyncio as _aio
+
+        async def _run():
+            return await mem_mod.extract_and_store(
+                self.provider, self.cwd, self.session, small_model=small)
+        try:
+            _aio.get_running_loop().create_task(_run())
+        except RuntimeError:
+            pass
 
     # ------------------------------------------------------------ P1-2 tool-repair
     def _repair_tool_calls(self, blocks: list) -> list:

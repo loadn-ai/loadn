@@ -111,10 +111,17 @@ def forget(cwd: Path, keyword: str, *, session=None) -> int:
     dir_ = memory_dir(cwd)
     m = _manifest(dir_)
     keep, removed = [], []
+    # 词级匹配：指令剥词后语序常与库内相反（「忘掉 pytest 偏好」vs 摘要
+    # 「偏好 pytest」）——按 token 全命中判定，比整串子串稳
+    tokens = [t for t in re.split(r"[\s，。,]+", keyword) if t]
+
+    def _hit(e: dict) -> bool:
+        hay = (e.get("summary") or "") + " " + (e.get("content") or "")
+        if not tokens:
+            return False
+        return all(t in hay for t in tokens)
     for e in m.get("entries") or []:
-        hit = keyword in (e.get("summary") or "") or keyword in e.get(
-            "content", "")
-        (removed if hit else keep).append(e)
+        (removed if _hit(e) else keep).append(e)
     if removed:
         for e in removed:
             try:
@@ -193,3 +200,133 @@ def _trace(session, type_: str, payload: dict) -> None:
             session.append_event(type_, payload)
     except Exception:                                      # noqa: BLE001
         pass
+
+
+# ---------------------------------------------------------------- 抽取钩子（P1-4b）
+EXTRACT_PROMPT = """从下面这轮对话新增段里抽取**项目级长期记忆**（用户偏好/
+约定/环境事实），供未来会话使用。只抽稳定、可复用的信息，忽略一次性细节。
+
+新增段：
+{segment}
+
+只输出 JSON 数组（无则 []）：[{{"summary": "≤20字概括", "content": "具体内容≤200字"}}]"""
+
+# 直写/删除指令形态（当轮跳过自动抽取——用户已显式表达，zcode
+# direct-memory-write 同构）
+_DIRECT_WRITE_RE = re.compile(r"记住[:：]|请记住|忘掉|忘记[:：]?|以后都", re.I)
+
+
+def direct_write_intent(user_text: str) -> str | None:
+    """识别直写/忘掉指令：返回 'write'/'forget'/None。"""
+    t = user_text or ""
+    if re.search(r"忘掉|忘记[:：]?", t):
+        return "forget"
+    if _DIRECT_WRITE_RE.search(t):
+        return "write"
+    return None
+
+
+def new_segment_since_boundary(cwd: Path, session) -> tuple[list[dict], str]:
+    """boundary 之后的新增消息段（role/content 扁平），末条消息 id 做新锚。"""
+    msgs: list[dict] = []
+    last_id = ""
+    for ev in session.transcript.read_events():
+        if ev.get("type") != "user":
+            continue
+        mid = str(ev.get("uuid") or "")     # 事件 uuid=锚（transcript.append）
+        if mid:
+            last_id = mid
+        payload = ev.get("payload") or {}
+        content = payload.get("content") or ""
+        if isinstance(content, list):
+            content = " ".join(str(c.get("text", "")) for c in content
+                               if isinstance(c, dict))
+        msgs.append({"role": "user", "content": str(content),
+                     "_id": mid})
+    b = boundary_of(cwd)
+    out: list[dict] = []
+    seen_boundary = not b            # 无锚=全部（首轮）
+    for m in msgs:
+        if not seen_boundary:
+            if m["_id"] == b:
+                seen_boundary = True
+            continue
+        out.append({"role": m["role"], "content": m["content"]})
+        if m["_id"]:
+            last_id = m["_id"]
+    return out, last_id
+
+
+async def extract_and_store(provider, cwd: Path, session, *,
+                            small_model: str | None = None) -> int:
+    """turn 成功后的后台抽取（P1-4b 主入口）。返回写入条数（0=skip/无收获）。
+
+    流程：新增段 → 资格（no-user-prose skip）→ 直写指令轮 skip（显式表达
+    优先）→ small_model 抽取（JSON 数组）→ 蜜罐护栏逐条 → 入库 → 边界
+    推进。任何失败静默（后台任务不炸主循环）。
+    """
+    try:
+        segment, last_id = new_segment_since_boundary(cwd, session)
+        if not segment or not last_id:
+            return 0
+        ok, why = eligible(segment)
+        if not ok:
+            _trace(session, "memory_extract_skipped", {"reason": why})
+            return 0
+        user_tail = segment[-1].get("content") or ""
+        intent = direct_write_intent(user_tail)
+        if intent == "write":
+            # 直写：把指令语句本身入库（去指令词），本轮不再自动抽取
+            content = re.sub(r"^(请)?记住[:：]?", "", user_tail).strip()
+            if content and not canary_hit(content):
+                remember(cwd, content[:20], content,
+                         origin_session=getattr(session, "session_id", "?"),
+                         session=session)
+            _advance(session, cwd, last_id)
+            return 1
+        if intent == "forget":
+            kw = re.sub(r"忘掉|忘记[:：]?", "", user_tail).strip()
+            if kw:
+                forget(cwd, kw, session=session)
+            _advance(session, cwd, last_id)
+            return 0
+        # 自动抽取：small_model JSON 数组
+        from loadn.types import Message as _Msg
+        from loadn.types import TextBlock as _TB
+        prompt = EXTRACT_PROMPT.format(
+            segment="\n".join(m["content"] for m in segment)[-8000:])
+        text = ""
+        async for c in provider.chat(
+                [_Msg(role="user", content=[_TB(text=prompt)])], [],
+                "你是记忆抽取器，只输出 JSON 数组本身。",
+                model=small_model, use_cache=False):
+            if c.kind == "text_delta":
+                text += c.text
+        import json as _json
+        try:
+            items = _json.loads(text.strip().removeprefix("```json")
+                                .removeprefix("```").removesuffix("```").strip())
+        except ValueError:
+            items = []
+        written = 0
+        for it in items if isinstance(items, list) else []:
+            if not isinstance(it, dict):
+                continue
+            summary = str(it.get("summary") or "")[:40].strip()
+            content = str(it.get("content") or "")[:2000].strip()
+            if not summary or not content:
+                continue
+            if remember(cwd, summary, content,
+                        origin_session=getattr(session, "session_id", "?"),
+                        session=session):
+                written += 1
+        _advance(session, cwd, last_id)
+        return written
+    except Exception as e:                                  # noqa: BLE001
+        log.warning("记忆抽取失败（不影响主循环）：%s", e)
+        return 0
+
+
+def _advance(session, cwd: Path, last_id: str) -> None:
+    advance_boundary(cwd, last_id)
+    _trace(session, "memory_boundary", {"message_id": last_id})
