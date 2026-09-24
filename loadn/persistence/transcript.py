@@ -124,6 +124,84 @@ class TranscriptStore:
         return {"todos": todos, "compact_points": compact_points}
 
 
+
+    # ------------------------------------------------------------ P2-2 会话工程
+    TAIL_CHUNK = 65536                 # 64KB 块反向（codex reverse scanner 同构）
+    MAX_RECORD_BYTES = 2 * 1024 * 1024  # 单行炸弹防护
+
+    def tail(self, n: int) -> list[dict]:
+        """尾部 n 条事件——O(tail) 反向块扫（codex reverse_jsonl_scanner 同构）。
+
+        按块 rfind(b"\\n") 从文件尾向前收行，坏行跳过（被杀半行）；单行超
+        MAX_RECORD_BYTES 直接放弃该行（防炸弹）。长会话 resume 只需尾窗，
+        不再整档读入。
+        """
+        if n <= 0:
+            return []
+        try:
+            size = self.path.stat().st_size
+        except OSError:
+            return []
+        lines: list[bytes] = []
+        with self.path.open("rb") as f:
+            pos = size
+            carry = b""
+            while pos > 0 and len(lines) <= n:
+                chunk_start = max(0, pos - self.TAIL_CHUNK)
+                f.seek(chunk_start)
+                buf = f.read(pos - chunk_start) + carry
+                pos = chunk_start
+                # 切出行（保留最前可能的不完整行到 carry）
+                while True:
+                    idx = buf.rfind(b"\n")
+                    if idx < 0:
+                        carry = buf
+                        break
+                    line = buf[idx + 1:]
+                    if line.strip():
+                        lines.append(line)
+                        if len(lines) > n:
+                            break
+                    buf = buf[:idx]
+                if chunk_start == 0 and carry.strip():
+                    lines.append(carry)
+        out = []
+        for raw in reversed(lines[:n]):
+            if len(raw) > self.MAX_RECORD_BYTES:
+                continue
+            try:
+                out.append(json.loads(raw))
+            except (ValueError, TypeError):
+                continue
+        return out
+
+    def branch(self, from_uuid: str) -> TranscriptStore:
+        """从任意事件 uuid 起开分支（pi branch(branchFromId) 同构）。
+
+        新 TranscriptStore（新 session id），copy from_uuid 及其 parent 链
+        前缀（沿 parent_uuid 回溯——分支不含另一支事件）；此后 append 自然
+        延伸新链，两线独立演进。
+        """
+        chain: list[dict] = []
+        by_uuid: dict[str, dict] = {}
+        for ev in self.read_events():
+            by_uuid[ev.get("uuid") or ""] = ev
+        cur = from_uuid
+        while cur and cur in by_uuid:
+            ev = by_uuid[cur]
+            chain.append(ev)
+            cur = ev.get("parent_uuid") or ""
+        chain.reverse()
+        new_sid = f"{self.session_id[:8]}b{uuid_mod.uuid4().hex[:8]}"
+        new = TranscriptStore(new_sid, home=self.dir.parent)
+        new._ensure_dir()
+        with new.path.open("w", encoding="utf-8") as f:
+            for ev in chain:
+                f.write(json.dumps(ev, ensure_ascii=False) + "\n")
+        new._last_uuid = chain[-1].get("uuid") if chain else None
+        return new
+
+
 def _result_block(blk: dict):
     from loadn.types import ToolResultBlock
     return ToolResultBlock(tool_use_id=blk.get("tool_use_id") or "",
