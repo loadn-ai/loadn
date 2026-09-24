@@ -334,7 +334,7 @@ class AgentCore:
                        stop: StopFlag | None = None,
                        stream_events: bool = False) -> TurnSummary:
         t0 = time.time()
-        self._emit_hook = emit              # P2-3：工具执行区事件源（v2）
+        self._emit_hook = emit              # P2-3：工具区事件源（v2）
         first_user_text = user_msg         # P1-7：标题语料（首 turn）
         self._warmer_bump()               # P1-6：新 turn 即失效在途保温
         summary = TurnSummary()
@@ -342,6 +342,21 @@ class AgentCore:
 
         self.session.append_user(user_msg)
         messages = self.session.messages_for_turn()
+        # P3-9：上轮编辑的 auto-lint 失败回喂（system-reminder 语义——
+        # 机制化「改完要检查」：失败摘要在下一 turn 开头可见）
+        from . import autolint as _al
+        pending = _al.pending_reminders(self.ctx)
+        if pending:
+            joined = "\n".join(
+                f"[{p_['path']}]\n{p_['output']}" for p_ in pending)
+            injected_reminder = (
+                "<system-reminder>上轮编辑后的检查发现问题（自动 lint/test）：\n"
+                + joined + "\n请修复上述问题后继续。</system-reminder>")
+            messages = [Message(role="user", content=[TextBlock(
+                text=injected_reminder)]), *messages]
+            self.session.append_event("user", {
+                "role": "user",
+                "content": [{"type": "text", "text": injected_reminder}]})
 
         # ---- v0.2 并行拆分调度：可拆任务先扇出子代理，结果注入主循环收敛
         if (self.planner is not None and not self.settings.no_plan
