@@ -72,6 +72,9 @@ def main(argv: list[str] | None = None) -> int:
     if raw and raw[0] == "skills":
         from loadn.cli.skills_lock import main as skills_main
         return skills_main(raw[1:])
+    if raw and raw[0] == "auth":
+        from loadn.cli.auth import main as auth_main
+        return auth_main(raw[1:])
     if raw and raw[0] == "daemon":
         from loadn.transport.daemon import main as daemon_main
         return daemon_main()

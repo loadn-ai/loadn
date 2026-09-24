@@ -122,6 +122,19 @@ def provider_config() -> dict:
         except (TypeError, ValueError):
             pass
 
+    # -- 1.5) loadn auth login 凭据库（P3-5b；$LOADN_HOME/auth.json 0600）
+    # 只吃与当前 provider 同名的条目（订阅型网关：login openai --base-url …）
+    try:
+        from loadn.cli.auth import read_auth
+        entry = (read_auth().get("providers", {})
+                 .get(str(cfg.get("provider") or "anthropic").lower()) or {})
+        if entry.get("auth_token"):
+            cfg["api_key"] = entry["auth_token"]
+        if entry.get("base_url"):
+            cfg["base_url"] = entry["base_url"]
+    except Exception:  # noqa: BLE001 — 凭据库坏不炸配置解析
+        pass
+
     # -- 1) 自有 config.json（最高优先）
     try:
         own = json.loads((loadn_home() / "config.json").read_text())
