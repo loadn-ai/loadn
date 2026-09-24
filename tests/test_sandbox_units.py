@@ -108,13 +108,13 @@ def test_project_binds_order_and_gating(tmp_path):
 
 
 def test_egress_uds_gating(monkeypatch, tmp_path):
-    """_egress_uds：egress 关→None；socket 存在→路径。"""
+    """_egress_uds：socket 不存在→None。三态档位都走代理（off=直通+审计），
+    不再按 mode 关闭——off 档下 bwrap 引擎同样 unshare-net+UDS。"""
     from loadn_webui.config import PATHS
     monkeypatch.setattr(CONFIG.security, "egress_mode", "off")
-    assert sandbox._egress_uds() is None
-    monkeypatch.setattr(CONFIG.security, "egress_mode", "enforce")
     run = tmp_path / "run"
     run.mkdir()
-    (run / "egress.sock").write_text("")
     monkeypatch.setitem(PATHS, "run", run)
-    assert sandbox._egress_uds() == run / "egress.sock"
+    assert sandbox._egress_uds() is None                 # 无 socket → 不启用
+    (run / "egress.sock").write_text("")
+    assert sandbox._egress_uds() == run / "egress.sock"  # off 档也存在

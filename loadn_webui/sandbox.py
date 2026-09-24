@@ -233,12 +233,17 @@ def wrap_loadn(cmd: list[str], env: dict, *, sid_session: str,
 def _egress_uds(sid: str = "") -> Path | None:
     """宿主代理 unix socket 路径（存在才启用断网形态）。
 
-    sid（平台会话 id）有会话级 socket 时优先——审批式临时授权的判定边界；
-    没有则回落共享 socket（仅全局白名单，无任务级放行面）。
+    sid（平台会话 id）有会话级 socket 时优先——审批式临时授权/弹卡确认
+    的判定边界；没有则回落共享 socket（仅全局白名单，无任务级放行面）。
+    三态档位都走代理（off=直通+审计），故不再按 mode 关闭。
     """
-    from .config import CONFIG
-    if CONFIG.security.egress_mode not in ("warn", "enforce"):
-        return None
+    if sid:
+        tag = hashlib.sha1(sid.encode()).hexdigest()[:12]
+        per = PATHS["run"] / f"egress-{tag}.sock"
+        if per.exists():
+            return per
+    uds = PATHS["run"] / "egress.sock"
+    return uds if uds.exists() else None
     if sid:
         tag = hashlib.sha1(sid.encode()).hexdigest()[:12]
         per = PATHS["run"] / f"egress-{tag}.sock"

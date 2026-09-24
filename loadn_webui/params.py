@@ -16,9 +16,11 @@ from .util import get_logger
 log = get_logger(__name__)
 
 ALLOWED = ("model", "effort", "max_turns", "timeout_s", "stall_timeout_s",
-           "rotate_input_tokens")
+           "rotate_input_tokens", "egress")
 
 _EFFORTS = ("low", "medium", "high")
+# 会话级外联档位（null/缺省=跟随全局 config；egress 代理判定链见 egress_proxy）
+EGRESS_MODES = ("off", "warn", "enforce")
 
 
 def validate(body_value) -> str | None:
@@ -43,6 +45,10 @@ def validate(body_value) -> str | None:
         elif k == "effort":
             if v not in _EFFORTS:
                 raise ValueError(f"effort 需为 {'|'.join(_EFFORTS)}")
+            out[k] = v
+        elif k == "egress":
+            if v not in EGRESS_MODES:
+                raise ValueError(f"egress 需为 {'|'.join(EGRESS_MODES)}（null=跟随全局）")
             out[k] = v
         elif k == "max_turns":
             # 0 = 不限制（生效 None）；范围与 profile 收敛闸同量级
@@ -77,17 +83,27 @@ def load(raw) -> dict:
 
 
 def effective(prof, ov: dict) -> dict:
-    """六键生效值：覆盖优先（0 哨兵换算 None），否则 profile 侧。"""
+    """七键生效值：覆盖优先（0 哨兵换算 None），否则 profile 侧。
+    egress 无 profile 侧——None=跟随全局 config（代理判定时解析）。"""
     def _get(k):
         if k in ov:
             v = ov[k]
             if k in ("max_turns", "rotate_input_tokens") and v == 0:
                 return None
             return v
-        return getattr(prof, k)
+        return None if k == "egress" else getattr(prof, k)
     return {k: _get(k) for k in ALLOWED}
 
 
 def defaults(prof) -> dict:
-    """profile 侧默认值（UI「跟随 profile（X）」提示用）。"""
-    return {k: getattr(prof, k) for k in ALLOWED}
+    """profile 侧默认值（UI「跟随 profile（X）」提示用）。egress 恒 None。"""
+    return {k: (None if k == "egress" else getattr(prof, k)) for k in ALLOWED}
+
+
+def session_egress_override(raw) -> str | None:
+    """库里的 params_json → 会话级 egress 档位覆盖（None=跟随全局）。
+
+    代理判定每连接调一次；坏数据 fail-open 到跟随全局 + log。
+    """
+    ov = load(raw).get("egress")
+    return ov if ov in EGRESS_MODES else None

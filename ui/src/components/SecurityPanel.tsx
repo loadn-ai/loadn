@@ -10,7 +10,7 @@ interface Posture {
   sandbox: { mode: string; requested?: string; effective?: string; reason?: string;
     bwrap: number; direct: number; window: number };
   policy: { approval_enforce: string };
-  egress: { mode: string; allow_count: number };
+  egress: { mode: string; on_deny?: string; ask_wait_s?: number; allow_count: number };
   canary: { locked_sessions: { sid: string; reason: string }[]; kill_all: boolean };
   vault: { platforms: number };
   audit: { last_id: number; last_ts: string; anchors: number };
@@ -65,8 +65,14 @@ function humanize(e: AuditEvent): string {
   switch (e.type) {
     case 'egress_request': {
       if (d.host === 'llm-gw.internal') return '经安全网关调用模型';
-      const verdict = String(d.decision || '').startsWith('allow')
-        ? '放行' : '拒绝（不在白名单）';
+      const verdicts: Record<string, string> = {
+        allow: '放行', 'allow-grant': '放行（临时授权）',
+        'allow-ask': '放行（弹卡批准）', 'allow-warn': '放行（告警档）',
+        'allow-open': '放行（放开档）', deny: '拒绝（不在白名单）',
+        'ask-timeout': '弹卡超时未裁决', 'denied-by-user': '用户已拒绝',
+        'deny-mismatch': '拒绝（域名分片防护）',
+      };
+      const verdict = verdicts[String(d.decision || '')] ?? String(d.decision);
       return `${d.host} · ${verdict}`;
     }
     case 'snapshot':
@@ -214,6 +220,19 @@ export default function SecurityPanel({ onClose }: { onClose: () => void }) {
   const policyWarn = posture.policy.approval_enforce === 'warn';
   const egressOk = posture.egress.mode === 'enforce';
   const egressWarn = posture.egress.mode === 'warn';
+  // off=用户显式放开 → 灰态+诚实标注（同沙箱降级档的呈现语义）
+  const egressTop = egressOk
+    ? `${posture.egress.on_deny === 'ask' ? '强制 · 弹卡确认' : '强制'} · 白名单 ${posture.egress.allow_count} 个域`
+    : egressWarn
+      ? `告警 · 白名单 ${posture.egress.allow_count} 个域（放行+逐条记录）`
+      : '已放开 · 全放行（仍走代理审计）';
+  const egressHint = egressOk
+    ? (posture.egress.on_deny === 'ask'
+        ? `白名单外的域会弹审批卡等你裁决（等待 ${posture.egress.ask_wait_s ?? 120}s），批准即放行。`
+        : undefined)
+    : egressWarn
+      ? '白名单外的域放行但逐条告警。可在下方「出口策略」切回强制。'
+      : '所有外联直通（审计仍逐条记录）。可在下方「出口策略」切回强制/告警。';
   const cards: { key: CardKey; name: string; ok: boolean; warn?: boolean; icon: string;
     top: string; sub: string; hint?: string; danger?: boolean }[] = [
     {
@@ -230,8 +249,9 @@ export default function SecurityPanel({ onClose }: { onClose: () => void }) {
     },
     {
       key: 'egress', name: '网络出口管控', ok: egressOk, warn: egressWarn, icon: '🌐',
-      top: `${egressOk ? '强制' : '告警'} · 白名单 ${posture.egress.allow_count} 个域`,
-      sub: 'AI 的所有对外请求经过代理，白名单之外的域名一律拒绝；模型调用走内部网关，凭证不进沙箱。',
+      top: egressTop,
+      sub: 'AI 的所有对外请求经过代理；模型调用走内部网关，凭证不进沙箱。策略在下方「出口策略」即时可调。',
+      hint: egressHint,
     },
     {
       key: 'vault', name: '凭证保险库', ok: posture.vault.platforms > 0, icon: '🗝️',
@@ -480,13 +500,16 @@ function ApprovalsDetail({ events, jump }: { events: AuditEvent[]; jump: (s: str
 function EgressDetail() {
   const [rows, setRows] = useState<{ host: string; n: number; denied: number; last: string }[]>([]);
   const [mode, setMode] = useState('');
+  const [onDeny, setOnDeny] = useState('');
+  const [askWait, setAskWait] = useState('');
   const [allow, setAllow] = useState<string[]>([]);
   const [grants, setGrants] = useState<{ sid: string; host: string; expires_at: string }[]>([]);
   const [busy, setBusy] = useState('');
   const load = () => {
-    void api<{ events: { ts: string; host: string; decision: string }[]; mode: string; allow: string[]; grants: { sid: string; host: string; expires_at: string }[] }>('/api/admin/egress?n=100')
+    void api<{ events: { ts: string; host: string; decision: string }[]; mode: string; on_deny?: string; ask_wait_s?: number; allow: string[]; grants: { sid: string; host: string; expires_at: string }[] }>('/api/admin/egress?n=100')
       .then(d => {
-        setMode(d.mode); setAllow(d.allow ?? []); setGrants(d.grants ?? []);
+        setMode(d.mode); setOnDeny(d.on_deny ?? ''); setAskWait(String(d.ask_wait_s ?? ''));
+        setAllow(d.allow ?? []); setGrants(d.grants ?? []);
         const m = new Map<string, { n: number; denied: number; last: string }>();
         for (const e of d.events) {
           if (e.host === 'llm-gw.internal') continue;
@@ -520,9 +543,59 @@ function EgressDetail() {
     }).then(() => setBusy('')).catch(() => setBusy(''));
     load();
   };
+  /** 出口策略写（持久化+热生效）：mode 三态 / 拦截时两态 / 弹卡等待秒 */
+  const putPolicy = (patch: Record<string, unknown>) => {
+    setBusy('policy');
+    void api('/api/admin/egress/policy', {
+      method: 'PUT', body: JSON.stringify(patch),
+    }).then(load).catch(() => setBusy(''));
+  };
+  const MODE_OPTS: { v: string; label: string; tip: string }[] = [
+    { v: 'enforce', label: '强制', tip: '白名单外按下方「拦截时」策略处理' },
+    { v: 'warn', label: '告警', tip: '白名单外放行但逐条告警（灰度期用）' },
+    { v: 'off', label: '放开', tip: '全放行（仍走代理审计+凭证网关）' },
+  ];
   return (
     <div>
-      <DetailHead title="窗口内外发的目标域" note={`mode=${mode || '-'} · 白名单外的域会被拒；完整时间线在「流量」tab`} />
+      <DetailHead title="窗口内外发的目标域" note={`mode=${mode || '-'} · 完整时间线在「流量」tab`} />
+      <div style={{ border: '1px solid var(--border,#333)', borderRadius: 8, padding: '8px 10px', marginBottom: 10 }}>
+        <div className="muted" style={{ fontSize: 12, marginBottom: 6 }}>出口策略（保存即热生效，不杀在跑任务）</div>
+        <div className="setting-row" style={{ marginBottom: 4 }}>
+          <span style={{ minWidth: 64 }}>模式</span>
+          {MODE_OPTS.map(o => (
+            <button key={o.v} title={o.tip} disabled={busy === 'policy'}
+              className={`chip${mode === o.v ? '' : ' off'}`} style={{ cursor: 'pointer' }}
+              onClick={() => putPolicy({ mode: o.v })}>{o.label}</button>
+          ))}
+        </div>
+        {mode === 'enforce' && (
+          <div className="setting-row" style={{ marginBottom: 4 }}>
+            <span style={{ minWidth: 64 }}>拦截时</span>
+            <button title="直接 403（agent 可见提示与申请指引）" disabled={busy === 'policy'}
+              className={`chip${onDeny === 'deny' ? '' : ' off'}`} style={{ cursor: 'pointer' }}
+              onClick={() => putPolicy({ on_deny: 'deny' })}>直接拒绝</button>
+            <button title="自动弹审批卡等你裁决，批准即放行本请求（默认）" disabled={busy === 'policy'}
+              className={`chip${onDeny === 'ask' ? '' : ' off'}`} style={{ cursor: 'pointer' }}
+              onClick={() => putPolicy({ on_deny: 'ask' })}>弹卡确认</button>
+            {onDeny === 'ask' && (
+              <>
+                <span className="muted" style={{ fontSize: 11 }}>等待</span>
+                <input className="props-num" type="number" min={15} max={600}
+                  style={{ width: 64 }} value={askWait}
+                  onChange={e => setAskWait(e.target.value)}
+                  onKeyDown={e => {
+                    if (e.key === 'Enter' && +askWait >= 15 && +askWait <= 600)
+                      putPolicy({ ask_wait_s: +askWait });
+                  }} />
+                <span className="muted" style={{ fontSize: 11 }}>秒（15-600，回车保存）</span>
+              </>
+            )}
+          </div>
+        )}
+        <div className="muted" style={{ fontSize: 11 }}>
+          任务级放开在会话「属性」面板（任务外联档位）；这里改的是全局基线。
+        </div>
+      </div>
       <table className="kv-table" style={{ width: '100%' }}>
         <thead><tr><th>域名</th><th style={{ width: 70 }}>次数</th><th style={{ width: 120 }}>判定</th><th style={{ width: 90 }}>最近</th></tr></thead>
         <tbody>

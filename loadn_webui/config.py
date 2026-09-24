@@ -153,7 +153,16 @@ class SecurityConfig:
         "opencode.ai", "llm-gw.internal",
         "github.com", "githubusercontent.com",
         "arxiv.org"])   # 后缀匹配：export.arxiv.org（API/PDF）一并覆盖
-    egress_mode: str = "enforce"          # enforce | warn
+    # 出口管控三态：off=全局放开（代理仍在路径上：直通+审计，凭证仍走网关）
+    # / warn=放行但记告警 / enforce=白名单外按 egress_on_deny 处理。
+    # 会话级覆盖链：session params.egress > 此处全局值（见 egress_proxy）。
+    egress_mode: str = "enforce"
+    # enforce 下未列域的处理：deny=直接 403（旧形态）/ ask=自动弹审批卡
+    # （平台建 egress 审批+SSE 推送+挂起等裁决，批准即热放行）——默认 ask：
+    # 「拦了却不给用户选择的机会」比多问一次更糟
+    egress_on_deny: str = "ask"
+    # ask 挂起等待上限秒（15-600；超时/拒绝 → 403 带理由与 hint）
+    egress_ask_wait_s: int = 120
     # SSRF 内网敏感域（fetch_page 等宿主中介抓取的禁入后缀清单）——私网/回环/
     # 链路本地 IP 段无条件拦截，这里只补「解析得到公网 IP 但属于平台侧通道」的域
     ssrf_deny_hosts: list = field(default_factory=lambda: [
@@ -286,6 +295,19 @@ def load_config() -> Config:
         raise ValueError(
             f"security.sandbox={cfg.security.sandbox!r} 不在档位枚举 "
             f"{SANDBOX_TIERS} 内（config.yaml）——拒绝启动，请修正后重试")
+    # egress 三态 + 拦截策略同款 fail-closed（off 是合法档：放开≠笔误）。
+    # yaml 1.1 坑同 sandbox：裸 off 解析为布尔 False，归一化回 "off"
+    if isinstance(cfg.security.egress_mode, bool):
+        cfg.security.egress_mode = "off" if cfg.security.egress_mode is False else "on"
+    if cfg.security.egress_mode not in ("off", "warn", "enforce"):
+        raise ValueError(f"security.egress_mode={cfg.security.egress_mode!r} 非法"
+                         "（off | warn | enforce，config.yaml）——拒绝启动")
+    if cfg.security.egress_on_deny not in ("deny", "ask"):
+        raise ValueError(f"security.egress_on_deny={cfg.security.egress_on_deny!r} "
+                         "非法（deny | ask，config.yaml）——拒绝启动")
+    if not 15 <= int(cfg.security.egress_ask_wait_s or 120) <= 600:
+        raise ValueError("security.egress_ask_wait_s 需为 15-600 的秒数"
+                         "（config.yaml）——拒绝启动")
     env_bin = os.environ.get("WORKDADDY_CLAUDE_BIN")
     if env_bin:
         cfg.claude.claude_bin = env_bin

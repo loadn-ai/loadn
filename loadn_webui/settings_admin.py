@@ -287,6 +287,41 @@ def put_egress_allow(action: str, host: str) -> dict:
     return {"ok": True, "host": h, "allow": allow}
 
 
+def put_security_egress(body: dict) -> dict:
+    """出口管控策略写（安全中心 EgressDetail 编辑控件的后端）：
+    {mode: off|warn|enforce, on_deny: deny|ask, ask_wait_s: 15-600}，
+    键可省略（只改给的）。yaml round-trip 持久化 + CONFIG 原地更新
+    （代理 _gate 每连接读 CONFIG，写完即热生效）+ 审计。
+
+    任务级放开不在这里——那是会话 params.egress（PATCH /sessions/{sid}）。
+    """
+    updates: dict = {}
+    if (mode := body.get("mode")) is not None:
+        if mode not in ("off", "warn", "enforce"):
+            raise ValueError("mode 需为 off | warn | enforce")
+        updates["egress_mode"] = mode
+    if (on_deny := body.get("on_deny")) is not None:
+        if on_deny not in ("deny", "ask"):
+            raise ValueError("on_deny 需为 deny | ask")
+        updates["egress_on_deny"] = on_deny
+    if (wait_s := body.get("ask_wait_s")) is not None:
+        if not isinstance(wait_s, int) or isinstance(wait_s, bool) \
+                or not 15 <= wait_s <= 600:
+            raise ValueError("ask_wait_s 需为 15-600 的整数（秒）")
+        updates["egress_ask_wait_s"] = wait_s
+    if not updates:
+        raise ValueError("无可更新字段（mode/on_deny/ask_wait_s 至少给一个）")
+    data = _load_yaml_conf(_conf_path())
+    data.setdefault("security", {}).update(updates)
+    _dump_yaml_conf(_conf_path(), data)
+    for k, v in updates.items():
+        setattr(CONFIG.security, k, v)
+    from .audit import audit
+    audit("egress_policy", {"action": "policy-put", **updates})
+    log.info("egress 策略更新：%s（热生效）", updates)
+    return {"ok": True, **updates}
+
+
 async def test_resources(only: list[str] | None = None) -> dict:
     """探测外部资源连通性（vlm 只查配置；真实链路用 CLI `wd r vlm` 验证）。"""
     from . import resources

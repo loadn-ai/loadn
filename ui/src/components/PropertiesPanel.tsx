@@ -187,14 +187,28 @@ function ParamsSection() {
 /** ---------------------------------------------------------------- 安全与外联 */
 interface EgressView {
   mode: string;
+  effective?: string;
+  override?: string | null;
+  on_deny?: string;
+  ask_wait_s?: number;
   allow: string[];
   grants: { host: string; expires_at: string }[];
   events: { ts: string; host: string; decision: string }[];
 }
 
+/** 任务级外联档位（后端 params.EGRESS_MODES；「跟随全局」=清除覆盖） */
+const EGRESS_TIERS: { v: string | null; label: string; tip: string }[] = [
+  { v: null, label: '跟随全局', tip: '清除本任务覆盖，用全局出口模式' },
+  { v: 'off', label: '放开', tip: '本任务不拦外联（仍走代理审计）' },
+  { v: 'warn', label: '告警', tip: '本任务放行外联但逐条告警' },
+  { v: 'enforce', label: '强制', tip: '本任务按白名单拦截' },
+];
+
 function EgressSection() {
   const sid = useStore(s => s.currentSid)!;
   const tick = useStore(s => s.egressTick);
+  const extras = useStore(st => st.sessionExtras);
+  const patchParams = useStore(st => st.patchParams);
   const [data, setData] = useState<EgressView | null>(null);
   const [busy, setBusy] = useState('');
 
@@ -204,6 +218,17 @@ function EgressSection() {
   }, [sid]);
   // SSE egress 事件（payload 带 sid）驱动刷新 + 手动刷新；不轮询
   useEffect(load, [load, tick]);
+
+  /** 任务档位 chips：与既有模型参数覆盖合并提交（PATCH params 整体替换语义） */
+  const setTier = (v: string | null) => {
+    const merged: ParamsMap = { ...(extras?.params ?? {}) };
+    if (v == null) delete merged.egress; else merged.egress = v;
+    setBusy('tier');
+    void patchParams(sid, merged)
+      .then(load)
+      .catch(() => { /* patchParams 已 alert */ })
+      .finally(() => setBusy(''));
+  };
 
   const allowHost = (host: string) => {
     setBusy(host);
@@ -238,9 +263,24 @@ function EgressSection() {
         <button className="mini-btn" style={{ marginLeft: 'auto' }}
           onClick={load}>刷新</button>
       </h4>
+      <div className="setting-row" style={{ marginBottom: 8 }}>
+        <span style={{ minWidth: 92 }}>任务外联档位</span>
+        {EGRESS_TIERS.map(t => {
+          const on = (data?.override ?? null) === t.v;
+          return (
+            <button key={t.label} className={`chip${on ? '' : ' off'}`}
+              style={{ cursor: 'pointer' }} disabled={busy === 'tier'}
+              title={t.tip} onClick={() => void setTier(t.v)}>{t.label}</button>
+          );
+        })}
+      </div>
       <div className="muted" style={{ fontSize: 12, marginBottom: 6 }}>
-        出口模式 <b style={{ color: mode === 'enforce' ? 'var(--accent,#e5484d)' : '#3aa675' }}>
-          {mode}</b> · 白名单 {allow.length} 域（全局共享）
+        出口模式 <b style={{ color: (data?.effective ?? mode) === 'enforce' ? 'var(--accent,#e5484d)' : '#3aa675' }}>
+          {data?.effective ?? mode}</b>
+        {data?.override ? '（本任务覆盖）' : `（全局 ${mode}）`}
+        {data?.effective === 'enforce' && data.on_deny === 'ask'
+          ? ` · 白名单外弹卡确认（等待 ${data.ask_wait_s ?? 120}s）` : ''}
+        {' '}· 白名单 {allow.length} 域
       </div>
       {(data?.grants ?? []).length > 0 && (
         <div style={{ marginBottom: 8 }}>

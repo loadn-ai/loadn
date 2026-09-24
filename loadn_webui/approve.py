@@ -235,6 +235,34 @@ def consume(sid: str, action_type: str, params: dict,
     return {"ok": True, "id": row["id"]}
 
 
+def pending_egress_id(sid: str, host: str) -> int | None:
+    """该会话对某域是否有 pending 的 egress 审批（弹卡去重——同一域
+    连续被拦只挂一张卡，不刷屏）。host 级匹配（ttl 等参数差异不算新卡）。
+
+    顺手惰性过期：超 TTL 的卡翻 expired 再继续匹配（否则挂起轮询会
+    对一张永远不再有人裁决的卡空等满额）。"""
+    with _conn() as c:
+        _ensure(c)
+        rows = c.execute(
+            "SELECT id, params_json, created_at, ttl_s FROM approvals WHERE"
+            " sid=? AND action_type='egress' AND status='pending'",
+            (sid,)).fetchall()
+        out: int | None = None
+        for r in rows:
+            if _expired(r):
+                c.execute("UPDATE approvals SET status='expired' WHERE id=?",
+                          (r["id"],))
+                continue
+            if out is not None:
+                continue
+            try:
+                if json.loads(r["params_json"]).get("host") == host:
+                    out = r["id"]
+            except (TypeError, ValueError):
+                continue
+    return out
+
+
 def list_pending(sid: str | None = None) -> list[dict]:
     with _conn() as c:
         _ensure(c)

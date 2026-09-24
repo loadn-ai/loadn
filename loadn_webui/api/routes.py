@@ -602,11 +602,19 @@ def session_egress(sid: str, n: int = 50):
     n = max(1, min(200, n))
     from .. import audit as audit_mod
     from .. import egress_grants
+    from .. import params as params_mod
     events = []
     for r in audit_mod.tail(n, "egress_request", sid=sid):
         d = json.loads(r["detail_json"])
         events.append({"ts": r["ts"], **d})
+    with db_mod.conn() as c:
+        sess = db_mod.get_session(c, sid)
+    override = params_mod.session_egress_override(sess["params_json"] if sess else None)
     return {"mode": CONFIG.security.egress_mode,
+            "effective": override or CONFIG.security.egress_mode,
+            "override": override,              # null=跟随全局（面板 chip 态）
+            "on_deny": CONFIG.security.egress_on_deny,
+            "ask_wait_s": CONFIG.security.egress_ask_wait_s,
             "allow": CONFIG.security.egress_allow,
             "grants": egress_grants.list_active(sid=sid),
             "events": events}
@@ -888,6 +896,8 @@ def security_posture():
                     "window": len(snaps)},
         "policy": {"approval_enforce": CONFIG.security.approval_enforce},
         "egress": {"mode": CONFIG.security.egress_mode,
+                   "on_deny": CONFIG.security.egress_on_deny,
+                   "ask_wait_s": CONFIG.security.egress_ask_wait_s,
                    "allow_count": len(CONFIG.security.egress_allow)},
         "canary": {"locked_sessions": locked,
                    "kill_all": (PATHS["run"] / "KILL_ALL").exists()},
@@ -943,6 +953,8 @@ def egress_recent(n: int = 50):
         d = json.loads(r["detail_json"])
         out.append({"ts": r["ts"], **d})
     return {"events": out, "mode": CONFIG.security.egress_mode,
+            "on_deny": CONFIG.security.egress_on_deny,
+            "ask_wait_s": CONFIG.security.egress_ask_wait_s,
             "allow": CONFIG.security.egress_allow,
             "grants": egress_grants.list_active()}
 
@@ -956,6 +968,19 @@ def egress_allow_host(body: dict):
     from . import settings_admin
     try:
         return settings_admin.put_egress_allow("add", str(body.get("host") or ""))
+    except ValueError as e:
+        raise HTTPException(400, str(e)) from e
+
+
+@router.put("/admin/egress/policy")
+def egress_put_policy(body: dict):
+    """出口管控策略写：{mode: off|warn|enforce, on_deny: deny|ask,
+    ask_wait_s: 15-600}——全可省略（只改给的键）。持久化+热生效+审计。
+
+    任务级放开不在这里：那是会话 params.egress（PATCH /sessions/{sid}）。
+    """
+    try:
+        return settings_admin.put_security_egress(body)
     except ValueError as e:
         raise HTTPException(400, str(e)) from e
 

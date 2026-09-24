@@ -87,14 +87,63 @@ def _maybe_reload_policy() -> None:
         if not isinstance(sec, dict):
             return
         allow, mode = sec.get("egress_allow"), sec.get("egress_mode")
+        on_deny, wait_s = sec.get("egress_on_deny"), sec.get("egress_ask_wait_s")
         if isinstance(allow, list):
             CONFIG.security.egress_allow = [str(a) for a in allow]
-        if isinstance(mode, str):
+        if isinstance(mode, bool):              # yaml 1.1：裸 off → False
+            mode = "off" if mode is False else None
+        if mode in ("off", "warn", "enforce"):
             CONFIG.security.egress_mode = mode
-        log.info("egress 策略热重载：allow=%d 域 mode=%s",
-                 len(CONFIG.security.egress_allow), CONFIG.security.egress_mode)
+        # 新两键同款热更（非法值保持旧值——热更通道不 fail-closed 拒启，
+        # 只有无视；启动通道的枚举报错在 config.load_config）
+        if on_deny in ("deny", "ask"):
+            CONFIG.security.egress_on_deny = on_deny
+        if isinstance(wait_s, int) and 15 <= wait_s <= 600:
+            CONFIG.security.egress_ask_wait_s = wait_s
+        log.info("egress 策略热重载：allow=%d 域 mode=%s on_deny=%s",
+                 len(CONFIG.security.egress_allow), CONFIG.security.egress_mode,
+                 CONFIG.security.egress_on_deny)
     except (OSError, ValueError):
         log.warning("config.yaml 解析失败，egress 策略保持旧值")
+
+
+def _session_mode(sid: str | None) -> str:
+    """本连接生效的 egress 档位：会话 params.egress 覆盖 > 全局 config。
+
+    无 sid（共享 TCP 通道的旧形态）或读库异常 → 全局（fail-closed 到
+    更严的一侧不可能，fail-open 到全局档是既定语义：覆盖只用于放开/收紧
+    本任务，全局才是基线）。
+    """
+    if not sid:
+        return CONFIG.security.egress_mode
+    try:
+        from . import db as _db
+        from . import params as _params
+        with _db.conn() as c:
+            sess = _db.get_session(c, sid)
+        raw = sess["params_json"] if sess else None
+        return _params.session_egress_override(raw) or CONFIG.security.egress_mode
+    except Exception:                                  # noqa: BLE001
+        return CONFIG.security.egress_mode
+
+
+def _deny_body(host: str, reason: str) -> bytes:
+    """403 响应体（agent 可读）：拦了要告诉它为什么、下一步能做什么。"""
+    import json as _json
+    hints = {
+        "not-in-allowlist": "该域不在出口白名单。用户可在「安全中心/属性面板·安全与外联」放行；"
+                            "任务内可运行 loadn-web r egress " + host + " --note 理由 申请临时授权",
+        "ask-timeout": "外联审批等待超时未裁决。用户批准/放行后重试本请求即可成功",
+        "denied-by-user": "用户已拒绝本次外联申请",
+        "host-mismatch": "URL 域名与 Host 头不一致（域名分片防护），拒绝转发",
+    }
+    payload = _json.dumps(
+        {"error": "egress_denied", "host": host, "reason": reason,
+         "hint": hints.get(reason, "")}, ensure_ascii=False).encode()
+    head = (f"HTTP/1.1 403 Forbidden by egress policy\r\n"
+            f"Content-Type: application/json; charset=utf-8\r\n"
+            f"Content-Length: {len(payload)}\r\nConnection: close\r\n\r\n")
+    return head.encode("latin1") + payload
 
 
 def _record(host: str, decision: str, mode: str, port: int = 0,
@@ -130,6 +179,7 @@ class EgressProxy:
         self._server: asyncio.AbstractServer | None = None
         self._uds_server: asyncio.AbstractServer | None = None
         self._session_servers: dict[str, asyncio.AbstractServer] = {}
+        self._session_ports: dict[str, int] = {}
 
     def _session_path(self, sid: str):
         """会话级 socket 路径（短哈希防 unix 路径 108 字节上限）。"""
@@ -159,6 +209,28 @@ class EgressProxy:
             return str(p)
         except OSError:
             log.exception("会话级 egress socket 创建失败（%s）", sid)
+            return None
+
+    async def ensure_session_tcp(self, sid: str) -> int | None:
+        """per-session 回环 TCP 监听（直跑引擎的 sid 归属通道）。
+
+        bwrap 形态走 UDS（unshare-net 内 socat 桥）；direct 形态（档位 off
+        /降级）引擎 env https_proxy 从共享端口改指这里——全部引擎都有会话
+        归属，ask 弹卡与任务级临时授权不再只覆盖 loadn 引擎。
+        幂等；失败返回 None（调用方回落共享端口=只有全局白名单+无弹卡归属）。
+        """
+        if sid in self._session_ports:
+            return self._session_ports[sid]
+        try:
+            srv = await asyncio.start_server(
+                lambda r, w: self._handle(r, w, sid),
+                "127.0.0.1", 0, limit=1 << 20)
+            port = srv.sockets[0].getsockname()[1]
+            self._session_ports[sid] = port
+            self._session_servers[f"tcp:{sid}"] = srv    # stop() 统一收口
+            return port
+        except OSError:
+            log.exception("会话级 egress TCP 监听失败（%s）", sid)
             return None
 
     async def start(self) -> int:
@@ -225,25 +297,77 @@ class EgressProxy:
             except OSError:
                 pass
 
-    def _gate(self, host: str, port: int, sid: str | None = None) -> bool:
+    async def _gate(self, host: str, port: int, sid: str | None = None
+                    ) -> tuple[bool, str]:
+        """判定（每连接一次）。返回 (是否放行, reason)——reason 同步落审计
+        与 SSE，denied 时进 403 体给 agent 可读的解释。"""
         _maybe_reload_policy()
         from . import egress_grants
-        mode = CONFIG.security.egress_mode
+        mode = _session_mode(sid)
+        if mode == "off":
+            _record(host, "allow-open", mode, port, sid)
+            return True, "allow-open"
         if _allowed(host):
             _record(host, "allow", mode, port, sid)
-            return True
+            return True, "allow"
         if sid and egress_grants.allowed(sid, host):
             _record(host, "allow-grant", mode, port, sid)
-            return True
+            return True, "allow-grant"
+        if mode == "warn":
+            _record(host, "allow-warn", mode, port, sid)
+            return True, "allow-warn"
+        # enforce：未列域。deny=旧形态直接拒；ask=弹卡确认（默认）——
+        # 拦了不给用户选择的机会，比多问一次更糟
+        if CONFIG.security.egress_on_deny == "ask" and sid:
+            ok, why = await self._ask_and_wait(sid, host, port, mode)
+            return ok, why
         _record(host, "deny", mode, port, sid)
-        return mode != "enforce"          # warn：拒绝只记录，放行直通
+        return False, "not-in-allowlist"
+
+    async def _ask_and_wait(self, sid: str, host: str, port: int,
+                            mode: str) -> tuple[bool, str]:
+        """弹卡确认：建 egress 审批（同域去重）→ SSE 推会话 → 挂起轮询裁决。
+
+        挂起占用的是本连接（引擎侧表现为请求慢），批准即已落临时授权
+        （approve.decide 的 egress 分支），本请求直接放行——agent 无需重试。
+        超时/拒绝 → 403（fail-closed）。
+        """
+        from . import approve as approve_mod
+        aid = approve_mod.pending_egress_id(sid, host)
+        if aid is None:
+            try:
+                out = approve_mod.create(
+                    sid, "egress", {"host": host, "ttl_s": 7200},
+                    note="平台自动发起：任务外联被白名单拦截，等待用户裁决")
+                aid = out["id"]
+                from .engine import ENGINE
+                ENGINE.publish(sid, "approval", {"kind": "request", **out})
+            except (ValueError, OSError):
+                log.exception("egress 弹卡创建失败，回退直接拒（%s→%s）", sid, host)
+                _record(host, "deny", mode, port, sid)
+                return False, "not-in-allowlist"
+        # 等待上限信任 CONFIG（启动 load_config 与管理面 PUT 均已 15-600 校验）
+        wait = int(CONFIG.security.egress_ask_wait_s)
+        deadline = asyncio.get_event_loop().time() + wait
+        while asyncio.get_event_loop().time() < deadline:
+            await asyncio.sleep(1)
+            st = approve_mod.status(aid)
+            if st["status"] == "executed":       # decide 批准即落授权
+                _record(host, "allow-ask", mode, port, sid)
+                return True, "allow-ask"
+            if st["status"] in ("denied", "expired"):
+                _record(host, "denied-by-user", mode, port, sid)
+                return False, "denied-by-user"
+        _record(host, "ask-timeout", mode, port, sid)
+        return False, "ask-timeout"
 
     async def _connect(self, reader, writer, target: str,
                        sid: str | None = None) -> None:
         host, _, port_s = target.partition(":")
         port = int(port_s or "443")
-        if not self._gate(host, port, sid):
-            writer.write(b"HTTP/1.1 403 Forbidden by egress policy\r\n\r\n")
+        ok, reason = await self._gate(host, port, sid)
+        if not ok:
+            writer.write(_deny_body(host, reason))
             await writer.drain()
             return
         try:
@@ -271,14 +395,15 @@ class EgressProxy:
             await self._llm_gateway(reader, writer, method, u, headers)
             return
         if host_hdr and u.hostname and host_hdr.lower() != u.hostname.lower():
-            _record(host, "deny-mismatch", CONFIG.security.egress_mode, sid=sid)
-            if CONFIG.security.egress_mode == "enforce":
-                writer.write(b"HTTP/1.1 403 Host mismatch\r\n\r\n")
+            _record(host, "deny-mismatch", _session_mode(sid), sid=sid)
+            if _session_mode(sid) == "enforce":
+                writer.write(_deny_body(host, "host-mismatch"))
                 await writer.drain()
                 return
         port = u.port or 80
-        if not self._gate(host, port, sid):
-            writer.write(b"HTTP/1.1 403 Forbidden by egress policy\r\n\r\n")
+        ok, reason = await self._gate(host, port, sid)
+        if not ok:
+            writer.write(_deny_body(host, reason))
             await writer.drain()
             return
         try:

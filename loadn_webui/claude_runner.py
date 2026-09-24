@@ -342,20 +342,29 @@ async def run_turn(call: TurnCall, stop: StopHandle | None = None) -> TurnProcRe
         {"LOADN_TURN_ID": str(call.turn_id),
          "WORKDADDY_TURN_ID": str(call.turn_id), **spec_env},
         call.env_extra)
-    # P5 凭证收回：LLM 引擎只知虚拟网关域+dummy token（真凭证在代理控制域）
+    # P5 凭证收回：LLM 引擎只知虚拟网关域+dummy token（真凭证在代理控制域）。
+    # off 档也走网关——放开的是「去哪」，不是「凭证在哪」
     from .config import CONFIG as _CFG
-    if _CFG.security.egress_mode in ("warn", "enforce") \
-            and _CFG.security.egress_proxy_port \
+    if _CFG.security.egress_proxy_port \
             and spec.name in ("loadn", "hahaness", "claude"):  # hahaness=alias
         from .egress_proxy import GW_HOST
         env["ANTHROPIC_BASE_URL"] = f"http://{GW_HOST}"
         env.setdefault("ANTHROPIC_AUTH_TOKEN", "dummy-controlled-by-egress-gw")
 
-    # W5.1：引擎流量走出口代理（白名单+审计+面板数据源；env 通道=可回退）
+    # W5.1：引擎流量走出口代理（三态档位都在路径上：off=直通+审计，
+    # warn=告警放行，enforce=白名单+弹卡确认；env 通道=可回退）。
+    # 会话级回环 TCP 端口=每连接的 sid 归属（direct 引擎；bwrap 形态
+    # 沙箱内 socat 桥读同一端口号转 UDS，不受影响）
     from .config import CONFIG as _C
-    if _C.security.egress_mode in ("warn", "enforce") \
-            and _C.security.egress_proxy_port:
-        proxy = f"http://127.0.0.1:{_C.security.egress_proxy_port}"
+    from .egress_proxy import get_proxy as _get_egress_proxy
+    _proxy = _get_egress_proxy()
+    if _C.security.egress_proxy_port:
+        proxy_port = _C.security.egress_proxy_port
+        if _proxy is not None and call.sid:
+            sport = await _proxy.ensure_session_tcp(call.sid)
+            if sport:
+                proxy_port = sport
+        proxy = f"http://127.0.0.1:{proxy_port}"
         env.setdefault("https_proxy", proxy)
         env.setdefault("HTTPS_PROXY", proxy)
         env.setdefault("http_proxy", proxy)
@@ -367,13 +376,10 @@ async def run_turn(call: TurnCall, stop: StopHandle | None = None) -> TurnProcRe
     from . import workspace as _ws_mod
     from .audit import audit as _audit
 
-    # 会话级 egress socket：审批式临时授权按任务生效（loadn 引擎沙箱）。
-    # 幂等；失败静默回落共享 socket（只有全局白名单，fail-closed）。
-    from .egress_proxy import get_proxy as _get_egress_proxy
-    if call.sid and _C.security.egress_mode in ("warn", "enforce"):
-        _proxy = _get_egress_proxy()
-        if _proxy is not None:
-            await _proxy.ensure_session_uds(call.sid)
+    # 会话级 egress socket：审批式临时授权/弹卡确认按任务生效（loadn 引擎
+    # 沙箱 unshare-net 形态）。幂等；失败静默回落共享 socket（fail-closed）。
+    if _proxy is not None and call.sid:
+        await _proxy.ensure_session_uds(call.sid)
     cmd, sbx_mode = sandbox_mod.wrap_engine(
         cmd, env, engine=spec.name, sid=call.session_id, cwd=Path(call.cwd),
         project_root=_ws_mod.project_root_of(call.sid), owner_sid=call.sid)

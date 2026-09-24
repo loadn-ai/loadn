@@ -126,14 +126,25 @@ def test_grant_scoped_and_expiry():
 def test_gate_honors_session_grant(monkeypatch):
     monkeypatch.setattr(CONFIG.security, "egress_mode", "enforce")
     monkeypatch.setattr(CONFIG.security, "egress_allow", ["base.example.org"])
+    monkeypatch.setattr(CONFIG.security, "egress_on_deny", "deny")  # 弹卡流另测
     px = egress_proxy.EgressProxy(port=0)
     sid = "sess-gate-test"
-    assert px._gate("base.example.org", 443)                    # 白名单
-    assert not px._gate("grant.example.net", 443)               # 无 sid 不放
-    assert not px._gate("grant.example.net", 443, sid="nosuch")  # 无授权
+
+    def gate(*a, **k):
+        import asyncio as _aio
+        return _aio.run(px._gate(*a, **k))
+
+    ok, why = gate("base.example.org", 443)
+    assert ok and why == "allow"                               # 白名单
+    ok, why = gate("grant.example.net", 443)
+    assert not ok and why == "not-in-allowlist"                # 无 sid 不放
+    ok, _ = gate("grant.example.net", 443, sid="nosuch")
+    assert not ok                                               # 无授权
     egress_grants.grant(sid, "grant.example.net", 7200)
-    assert px._gate("grant.example.net", 443, sid=sid)          # 授权放行
-    assert not px._gate("grant.example.net", 443, sid="other")  # 不跨任务
+    ok, why = gate("grant.example.net", 443, sid=sid)
+    assert ok and why == "allow-grant"                          # 授权放行
+    ok, _ = gate("grant.example.net", 443, sid="other")
+    assert not ok                                               # 不跨任务
     egress_grants.revoke(sid, "grant.example.net")
 
 
