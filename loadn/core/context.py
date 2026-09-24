@@ -108,7 +108,12 @@ class ContextAssembler:
             parts.append("## 工具使用要点\n" + "\n".join(notes))
         # 4) 宪法（先拼重头，环境块是可截的软段）
         parts.append(self.constitution_block())
-        # 6) 记忆
+        # 6) 记忆：P1-4 项目抽取记忆（宪法后、全局 MEMORY.md 前；[memory]
+        # 标注+溯源会话 id）→ 既有全局/项目自动记忆
+        from loadn.core import memory as mem_mod
+        proj_block = mem_mod.render_block(self.cwd)
+        if proj_block:
+            parts.append(proj_block)
         memory_parts = []
         proj_mem = _read_first([_claude_project_memory(self.cwd)])
         if proj_mem:
