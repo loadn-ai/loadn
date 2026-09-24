@@ -308,9 +308,24 @@ class EgressProxy:
             _record(host, "allow-open", mode, port, sid)
             return True, "allow-open"
         if _allowed(host):
+            # P0-5 DNS 重绑定防护：白名单域名的解析出了私网/回环 IP →
+            # 拒（allowlist 防「去哪」，这里防「实际到了哪」）；只做一次
+            # 且 TTL 缓存（net_policy），同步解析放 executor 不堵事件循环
+            ok, why = await self._rebind_ok(host)
+            if not ok:
+                _record(host, "deny-rebind", mode, port, sid)
+                audit("anomaly", {"what": "dns-rebind", "host": host,
+                                  "reason": why})
+                return False, "dns-rebind"
             _record(host, "allow", mode, port, sid)
             return True, "allow"
         if sid and egress_grants.allowed(sid, host):
+            ok, why = await self._rebind_ok(host)
+            if not ok:
+                _record(host, "deny-rebind", mode, port, sid)
+                audit("anomaly", {"what": "dns-rebind", "host": host,
+                                  "reason": why})
+                return False, "dns-rebind"
             _record(host, "allow-grant", mode, port, sid)
             return True, "allow-grant"
         if mode == "warn":
@@ -323,6 +338,14 @@ class EgressProxy:
             return ok, why
         _record(host, "deny", mode, port, sid)
         return False, "not-in-allowlist"
+
+    async def _rebind_ok(self, host: str) -> tuple[bool, str]:
+        """重绑定判定（DNS 解析放 executor；纯字面 IP/localhost 免解析）。"""
+        import asyncio as _aio
+
+        from . import net_policy
+        loop = _aio.get_running_loop()
+        return await loop.run_in_executor(None, net_policy.rebind_check, host)
 
     async def _ask_and_wait(self, sid: str, host: str, port: int,
                             mode: str) -> tuple[bool, str]:
