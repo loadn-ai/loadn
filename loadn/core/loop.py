@@ -242,7 +242,9 @@ class AgentCore:
         self.planner = planner            # TaskPlanner（v0.2 并行拆分调度）
         self.ctx = ctx or ToolContext(cwd=self.cwd)
         self.ctx.extras.setdefault("state", self.session.state)
-        self.assembler = ContextAssembler(self.cwd, tools=list(tools))
+        self.assembler = ContextAssembler(
+            self.cwd, tools=list(tools),
+            model=getattr(self.provider, "model_name", None))  # P1-7 变体
         self.loop_guard = LoopGuard()
         self._grind_nudges = 0        # 完工自检已续战次数（GRIND_MAX_NUDGES 封顶）
         self._tool_execs = 0          # 累计工具执行数（口头交付检测）
@@ -321,6 +323,7 @@ class AgentCore:
                        stop: StopFlag | None = None,
                        stream_events: bool = False) -> TurnSummary:
         t0 = time.time()
+        first_user_text = user_msg         # P1-7：标题语料（首 turn）
         self._warmer_bump()               # P1-6：新 turn 即失效在途保温
         summary = TurnSummary()
         emit = emit or _noop_emit
@@ -628,6 +631,7 @@ class AgentCore:
             await _fire(emit, {"type": "turn", "summary": summary})
             self._warmer_schedule()          # P1-6：空闲保温（长命进程）
             self._memory_extract()          # P1-4b：后台记忆抽取（同步快路径）
+            self._titlegen(first_user_text)  # P1-7：引擎侧标题（一次性）
         return summary
 
     # ------------------------------------------------------------ 完工自检
@@ -801,6 +805,58 @@ class AgentCore:
                 await _fire(emit, {"type": "todos",
                                    "todos": [t.to_dict() for t in state.todos]})
         return blk, name
+
+    # ------------------------------------------------------------ P1-7 titlegen
+    def _titlegen(self, first_user_text: str) -> None:
+        """引擎侧自动标题（平台形态由 webui titlegen 负责，LOADN_SESSION_ID
+        在=平台托管 → 跳过防双写）。一次性：已有非空标题/已生成即跳过。"""
+        import os as _os
+        if _os.environ.get("LOADN_SESSION_ID"):
+            return                          # 平台托管（webui titlegen 通道）
+        if not first_user_text.strip() or len(first_user_text) < 6:
+            return
+        from loadn.persistence import db as db_mod
+        try:
+            with db_mod.conn(self.session.transcript.dir.parent.parent) as c:
+                row = c.execute("SELECT title FROM sessions WHERE id=?",
+                                (self.session.session_id,)).fetchone()
+                if row and (row["title"] or "").strip():
+                    return
+        except Exception:                                  # noqa: BLE001
+            return
+        small = getattr(self.compactor, "small_model", None) \
+            if self.compactor else None
+        import asyncio as _aio
+
+        async def _run():
+            from pathlib import Path as _P
+            tmpl = (_P(__file__).resolve().parent.parent / "prompts"
+                    / "title.txt").read_text(encoding="utf-8")
+            prompt = tmpl.format(first_message=first_user_text[:2000])
+            from loadn.types import Message as _Msg
+            from loadn.types import TextBlock as _TB
+            text = ""
+            try:
+                async for ch in self.provider.chat(
+                        [_Msg(role="user", content=[_TB(text=prompt)])], [],
+                        "你是标题生成器，只输出标题本身。",
+                        model=small, use_cache=False):
+                    if ch.kind == "text_delta":
+                        text += ch.text
+            except Exception:                              # noqa: BLE001
+                return
+            title = text.strip().strip('"「』').splitlines()[0][:40]
+            if not title:
+                return
+            try:
+                with db_mod.conn(self.session.transcript.dir.parent.parent) as c:
+                    db_mod.set_title(c, self.session.session_id, title)
+            except Exception:                              # noqa: BLE001
+                pass
+        try:
+            _aio.get_running_loop().create_task(_run())
+        except RuntimeError:
+            pass
 
     # ------------------------------------------------------------ P1-4b memory
     def _memory_extract(self) -> None:
