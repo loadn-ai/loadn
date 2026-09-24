@@ -46,7 +46,11 @@ async def run_repl(bundle, emitter, fmt: str, stop) -> int:
             core.session = new
             print(f"已分叉为新会话 {new.session_id}")
             continue
-        if line == "/compact" and core.compactor is not None:
+        if line == "/compact":
+            if core.compactor is None:
+                # 已知指令缺依赖：不该落穿成普通提示词发给模型（T4 修）
+                print("（compactor 未配置——/compact 不可用）")
+                continue
             msgs = core.session.messages_for_turn()
             msgs, did = await core.compactor.compact(
                 msgs, context_window=core.settings.context_window,
