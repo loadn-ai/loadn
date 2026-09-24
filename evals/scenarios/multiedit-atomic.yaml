@@ -1,0 +1,20 @@
+name: multiedit-atomic
+suites: [smoke]
+description: 多编辑原子性——两处替换一次落盘
+prompt: 批量替换
+files:
+  conf.txt: "a=1\nb=1\nc=1\n"
+tools_enabled: [Read, MultiEdit]
+script:
+  - - tool: Read
+      input: {file_path: conf.txt}
+    - tool: MultiEdit
+      input:
+        file_path: conf.txt
+        edits:
+          - {old_string: "a=1", new_string: "a=2"}
+          - {old_string: "b=1", new_string: "b=2"}
+final_text_text: "ok"
+assert_files:
+  - path: conf.txt
+    contains: ["a=2", "b=2", "c=1"]

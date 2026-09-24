@@ -1,0 +1,23 @@
+name: edit-basic
+suites: [smoke]
+description: 编辑正确性——Write 后 Edit 精确替换（读后写守卫链）
+prompt: 修正示例文件的错别字
+files:
+  notes.txt: "hello wrold\n"
+tools_enabled: [Read, Write, Edit]
+script:
+  - - tool: Read
+      input: {file_path: notes.txt}
+    - tool: Edit
+      input:
+        file_path: notes.txt
+        old_string: "wrold"
+        new_string: "world"
+final_text_text: "已修正"
+assert_files:
+  - path: notes.txt
+    contains: ["hello world"]
+assert_events:
+  - {type: user, count_min: 1}
+  - {type: assistant, count_min: 1}
+assert_result_subtype: success

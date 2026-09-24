@@ -1,0 +1,18 @@
+name: edit-guard
+suites: [smoke]
+description: 守卫链——未 Read 的文件直接 Edit 必须被拒（tool_result is_error）
+prompt: 编辑一个没读过的文件
+files:
+  secret.txt: "data\n"
+tools_enabled: [Edit]
+script:
+  - - tool: Edit
+      input:
+        file_path: secret.txt
+        old_string: "data"
+        new_string: "pwned"
+final_text_text: "被守卫拦下"
+assert_files:
+  - path: secret.txt
+    contains: ["data"]        # 未被改
+assert_result_subtype: success
