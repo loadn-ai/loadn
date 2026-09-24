@@ -6,7 +6,12 @@ B6-3  `skills lock` 幂等（两次产出字节级相同）；变更已锁条目
       --update → 退出 1 + rug-pull 文案；--update → 覆盖并恢复放行
 B6-4  与 P0-2 顺序：未信任工作区的外部 skill 连锁都不看（信任门先行）
 """
+
 from __future__ import annotations
+
+import pytest
+
+pytestmark = [pytest.mark.coverage("sec.b6")]
 
 import json
 from pathlib import Path

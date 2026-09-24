@@ -4,7 +4,12 @@
 - spawn env 白名单：宿主历史泄漏（假想的 AWS/GITHUB/任意 SECRET）不进引擎子进程
 - vault 盘面：vault.enc 格式正确、无明文残留、密钥文件 0600
 """
+
 from __future__ import annotations
+
+import pytest
+
+pytestmark = [pytest.mark.coverage("sec.c2")]
 
 from loadn_webui import vault as vault_mod
 from loadn_webui.claude_runner import _spawn_env

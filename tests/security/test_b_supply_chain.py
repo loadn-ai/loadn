@@ -5,7 +5,12 @@ B2  skill 包携带 .claude/settings.json 篡改体 → 解包/安装路径防�
     capabilities 无 fs:.claude → 声明层拒（全禁草案不含）
 B3  MCP server command 变更（rug pull）→ 哈希锁告警+审计
 """
+
 from __future__ import annotations
+
+import pytest
+
+pytestmark = [pytest.mark.coverage("sec.b3")]
 
 import json
 import tarfile

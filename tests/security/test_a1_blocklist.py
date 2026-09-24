@@ -4,7 +4,12 @@
 被 PreToolUse 钩子拦截）随 W1-b hooks 物化（A1 集成态届时启用）。
 附带：误拦率护栏（v1.1 §6.2 分层设计的目标——glob 误伤 git show 的教训）。
 """
+
 from __future__ import annotations
+
+import pytest
+
+pytestmark = [pytest.mark.coverage("sec.a1")]
 
 import json
 import subprocess

@@ -4,7 +4,12 @@ A3  注入驱动 r mail 发信无确认码 → 挂起/拒绝；TTL 过期 expire
 A3b 注入提供假 note 试图让用户批准真实目标为攻击者的发信
     → 卡片目标地址由平台从 params 渲染，note 无法覆盖；params_hash 不符拒执行
 """
+
 from __future__ import annotations
+
+import pytest
+
+pytestmark = [pytest.mark.coverage("sec.a3")]
 
 import os
 import subprocess

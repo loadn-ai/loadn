@@ -1,0 +1,78 @@
+# loadn 成熟度记分卡数据（P3-6，openclaw taxonomy.yaml 同构）。
+# 声明面：子系统×能力×coverage-id；证据面：pytest marker（测试文件标
+# `pytestmark = [pytest.mark.coverage("sec.a5")]）；消费面：
+# scripts/maturity.py 生成记分卡 markdown（空 coverage 标红）。
+version: 1
+snapshot:
+  date: "2026-09-24"
+  source_ref: main   # scripts/maturity.py 运行时锚实际 git sha 覆写
+
+profiles:
+  - id: smoke-ci
+    description: PR/merge 确定性证明（零 token 全量 pytest）
+    evidenceMode: slim
+    coverageIds:
+      - sec.a1          # L0 红线
+      - sec.a5          # Bash AST 拆解
+      - sec.a6          # 审批回写闭环
+      - sec.a7          # net-policy 脱敏/重绑定
+      - sec.b3          # MCP 哈希锁
+      - sec.b5          # 信任门
+      - sec.b6          # skills 供应链锁
+      - engine.tools    # 文件工具
+      - engine.compact  # 压缩
+      - proto.v1        # CC 方言契约
+  - id: nightly
+    description: 夜间全量（evals 场景门 + e2e）
+    evidenceMode: full
+    coverageIds:
+      - evals.smoke
+      - engine.daemon
+      - engine.repomap
+
+levels:
+  - {id: planned, code: M0, label: Planned}
+  - {id: experimental, code: M1, label: Experimental}
+  - {id: alpha, code: M2, label: Alpha}
+  - {id: beta, code: M3, label: Beta}
+  - {id: stable, code: M4, label: Stable}
+
+subsystems:
+  - id: sec
+    label: 安全
+    capabilities:
+      - {id: a1, level: M4, label: L0 红线拦截, coverage: sec.a1}
+      - {id: a3, level: M4, label: 不可逆动作审批, coverage: sec.a3}
+      - {id: a4, level: M3, label: 出口白名单代理, coverage: sec.a4}
+      - {id: a5, level: M4, label: Bash AST 权限, coverage: sec.a5}
+      - {id: a6, level: M4, label: 审批规则化回写, coverage: sec.a6}
+      - {id: a7, level: M4, label: 凭证脱敏+重绑定防护, coverage: sec.a7}
+      - {id: b3, level: M3, label: MCP rug-pull 锁, coverage: sec.b3}
+      - {id: b5, level: M4, label: Workspace 信任门, coverage: sec.b5}
+      - {id: b6, level: M4, label: Skill 供应链锁, coverage: sec.b6}
+      - {id: c2, level: M3, label: 凭证保险库, coverage: sec.c2}
+      - {id: d1, level: M3, label: bwrap 沙箱, coverage: sec.d1}
+      - {id: e2, level: M4, label: 审计哈希链, coverage: sec.e2}
+      # 声明有、暂无专属 coverage（记分卡标红的对象——诚实面）
+      - {id: c1, level: M2, label: 蜜罐诱饵, coverage: ""}
+      - {id: e3, level: M2, label: 回滚保护, coverage: ""}
+  - id: engine
+    label: 引擎
+    capabilities:
+      - {id: tools, level: M4, label: 文件/搜索工具组, coverage: engine.tools}
+      - {id: compact, level: M3, label: 上下文压缩, coverage: engine.compact}
+      - {id: memory, level: M2, label: 长期记忆, coverage: ""}
+      - {id: repair, level: M2, label: 纯文本工具修复, coverage: ""}
+      - {id: warmer, level: M1, label: prompt-cache 保活, coverage: ""}
+      - {id: daemon, level: M2, label: 多传输 daemon, coverage: engine.daemon}
+      - {id: repomap, level: M2, label: 仓库地图, coverage: engine.repomap}
+      - {id: turndiff, level: M2, label: turn 级 diff, coverage: ""}
+  - id: proto
+    label: 协议
+    capabilities:
+      - {id: v1, level: M4, label: CC 方言 v1 契约, coverage: proto.v1}
+      - {id: v2, level: M2, label: 事件版本化 v2, coverage: proto.v2}
+  - id: evals
+    label: 发布门
+    capabilities:
+      - {id: smoke, level: M3, label: 场景 evals, coverage: evals.smoke}

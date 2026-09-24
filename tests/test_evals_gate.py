@@ -4,7 +4,12 @@
 - **故意破坏能红**：临时注入一个必然失败的场景 → exit 1 且报告含 ❌
 - 判定器单元：文件断言（contains/equals/missing）/transcript 断言
 """
+
 from __future__ import annotations
+
+import pytest
+
+pytestmark = [pytest.mark.coverage("evals.smoke")]
 
 import subprocess
 import sys

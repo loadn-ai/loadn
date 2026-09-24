@@ -3,7 +3,12 @@
 读后写守卫（files_touched）与 mtime 外部变更守卫是宪法级路径，全分支
 覆盖：先读后写、未读拒写、外部变更拒编辑、replace_all、diff 上限。
 """
+
 from __future__ import annotations
+
+import pytest
+
+pytestmark = [pytest.mark.coverage("engine.tools")]
 
 import base64
 import os

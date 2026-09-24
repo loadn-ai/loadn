@@ -4,7 +4,12 @@ D1 语义：沙箱内写 /etc /usr 失败；读宿主 HOME 凭证/平台 var/vau
 workspace 正常；其他会话档案不可见；turn 受控失败不崩溃。
 真 bwrap 实机跑（无 bwrap/非本机环境 skipif）。
 """
+
 from __future__ import annotations
+
+import pytest
+
+pytestmark = [pytest.mark.coverage("sec.d1")]
 
 import json
 import os

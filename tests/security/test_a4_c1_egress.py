@@ -4,7 +4,12 @@ A4  产物 md 埋 <img src=https://attacker.com> 与 <script>/onerror 后预览/
     → 消毒剥离 + 外链占位符不自动加载
 C1  canary 内容出现在外发命令 → 网关/钩子 block + audit(canary_hit) + 会话熔断
 """
+
 from __future__ import annotations
+
+import pytest
+
+pytestmark = [pytest.mark.coverage("sec.a4")]
 
 import json
 

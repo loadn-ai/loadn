@@ -7,7 +7,12 @@
 - degraded 可用：无 tree-sitter 环境 def/class 正则近似仍出地图
 - context 注入：with_repomap 时 build 含「仓库地图」节；冷启动 3 轮后停
 """
+
 from __future__ import annotations
+
+import pytest
+
+pytestmark = [pytest.mark.coverage("engine.repomap")]
 
 from pathlib import Path
 
