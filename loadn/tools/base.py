@@ -6,9 +6,11 @@
 """
 from __future__ import annotations
 
+import asyncio
+from collections.abc import Awaitable, Callable
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING, Any, TypeVar
 
 from loadn.types import ToolDef
 
@@ -18,6 +20,42 @@ if TYPE_CHECKING:
 
 class ToolError(Exception):
     """工具级可读错误（回填给模型的提示语）。"""
+
+
+# ---------------------------------------------------------------- 同文件写互斥
+# P0-1（pi file-mutation-queue 同构）：并行子代理/并行 plan 下同文件写
+# 的 lost-update 防护。刻意**模块级**注册表而非挂 ToolContext——子代理各持
+# 独立 ToolContext（subagent.py 新建，files_touched 本就不共享），ctx 级
+# 锁无法跨子代理互斥；同一 asyncio 事件循环内进程级 dict 即全部写入方。
+# 键=resolve 规范路径（与 read.file_key 同语义，符号链接归一）；条目不
+# 主动回收（每进程编辑过的文件数级，可忽略）。
+_FILE_LOCKS: dict[str, asyncio.Lock] = {}
+FILE_LOCK_TIMEOUT_S = 30.0     # 取锁超时：报错释放，防并行任务互等死锁
+
+_T = TypeVar("_T")
+
+
+async def with_file_lock(raw: str | Path, fn: Callable[[], Awaitable[_T]],
+                         *, timeout_s: float | None = None) -> _T:
+    """按文件串行执行 fn（异文件天然并行）。
+
+    必须包住**读后写守卫之前**的整段（守卫→读→算→写）：锁在守卫后取会让
+    排队方看到写前 mtime 而被守卫误杀。超时抛 ToolError（is_error 回填，
+    fn 不执行），已持有的锁总在 finally 释放。
+    """
+    key = str(Path(raw).resolve())
+    lock = _FILE_LOCKS.setdefault(key, asyncio.Lock())
+    timeout = FILE_LOCK_TIMEOUT_S if timeout_s is None else timeout_s
+    try:
+        await asyncio.wait_for(lock.acquire(), timeout=timeout)
+    except asyncio.TimeoutError:      # py3.10 尚未与内建 TimeoutError 合并
+        raise ToolError(
+            f"文件正被另一并行任务编辑，等待 {timeout:.0f}s 超时未获得写入权："
+            f"{raw}（重试，或等该任务完成）") from None
+    try:
+        return await fn()
+    finally:
+        lock.release()
 
 
 @dataclass

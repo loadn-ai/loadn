@@ -8,7 +8,7 @@ from __future__ import annotations
 from pathlib import Path
 
 from loadn.constants import WRITE_MAX_BYTES
-from loadn.tools.base import Tool, ToolContext, ToolError
+from loadn.tools.base import Tool, ToolContext, ToolError, with_file_lock
 from loadn.tools.read import file_key
 
 
@@ -46,14 +46,20 @@ class WriteTool(Tool):
                 f"content {len(payload) / 1024:.0f}KB 超过上限 "
                 f"{WRITE_MAX_BYTES // 1024}KB（WRITE_MAX_BYTES），拒绝写入；"
                 "请拆分内容分多次写，或改用 Bash 写大文件")
-        key = file_key(raw)
-        if path.exists() and key not in ctx.files_touched:
-            raise ToolError(
-                f"文件已存在但本会话未读取过，先用 Read 读取再覆盖：{path}")
-        path.parent.mkdir(parents=True, exist_ok=True)
-        path.write_bytes(payload)
-        ctx.files_touched[key] = path.stat().st_mtime
-        return f"已写入 {path}（{len(content.splitlines())} 行）"
+
+        async def _critical() -> str:
+            # 守卫（已存在须先 Read）与写入同锁（P0-1）——与 Edit 互斥，
+            # 防并行方在「检查通过→落盘」窗口覆盖对方的编辑
+            key = file_key(raw)
+            if path.exists() and key not in ctx.files_touched:
+                raise ToolError(
+                    f"文件已存在但本会话未读取过，先用 Read 读取再覆盖：{path}")
+            path.parent.mkdir(parents=True, exist_ok=True)
+            path.write_bytes(payload)
+            ctx.files_touched[key] = path.stat().st_mtime
+            return f"已写入 {path}（{len(content.splitlines())} 行）"
+
+        return await with_file_lock(raw, _critical)
 
 
 tool = WriteTool()            # ToolRegistry.default() 收集的模块级实例

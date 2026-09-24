@@ -16,7 +16,7 @@ import unicodedata
 from pathlib import Path
 
 from loadn.constants import EDIT_DIFF_MAX_LINES
-from loadn.tools.base import Tool, ToolContext, ToolError
+from loadn.tools.base import Tool, ToolContext, ToolError, with_file_lock
 from loadn.tools.read import file_key
 
 
@@ -172,13 +172,18 @@ class EditTool(Tool):
             raise ToolError("old_string/new_string 需为字符串")
         replace_all = bool(args.get("replace_all", False))
 
-        path, key, text = _load_guarded(raw, ctx)
-        # .ipynb 是 JSON 源文本：空白归一替换语义不安全，禁用 fuzzy 层
-        new_text = _apply_one(text, old, new, replace_all,
-                              allow_fuzzy=path.suffix != ".ipynb")
-        diff = _unified_diff(path, text, new_text)
-        _write_guarded(path, key, new_text, ctx)
-        return f"{''.join(diff)}已编辑 {path}（建议用 Read 回读确认）"
+        async def _critical() -> str:
+            # 锁在读后写守卫**之前**（P0-1）：排队方等锁期间文件被前一任务
+            # 写过，轮到自己时守卫看到的才是新 mtime（否则误杀）
+            path, key, text = _load_guarded(raw, ctx)
+            # .ipynb 是 JSON 源文本：空白归一替换语义不安全，禁用 fuzzy 层
+            new_text = _apply_one(text, old, new, replace_all,
+                                  allow_fuzzy=path.suffix != ".ipynb")
+            diff = _unified_diff(path, text, new_text)
+            _write_guarded(path, key, new_text, ctx)
+            return f"{''.join(diff)}已编辑 {path}（建议用 Read 回读确认）"
+
+        return await with_file_lock(raw, _critical)
 
 
 # ---------------------------------------------------------------- 0 命中
