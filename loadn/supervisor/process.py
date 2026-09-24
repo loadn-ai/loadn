@@ -111,6 +111,7 @@ class ProcessSupervisor:
     def __init__(self) -> None:
         self._procs: dict[str, ProcInfo] = {}
         self._proc_objs: dict[str, asyncio.subprocess.Process] = {}
+        self.task_registry = None          # P2-4：可选注册表（AgentCore 注入）
         self._readers: dict[str, asyncio.Task] = {}
         self._last_output: dict[str, float] = {}      # id → 最近输出时间
         self._killing: set[str] = set()               # 显式收割标记（reader 让位）
@@ -142,6 +143,9 @@ class ProcessSupervisor:
                         output_path=str(logs / f"task_{task_id}.out"))
         self._procs[task_id] = info
         self._proc_objs[task_id] = proc
+        if self.task_registry is not None:      # P2-4 统一登记
+            self.task_registry.register(
+                "bg", " ".join(str(c) for c in cmd)[:80], proc=proc)
         self._last_output[task_id] = info.started_at
         self._readers[task_id] = asyncio.create_task(
             self._reader(info, proc), name=f"sup-reader-{task_id}")
@@ -175,7 +179,10 @@ class ProcessSupervisor:
                         started_at=started_at or time.time(), status="running",
                         output_path=str(out_path))
         self._procs[task_id] = info
-        self._proc_objs[task_id] = proc          # 必登：shutdown 的 SIGKILL 升级只对有 proc_obj 的条目做
+        self._proc_objs[task_id] = proc
+        if self.task_registry is not None:      # P2-4 统一登记
+            self.task_registry.register(
+                "bg", " ".join(str(c) for c in cmd)[:80], proc=proc)          # 必登：shutdown 的 SIGKILL 升级只对有 proc_obj 的条目做
         self._last_output[task_id] = time.time()
         self._stalled.discard(task_id)
         self._readers[task_id] = asyncio.create_task(

@@ -162,10 +162,23 @@ class SubagentManager:
         """
         import asyncio as _aio
 
-        return list(await _aio.gather(
-            *(self.task(st.prompt, subagent_type=st.subagent_type,
-                        description=st.prompt[:60], emit=emit)
-              for st in subtasks)))
+        # P2-4：扇出统一登记注册表（取消传播=cancel asyncio task）
+        reg = getattr(self, "task_registry", None)
+        if reg is None:
+            return list(await _aio.gather(
+                *(self.task(st.prompt, subagent_type=st.subagent_type,
+                            description=st.prompt[:60], emit=emit)
+                  for st in subtasks)))
+        tasks = [_aio.create_task(self.task(
+            st.prompt, subagent_type=st.subagent_type,
+            description=st.prompt[:60], emit=emit)) for st in subtasks]
+        ids = [reg.register("subagent", st.prompt[:60], cancel_handle=t)
+               for t, st in zip(tasks, subtasks)]
+        try:
+            return list(await _aio.gather(*tasks))
+        finally:
+            for i in ids:
+                reg.unregister(i)
 
 
 async def _fire_event(emit, ev: dict) -> None:
