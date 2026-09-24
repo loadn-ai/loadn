@@ -17,3 +17,6 @@ desktop/image/payload/
 desktop/image/dist/
 desktop/image/dist-platform/
 desktop/shell/src-tauri/gen/
+vendor-refs/
+impl-specs/
+PROGRESS-impl.md

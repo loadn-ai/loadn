@@ -8,7 +8,7 @@ edit.py 的共享内核。
 """
 from __future__ import annotations
 
-from loadn.tools.base import Tool, ToolContext, ToolError
+from loadn.tools.base import Tool, ToolContext, ToolError, with_file_lock
 from loadn.tools.edit import _apply_one, _load_guarded, _unified_diff, _write_guarded
 
 
@@ -53,22 +53,26 @@ class MultiEditTool(Tool):
         if not isinstance(edits, list) or not edits:
             raise ToolError("edits 需为非空数组 [{old_string, new_string, replace_all?}]")
 
-        path, key, text = _load_guarded(raw, ctx)
-        work = text
-        for i, e in enumerate(edits, 1):
-            if not isinstance(e, dict):
-                raise ToolError(f"edits[{i}] 需为对象（收到 {type(e).__name__}）")
-            old, new = e.get("old_string"), e.get("new_string")
-            if not isinstance(old, str) or not isinstance(new, str):
-                raise ToolError(f"edits[{i}] 的 old_string/new_string 需为字符串")
-            work = _apply_one(work, old, new, bool(e.get("replace_all", False)),
-                              label=f"edits[{i}]",
-                              allow_fuzzy=path.suffix != ".ipynb")
+        async def _critical() -> str:
+            # 锁在守卫之前 + 与 Edit/Write/NotebookEdit 同一把（P0-1）
+            path, key, text = _load_guarded(raw, ctx)
+            work = text
+            for i, e in enumerate(edits, 1):
+                if not isinstance(e, dict):
+                    raise ToolError(f"edits[{i}] 需为对象（收到 {type(e).__name__}）")
+                old, new = e.get("old_string"), e.get("new_string")
+                if not isinstance(old, str) or not isinstance(new, str):
+                    raise ToolError(f"edits[{i}] 的 old_string/new_string 需为字符串")
+                work = _apply_one(work, old, new, bool(e.get("replace_all", False)),
+                                  label=f"edits[{i}]",
+                                  allow_fuzzy=path.suffix != ".ipynb")
 
-        diff = _unified_diff(path, text, work)
-        _write_guarded(path, key, work, ctx)
-        return (f"{''.join(diff)}"
-                f"已原子应用 {len(edits)} 处编辑到 {path}（建议用 Read 回读确认）")
+            diff = _unified_diff(path, text, work)
+            _write_guarded(path, key, work, ctx)
+            return (f"{''.join(diff)}"
+                    f"已原子应用 {len(edits)} 处编辑到 {path}（建议用 Read 回读确认）")
+
+        return await with_file_lock(raw, _critical)
 
 
 tool = MultiEditTool()        # ToolRegistry.default() 收集的模块级实例
