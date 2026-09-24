@@ -146,3 +146,21 @@ v2 事件在 v1 流的映射：`tool_use_failure`→`user`（既有回填行为�
 
 能力协商仍以 webui 侧 EngineSpec 为准（§4）；v2 的 `system.init` 追加
 `protocol: 2` 字段（v1 无此字段——宿主按存在性探测）。
+
+## 8. 传输：stdio 直连 / UDS daemon（P2-1）
+
+**方言不动**：本节只换管道不改事件流——§2/§7 的事件字节流在两种传输下
+逐字节一致（桥零改动的根基）。
+
+- 直连（现状）：宿主 spawn `loadn -p --output-format stream-json`，事件流
+  走 stdout。
+- daemon：`loadn daemon` 监听 `$LOADN_HOME/var/engine.sock`（0600）；
+  连接级 token 写 `var/engine.token`（0600）。attach 首行
+  `{"auth": token, "session_id": sid}`；其后每行 `{"type":"run","prompt":…}`
+  为一个 turn 请求，事件流回写该连接并镜像同会话其他连接。
+- 鉴权：错/缺 token 立即断（`{"type":"error","error":"auth failed"}`）。
+- 断连语义：连接断开→引擎收尾当前 turn 后挂起（AgentCore 存活，cache
+  warmer 全量生效——P1-6 的长命进程前提）；重连同 sid 续作。
+- 桥：`loadn daemon-bridge`（env `LOADN_ENGINE_SOCK`）——宿主 spawn 桥
+  替代直接 spawn 引擎，视角仍是 stdin/stdout NDJSON 子进程（codex
+  stdio-to-uds 同构）。

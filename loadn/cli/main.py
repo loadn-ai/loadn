@@ -72,6 +72,12 @@ def main(argv: list[str] | None = None) -> int:
     if raw and raw[0] == "skills":
         from loadn.cli.skills_lock import main as skills_main
         return skills_main(raw[1:])
+    if raw and raw[0] == "daemon":
+        from loadn.transport.daemon import main as daemon_main
+        return daemon_main()
+    if raw and raw[0] == "daemon-bridge":
+        from loadn.transport.bridge import main as bridge_main
+        return bridge_main()
     args = build_parser().parse_args(raw)
     prompt = args.prompt
     if prompt is None and not sys.stdin.isatty():
