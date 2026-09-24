@@ -50,12 +50,19 @@ tests/contract/ 有对赌用例——第三方引擎建议在自己仓库里跑�
 
 ## 2. 换 LLM 供应商（引擎侧）
 
-不动代码。解析序（`loadn` 引擎）：
+不动代码。解析序（`loadn` 引擎，P3-5b 起含 auth.json 层）：
 
-1. `$LOADN_HOME/config.json`
-2. env：`ANTHROPIC_BASE_URL` / `ANTHROPIC_AUTH_TOKEN` / `LOADN_MODEL`
-   / `LOADN_PROVIDER`（`anthropic` | `openai` | `fake`）
-3. `~/.claude/settings.json` 的 env 段（已有网关配置原样复用）
+1. `$LOADN_HOME/config.json`（部署显式真源，最高优）
+2. `$LOADN_HOME/auth.json`（`loadn auth login` 的凭据库——0600；
+   同名 provider 条目生效，支持 `--base-url` 订阅型网关）
+3. env：`ANTHROPIC_BASE_URL` / `ANTHROPIC_AUTH_TOKEN` / `LOADN_MODEL`
+   / `LOADN_PROVIDER`（`anthropic` | `openai` | `fake` | loadn.ext 注册名）
+4. `~/.claude/settings.json` 的 env 段（已有网关配置原样复用）
+
+凭据管理子命令：`loadn auth login|refresh|logout|status|check
+[--credentials]`——token 经 getpass 输入（不进 shell 历史），只落
+auth.json（0600，挂载面零命中）+ 平台 vault 加密同步（装了 loadn-web
+即生效）；`check --credentials` 导出 JSON 供脚本/CI。
 
 Anthropic 形网关（任何兼容端点）与 OpenAI 兼容端点（vLLM/LiteLLM/…）
 都原生支持；`fake` provider 用于零 token 测试。加全新协议族则在
