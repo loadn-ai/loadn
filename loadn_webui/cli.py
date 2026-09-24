@@ -692,6 +692,10 @@ def main(argv: list[str] | None = None) -> int:
     if raw and raw[0] == "_browser-mcp":
         from .browser_mcp import main as browser_main
         return browser_main()
+    # P3-3：LSP 诊断回注 MCP server（stdio 子进程形态）
+    if raw and raw[0] == "_lsp-mcp":
+        from .lsp_host import main as lsp_main
+        return lsp_main()
     ap = argparse.ArgumentParser(prog="loadn-web")
     sub = ap.add_subparsers(dest="cmd")
 

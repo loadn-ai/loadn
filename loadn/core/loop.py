@@ -851,6 +851,20 @@ class AgentCore:
                     is_error = True
                 except Exception as e:  # noqa: BLE001 — 工具异常回填不炸循环
                     content, is_error = f"工具内部异常: {e!r}", True
+        # P3-3：LSP 诊断回注——写路径成功后查 mcp__lsp__diagnostics
+        # （平台侧 lsp server 经 MCP 黑盒提供；缺席/失败静默——诊断是
+        # 补充信息，不伤工具主结果）
+        if not is_error and name in ("Edit", "Write", "MultiEdit"):
+            fp = str(tu.input.get("file_path") or "").strip()
+            diag = self.tools.get("mcp__lsp__diagnostics")
+            if fp and diag is not None:
+                try:
+                    d = await asyncio.wait_for(
+                        diag.execute({"file_path": fp}, self.ctx), timeout=20)
+                    if d and d.strip():
+                        content = f"{content}\n[lsp diagnostics]\n{d.strip()}"
+                except Exception:  # noqa: BLE001 — LSP 是旁挂能力
+                    pass
         if isinstance(content, str):
             content = content[:100_000]   # Truncator 最终防线（工具内已有细粒度纪律）
         blk = ToolResultBlock(tool_use_id=tu.id, content=content, is_error=is_error)

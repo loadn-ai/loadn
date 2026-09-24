@@ -178,6 +178,8 @@ class SecurityConfig:
     egress_proxy_port: int = 0
     # P3-4 codemode 受限执行域（默认关——显式选择）
     codemode_enabled: bool = False
+    # P3-3 LSP 诊断回注（默认关——懒启动语言 server 是显式选择）
+    lsp_enabled: bool = False
 
 
 @dataclass

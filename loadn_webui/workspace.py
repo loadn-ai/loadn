@@ -82,6 +82,12 @@ def write_mcp_json(ws: Path, session_mcp: dict | None) -> None:
             "command": str(Path(sys.executable).parent / "loadn-web"),
             "args": ["_browser-mcp"],
         }
+    # P3-3：LSP 诊断回注（平台侧 MCP server——引擎拿到 mcp__lsp__diagnostics）
+    if CONFIG.security.lsp_enabled and "lsp" not in merged:
+        merged["lsp"] = {
+            "command": str(Path(sys.executable).parent / "loadn-web"),
+            "args": ["_lsp-mcp"],
+        }
     p = ws / ".mcp.json"
     if merged:
         p.write_text(json.dumps({"mcpServers": merged}, ensure_ascii=False, indent=2))
