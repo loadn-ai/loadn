@@ -199,7 +199,7 @@ def wrap_loadn(cmd: list[str], env: dict, *, sid_session: str,
     debug_dir = engine_home / "debug"
     debug_dir.mkdir(parents=True, exist_ok=True)
     argv += ["--bind", str(debug_dir), str(debug_dir)]
-    for f in ("config.json", "settings.json"):
+    for f in ("config.json", "settings.json", "trust.json"):
         src = engine_home / f
         if src.exists():
             argv += ["--ro-bind", str(src), str(src)]

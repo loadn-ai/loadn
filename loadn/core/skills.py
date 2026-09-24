@@ -24,16 +24,25 @@ class SkillInfo:
 
 def skill_bases(cwd: Path) -> list[Path]:
     """发现根（顺序即优先级；~/.claude/skills = Claude 用户全局 skill，
-    双引擎共享同一套全局 skill）。"""
-    return [cwd / ".claude" / "skills",
-            cwd / ".loadn" / "skills",
-             cwd / ".agent" / "skills",
-            Path.home() / ".claude" / "skills",
-            loadn_home() / "skills"]
+    双引擎共享同一套全局 skill）。
+
+    P0-2 信任门：项目级三个根未过信任门即剔除（clone 的仓库不得自带
+    注入指令的 SKILL.md）；用户全局两个根不受影响。
+    """
+    from loadn.core import trust
+    bases = [cwd / ".claude" / "skills",
+             cwd / ".loadn" / "skills",
+             cwd / ".agent" / "skills"]
+    ok, why = trust.gate(cwd)
+    if not ok:
+        log.warning("信任门：项目级 skills 已跳过（%s）", why)
+        bases = []
+    return bases + [Path.home() / ".claude" / "skills",
+                    loadn_home() / "skills"]
 
 
 def discover_skills(cwd: Path) -> dict[str, SkillInfo]:
-    """扫描三个根：name → SkillInfo（同名先到先得；坏 SKILL.md 跳过）。"""
+    """扫描发现根：name → SkillInfo（同名先到先得；坏 SKILL.md 跳过）。"""
     out: dict[str, SkillInfo] = {}
     for base in skill_bases(cwd):
         try:

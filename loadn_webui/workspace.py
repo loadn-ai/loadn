@@ -215,6 +215,19 @@ def write_settings(ws: Path, sid: str, prof: profile_mod.Profile,
     legacy = ws / ".agent"
     legacy.mkdir(parents=True, exist_ok=True)
     (legacy / "settings.json").write_text(json.dumps(agent, ensure_ascii=False, indent=2))
+    # P0-2 信任门：物化的项目级 settings 对引擎是「项目资源」——此刻同步
+    # admit（webui 与引擎共享 LOADN_HOME，trust.json 互通），否则引擎把
+    # 平台自己的安全钩子当未信任资源降级跳过。agent 后续改动这些文件 →
+    # 摘要不匹配 → 引擎按未信任处理（fail-closed 方向正确）。rerender
+    # 每次重物化都刷新摘要，自愈。
+    try:
+        from loadn import truststore as _truststore
+        _truststore.admit(ws)
+    except Exception:                                   # noqa: BLE001
+        import logging
+        logging.getLogger(__name__).warning(
+            "信任门 admit 失败（引擎将按未信任降级项目级 settings）：%s", ws,
+            exc_info=True)
 
 
 def write_constitution(ws: Path, text: str) -> None:

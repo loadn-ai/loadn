@@ -149,6 +149,12 @@ async def _run(args, prompt: str | None, cwd: Path, cfg: dict, mode: str) -> int
     stop = StopFlag()
     _install_signal_handlers(stop)
 
+    # P0-2 信任门（交互模式问一次，admit 后本会话即按已信任加载——
+    # 必须在 build_agent 之前；headless -p 不问，gate() fail-closed）
+    if not args.print_mode:
+        from loadn.cli.repl import trust_preflight
+        trust_preflight(cwd)
+
     try:
         if args.fork and args.resume_id:
             session = SessionManager.fork(args.resume_id, cwd)

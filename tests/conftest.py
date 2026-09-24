@@ -131,3 +131,28 @@ async def wait_turn(client, sid: str, tid: int, timeout_s: float = 20) -> dict:
 def ws_root():
     from loadn_webui.config import PATHS
     return PATHS["workspace"]
+
+
+@pytest.fixture(autouse=True)
+def _trust_tmp_workspaces(request, tmp_path, monkeypatch):
+    """P0-2 信任门：引擎单测在 tmp 工作区铺项目级资源（skills/hooks/
+    agents）——这些用例测的是别的特性，工作区语义=用户自己的（已信任）。
+
+    gate 失败即懒 admit（此刻资源已在，摘要自洽）——真实路径仍被走过
+    （未信任→admit→信任），消费点漏接 gate 会照样暴露。安全组
+    （tests/security/）自管信任态，跳过。
+    """
+    from pathlib import Path as _P
+    if _P(request.node.path).is_relative_to(_P(__file__).parent / "security"):
+        return
+    from loadn.core import trust as _trust
+    _real_gate = _trust.gate
+
+    def _auto_gate(cwd):
+        ok, why = _real_gate(cwd)
+        if not ok and (root := _trust.project_root(cwd)) is not None:
+            _trust.admit(root)
+            ok, why = _real_gate(cwd)
+        return ok, why
+
+    monkeypatch.setattr(_trust, "gate", _auto_gate)
