@@ -19,13 +19,25 @@ log = get_logger(__name__)
 
 def load_agent_defs(cwd: Path, home: Path | None = None) -> dict[str, dict]:
     """返回 name → {"tools": [...], "system_add": str, "model": str,
-    "description": str}（空表 = 无自定义）。"""
+    "description": str}（空表 = 无自定义）。
+
+    P0-2 信任门：项目级三个根未过信任门即剔除（agents/*.md 的正文会
+    注入 subagent system_add——提示注入面）；全局面不受影响。
+    """
+    from loadn.core import trust
     out: dict[str, dict] = {}
-    bases = [home or loadn_home() / "agents",
-             Path.home() / ".claude" / "agents",
-             cwd / ".loadn" / "agents",
-             cwd / ".agent" / "agents",
-             cwd / ".claude" / "agents"]      # 后者覆盖前者
+    global_bases = [home or loadn_home() / "agents",
+                    Path.home() / ".claude" / "agents"]
+    ok, why = trust.gate(cwd)
+    if ok:
+        project_bases = [cwd / ".loadn" / "agents",
+                         cwd / ".agent" / "agents",
+                         cwd / ".claude" / "agents"]
+    else:
+        if why != "no-resources":
+            log.warning("信任门：项目级 agent 定义已跳过（%s）", why)
+        project_bases = []
+    bases = global_bases + project_bases      # 后者覆盖前者
     for base in bases:
         try:
             files = sorted(base.glob("*.md"))

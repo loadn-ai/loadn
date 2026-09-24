@@ -14,6 +14,9 @@ from pathlib import Path
 
 from loadn import loadn_home
 from loadn.constants import HOOK_TIMEOUT_S
+from loadn.util import get_logger
+
+log = get_logger(__name__)
 
 
 @dataclass
@@ -32,11 +35,21 @@ class HookRunner:
     @classmethod
     def load(cls, cwd: Path) -> HookRunner:
         """钩子声明：全局 < 项目（.loadn/settings.json 的 hooks 段，列表拼接；
-    兼容读旧 .agent/ 一版）。"""
+        兼容读旧 .agent/ 一版）。
+
+        P0-2 信任门：项目级 settings 未过信任门即降级跳过（hooks 段=
+        任意命令执行面，clone 的仓库不得自带可执行钩子）；全局面不受影响。
+        """
+        from loadn.core import trust
+        ok, why = trust.gate(cwd)
+        paths = [loadn_home() / "settings.json"]
+        if ok:
+            paths += [cwd / ".loadn" / "settings.json",
+                      cwd / ".agent" / "settings.json"]
+        elif why != "no-resources":
+            log.warning("信任门：%s", why)
         merged: dict[str, list[str]] = {}
-        for path in (loadn_home() / "settings.json",
-                     cwd / ".loadn" / "settings.json",
-                     cwd / ".agent" / "settings.json"):
+        for path in paths:
             try:
                 data = json.loads(path.read_text(encoding="utf-8"))
                 hooks = (data or {}).get("hooks") or {}

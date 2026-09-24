@@ -38,10 +38,23 @@ class PermissionEngine:
     # ------------------------------------------------------------ 加载
     @classmethod
     def load(cls, cwd: Path, mode: str = "default") -> PermissionEngine:
-        """合并序：全局 < 项目（项目同名键覆盖）。文件缺失 = 空规则。"""
+        """合并序：全局 < 项目（项目同名键覆盖）。文件缺失 = 空规则。
+
+        P0-2 信任门：项目级规则未过信任门即不加载——未信任仓库不得用
+        permissions.allow 自我放行（deny 同理不加载：降级语义统一，
+        宁可少规则不可信规则）。
+        """
+        from loadn.core import trust
         glob_rules = _read_rules(loadn_home() / "settings.json")
-        proj_rules = (_read_rules(cwd / ".loadn" / "settings.json")
-                     or _read_rules(cwd / ".agent" / "settings.json"))
+        ok, why = trust.gate(cwd)
+        if ok:
+            proj_rules = (_read_rules(cwd / ".loadn" / "settings.json")
+                          or _read_rules(cwd / ".agent" / "settings.json"))
+        else:
+            if why != "no-resources":
+                from loadn.util import get_logger
+                get_logger(__name__).warning("信任门：项目级权限规则已跳过（%s）", why)
+            proj_rules = {}
         merged = {**glob_rules, **proj_rules}
         return cls(mode=mode, deny=merged.get("deny") or [],
                    allow=merged.get("allow") or [])

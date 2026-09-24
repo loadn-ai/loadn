@@ -77,3 +77,27 @@ async def run_repl(bundle, emitter, fmt: str, stop) -> int:
         if summary.subtype != "success":
             print(f"（{summary.subtype}{('｜' + summary.error) if summary.error else ''}）")
         stop.requested = False   # Ctrl-C 只打断当轮，REPL 继续
+
+
+def trust_preflight(cwd) -> None:
+    """P0-2 信任门（交互模式问一次；在 build_agent 之前调用——admit 后
+    本会话即按已信任加载。headless -p 不经过这里：gate() fail-closed，
+    无人可问=按未信任降级，与 ask→deny 哲学一致）。"""
+    from loadn.core import trust
+    ok, why = trust.gate(cwd)
+    if ok:
+        return
+    root = trust.project_root(cwd)
+    print(f"\n⚠ {why}")
+    for f in (trust._resource_files(root)[:8] if root else []):
+        print(f"    {f}")
+    try:
+        ans = input("信任该工作区的项目级 hooks/skills/权限规则？[y/N] ").strip().lower()
+    except (EOFError, KeyboardInterrupt):
+        ans = ""
+    if ans in ("y", "yes") and root is not None:
+        trust.admit(root)
+        print("已信任（记录当前内容摘要；资源变更后需重新确认）")
+    elif root is not None:
+        trust.revoke(root)
+        print("已标记不信任：项目级资源降级跳过（全局 hooks/skills 不受影响）")
