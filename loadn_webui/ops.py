@@ -71,6 +71,25 @@ def _log(msg: str) -> None:
         pass
 
 
+def stamp_engine_version(build_dir: Path, tag: str) -> None:
+    """引擎包版本对齐发布 tag（版本平面合一）。
+
+    pyproject 的 version 是 loadn 引擎子包自己的版本号，从不随平台
+    release 走——health 面板会出现「平台 v0.6.3 + 引擎 0.3.0」的双版本
+    困惑。release build 时把 tag 盖进**构建树**（仓库不动，tag 内容不变，
+    只有分发产物携带对齐后的版本）。
+    """
+    import re
+    for rel, pat in (("loadn/__init__.py", r'(__version__\s*=\s*")[^"]*(")'),
+                     ("pyproject.toml", r'(^version\s*=\s*")[^"]*(")')):
+        f = build_dir / rel
+        try:
+            txt = f.read_text()
+        except OSError:
+            continue                     # 布局变化即跳过（显示层面的事，不挡发布）
+        f.write_text(re.sub(pat, rf"\g<1>{tag}\g<2>", txt, count=1, flags=re.M))
+
+
 @contextmanager
 def _ops_lock():
     """flock 互斥——同一时刻只允许一个 ops 命令操作指针。"""
@@ -244,6 +263,8 @@ def cmd_release_build(tag: str, *, skip_ui: bool = False,
                     f"--output={build_dir}.tar"], cwd=repo, check=True)
     subprocess.run(["tar", "-xf", f"{build_dir}.tar", "-C", BUILD_DIR], check=True)
     (BUILD_DIR / f"{tag}.tar").unlink()
+    stamp_engine_version(build_dir, tag)
+    print(f"[1/5] 引擎包版本盖章 → {tag}（loadn --version 与平台 release 对齐）")
 
     # 2) 前端构建
     if not skip_ui:
