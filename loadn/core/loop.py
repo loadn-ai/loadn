@@ -638,11 +638,18 @@ class AgentCore:
                                                "text": summary.text[:2000]})
             except Exception:  # noqa: BLE001
                 pass
+            # P3-1：本 turn 的 diff 摘要（可选字段——v1 消费方忽略未知键）
+            diffs = self.ctx.extras.pop("turn_diff", []) or []
+            from loadn.core.turn_diff import summary_line
             self.session.append_event("result", {
                 "subtype": summary.subtype, "result": summary.text,
                 "usage": summary.usage, "modelUsage": summary.model_usage,
                 "num_turns": summary.num_turns,
-                "duration_ms": int(summary.duration_s * 1000)}, fsync=True)
+                "duration_ms": int(summary.duration_s * 1000),
+                **({"diffs": [{"path": d["path"], "hash": d["hash"],
+                               "lines": summary_line(d["diff"])}
+                              for d in diffs]} if diffs else {})},
+                fsync=True)
             self.session.record_usage(summary)
             await _fire(emit, {"type": "turn", "summary": summary})
             self._warmer_schedule()          # P1-6：空闲保温（长命进程）

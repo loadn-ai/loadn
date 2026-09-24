@@ -55,8 +55,14 @@ class WriteTool(Tool):
                 raise ToolError(
                     f"文件已存在但本会话未读取过，先用 Read 读取再覆盖：{path}")
             path.parent.mkdir(parents=True, exist_ok=True)
+            from loadn.core import turn_diff as td
+            before = td.snapshot(path)
             path.write_bytes(payload)
             ctx.files_touched[key] = path.stat().st_mtime
+            diff_text, diff_hash = td.compute(path, before, payload)
+            if diff_text:
+                ctx.extras.setdefault("turn_diff", []).append(
+                    {"path": str(path), "diff": diff_text, "hash": diff_hash})
             return f"已写入 {path}（{len(content.splitlines())} 行）"
 
         return await with_file_lock(raw, _critical)
