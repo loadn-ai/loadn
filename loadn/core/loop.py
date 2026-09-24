@@ -474,6 +474,11 @@ class AgentCore:
                     + last_input_usage.get("cache_read_input_tokens", 0)
                     + last_input_usage.get("cache_creation_input_tokens", 0))
 
+                # P1-2 tool-call-repair：无结构化 tool_use 且正文是纯调用块
+                # 序列 → promote 为真调用（走与真实调用完全相同的权限+钩子
+                # 执行路径，不得绕过——卡面红线）
+                if blocks and not any(isinstance(b, ToolUseBlock) for b in blocks):
+                    blocks = self._repair_tool_calls(blocks)
                 msg = Message(role="assistant", content=blocks)
                 messages.append(msg)
                 self.session.append_event("assistant", msg.to_dict())
@@ -795,6 +800,33 @@ class AgentCore:
                 await _fire(emit, {"type": "todos",
                                    "todos": [t.to_dict() for t in state.todos]})
         return blk, name
+
+    # ------------------------------------------------------------ P1-2 tool-repair
+    def _repair_tool_calls(self, blocks: list) -> list:
+        """纯文本工具调用块 → 真 ToolUseBlock（openclaw promote 同构）。
+
+        standalone 语义天然保护代码块/引用内文本（见 core/tool_repair.py）。
+        产物进 blocks 后由既有 tool_use 执行路径处理——权限引擎、PreToolUse
+        钩子、审批门一个不少。transcript 记 tool_call_repaired 事件。
+        """
+        from loadn.core import tool_repair as tr
+        from loadn.types import ToolUseBlock as TUB
+        texts = [getattr(b, "text", "") for b in blocks]
+        merged = "\n".join(t for t in texts if t)
+        calls = tr.try_repair(merged, set(self.tools.keys()))
+        if not calls:
+            return blocks
+        try:
+            self.session.append_event("tool_call_repaired", {
+                "calls": [{"name": c.name, "syntax": c.syntax}
+                          for c in calls],
+                "residual_text": tr.strip_blocks(merged, calls)[:200]})
+        except Exception:                                  # noqa: BLE001
+            pass
+        log.info("tool-call-repair：提升 %d 个纯文本调用 %s",
+                 len(calls), [c.name for c in calls])
+        return [TUB(id=f"repair_{i}", name=c.name, input=c.args)
+                for i, c in enumerate(calls)]
 
     # ------------------------------------------------------------ P1-6 cache-warm
     def _warmer_bump(self) -> None:
