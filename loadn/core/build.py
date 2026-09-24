@@ -96,6 +96,10 @@ async def build_agent(cwd: Path, *, session_id: str | None = None,
             extra_types=load_agent_defs(cwd, loadn_home() / "agents"),
             model_provider_factory=lambda m: build_provider({**cfg, "model": m}))
         tools["Task"] = TaskTool(mgr)
+    # P2-4：Runtime Task 注册表面（agent 与宿主都可枚举/取消）
+    from loadn.core.task_tools import TaskCancelTool, TaskListTool
+    tools["TaskList"] = TaskListTool()
+    tools["TaskCancel"] = TaskCancelTool()
 
     window = context_window or _window_of(cfg.get("model") or "")
     from loadn.supervisor.process import ProcessSupervisor

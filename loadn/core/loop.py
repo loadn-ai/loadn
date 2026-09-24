@@ -242,6 +242,14 @@ class AgentCore:
         self.planner = planner            # TaskPlanner（v0.2 并行拆分调度）
         self.ctx = ctx or ToolContext(cwd=self.cwd)
         self.ctx.extras.setdefault("state", self.session.state)
+        # P2-4：Runtime Task 注册表（bg/子代理/定时器统一观测与取消）
+        from loadn.core.tasks import TaskRegistry
+        self.task_registry = TaskRegistry()
+        self.ctx.extras.setdefault("task_registry", self.task_registry)
+        if self.ctx.supervisor is not None:      # bg 命令统一登记
+            self.ctx.supervisor.task_registry = self.task_registry
+        if self.subagents is not None:           # 并行子代理统一登记
+            self.subagents.task_registry = self.task_registry
         self.assembler = ContextAssembler(
             self.cwd, tools=list(tools),
             model=getattr(self.provider, "model_name", None))  # P1-7 变体
