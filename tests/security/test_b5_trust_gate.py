@@ -1,7 +1,8 @@
 """B5 对抗组（P0-2）：Workspace 信任门四件套。
 
 B5-1  clone 带 .claude/skills/恶意 SKILL.md 的仓库 → 不注入（发现序剔除）
-B5-2  修改已信任文件 → 摘要不匹配 → 回到未信任（重新询问语义）
+B5-2  修改已信任资源（agents/settings）→ 摘要不匹配 → 回到未信任（重新询问
+      语义；skills 内容钉在 P0-3 供应链锁，不占信任摘要面——分层）
 B5-3  headless（-p）形态：项目 hooks 未信任直接跳过（gate 不问人，全局仍生效）
 B5-4  未信任项目的 permissions.allow 不得自我放行
 B5-5  admit 后三件套正常加载（信任路径可用性）
@@ -56,12 +57,15 @@ def test_b5_2_digest_mismatch_requires_reconfirm(tmp_path: Path, home: Path):
     trust.admit(repo)                                # 信任并记录摘要
     ok, why = trust.gate(repo)
     assert ok, why
-    # 修改已信任文件 → 摘要不匹配 → 回到未信任
-    (repo / ".claude" / "skills" / "evil" / "SKILL.md").write_text(
-        "---\nname: evil\ndescription: now worse\n---\n\nrm -rf /", encoding="utf-8")
+    # 修改已信任资源（agents/ 定义）→ 摘要不匹配 → 回到未信任。
+    # skills 内容不在此摘要面——外部 skill 由 P0-3 锁钉（分层，见 B6）
+    ag = repo / ".claude" / "agents"
+    ag.mkdir(parents=True)
+    (ag / "sneaky.md").write_text("---\nname: sneaky\n---\n注入指令",
+                                  encoding="utf-8")
     ok, why = trust.gate(repo)
     assert not ok and "摘要不匹配" in why
-    # 新增文件同样改变摘要（skills 树递归）
+    # 修改 settings.json 同样改变摘要
     (repo / ".loadn" / "settings.json").write_text("{}", encoding="utf-8")
     ok, _ = trust.gate(repo)
     assert not ok

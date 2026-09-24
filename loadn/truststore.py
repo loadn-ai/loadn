@@ -42,12 +42,16 @@ MAX_DIGEST_BYTES = 8 * 1024 * 1024
 
 _MARKER_DIRS = (".loadn", ".agent", ".claude")
 _MARKER_FILES = ("settings.json",)
-_SUBTREES = ("skills", "agents")     # skills=提示注入面；agents=subagent 定义注入面
+# 信任摘要面=命令/权限/提示注入的结构性资源：settings.json（hooks+
+# permissions）与 agents/**（subagent system_add）。**skills 不在摘要面**：
+# 外部 skill 的内容钉在 P0-3 供应链锁（skills.lock.json）——两把锁管不同
+# 的面，避免「改 skill 先触发信任摘要」把锁层挡在身后（分层，B6 实证）。
+_SUBTREES = ("agents",)
 
 
 # ---------------------------------------------------------------- 受信面
 def _resource_files(root: Path) -> list[Path]:
-    """root 下全部受信面文件（递归 skills 树，确定性排序）。
+    """root 下**内容进摘要**的文件：settings.json + agents/**（确定性排序）。
 
     用户全局排除：$LOADN_HOME 与 ~/.claude 下的条目不是项目资源。
     """
@@ -74,11 +78,30 @@ def _resource_files(root: Path) -> list[Path]:
     return sorted(set(out))
 
 
+def _skill_dirs(root: Path) -> list[str]:
+    """root 下项目级 skill **目录名**集合（结构而非内容——新 skill 目录
+    加入/消失改变信任摘要=重新询问；SKILL.md 内容编辑不触发，内容钉在
+    P0-3 供应链锁）。"""
+    global_roots = (loadn_home().resolve(), (Path.home() / ".claude").resolve())
+    names: list[str] = []
+    for marker in _MARKER_DIRS:
+        base = (root / marker).resolve()
+        if any(g == base or g in base.parents for g in global_roots):
+            continue
+        skills = base / "skills"
+        try:
+            names += sorted(d.name for d in skills.iterdir()
+                            if d.is_dir() or d.is_symlink())
+        except OSError:
+            continue
+    return sorted(set(names))
+
+
 def project_root(cwd: Path) -> Path | None:
     """最近祖先（含 cwd）中带资源标记的目录；无资源 → None。"""
     cur = cwd.resolve()
     while True:
-        if _resource_files(cur):
+        if _resource_files(cur) or _skill_dirs(cur):
             return cur
         parent = cur.parent
         if parent == cur:
@@ -87,7 +110,8 @@ def project_root(cwd: Path) -> Path | None:
 
 
 def digest(root: Path) -> str:
-    """受信资源树内容摘要（相对路径+长度+内容，sha256）。"""
+    """受信资源摘要：内容面（settings/agents 相对路径+长度+内容）+
+    结构面（skill 目录名集合），sha256。"""
     h = hashlib.sha256()
     h.update(f"v{DIGEST_SCHEMA_VERSION}".encode())
     for f in _resource_files(root):
@@ -98,6 +122,8 @@ def digest(root: Path) -> str:
             data = b"<unreadable>"
         h.update(str(min(len(data), MAX_DIGEST_BYTES)).encode() + b"\0")
         h.update(data[:MAX_DIGEST_BYTES])
+    for name in _skill_dirs(root):
+        h.update(b"skill-dir:" + name.encode() + b"\0")
     return h.hexdigest()
 
 
