@@ -873,6 +873,15 @@ class AgentCore:
                     pass
         if isinstance(content, str):
             content = content[:100_000]   # Truncator 最终防线（工具内已有细粒度纪律）
+        # P2-3 v2：tool_use_failure 原生终态事件（T3 补发——manifest 声明
+        # 久矣，引擎侧此前从未发出）。任何失败源（权限拒/钩子拦/未知工具/
+        # ToolError/超时/内部异常）都发；v1 桥=user（tool_result is_error
+        # 既有回填不变，stream_json v1 不外发原生行）
+        if is_error and self._emit_hook is not None:
+            await _fire(self._emit_hook, {
+                "type": "tool_use_failure",
+                "payload": {"tool": name, "tool_use_id": tu.id,
+                            "reason": str(content)[:500]}})
         blk = ToolResultBlock(tool_use_id=tu.id, content=content, is_error=is_error)
         self.session.append_event("tool_result", blk.to_dict())
         await _fire(emit, {"type": "tool_result", "block": blk, "name": name})
