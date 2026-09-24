@@ -64,7 +64,13 @@ def build_parser() -> argparse.ArgumentParser:
 
 
 def main(argv: list[str] | None = None) -> int:
-    args = build_parser().parse_args(argv)
+    raw = list(sys.argv[1:] if argv is None else argv)
+    # P0-3 子命令面：`loadn skills lock|verify`（argv 与 claude CLI 同构的
+    # PROMPT 语义不破坏——仅当首参恰为 skills 时分派）
+    if raw and raw[0] == "skills":
+        from loadn.cli.skills_lock import main as skills_main
+        return skills_main(raw[1:])
+    args = build_parser().parse_args(raw)
     prompt = args.prompt
     if prompt is None and not sys.stdin.isatty():
         prompt = sys.stdin.read().strip() or None
