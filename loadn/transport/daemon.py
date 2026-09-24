@@ -124,11 +124,21 @@ class EngineDaemon:
                         pass
 
             # StreamJsonEmitter 语义复用（事件→NDJSON 定向回写连接而非
-            # stdout；方言与 stdio 面完全一致——桥零改动的根基）
+            # stdout；方言与 stdio 面完全一致——桥零改动的根基）。
+            # T4 修（真 bug）：此前经 create_task 异步排队回写——客户端
+            # run 后快速 detach 时 _pump 直接 return+writer.close()，
+            # 未跑的回写任务被整体丢弃（事件吞掉）。对齐 stdio 面的
+            # print+flush 同步语义：write 即刻落 transport 缓冲（UDS 本地
+            # 小消息无背压面；drain 语义由后续 readline await 承担）
             from loadn.cli.stream_json import StreamJsonEmitter
 
             def _net_emit(ev: dict) -> None:
-                asyncio.get_event_loop().create_task(emit(ev))
+                line = (json.dumps(ev, ensure_ascii=False) + "\n").encode()
+                for w in list(self.peers.get(sid, [])):
+                    try:
+                        w.write(line)
+                    except OSError:
+                        pass
 
             class _NetEmitter(StreamJsonEmitter):
                 _emit = staticmethod(_net_emit)
