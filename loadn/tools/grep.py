@@ -11,6 +11,7 @@ import fnmatch
 import os
 import re
 import shutil
+import subprocess
 from pathlib import Path
 
 from loadn.constants import GREP_MAX_HITS, READ_FILE_MAX_BYTES, STREAM_LINE_MAX
@@ -21,9 +22,40 @@ _RG_TIMEOUT_S = 30.0          # rg 子进程墙钟上限（兜底扫描是纯内
 _SCAN_BINARY_SNIFF = 4096     # 前若干字节含 NUL 视为二进制跳过
 
 
+_CAPABILITY: dict | None = None      # 会话级缓存（P3-8：不每次 which）
+
+
+def capability() -> dict:
+    """搜索能力探测（pi/zcode capability 同构，会话缓存）。
+
+    {backend: "rg"|"fallback", rg: 路径|None, version: str|None}。
+    探测失败（无 rg）记一条审计——环境降级是部署信号，值得看见。
+    """
+    global _CAPABILITY
+    if _CAPABILITY is not None:
+        return _CAPABILITY
+    rg = shutil.which("rg")
+    version = None
+    if rg:
+        try:
+            out = subprocess.run([rg, "--version"], capture_output=True,
+                                 text=True, timeout=5)
+            version = out.stdout.splitlines()[0].split()[-1]                 if out.returncode == 0 and out.stdout else None
+        except (OSError, subprocess.SubprocessError, IndexError):
+            version = None
+    _CAPABILITY = {"backend": "rg" if rg else "fallback",
+                   "rg": rg, "version": version}
+    if not rg:
+        from loadn.util import get_logger
+        get_logger(__name__).warning(
+            "rg 不可用——Grep 走纯 Python 扫描兜底（速度慢，rg -g/--multiline"
+            " 参数语义降级：glob 仍生效、multiline 逐行近似）")
+    return _CAPABILITY
+
+
 def _rg_binary() -> str | None:
-    """rg 可执行文件路径（测试可 monkeypatch 本函数切换后端）。"""
-    return shutil.which("rg")
+    """rg 可执行文件路径（capability 缓存的便捷口；测试可 monkeypatch）。"""
+    return capability()["rg"]
 
 
 def _glob_match(fp: Path, root: Path, pattern: str) -> bool:
@@ -51,12 +83,20 @@ class GrepTool(Tool):
     """正则检索文件内容（content / files_with_matches / count 三种输出）。"""
 
     name = "Grep"
-    description = (
-        "在文件内容里搜正则 pattern。output_mode：content（默认，带行号）、"
-        "files_with_matches（只要文件名）、count（每文件命中数）。"
-        "glob 过滤文件（如 \"*.py\"），ignore_case 忽略大小写。"
-        "大仓库优先用本工具而不是 Bash+cat。"
-    )
+
+    @property
+    def description(self) -> str:
+        cap = capability()
+        base = ("在文件内容里搜正则 pattern。output_mode：content（默认，带"
+                "行号）、files_with_matches（只要文件名）、count（每文件"
+                "命中数）。glob 过滤文件（如 \"*.py\"），ignore_case 忽略"
+                "大小写。大仓库优先用本工具而不是 Bash+cat。")
+        if cap["backend"] == "rg":
+            return base
+        # 降级声明（P3-8）：模型知道当前能力，少发无效调用
+        return (base + "【当前环境 ripgrep 不可用，已回退纯 Python 扫描："
+                "大仓库会慢；--multiline 走逐行近似（跨行 pattern 可能漏）；"
+                "glob 过滤语义保持一致】")
     input_schema: dict = {
         "type": "object",
         "properties": {
