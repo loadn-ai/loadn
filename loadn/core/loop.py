@@ -250,6 +250,7 @@ class AgentCore:
         self._tool_execs = 0          # 累计工具执行数（口头交付检测）
         # P1-8 repomap：冷启动前 3 轮带仓库地图，之后让位上下文预算
         self._repomap_turns = 0
+        self._emit_hook = None             # P2-3 v2：工具区事件源（run_turn 注入）
         # P1-6 cache-warm：空闲期保温（长命进程语义；详见 core/cache_warmer）
         self._warmer = None
         self._warmer_task = None
@@ -325,6 +326,7 @@ class AgentCore:
                        stop: StopFlag | None = None,
                        stream_events: bool = False) -> TurnSummary:
         t0 = time.time()
+        self._emit_hook = emit              # P2-3：工具执行区事件源（v2）
         first_user_text = user_msg         # P1-7：标题语料（首 turn）
         self._warmer_bump()               # P1-6：新 turn 即失效在途保温
         summary = TurnSummary()
@@ -768,6 +770,22 @@ class AgentCore:
         if not decision.allowed:
             content = f"权限拒绝：{decision.reason}"
             is_error = True
+            # P2-3 v2：permission_request 上抛（宿主审批面/webui approve
+            # 消费；params_hash 供规则化回写 P0-4 关联）——emit 为 None 时
+            # （内部调用/测试）零开销跳过
+            if self._emit_hook is not None:
+                import hashlib as _hl
+                import json as _jn
+                await _fire(self._emit_hook, {"type": "permission_request",
+                                              "payload": {
+                                                  "tool": name,
+                                                  "input": tu.input,
+                                                  "reason": decision.reason,
+                                                  "params_hash": _hl.sha256(
+                                                      _jn.dumps(tu.input,
+                                                                ensure_ascii=False,
+                                                                sort_keys=True)
+                                                      .encode()).hexdigest()[:16]}})
         else:
             # PreToolUse 钩子（exit 2 veto / stdout JSON 改写 input）
             pre = await self.hooks.fire("PreToolUse",

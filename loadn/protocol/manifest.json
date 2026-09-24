@@ -1,0 +1,21 @@
+{
+  "version": 2,
+  "events": {
+    "system": {"since": 1, "durable": false, "latest": 2},
+    "assistant": {"since": 1, "durable": false, "latest": 2},
+    "user": {"since": 1, "durable": false, "latest": 2},
+    "stream_event": {"since": 1, "durable": false, "latest": 2},
+    "steer": {"since": 1, "durable": false, "latest": 2},
+    "plan": {"since": 1, "durable": false, "latest": 2},
+    "todos": {"since": 1, "durable": false, "latest": 2},
+    "result": {"since": 1, "durable": true, "latest": 2},
+    "permission_request": {"since": 2, "durable": true, "latest": 2},
+    "permission_result": {"since": 2, "durable": false, "latest": 2},
+    "tool_use_failure": {"since": 2, "durable": false, "latest": 2}
+  },
+  "v1_bridge": {
+    "permission_request": null,
+    "permission_result": null,
+    "tool_use_failure": "user"
+  }
+}

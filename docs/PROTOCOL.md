@@ -113,3 +113,36 @@ loadn 引擎 SessionStart/SessionEnd hooks **无触发点**（声明不支持直
 | `LOADN_WEBUI_HOME` | **平台**数据根（DB/workspace/config） | monorepo 根 | `WORKDADDY_HOME` |
 
 两类 HOME 语义不同（引擎 vs 平台），spawn 传递时互不污染。
+
+---
+
+## 7. PROTOCOL v2（P2-3，增量事件 + 版本协商）
+
+**启用**：`loadn --protocol v2`（默认 v1——旧宿主零感知，v2 是纯增量）。
+
+### 7.1 事件清单（`loadn/protocol/manifest.json`，代码侧 `loadn.protocol`）
+
+每事件三维声明（opencode event-manifest 同构）：
+- `since`：引入版本（1 或 2）
+- `durable`：终态后回放是否必须（对接 P2-2 选择性落盘——v1 仅 `result`
+  durable；v2 的 `permission_request` durable=审计要求）
+- `latest`：现行版本（v3 演进的弃用位）
+
+### 7.2 v2 增量事件
+
+| 事件 | 方向 | 契约 |
+|---|---|---|
+| `permission_request` | 引擎→宿主 | `{tool, input, reason, params_hash}`——ask/deny 语义上抛；`params_hash`=入参 sha256 前 16 位（审批规则化回写 P0-4 关联键）；**durable** |
+| `permission_result` | 宿主→引擎 | stdin 注入 `{allow, rule_id?}`（rule_id 非空=已规则化，引擎后续同形调用不再上抛） |
+| `tool_use_failure` | 引擎→宿主 | 工具执行失败终态（PostToolUseFailure 语义；v1 桥=user 的 tool_result is_error 形态照发） |
+
+### 7.3 v1 桥（`manifest.v1_bridge`）
+
+v2 事件在 v1 流的映射：`tool_use_failure`→`user`（既有回填行为不变）；
+`permission_request/result`→`null`（v1 宿主不识，不双发——判死兜底
+只认 `result`，不受影响）。
+
+### 7.4 能力位演进
+
+能力协商仍以 webui 侧 EngineSpec 为准（§4）；v2 的 `system.init` 追加
+`protocol: 2` 字段（v1 无此字段——宿主按存在性探测）。

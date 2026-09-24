@@ -57,6 +57,8 @@ def build_parser() -> argparse.ArgumentParser:
                     help="任务总预算（分钟），死磕模式用于剩余时间告知")
     ap.add_argument("--no-plan", action="store_true",
                     help="禁用并行拆分调度（接到任务不评估拆分，直跑）")
+    ap.add_argument("--protocol", default="v1", choices=["v1", "v2"],
+                    help="事件流协议版本（P2-3：v2=增量事件+双发桥；默认 v1 旧宿主零感知）")
     ap.add_argument("--version", action="version",
                     version=f"loadn {__version__}")
     ap.add_argument("prompt", nargs="?", default=None)
@@ -186,7 +188,8 @@ async def _run(args, prompt: str | None, cwd: Path, cfg: dict, mode: str) -> int
 
         fmt = args.output_format
         emitter = StreamJsonEmitter(model=cfg.get("model") or "",
-                                    tools=sorted(core.tools))
+                                    tools=sorted(core.tools),
+                                    protocol=getattr(args, "protocol", "v1"))
         emitter.session_id = sess.session_id
         if fmt == "stream-json":
             emitter.send_init(sess.session_id)
