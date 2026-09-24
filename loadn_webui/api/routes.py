@@ -276,6 +276,46 @@ def put_notify(body: dict):
         raise _http_err(e)
 
 
+@router.post("/settings/notify/test")
+async def test_notify():
+    try:
+        return await settings_admin.test_notify()
+    except Exception as e:  # noqa: BLE001
+        raise _http_err(e)
+
+
+@router.put("/settings/engines")
+def put_engines(body: dict):
+    try:
+        return settings_admin.put_engines(body)
+    except Exception as e:  # noqa: BLE001
+        raise _http_err(e)
+
+
+@router.put("/settings/claude")
+def put_claude(body: dict):
+    try:
+        return settings_admin.put_claude(body)
+    except Exception as e:  # noqa: BLE001
+        raise _http_err(e)
+
+
+@router.put("/settings/share")
+def put_share(body: dict):
+    try:
+        return settings_admin.put_share(body)
+    except Exception as e:  # noqa: BLE001
+        raise _http_err(e)
+
+
+@router.put("/settings/pricing")
+def put_pricing(body: dict):
+    try:
+        return settings_admin.put_pricing(body)
+    except Exception as e:  # noqa: BLE001
+        raise _http_err(e)
+
+
 @router.post("/settings/resources/test")
 async def test_resources(only: str = ""):
     try:

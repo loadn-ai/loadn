@@ -1,9 +1,10 @@
-"""平台设置管理面：读/写 config.yaml 的 titlegen 与 run 分节。
+"""平台设置管理面：读/写 config.yaml 的各分节。
 
 - 与 MCP CRUD 同一套 yaml round-trip（丢注释 → 改前备份 var/backups/），
-  写后同步更新内存 CONFIG（titlegen 即时生效；run 的并发数需重启，
+  写后同步更新内存 CONFIG（titlegen/notify/engines/claude/share/pricing
+  即时生效——消费点每会话/每请求惰性读 CONFIG；run 的并发数需重启，
   引擎信号量在进程启动时创建）。
-- api_key 不回传明文，只回 hint（末 5 位）。
+- api_key 等密钥不回传明文，只回 set+hint；server.token 只回布尔。
 """
 from __future__ import annotations
 
@@ -20,9 +21,10 @@ _KEY_FIELDS = ("enabled", "api_base", "model")
 # resources 段的明文字段 / 密钥字段（密钥只回 set+hint，永不回明文）
 _RES_PLAIN = ("ocr_url", "sandbox_url", "cdp_url", "proxy", "sms_url", "sms_phone",
               "mail_imap", "mail_smtp", "mail_user",
-              "vlm_api_base", "vlm_model", "zhipu_engine", "adb_addr")
+              "vlm_api_base", "vlm_model", "zhipu_engine", "adb_addr",
+              "textr_email")
 _RES_SECRETS = ("sandbox_api_key", "sms_token", "mail_auth_code", "vlm_api_key",
-                "twocaptcha_key", "bocha_key", "zhipu_key")
+                "twocaptcha_key", "bocha_key", "zhipu_key", "textr_password")
 
 
 def _conf_path() -> Path:
@@ -41,6 +43,14 @@ def get_settings() -> dict:
     if not states.get("vlm_api_key") and CONFIG.titlegen.api_key:
         res["vlm_api_key_hint"] = "继承自动标题 key"
     nf = CONFIG.notify
+    from .engines import ALIASES, ENGINES
+    eng = CONFIG.engines
+    per: dict = {}
+    for name in ("claude", "loadn", "opencode", "hahaness"):
+        p = getattr(eng, name)
+        per[name] = {"bin": p.bin or "", "model": p.model or "",
+                     "provider": p.provider or "", "enabled": bool(p.enabled),
+                     "extra_args": list(p.extra_args or [])}
     return {
         "titlegen": {
             "enabled": bool(tg.enabled),
@@ -54,6 +64,20 @@ def get_settings() -> dict:
             "replay_max_events": CONFIG.run.replay_max_events,
             "events_retain_days": CONFIG.run.events_retain_days,
         },
+        "engines": {
+            "default": eng.default,
+            "available": [k for k in ENGINES if k not in ALIASES],
+            "opencode_provider": eng.opencode_provider,
+            "no_compact": eng.no_compact,
+            "per": per,
+        },
+        "claude": {"effort": CONFIG.claude.effort,
+                   "model": CONFIG.claude.model or "",
+                   "claude_bin": CONFIG.claude.claude_bin or ""},
+        "share": {"base_url": CONFIG.share.base_url},
+        "pricing": {"usd_cny": CONFIG.pricing.usd_cny,
+                    "api": CONFIG.pricing.api,
+                    "plan_credits": CONFIG.pricing.plan_credits},
         "convergence": convergence_snapshot(),
         "resources": res,
         "notify": {
@@ -64,6 +88,12 @@ def get_settings() -> dict:
             "telegram_bot_token_set": bool(nf.telegram_bot_token),
             "telegram_chat_id": nf.telegram_chat_id,
         },
+        # server 段只读（host/port/token 属启动期与部署面：轮换走 CLI
+        # `loadn-web token rotate`——UI 里改自己正在用的 token 会把前端锁外面）
+        "server": {"host": CONFIG.server.host, "port": CONFIG.server.port,
+                   "token_set": bool(CONFIG.server.token),
+                   "admin_token_set": bool(CONFIG.server.admin_token),
+                   "token_grace_until": CONFIG.server.token_grace_until},
     }
 
 
@@ -176,6 +206,156 @@ def put_run(body: dict) -> dict:
     _write_section("run", updates)
     for k, v in updates.items():
         setattr(CONFIG.run, k, v)
+    return get_settings()
+
+
+# ---------------- 引擎与模型（engines + claude 节） ----------------
+
+# engines 节下可写的子引擎段（含旧名 hahaness 一版兼容）
+_ENGINE_KEYS = ("claude", "loadn", "opencode", "hahaness")
+_PER_ENGINE_FIELDS = ("bin", "model", "provider", "enabled", "extra_args")
+
+
+def put_engines(body: dict) -> dict:
+    """engines 节写入（默认引擎/opencode 前缀/内压开关/每引擎覆盖）。
+
+    消费点（engines.resolve、各 spec.build_argv）每会话惰性读 CONFIG，
+    setattr 即热生效（下一 turn 起）。
+    """
+    from .engines import ENGINES
+    updates: dict = {}
+    if "default" in body:
+        v = str(body["default"] or "").strip()
+        if v not in ENGINES:
+            raise ValueError(f"未知引擎: {v!r}（可用 {'|'.join(sorted(ENGINES))}）")
+        updates["default"] = v
+    if "opencode_provider" in body:
+        v = str(body["opencode_provider"] or "").strip()
+        if not v:
+            raise ValueError("opencode_provider 不能为空")
+        updates["opencode_provider"] = v
+    if "no_compact" in body:
+        v = body["no_compact"]
+        if v is not None and not isinstance(v, bool):
+            raise ValueError("no_compact 需为 true/false/null（null=自动）")
+        updates["no_compact"] = v
+    per = body.get("engines") or {}
+    if not isinstance(per, dict):
+        raise ValueError("engines 需为对象 {claude|loadn|opencode|hahaness: {...}}")
+    eng_updates: dict[str, dict] = {}
+    for name, spec in per.items():
+        if name not in _ENGINE_KEYS:
+            raise ValueError(f"未知引擎段: {name!r}（可用 {'|'.join(_ENGINE_KEYS)}）")
+        if not isinstance(spec, dict):
+            raise ValueError(f"engines.{name} 需为对象")
+        entry: dict = {}
+        for k in ("bin", "model", "provider"):
+            if k in spec:
+                v = str(spec[k] or "").strip()
+                entry[k] = v or None          # 空 = 清空覆盖（回自动探测/继承）
+        if "enabled" in spec:
+            if not isinstance(spec["enabled"], bool):
+                raise ValueError(f"engines.{name}.enabled 需为布尔")
+            entry["enabled"] = spec["enabled"]
+        if "extra_args" in spec:
+            args = spec["extra_args"]
+            if not isinstance(args, list) or not all(isinstance(x, str) for x in args):
+                raise ValueError(f"engines.{name}.extra_args 需为字符串列表")
+            entry["extra_args"] = [a.strip() for a in args if a.strip()]
+        unknown = set(spec) - set(_PER_ENGINE_FIELDS)
+        if unknown:
+            raise ValueError(f"engines.{name} 含未知字段: {sorted(unknown)}")
+        if entry:
+            eng_updates[name] = entry
+    if not updates and not eng_updates:
+        raise ValueError("没有可更新的字段")
+    data = _load_yaml_conf(_conf_path())
+    sec = data.setdefault("engines", {})
+    for k, v in updates.items():
+        sec[k] = v
+    for name, entry in eng_updates.items():    # 嵌套段与 yaml 现值合并
+        cur = sec.get(name)
+        base = dict(cur) if isinstance(cur, dict) else {}
+        base.update(entry)
+        sec[name] = base
+    _dump_yaml_conf(_conf_path(), data)
+    for k, v in updates.items():
+        setattr(CONFIG.engines, k, v)
+    for name, entry in eng_updates.items():
+        obj = getattr(CONFIG.engines, name)
+        for k, v in entry.items():
+            setattr(obj, k, v)
+    log.info("设置更新 engines: %s %s", updates,
+             {k: sorted(v) for k, v in eng_updates.items()})
+    return get_settings()
+
+
+def put_claude(body: dict) -> dict:
+    """claude 节写入（无头会话 effort/默认模型/claude CLI 路径）。"""
+    from .params import _EFFORTS
+    updates: dict = {}
+    if "effort" in body:
+        v = str(body["effort"] or "").strip()
+        if v not in _EFFORTS:
+            raise ValueError(f"effort 需为 {'|'.join(_EFFORTS)}")
+        updates["effort"] = v
+    if "model" in body:
+        # 空 = 清空覆盖（继承 CLI/订阅默认）——显式写 null，加载层 setattr(None)
+        updates["model"] = str(body["model"] or "").strip() or None
+    if "claude_bin" in body:
+        updates["claude_bin"] = str(body["claude_bin"] or "").strip() or None
+    if not updates:
+        raise ValueError("没有可更新的字段")
+    _write_section("claude", updates)
+    for k, v in updates.items():
+        setattr(CONFIG.claude, k, v)
+    log.info("设置更新 claude: %s", updates)
+    return get_settings()
+
+
+def put_share(body: dict) -> dict:
+    """share 节写入（分享外链 base_url）。"""
+    updates: dict = {}
+    if "base_url" in body:
+        v = str(body["base_url"] or "").strip().rstrip("/")
+        if v and not v.startswith(("http://", "https://")):
+            raise ValueError("base_url 必须是 http(s) URL")
+        updates["base_url"] = v
+    if not updates:
+        raise ValueError("没有可更新的字段")
+    _write_section("share", updates)
+    CONFIG.share.base_url = updates["base_url"]
+    return get_settings()
+
+
+def _check_price_table(name: str, table: object) -> None:
+    """价目表结构校验：{模型名: {字段: 数值}}（整表替换语义，结构错启动即算错账）。"""
+    if not isinstance(table, dict):
+        raise ValueError(f"pricing.{name} 需为对象 {{模型名: {{字段: 数值}}}}")
+    for model, prices in table.items():
+        if not isinstance(prices, dict) or not all(
+                isinstance(v, (int, float)) and not isinstance(v, bool)
+                for v in prices.values()):
+            raise ValueError(f"pricing.{name}.{model} 需为 {{字段: 数值}} 对象")
+
+
+def put_pricing(body: dict) -> dict:
+    """pricing 节写入（usd_cny 汇率 + api/plan_credits 整表替换）。"""
+    updates: dict = {}
+    if "usd_cny" in body:
+        v = body["usd_cny"]
+        if not isinstance(v, (int, float)) or isinstance(v, bool) or not 0 <= v <= 100:
+            raise ValueError("usd_cny 需为 0-100 的数（0=内置 7.1）")
+        updates["usd_cny"] = float(v)
+    for k in ("api", "plan_credits"):
+        if k in body:
+            _check_price_table(k, body[k])
+            updates[k] = body[k]      # 整表替换（{}=恢复内置价目，与加载语义一致）
+    if not updates:
+        raise ValueError("没有可更新的字段")
+    _write_section("pricing", updates)
+    for k, v in updates.items():
+        setattr(CONFIG.pricing, k, v)
     return get_settings()
 
 
@@ -345,3 +525,9 @@ async def test_titlegen() -> dict:
     from .titlegen import _chat
     reply = await _chat("你是一个连通性测试器。", "只回复两个字：正常", max_tokens=16)
     return {"ok": True, "reply": reply.strip()[:50]}
+
+
+async def test_notify() -> dict:
+    """真实推一条测试通知（发给用户自己；provider 未配置时 ok=False）。"""
+    from .notify import ping
+    return await ping()

@@ -298,16 +298,39 @@ interface TitleGenCfg {
   enabled: boolean; api_base: string; model: string;
   api_key_set: boolean; api_key_hint: string;
 }
+interface PerEngineCfg { bin: string; model: string; provider: string; enabled: boolean; extra_args: string[] }
+interface EnginesCfg {
+  default: string; available: string[]; opencode_provider: string;
+  no_compact: boolean | null; per: Record<string, PerEngineCfg>;
+}
+interface ClaudeCfg { effort: string; model: string; claude_bin: string }
+interface NotifyCfg {
+  provider: string; bark_url: string; telegram_chat_id: string;
+  events: Record<string, boolean>;
+  serverchan_key_set: boolean; telegram_bot_token_set: boolean;
+}
+interface ShareCfg { base_url: string }
+interface PricingCfg {
+  usd_cny: number; api: Record<string, Record<string, number>>;
+  plan_credits: Record<string, Record<string, number>>;
+}
+interface ServerCfg {
+  host: string; port: number; token_set: boolean;
+  admin_token_set: boolean; token_grace_until: number;
+}
 interface ResCfg {
   ocr_url: string; sandbox_url: string; cdp_url: string; proxy: string;
   sms_url: string; sms_phone: string; vlm_api_base: string; vlm_model: string; adb_addr: string;
   mail_imap: string; mail_smtp: string; mail_user: string;
+  zhipu_engine: string; textr_email: string;
   sandbox_api_key_set: boolean; sandbox_api_key_hint: string;
   sms_token_set: boolean; sms_token_hint: string;
   mail_auth_code_set: boolean; mail_auth_code_hint: string;
   vlm_api_key_set: boolean; vlm_api_key_hint: string;
   twocaptcha_key_set: boolean; twocaptcha_key_hint: string;
   bocha_key_set: boolean; bocha_key_hint: string;
+  zhipu_key_set: boolean; zhipu_key_hint: string;
+  textr_password_set: boolean; textr_password_hint: string;
 }
 
 const RES_SECRET_FIELDS: [key: string, label: string][] = [
@@ -317,6 +340,8 @@ const RES_SECRET_FIELDS: [key: string, label: string][] = [
   ['vlm_api_key', 'VLM API Key'],
   ['twocaptcha_key', '2captcha Key'],
   ['bocha_key', '博查 Key'],
+  ['zhipu_key', '智谱 Key'],
+  ['textr_password', 'Textr 密码'],
 ];
 
 interface ConvRow {
@@ -330,6 +355,19 @@ function SettingsTab() {
                                    events_retain_days: number } | null>(null);
   const [conv, setConv] = useState<ConvRow[] | null>(null);
   const [convMsg, setConvMsg] = useState('');
+  const [eng, setEng] = useState<EnginesCfg | null>(null);
+  const [cl, setCl] = useState<ClaudeCfg | null>(null);
+  const [engMsg, setEngMsg] = useState('');
+  const [nf, setNf] = useState<NotifyCfg | null>(null);
+  const [nfKeys, setNfKeys] = useState<Record<string, string>>({});
+  const [nfMsg, setNfMsg] = useState('');
+  const [nfTesting, setNfTesting] = useState(false);
+  const [share, setShare] = useState<ShareCfg | null>(null);
+  const [shareMsg, setShareMsg] = useState('');
+  const [pricing, setPricing] = useState<PricingCfg | null>(null);
+  const [priceJson, setPriceJson] = useState('');
+  const [priceMsg, setPriceMsg] = useState('');
+  const [srv, setSrv] = useState<ServerCfg | null>(null);
   const [res, setRes] = useState<ResCfg | null>(null);
   const [resKeys, setResKeys] = useState<Record<string, string>>({});
   const [resMsg, setResMsg] = useState('');
@@ -341,8 +379,14 @@ function SettingsTab() {
   useEffect(() => { void reload(); }, []);
   async function reload() {
     const d = await api<{ titlegen: TitleGenCfg; run: NonNullable<typeof run>;
-                          convergence: ConvRow[]; resources: ResCfg }>('/api/settings');
+                          convergence: ConvRow[]; resources: ResCfg;
+                          engines: EnginesCfg; claude: ClaudeCfg; notify: NotifyCfg;
+                          share: ShareCfg; pricing: PricingCfg; server: ServerCfg }>('/api/settings');
     setTg(d.titlegen); setRun(d.run); setConv(d.convergence); setRes(d.resources); setKeyInput(''); setResKeys({});
+    setEng(d.engines); setCl(d.claude); setNf(d.notify); setNfKeys({});
+    setShare(d.share); setPricing(d.pricing);
+    setPriceJson(JSON.stringify({ api: d.pricing.api ?? {}, plan_credits: d.pricing.plan_credits ?? {} }, null, 2));
+    setSrv(d.server);
   }
 
   async function saveTitlegen() {
@@ -387,6 +431,82 @@ function SettingsTab() {
     } catch (e) { setMsg(`保存失败：${String(e)}`); }
   }
 
+  async function saveEngines() {
+    if (!eng || !cl) return;
+    try {
+      const engines: Record<string, unknown> = {};
+      for (const [name, p] of Object.entries(eng.per)) {
+        engines[name] = { bin: p.bin, model: p.model, provider: p.provider,
+                          enabled: p.enabled, extra_args: p.extra_args };
+      }
+      const d = await api<{ engines: EnginesCfg }>('/api/settings/engines', {
+        method: 'PUT', body: JSON.stringify({ default: eng.default,
+          opencode_provider: eng.opencode_provider, no_compact: eng.no_compact, engines }) });
+      setEng(d.engines);
+      const d2 = await api<{ claude: ClaudeCfg }>('/api/settings/claude', {
+        method: 'PUT', body: JSON.stringify({ effort: cl.effort, model: cl.model, claude_bin: cl.claude_bin }) });
+      setCl(d2.claude);
+      setEngMsg('✓ 已保存（新会话生效，在跑会话不受影响）');
+    } catch (e) { setEngMsg(`保存失败：${String(e)}`); }
+  }
+
+  function updEngine(name: string, patch: Partial<PerEngineCfg>) {
+    setEng(e => e ? { ...e, per: { ...e.per, [name]: { ...e.per[name], ...patch } } } : e);
+  }
+
+  async function saveNotify() {
+    await saveNotifyQuiet(true);
+  }
+
+  async function saveNotifyQuiet(quiet = false) {
+    if (!nf) return;
+    try {
+      const body: Record<string, unknown> = { provider: nf.provider, bark_url: nf.bark_url,
+                                               telegram_chat_id: nf.telegram_chat_id, events: nf.events };
+      for (const k of ['serverchan_key', 'telegram_bot_token']) {
+        const v = (nfKeys[k] ?? '').trim();
+        if (v) body[k] = v;      // 留空 = 保持不变
+      }
+      const d = await api<{ notify: NotifyCfg }>('/api/settings/notify', {
+        method: 'PUT', body: JSON.stringify(body) });
+      setNf(d.notify); setNfKeys({});
+      if (quiet) setNfMsg('✓ 已保存（即时生效）');
+    } catch (e) { setNfMsg(`保存失败：${String(e)}`); throw e; }
+  }
+
+  async function testNotify() {
+    setNfTesting(true); setNfMsg('发送中…（先保存当前编辑值）');
+    try {
+      await saveNotifyQuiet();
+      const d = await api<{ ok: boolean; msg?: string }>('/api/settings/notify/test', { method: 'POST' });
+      setNfMsg(d.ok ? '✓ 测试通知已发出（查收手机）' : `未发送：${d.msg || 'provider 未配置或通道参数不全'}`);
+    } catch (e) { if (!String(e).includes('保存失败')) setNfMsg(`✗ 失败：${String(e)}`); }
+    finally { setNfTesting(false); }
+  }
+
+  async function saveShare() {
+    if (!share) return;
+    try {
+      const d = await api<{ share: ShareCfg }>('/api/settings/share', {
+        method: 'PUT', body: JSON.stringify({ base_url: share.base_url }) });
+      setShare(d.share);
+      setShareMsg('✓ 已保存（即时生效）');
+    } catch (e) { setShareMsg(`保存失败：${String(e)}`); }
+  }
+
+  async function savePricing() {
+    if (!pricing) return;
+    try {
+      const parsed = JSON.parse(priceJson || '{}');
+      const d = await api<{ pricing: PricingCfg }>('/api/settings/pricing', {
+        method: 'PUT', body: JSON.stringify({ usd_cny: pricing.usd_cny,
+          api: parsed.api ?? {}, plan_credits: parsed.plan_credits ?? {} }) });
+      setPricing(d.pricing);
+      setPriceJson(JSON.stringify({ api: d.pricing.api ?? {}, plan_credits: d.pricing.plan_credits ?? {} }, null, 2));
+      setPriceMsg('✓ 已保存（即时生效）');
+    } catch (e) { setPriceMsg(`保存失败：${String(e)}`); }
+  }
+
   function updConv(name: string, patch: Partial<ConvRow>) {
     setConv(rs => rs?.map(r => r.name === name ? { ...r, ...patch } : r) ?? null);
   }
@@ -410,7 +530,8 @@ function SettingsTab() {
       const body: Record<string, unknown> = {};
       for (const k of ['ocr_url', 'sandbox_url', 'cdp_url', 'proxy', 'sms_url',
                        'sms_phone', 'mail_imap', 'mail_smtp', 'mail_user',
-                       'vlm_api_base', 'vlm_model', 'adb_addr']) body[k] = (res as any)[k];
+                       'vlm_api_base', 'vlm_model', 'adb_addr',
+                       'zhipu_engine', 'textr_email']) body[k] = (res as any)[k];
       for (const [k] of RES_SECRET_FIELDS) {
         const v = (resKeys[k] ?? '').trim();
         if (v) body[k] = v;      // 留空 = 保持不变
@@ -493,6 +614,127 @@ function SettingsTab() {
           <button className="btn primary sm" onClick={() => void saveRun()}>保存</button>
         </div>
       </div>
+
+      {eng && cl && <div className="setting-card">
+        <h4>引擎与模型 <span className="muted">（默认引擎 / 推理力度 / 模型与路径覆盖；新会话生效）</span></h4>
+        <div className="setting-row">
+          <span className="setting-k">默认引擎</span>
+          {eng.available.map(e => (
+            <button key={e} className={`chip ${eng.default === e ? 'on' : ''}`}
+              onClick={() => setEng({ ...eng, default: e })}>{e}</button>
+          ))}
+          <span className="muted">灰度切换只翻这一处；角色的 engine 字段仍可按角色覆盖</span>
+        </div>
+        <div className="setting-row">
+          <span className="setting-k">推理力度</span>
+          {['low', 'medium', 'high'].map(v => (
+            <button key={v} className={`chip ${cl.effort === v ? 'on' : ''}`}
+              onClick={() => setCl({ ...cl, effort: v })}>{v}</button>
+          ))}
+          <span className="muted">无头会话默认值；会话属性面板可按会话覆盖</span>
+        </div>
+        <div className="setting-row">
+          <span className="setting-k">默认模型</span>
+          <input value={cl.model} onChange={e => setCl({ ...cl, model: e.target.value })}
+            placeholder="空 = 继承 CLI/订阅默认" style={{ maxWidth: 240 }} />
+          <span className="setting-k" style={{ paddingLeft: 12 }}>claude 路径</span>
+          <input value={cl.claude_bin} onChange={e => setCl({ ...cl, claude_bin: e.target.value })}
+            placeholder="空 = 自动探测" style={{ maxWidth: 240 }} />
+        </div>
+        <div className="setting-row">
+          <span className="setting-k">loadn 内压</span>
+          {([['自动', null], ['恒开', true], ['恒关', false]] as [string, boolean | null][]).map(([label, v]) => (
+            <button key={label} className={`chip ${eng.no_compact === v ? 'on' : ''}`}
+              onClick={() => setEng({ ...eng, no_compact: v })}>{label}</button>
+          ))}
+          <span className="muted">自动 = profile 设了 rotate_input_tokens 则禁内压</span>
+          <span className="setting-k" style={{ paddingLeft: 12 }}>opencode 前缀</span>
+          <input value={eng.opencode_provider} onChange={e => setEng({ ...eng, opencode_provider: e.target.value })}
+            placeholder="zai" style={{ maxWidth: 120 }} />
+        </div>
+        <div className="tbl-wrap"><table className="mcp-table">
+          <thead><tr><th>引擎</th><th>启用</th><th>bin</th><th>模型</th><th>provider</th><th>追加参数（每行一个）</th></tr></thead>
+          <tbody>{Object.entries(eng.per).map(([name, p]) => (
+            <tr key={name}>
+              <td>{name}{name === 'hahaness' && <span className="muted">（旧名）</span>}</td>
+              <td><button className={`chip ${p.enabled ? 'on' : ''}`}
+                onClick={() => updEngine(name, { enabled: !p.enabled })}>{p.enabled ? '启用' : '停用'}</button></td>
+              <td><input value={p.bin} placeholder="自动" style={{ minWidth: 140 }}
+                onChange={e => updEngine(name, { bin: e.target.value })} /></td>
+              <td><input value={p.model} placeholder="继承" style={{ minWidth: 120 }}
+                onChange={e => updEngine(name, { model: e.target.value })} /></td>
+              <td><input value={p.provider} placeholder="—" style={{ minWidth: 90 }}
+                onChange={e => updEngine(name, { provider: e.target.value })} /></td>
+              <td><textarea className="mono" rows={2} value={p.extra_args.join('\n')}
+                onChange={e => updEngine(name, { extra_args: e.target.value.split('\n') })} /></td>
+            </tr>
+          ))}</tbody>
+        </table></div>
+        <div className="setting-row">
+          <button className="btn primary sm" onClick={() => void saveEngines()}>保存</button>
+          {engMsg && <span className="admin-msg">{engMsg}</span>}
+        </div>
+        <div className="setting-note muted">改动不影响在跑会话——下一个 turn / 新会话按新值组装 argv；bin 留空走自动探测，模型留空走继承链（会话覆盖 &gt; claude 节 &gt; 引擎节 &gt; CLI 默认）。</div>
+      </div>}
+
+      {nf && <div className="setting-card">
+        <h4>运维通知 <span className="muted">（任务报错 / 调度唤醒 / 完成 → 推给自己手机）</span></h4>
+        <div className="setting-row">
+          <span className="setting-k">通道</span>
+          {([['关', ''], ['Bark', 'bark'], ['Server酱', 'serverchan'], ['Telegram', 'telegram']] as [string, string][]).map(([label, v]) => (
+            <button key={label} className={`chip ${nf.provider === v ? 'on' : ''}`}
+              onClick={() => setNf({ ...nf, provider: v })}>{label}</button>
+          ))}
+        </div>
+        {nf.provider === 'bark' && <div className="setting-row">
+          <span className="setting-k">Bark URL</span>
+          <input value={nf.bark_url} onChange={e => setNf({ ...nf, bark_url: e.target.value })}
+            placeholder="https://api.day.app/<yourkey>" style={{ maxWidth: 340 }} />
+        </div>}
+        {nf.provider === 'serverchan' && <div className="setting-row">
+          <span className="setting-k">SendKey</span>
+          <input type="password" value={nfKeys.serverchan_key ?? ''}
+            onChange={e => setNfKeys({ ...nfKeys, serverchan_key: e.target.value })}
+            placeholder={nf.serverchan_key_set ? '已保存，留空不改' : 'sct…'} />
+        </div>}
+        {nf.provider === 'telegram' && <div className="setting-row">
+          <span className="setting-k">Bot Token</span>
+          <input type="password" value={nfKeys.telegram_bot_token ?? ''}
+            onChange={e => setNfKeys({ ...nfKeys, telegram_bot_token: e.target.value })}
+            placeholder={nf.telegram_bot_token_set ? '已保存，留空不改' : '123:abc…'} />
+          <span className="setting-k" style={{ paddingLeft: 12 }}>Chat ID</span>
+          <input value={nf.telegram_chat_id} onChange={e => setNf({ ...nf, telegram_chat_id: e.target.value })}
+            placeholder="42" style={{ maxWidth: 140 }} />
+        </div>}
+        <div className="setting-row">
+          <span className="setting-k">事件</span>
+          {([['on_error', '任务报错'], ['on_scheduled', '调度唤醒'], ['on_turn_done', '任务完成']] as [string, string][]).map(([k, label]) => (
+            <button key={k} className={`chip ${nf.events[k] ? 'on' : ''}`}
+              onClick={() => setNf({ ...nf, events: { ...nf.events, [k]: !nf.events[k] } })}>{label}</button>
+          ))}
+          <span className="muted">任务完成默认关（防刷屏）</span>
+        </div>
+        <div className="setting-row">
+          <button className="btn primary sm" onClick={() => void saveNotify()}>保存</button>
+          <button className="btn sm" disabled={nfTesting} onClick={() => void testNotify()}>
+            {nfTesting ? '发送中…' : '发测试通知'}
+          </button>
+          {nfMsg && <span className="admin-msg">{nfMsg}</span>}
+        </div>
+        <div className="setting-note muted">与会话内 wechat-send（发给联系人）语义不同——这是运维告警通道。telegram 自动走「外部资源」里的代理（墙内必需）。</div>
+      </div>}
+
+      {share && <div className="setting-card">
+        <h4>产物分享 <span className="muted">（/share/&lt;token&gt; 只读外链的对外基地址）</span></h4>
+        <div className="setting-row">
+          <span className="setting-k">外链 base</span>
+          <input value={share.base_url} onChange={e => setShare({ ...share, base_url: e.target.value })}
+            placeholder="https://your-domain.com/share（空 = 未启用）" style={{ maxWidth: 340 }} />
+          <button className="btn primary sm" onClick={() => void saveShare()}>保存</button>
+          {shareMsg && <span className="admin-msg">{shareMsg}</span>}
+        </div>
+        <div className="setting-note muted">VPS 反代 your-domain.com/share → 本机 8792；只影响生成的外链前缀，分享路由本身一直在线。</div>
+      </div>}
 
       {conv && <div className="setting-card">
         <h4>收敛度 <span className="muted">（防跑飞三闸，按角色：硬超时 / 静默判死 / 工具轮次上限）</span></h4>
@@ -599,6 +841,22 @@ function SettingsTab() {
             placeholder="127.0.0.1:5555" />
         </div>
         <div className="setting-row">
+          <span className="setting-k">智谱搜索</span>
+          <input type="password" value={resKeys.zhipu_key ?? ''}
+            onChange={e => setResKeys({ ...resKeys, zhipu_key: e.target.value })}
+            placeholder={res.zhipu_key_set ? `已保存（${res.zhipu_key_hint}），留空不改` : 'key'} />
+          <input value={res.zhipu_engine} onChange={e => setRes({ ...res, zhipu_engine: e.target.value })}
+            placeholder="search_pro" title="engine（std 0.01 / pro 0.03 / pro_sogou|quark 0.05 元/次）" style={{ maxWidth: 150 }} />
+        </div>
+        <div className="setting-row">
+          <span className="setting-k">Textr 号码</span>
+          <input value={res.textr_email} onChange={e => setRes({ ...res, textr_email: e.target.value })}
+            placeholder="u@example.com（Textr Go 美国虚拟号，收验证码）" />
+          <input type="password" value={resKeys.textr_password ?? ''}
+            onChange={e => setResKeys({ ...resKeys, textr_password: e.target.value })}
+            placeholder={res.textr_password_set ? `已保存（${res.textr_password_hint}），留空不改` : '密码'} />
+        </div>
+        <div className="setting-row">
           <button className="btn primary sm" onClick={() => void saveResources()}>保存</button>
           <button className="btn sm" disabled={pinging} onClick={() => void testResources()}>
             {pinging ? '探测中…' : '测试全部'}
@@ -626,6 +884,43 @@ function SettingsTab() {
           沙箱同时是全局 MCP server（工具 tab 里「sandbox」），agent 原生获得浏览器/命令行工具；
           密钥存 config.yaml，agent 经 <code>python3 "$WORKDADDY_CLI" r …</code> 调用，不进环境变量。
         </div>
+      </div>}
+
+      {pricing && <div className="setting-card">
+        <h4>成本价目 <span className="muted">（成本分析页价目；覆盖即整表替换，留空 {'{}'} = 恢复内置 z.ai 官方价目）</span></h4>
+        <div className="setting-row">
+          <span className="setting-k">USD/CNY</span>
+          <input type="number" min={0} max={100} step={0.01} value={pricing.usd_cny}
+            onChange={e => setPricing({ ...pricing, usd_cny: Number(e.target.value) })}
+            style={{ maxWidth: 110 }} />
+          <span className="muted">0 = 内置 7.1</span>
+        </div>
+        <div className="setting-row">
+          <span className="setting-k">价目表（JSON）</span>
+          <textarea className="mono" rows={8} value={priceJson} style={{ flex: 1, minWidth: 320 }}
+            onChange={e => setPriceJson(e.target.value)}
+            placeholder={'{"api": {"glm-5.3": {"input": 0.5, "output": 1.9}}, "plan_credits": {}}'} />
+        </div>
+        <div className="setting-row">
+          <button className="btn primary sm" onClick={() => void savePricing()}>保存</button>
+          {priceMsg && <span className="admin-msg">{priceMsg}</span>}
+        </div>
+        <div className="setting-note muted">api 单位 $/M tokens（input/cache_read/output），plan_credits 单位积分/M；
+          整表替换语义——只调一个模型也要把整表粘全（要微调建议先复制现表再改）。</div>
+      </div>}
+
+      {srv && <div className="setting-card">
+        <h4>服务器 <span className="muted">（只读——host/port/令牌属启动期与部署面）</span></h4>
+        <div style={{ display: 'flex', gap: 16, marginBottom: 8, flexWrap: 'wrap', fontSize: 13 }}>
+          <span>监听 <b className="mono-cell">{srv.host}:{srv.port}</b></span>
+          <span>API token <b style={{ color: srv.token_set ? '#3aa675' : undefined }}>{srv.token_set ? '已配置' : '未配置'}</b></span>
+          <span>管理令牌 <b>{srv.admin_token_set ? '独立配置' : '复用 API token'}</b></span>
+          {srv.token_grace_until > 0 && (
+            <span className="muted">机生 token 宽限期至 {new Date(srv.token_grace_until * 1000).toLocaleString()}</span>
+          )}
+        </div>
+        <div className="setting-note muted">改 host/port 编辑 config.yaml 后重启；查看/轮换令牌走 CLI
+          <code> loadn-web token show | rotate</code>——界面上改自己正在用的 token 会把前端锁在外面，故不开放网页编辑。</div>
       </div>}
     </div>
   );
