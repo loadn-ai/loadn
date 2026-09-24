@@ -2,7 +2,7 @@
 // 交互模型：每张姿态卡是入口（master）——点开下方详情面板（detail），
 // 详情按卡各自取数：沙箱=近期任务隔离记录 / 审批=待审清单 / 出口=域聚合 /
 // vault=条目+完整性 / 账本=跳到事件流 / 蜜罐=锁定会话可解锁。
-import { useEffect, useRef, useState } from 'react';
+import { Fragment, useEffect, useRef, useState } from 'react';
 import { api } from '../api/client';
 import { useStore } from '../stores/sessions';
 
@@ -654,11 +654,25 @@ function EgressDetail() {
   );
 }
 
+/** vault 编辑器的字段布局（与后端 vault.FIELDS 对齐；secret 类掩码输入） */
+const VAULT_ROWS: { k: string; label: string; secret?: boolean }[] = [
+  { k: 'username', label: '用户名' },
+  { k: 'password', label: '密码', secret: true },
+  { k: 'recovery', label: '恢复码', secret: true },
+  { k: 'email', label: '邮箱' },
+  { k: 'phone', label: '手机' },
+  { k: 'twofa', label: '2FA' },
+  { k: 'status', label: '状态' },
+  { k: 'notes', label: '备注' },
+];
+
 function VaultDetail() {
   const [data, setData] = useState<{ platforms: { platform: string; user?: string; email?: string; has_password: boolean; updated_at: string }[]; verify: { ok: boolean; entries: number; encrypted: boolean; error?: string } } | null>(null);
-  useEffect(() => {
+  const [editing, setEditing] = useState<string>('');
+  const load = () => {
     void api<typeof data>('/api/admin/vault').then(setData).catch(() => { });
-  }, []);
+  };
+  useEffect(load, []);
   if (!data) return <div className="muted">读取中…</div>;
   return (
     <div>
@@ -666,24 +680,95 @@ function VaultDetail() {
         title={`入库凭证（${data.platforms.length} 组）`}
         note={data.verify.ok ? '加密格式校验通过' : `⚠ 校验失败：${data.verify.error ?? '未知'}`} />
       <div className="muted" style={{ fontSize: 12, marginBottom: 6 }}>
-        明文永不经过网络/界面；取用走审批门（loadn-web r account）。
+        点条目直接编辑；密钥字段留空=不改、输入即覆盖。agent 取用仍走审批门。
       </div>
       <table className="kv-table" style={{ width: '100%' }}>
-        <thead><tr><th>平台</th><th>账号</th><th style={{ width: 70 }}>密码</th><th style={{ width: 110 }}>更新</th></tr></thead>
+        <thead><tr><th>平台</th><th>账号</th><th style={{ width: 70 }}>密码</th><th style={{ width: 110 }}>更新</th><th style={{ width: 56 }} /></tr></thead>
         <tbody>
           {data.platforms.map(p => (
-            <tr key={p.platform}>
-              <td>{p.platform}</td>
-              <td className="muted">{p.user || p.email || '-'}</td>
-              <td style={{ color: p.has_password ? '#3aa675' : 'var(--accent,#e5484d)' }}>
-                {p.has_password ? '已存' : '缺'}
-              </td>
-              <td style={{ fontVariantNumeric: 'tabular-nums' }}>{(p.updated_at || '').slice(0, 10)}</td>
-            </tr>
+            <Fragment key={p.platform}>
+              <tr>
+                <td>{p.platform}</td>
+                <td className="muted">{p.user || p.email || '-'}</td>
+                <td style={{ color: p.has_password ? '#3aa675' : 'var(--accent,#e5484d)' }}>
+                  {p.has_password ? '已存' : '缺'}
+                </td>
+                <td style={{ fontVariantNumeric: 'tabular-nums' }}>{(p.updated_at || '').slice(0, 10)}</td>
+                <td><button className="mini-btn" onClick={() => setEditing(editing === p.platform ? '' : p.platform)}>
+                  {editing === p.platform ? '收起' : '编辑'}
+                </button></td>
+              </tr>
+              {editing === p.platform && (
+                <VaultEditor platform={p.platform} onDone={() => { setEditing(''); load(); }} />)}
+            </Fragment>
           ))}
         </tbody>
       </table>
     </div>
+  );
+}
+
+/** 行内编辑器：拉掩码视图回填明文字段；提交只送改动的键（merge 语义） */
+function VaultEditor({ platform, onDone }: { platform: string; onDone: () => void }) {
+  const [draft, setDraft] = useState<Record<string, string>>({});
+  const [orig, setOrig] = useState<Record<string, string>>({});
+  const [meta, setMeta] = useState<Record<string, string>>({});
+  const [busy, setBusy] = useState(false);
+  useEffect(() => {
+    void api<Record<string, string>>(`/api/admin/vault/${encodeURIComponent(platform)}`)
+      .then(d => {
+        setMeta({ password: d.password ?? '', recovery: d.recovery ?? '' });
+        const init: Record<string, string> = {};
+        for (const r of VAULT_ROWS) {
+          init[r.k] = r.secret ? '' : (typeof d[r.k] === 'string' ? d[r.k] : '');
+        }
+        setDraft(init); setOrig(init);
+      }).catch(() => { });
+  }, [platform]);
+  const save = () => {
+    const fields: Record<string, string> = {};
+    for (const r of VAULT_ROWS) {
+      const v = (draft[r.k] ?? '').trim();
+      if (r.secret) { if (v) fields[r.k] = v; continue; }   // 密钥：留空=不改
+      if (v !== (orig[r.k] ?? '').trim()) fields[r.k] = v;  // 明文：diff 即改（空串=清除）
+    }
+    if (!Object.keys(fields).length) { onDone(); return; }
+    setBusy(true);
+    void api(`/api/admin/vault/${encodeURIComponent(platform)}`, {
+      method: 'PUT', body: JSON.stringify({ fields }),
+    }).then(onDone).catch(e => alert(`保存失败：${e instanceof Error ? e.message : e}`))
+      .finally(() => setBusy(false));
+  };
+  const del = () => {
+    if (!confirm(`删除 ${platform} 条目？不可恢复（AES 密文一并删除）。`)) return;
+    setBusy(true);
+    void api(`/api/admin/vault/${encodeURIComponent(platform)}`, { method: 'DELETE' })
+      .then(onDone).catch(e => alert(`删除失败：${e instanceof Error ? e.message : e}`))
+      .finally(() => setBusy(false));
+  };
+  return (
+    <tr><td colSpan={5} style={{ padding: '4px 0 12px 12px', background: 'rgba(128,128,128,.06)' }}>
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill,minmax(240px,1fr))', gap: '4px 12px' }}>
+        {VAULT_ROWS.map(r => (
+          <div key={r.k} className="setting-row" style={{ gap: 6 }}>
+            <span style={{ minWidth: 48, fontSize: 12 }}>{r.label}</span>
+            <input className="props-num" style={{ flex: 1, width: 'auto' }}
+              type={r.secret ? 'password' : 'text'} autoComplete="off"
+              value={draft[r.k] ?? ''}
+              placeholder={r.secret
+                ? (meta?.[r.k] ? `已设置（${String(meta[r.k]).includes('位') ? meta[r.k] : '留空不改，输入即覆盖'}）` : '未设置')
+                : ''}
+              onChange={e => setDraft(d => ({ ...d, [r.k]: e.target.value }))} />
+          </div>
+        ))}
+      </div>
+      <div style={{ display: 'flex', gap: 8, alignItems: 'center', marginTop: 6 }}>
+        <button className="btn ghost" disabled={busy} onClick={save}>{busy ? '保存中…' : '保存'}</button>
+        <button className="mini-btn" disabled={busy} onClick={onDone}>取消</button>
+        <button className="mini-btn" style={{ marginLeft: 'auto', color: 'var(--accent,#e5484d)' }}
+          disabled={busy} onClick={del}>删除条目</button>
+      </div>
+    </td></tr>
   );
 }
 

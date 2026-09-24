@@ -926,6 +926,60 @@ def vault_overview():
             "verify": vault_mod.verify()}
 
 
+@router.get("/admin/vault/{platform}")
+def vault_entry(platform: str):
+    """单条目掩码视图（编辑器回填用）：密钥字段只回「已设置/位数」。"""
+    from .. import vault as vault_mod
+    d = vault_mod.view(platform)
+    if d is None:
+        raise HTTPException(404, f"无 {platform} 条目")
+    return d
+
+
+@router.put("/admin/vault/{platform}")
+def vault_put(platform: str, body: dict):
+    """条目编辑（管理面=用户本人操作，不走 agent 审批门；写审计）。
+
+    语义：merge——只改给出的键；密码类字段留空=不改、空串=清除。
+    明文只在本次请求体里出现，不回传、不落日志（审计只记字段名）。
+    """
+    from .. import vault as vault_mod
+    from ..audit import audit
+    fields = body.get("fields")
+    if not isinstance(fields, dict):
+        raise HTTPException(400, "body 需为 {fields: {...}}")
+    clean = {}
+    for k, v in fields.items():
+        if k not in vault_mod.FIELDS:
+            raise HTTPException(400, f"未知字段 {k}（可用：{'/'.join(vault_mod.FIELDS)}）")
+        if v is None:
+            continue
+        if not isinstance(v, str) or len(v) > 500:
+            raise HTTPException(400, f"{k} 需为字符串（≤500 字符）")
+        clean[k] = v
+    if not clean:
+        raise HTTPException(400, "无可更新字段")
+    try:
+        entry = vault_mod.put(platform, **clean)
+    except ValueError as e:
+        raise HTTPException(400, str(e)) from e
+    audit("vault", {"action": "admin_edit", "platform": platform,
+                    "fields": sorted(clean)})
+    return {"ok": True, "platform": platform,
+            "set": sorted(clean), "updated_at": entry.get("updated_at")}
+
+
+@router.delete("/admin/vault/{platform}")
+def vault_delete(platform: str):
+    """删除条目（确认在 UI 侧；审计留痕）。"""
+    from .. import vault as vault_mod
+    from ..audit import audit
+    if not vault_mod.delete(platform):
+        raise HTTPException(404, f"无 {platform} 条目")
+    audit("vault", {"action": "admin_delete", "platform": platform})
+    return {"ok": True}
+
+
 @router.get("/admin/audit")
 def audit_feed(n: int = 50, type: str | None = None):
     """审计事件流（管理面读；type 过滤同 audit tail）。"""
