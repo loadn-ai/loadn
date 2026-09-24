@@ -683,6 +683,11 @@ async def _run_r(args) -> int:
 
 
 def main(argv: list[str] | None = None) -> int:
+    raw = list(sys.argv[1:] if argv is None else argv)
+    # P2-5：浏览器 CUA MCP server（stdio 子进程形态）
+    if raw and raw[0] == "_browser-mcp":
+        from .browser_mcp import main as browser_main
+        return browser_main()
     ap = argparse.ArgumentParser(prog="loadn-web")
     sub = ap.add_subparsers(dest="cmd")
 
