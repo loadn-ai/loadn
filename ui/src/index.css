@@ -988,6 +988,28 @@ button.attach-chip:hover { border-color: color-mix(in srgb, var(--accent) 40%, v
 .approval-code b { font-size: 17px; letter-spacing: 2px; color: var(--accent); }
 .btn.sm { padding: 4px 14px; font-size: 13px; }
 
+/* ---- P3-7 审批三要素：what（diff/文件清单）与 why（justification） ---- */
+.approval-sec { font-size: 11px; letter-spacing: .05em; color: var(--text-dim);
+  margin-bottom: 3px; }
+.approval-diff { margin-top: 8px; font-size: 12.5px; border-top: 1px dashed
+  var(--border); padding-top: 6px; }
+.approval-diff.dim { opacity: 0.55; }
+.diff-file { font-family: ui-monospace, 'SF Mono', Menlo, Consolas, monospace;
+  font-size: 12px; padding: 1px 0; overflow: hidden; text-overflow: ellipsis;
+  white-space: nowrap; }
+.diff-lines { margin-left: 8px; opacity: 0.65; white-space: nowrap; }
+.approval-why { margin-top: 6px; font-size: 12.5px; border-top: 1px dashed
+  var(--border); padding-top: 6px; }
+
+/* ---- P3-7 压缩时间线：横向刻度条（turn 点 + compact ▼ 标记） ---- */
+.compact-timeline { position: relative; height: 26px; margin: 2px 14px 0;
+  border-bottom: 1px solid var(--border); overflow: hidden; flex: none; }
+.ct-mark { position: absolute; transform: translateX(-50%); }
+.ct-mark.turn { bottom: 4px; width: 4px; height: 4px; border-radius: 50%;
+  background: var(--text-dim); opacity: 0.5; }
+.ct-mark.compact { bottom: 0; font-size: 10px; line-height: 1;
+  color: var(--accent); cursor: help; white-space: nowrap; }
+
 /* ================ 管理面通用表格（kv-table 此前无定义——裸表格是「丑」的根因） ================ */
 .kv-table { border-collapse: collapse; width: 100%; font-size: 13px; }
 .kv-table th {

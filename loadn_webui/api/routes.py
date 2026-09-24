@@ -1162,6 +1162,44 @@ def list_approvals(sid: str):
     return {"approvals": approve_mod.list_pending(sid)}
 
 
+@router.get("/sessions/{sid}/timeline")
+def session_timeline(sid: str):
+    """P3-7 压缩时间线数据：沿会话的 turn 刻度 + compact 标记（何时裁了
+    多少 token，hover=被裁摘要首行）。只读扫 transcript 尾部事件。"""
+    _get_session_or_404(sid)
+    import json as _json
+
+    from ..engines.loadn import loadn_home
+    p = loadn_home() / "sessions" / sid / "transcript.jsonl"
+    try:
+        lines = p.read_text(encoding="utf-8",
+                            errors="replace").splitlines()[-500:]
+    except OSError:
+        return {"timeline": []}
+    out: list[dict] = []
+    for ln in lines:
+        try:
+            ev = _json.loads(ln)
+        except ValueError:
+            continue
+        et = ev.get("type")
+        payload = ev.get("payload") or {}
+        if et == "result":
+            usage = payload.get("usage") or {}
+            out.append({"kind": "turn",
+                        "turns": payload.get("num_turns"),
+                        "tokens": (usage.get("input_tokens") or 0)
+                        + (usage.get("output_tokens") or 0)})
+        elif et == "compact":
+            summary = str(payload.get("summary") or "")
+            first = next((ln.strip() for ln in summary.splitlines()
+                          if ln.strip()), "")
+            out.append({"kind": "compact",
+                        "tokens_cropped": payload.get("tokens_cropped"),
+                        "summary_first": first[:120]})
+    return {"timeline": out}
+
+
 @router.post("/sessions/{sid}/approvals")
 def create_approval(sid: str, body: dict):
     """agent CLI 发起（token 面）：{action_type, params, note} → {id, summary}。"""

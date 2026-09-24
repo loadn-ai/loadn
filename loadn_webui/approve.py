@@ -324,10 +324,47 @@ def list_pending(sid: str | None = None) -> list[dict]:
     with _conn() as c:
         _ensure(c)
         q = ("SELECT id, sid, action_type, summary, agent_note, status,"
-             " created_at, ttl_s FROM approvals")
+             " created_at, ttl_s, params_json FROM approvals")
         args: list = []
         if sid:
             q += " WHERE sid=? AND status IN ('pending','approved')"
             args.append(sid)
         q += " ORDER BY id DESC LIMIT 50"
-        return [dict(r) for r in c.execute(q, args)]
+        rows = [dict(r) for r in c.execute(q, args)]
+    # P3-7 审批三要素 enrich：params（动作参数摘要）/ justification
+    # （P0-4 规则文案）/ turn_changes（本 turn 文件改动——P3-1 result
+    # 事件 diffs；无 diff 降级文件清单语义由 UI 呈现）
+    changes = _latest_turn_changes(sid) if sid else None
+    for r in rows:
+        try:
+            params = json.loads(r.pop("params_json") or "{}")
+        except ValueError:
+            params = {}
+        r["params"] = params
+        r["justification"] = str(params.get("justification") or "")
+        if sid:
+            r["turn_changes"] = changes
+    return rows
+
+
+def _latest_turn_changes(sid: str) -> list[dict] | None:
+    """会话最近一个 turn 的文件改动（transcript result 事件 diffs，P3-1）。
+
+    None=无 transcript/无 diffs（UI 降级「本 turn 无文件改动」）。
+    """
+    from .engines.loadn import loadn_home
+    p = loadn_home() / "sessions" / sid / "transcript.jsonl"
+    try:
+        lines = p.read_text(encoding="utf-8",
+                            errors="replace").splitlines()[-400:]
+    except OSError:
+        return None
+    for ln in reversed(lines):                    # 尾部反向：最新 turn 先见
+        try:
+            ev = json.loads(ln)
+        except ValueError:
+            continue
+        if ev.get("type") == "result":
+            diffs = (ev.get("payload") or {}).get("diffs")
+            return diffs or None
+    return None
