@@ -88,8 +88,12 @@ def _stealth_system(core_prompt: str) -> str:
 
 class ContextAssembler:
     def __init__(self, cwd: Path, tools: list[str] | None = None,
-                 model: str | None = None) -> None:
+                 model: str | None = None, *,
+                 with_repomap: bool = False,
+                 mentioned_files: set[str] | None = None) -> None:
         self.model = model             # P1-7：per-model prompt 变体选择
+        self.with_repomap = with_repomap       # P1-8：仓库地图节
+        self.mentioned_files = mentioned_files or set()
         self.cwd = Path(cwd)
         self.tools = tools or []
 
@@ -103,6 +107,13 @@ class ContextAssembler:
             parts.append("## 工具使用要点\n" + "\n".join(notes))
         # 4) 宪法（先拼重头，环境块是可截的软段）
         parts.append(self.constitution_block())
+        # 5.5) 仓库地图（P1-8）：预算内符号地图（mentioned=本会话摸过的
+        # 文件提权；aider repomap 同构）
+        from loadn.core import repomap as rm
+        if self.with_repomap:
+            m = rm.get_repo_map(self.cwd, mentioned=self.mentioned_files)
+            if m:
+                parts.append(m)
         # 6) 记忆：P1-4 项目抽取记忆（宪法后、全局 MEMORY.md 前；[memory]
         # 标注+溯源会话 id）→ 既有全局/项目自动记忆
         from loadn.core import memory as mem_mod

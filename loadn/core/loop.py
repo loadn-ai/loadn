@@ -248,6 +248,8 @@ class AgentCore:
         self.loop_guard = LoopGuard()
         self._grind_nudges = 0        # 完工自检已续战次数（GRIND_MAX_NUDGES 封顶）
         self._tool_execs = 0          # 累计工具执行数（口头交付检测）
+        # P1-8 repomap：冷启动前 3 轮带仓库地图，之后让位上下文预算
+        self._repomap_turns = 0
         # P1-6 cache-warm：空闲期保温（长命进程语义；详见 core/cache_warmer）
         self._warmer = None
         self._warmer_task = None
@@ -361,7 +363,11 @@ class AgentCore:
                 messages.append(Message(role="user", content=[
                     TextBlock(text=converge)]))
 
-        system = self.assembler.build()
+        if self._repomap_due():
+            system = self._build_system_with_map()
+        else:
+            self.assembler.with_repomap = False
+            system = self.assembler.build()
         max_turns = self.settings.max_turns or 0
         final_text = ""
         truncation_nudged = False
@@ -805,6 +811,19 @@ class AgentCore:
                 await _fire(emit, {"type": "todos",
                                    "todos": [t.to_dict() for t in state.todos]})
         return blk, name
+
+    # ------------------------------------------------------------ P1-8 repomap
+    def _repomap_due(self) -> bool:
+        from loadn.core import repomap as rm
+        return rm.budget_tokens() > 0 and self._repomap_turns < 3
+
+    def _build_system_with_map(self) -> str:
+        """带仓库地图的 system（冷启动首 3 轮；mentioned=ctx 摸过的文件）。"""
+        self._repomap_turns += 1
+        self.assembler.with_repomap = True
+        self.assembler.mentioned_files = {
+            str(k) for k in self.ctx.files_touched}
+        return self.assembler.build()
 
     # ------------------------------------------------------------ P1-7 titlegen
     def _titlegen(self, first_user_text: str) -> None:
