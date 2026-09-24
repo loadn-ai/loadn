@@ -37,6 +37,8 @@ TYPES = (
     "sandbox_tier",                    # W2 档位解析留痕（启动时 requested/effective/reason）
     "rollback", "kill_switch", "snapshot",
     "vault",                      # 凭证库/资源密钥写入与迁移（W3）
+    "codemode_run",               # 受限执行域运行/工具回调（P3-4）
+    "browser_cua",                # 浏览器驱动动作（P2-5）
     "anomaly",
 )
 

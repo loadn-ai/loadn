@@ -684,6 +684,10 @@ async def _run_r(args) -> int:
 
 def main(argv: list[str] | None = None) -> int:
     raw = list(sys.argv[1:] if argv is None else argv)
+    # P3-4：codemode 受限执行域 MCP server
+    if raw and raw[0] == "_codemode-mcp":
+        from .codemode_mcp import main as codemode_main
+        return codemode_main()
     # P2-5：浏览器 CUA MCP server（stdio 子进程形态）
     if raw and raw[0] == "_browser-mcp":
         from .browser_mcp import main as browser_main
