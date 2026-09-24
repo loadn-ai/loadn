@@ -180,6 +180,10 @@ class SecurityConfig:
     codemode_enabled: bool = False
     # P3-3 LSP 诊断回注（默认关——懒启动语言 server 是显式选择）
     lsp_enabled: bool = False
+    # 跨项目只读数据共享根（绝对路径列表）：bwrap 档 ro-bind 进沙箱同路径
+    # + env $LOADN_SHARED_RO 指路（os.pathsep 分隔）。off 档无挂载边界，
+    # env 仍注入（边界退化为约定——与 off 档语义一致）。写权限永不开放
+    shared_readonly: list = field(default_factory=list)
 
 
 @dataclass

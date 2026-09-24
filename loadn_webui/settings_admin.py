@@ -280,11 +280,22 @@ def put_egress_allow(action: str, host: str) -> dict:
     sec["egress_allow"] = allow
     _dump_yaml_conf(_conf_path(), data)
     CONFIG.security.egress_allow = allow
+    _refresh_session_snapshots()      # hook 门（会话快照）与 proxy 门同步放行
     from .audit import audit
     audit("egress_policy", {"action": f"allowlist-{action}", "host": h,
                             "allow": allow})
     log.info("egress 白名单 %s: %s（共 %d 域）", action, h, len(allow))
     return {"ok": True, "host": h, "allow": allow}
+
+
+def _refresh_session_snapshots() -> None:
+    """egress 面（白名单/档位）变更后刷新活跃会话快照（失败不阻断——
+    快照缺席时 hook 回退 CONFIG，语义仍正确只是沙箱内看不到新值）。"""
+    try:
+        from .mcp_admin import rematerialize_sessions
+        rematerialize_sessions()
+    except Exception as e:  # noqa: BLE001
+        log.warning("egress 会话快照刷新失败（hook 将回退 CONFIG）：%r", e)
 
 
 def put_security_egress(body: dict) -> dict:
@@ -316,6 +327,7 @@ def put_security_egress(body: dict) -> dict:
     _dump_yaml_conf(_conf_path(), data)
     for k, v in updates.items():
         setattr(CONFIG.security, k, v)
+    _refresh_session_snapshots()      # 档位变更同步进会话快照（hook 门）
     from .audit import audit
     audit("egress_policy", {"action": "policy-put", **updates})
     log.info("egress 策略更新：%s（热生效）", updates)

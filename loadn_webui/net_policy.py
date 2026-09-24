@@ -123,6 +123,43 @@ def is_non_public_ip(raw: str) -> bool:
     return classify_ip(raw) is not None
 
 
+def normalize_allow_entry(entry: str) -> str | None:
+    """egress 白名单条目读路径归一化（宽进严出）。
+
+    手编 yaml 常见形态全收：``https://x.com:8443/api`` → ``x.com``、
+    ``*.y.com`` → ``y.com``（后缀语义由匹配端处理）、``X.COM.`` → ``x.com``。
+    归一化后非法（无点/空/纯 scheme）返回 None 丢弃——**只影响匹配，
+    不回写配置**（用户写的原文保留在 yaml，审计面所见即所写）。
+    """
+    s = (entry or "").strip().lower().rstrip(".")
+    for scheme in ("https://", "http://", "wss://", "ws://", "ftp://"):
+        if s.startswith(scheme):
+            s = s[len(scheme):]
+            break
+    s = s.partition("/")[0]           # 去路径
+    s = s.partition("?")[0]
+    s = s.rpartition("@")[2]          # 去 userinfo（无 @ 时 [2]=原串）
+    s = s.partition(":")[0]           # 去端口
+    if s.startswith("*."):
+        s = s[2:]
+    if "." not in s or not s or ":" in s:
+        return None
+    return s
+
+
+def normalized_allow(raw: list | None) -> list[str]:
+    """整表归一化（去重保序）——policy hook / proxy / 会话快照共用一口。"""
+    from .egress_grants import valid_host
+    out: list[str] = []
+    seen: set[str] = set()
+    for e in raw or []:
+        h = valid_host(e) or normalize_allow_entry(str(e))
+        if h and h not in seen:
+            seen.add(h)
+            out.append(h)
+    return out
+
+
 # ---------------------------------------------------------------- DNS 重绑定
 _DNS_CACHE: dict[str, tuple[float, list[str]]] = {}
 _DNS_TTL_S = 60.0

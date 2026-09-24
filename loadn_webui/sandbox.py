@@ -142,6 +142,23 @@ def _project_binds(argv: list[str], project_root: Path | None) -> list[str]:
     return argv
 
 
+def _shared_binds(argv: list[str]) -> list[str]:
+    """跨项目只读数据共享（security.shared_readonly）：每个存在的绝对
+    路径同路径 ro-bind。顺序纪律同 _project_binds——先于任务 ws 挂载。
+
+    只读永不放开写；env $LOADN_SHARED_RO 同源指路（off 档挂载缺席时
+    env 仍在——off 本无边界，指路让 agent 知道去哪读）。
+    """
+    from .config import CONFIG
+    for p in CONFIG.security.shared_readonly or []:
+        q = Path(str(p)).expanduser()
+        if q.is_dir() or q.is_file():
+            argv += ["--ro-bind", str(q.resolve()), str(q.resolve())]
+        else:
+            log.warning("shared_readonly 路径不存在（跳过挂载）：%s", p)
+    return argv
+
+
 def wrap_loadn(cmd: list[str], env: dict, *, sid_session: str,
                cwd: Path, project_root: Path | None = None,
                owner_sid: str = "") -> list[str] | None:
@@ -189,6 +206,7 @@ def wrap_loadn(cmd: list[str], env: dict, *, sid_session: str,
             # workspace 同路径 rw（inputs 子目录 ro 由策略层后续收紧）
             ]
     _project_binds(argv, project_root)
+    _shared_binds(argv)
     argv += [
             "--bind", str(ws), str(ws),
             # 本会话引擎档案（resume/判死需要；其他会话不可见）
@@ -276,6 +294,7 @@ def _wrap_generic(cmd: list[str], env: dict, *, cwd: Path,
             "--proc", "/proc", "--dev", "/dev", "--tmpfs", "/tmp",
             ]
     _project_binds(argv, project_root)
+    _shared_binds(argv)
     argv += [
             "--bind", str(ws), str(ws),
             "--clearenv", "--share-net", "--unshare-ipc", "--unshare-pid",

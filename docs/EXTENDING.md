@@ -110,10 +110,40 @@ git 根到 cwd 的 CLAUDE.md/AGENTS.md 就近叠加 + 用户级 AGENT.md。
 
 数据根 `config.yaml` 分节：`server`（端口/token/域名）、`engines`
 （默认引擎）、`security`（sandbox / approval_enforce / egress_mode /
-egress_allow 白名单）、`resources`（外部资源端点与密钥）、`notify`
-（bark/Server酱/Telegram 运维通知）、`pricing`（成本页价目覆盖）。
-字段语义见 `loadn_webui/config.py` 各 dataclass 的注释（默认值均为
-通用值；个人部署的私有端点写在自己的 config.yaml 里，不回传上游）。
+egress_allow 白名单 / shared_readonly）、`resources`（外部资源端点与
+密钥）、`notify`（bark/Server酱/Telegram 运维通知）、`pricing`（成本页
+价目覆盖）。字段语义见 `loadn_webui/config.py` 各 dataclass 的注释
+（默认值均为通用值；个人部署的私有端点写在自己的 config.yaml 里，
+不回传上游）。
+
+**放行策略速查**（两道门已同面——命令级 hook 与网络级 proxy 消费同一
+策略；改完全部热生效，活跃会话快照自动刷新）：
+
+| 想放什么 | 操作 | 作用域 |
+|---|---|---|
+| 单个域名 | 安全中心「数据流向」一键放行（或 yaml `egress_allow` 追加） | 全局 |
+| 整档放开 | `PUT /api/admin/egress/policy` `mode: warn|off`（warn=记事件放行；off=全放） | 全局 |
+| 只放开一个任务 | 会话属性面板 params `egress: off|warn` | 单会话 |
+| 临时授权 | agent 发起审批（限时+审计+到期自动收回） | 单会话限时 |
+
+白名单条目手编容错：`https://x.com:8443/api`、`*.cdn.x.com`、大写、
+尾点都会归一化后再匹配（原文保留在 yaml，不回写）。
+
+**跨项目数据共享**（`security.shared_readonly`，绝对路径列表）：
+
+```yaml
+security:
+  shared_readonly:
+    - /data/papers          # 其他项目/任务的数据根
+    - /mnt/datasets/common
+```
+
+- bwrap 档：每个路径**只读**挂载进沙箱（同路径 ro-bind），新任务/新项目
+  可直接 Read/Grep 这些目录；写权限永不开放
+- 引擎 env `$LOADN_SHARED_RO`（os.pathsep 分隔）指路——agent 知道
+  sanctioned 的共享面在哪（`sandbox: off` 档无挂载边界，env 指路仍在，
+  边界退化为约定，与 off 档语义一致）
+- 同项目内共享继续用项目根 `inputs/`（rw，`$LOADN_INPUTS` 指路）
 
 ## 9. 代码级扩展：`loadn.ext` 协议（P3-5）
 
