@@ -45,6 +45,9 @@ class FakeProvider:
         self._script: list[list[Chunk]] | None = \
             [list(round_) for round_ in script] if script is not None else None
         self.last_model: str | None = None   # per-call 覆盖的记录（测试断言用）
+        self.last_use_cache: bool | None = None
+        self.last_max_output_override: int | None = None   # P1-6 重放记录
+        self.calls = 0
 
     @property
     def model_name(self) -> str:
@@ -53,10 +56,13 @@ class FakeProvider:
     async def chat(self, messages: list[Message], tools: list[ToolDef],
                    system: str, *, stream: bool = True,
                    model: str | None = None,
-                   use_cache: bool = True) -> AsyncIterator[Chunk]:
+                   use_cache: bool = True,
+                   max_output_override: int | None = None) -> AsyncIterator[Chunk]:
         """一轮 = 一段完整 chunk 流（text/tool_use/error 或 hang 后收尾）。"""
         self.last_model = model
         self.last_use_cache = use_cache
+        self.last_max_output_override = max_output_override
+        self.calls = getattr(self, "calls", 0) + 1
         if self._script is not None:
             round_chunks = self._script.pop(0) if self._script \
                 else [Chunk(kind="text_delta", text="(fake done)")]
