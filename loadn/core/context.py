@@ -17,6 +17,7 @@ from __future__ import annotations
 import os
 import re
 import subprocess
+from dataclasses import dataclass
 from pathlib import Path
 
 from loadn import loadn_home
@@ -86,7 +87,87 @@ def _stealth_system(core_prompt: str) -> str:
     return text.replace("loadn", "Claude Code")
 
 
+# ---------------------------------------------------------------- P2-6 节
+@dataclass(frozen=True)
+class SectionSpec:
+    """节声明（数据表驱动——顺序即提示词最终顺序）。
+
+    budget_tokens：节内截断预算（0=不限；2 chars/token 粗估）。
+    prune_priority：总预算超限时整节裁的次序，**大者先裁；0=永不裁**
+    （宪法与核心身份节为 0——工作区规则不因预算让路）。
+    """
+    id: str
+    budget_tokens: int = 0
+    prune_priority: int = 0
+
+
+# 默认节表（序=最终序；与 P2-6 前的 build() 追加顺序逐位一致——默认零变更）
+SECTION_SPECS: list[SectionSpec] = [
+    SectionSpec("core"),                                   # 身份/角色（永不裁）
+    SectionSpec("tools", prune_priority=50),               # 工具使用要点
+    SectionSpec("constitution"),                           # 宪法（永不裁）
+    SectionSpec("repomap", prune_priority=80),             # 仓库地图（P1-8）
+    SectionSpec("memory_project", prune_priority=60),      # P1-4 项目记忆
+    SectionSpec("memory", prune_priority=70),              # 长期记忆
+    SectionSpec("env", prune_priority=90),                 # 环境块
+    SectionSpec("skills", prune_priority=100),             # skills 索引（先裁）
+]
+
+
+def _pos_int(v, default: int = 0) -> int:
+    try:
+        n = int(v)
+    except (TypeError, ValueError):
+        return default
+    return n if n > 0 else default
+
+
+def _section_config(cwd: Path) -> dict:
+    """context_sections.json（全局 < 项目 .loadn/，项目覆盖；纯数据面）。"""
+    import json
+    merged: dict = {}
+    for p in (loadn_home() / "context_sections.json",
+              cwd / ".loadn" / "context_sections.json"):
+        try:
+            data = json.loads(p.read_text(encoding="utf-8"))
+            if isinstance(data, dict):
+                for k, v in data.items():
+                    if isinstance(v, dict) or isinstance(v, list):
+                        merged[k] = v
+        except (OSError, json.JSONDecodeError):
+            continue
+    return merged
+
+
+def _resolve_specs(cfg: dict) -> tuple[list[SectionSpec], dict]:
+    """配置覆盖 → (节序, 覆盖面)。未知节 id 忽略（笔误不炸）。"""
+    by_id = {s.id: s for s in SECTION_SPECS}
+    overrides = {k: v for k, v in cfg.items()
+                 if k in by_id and isinstance(v, dict)}
+    order = list(SECTION_SPECS)
+    want = cfg.get("order")
+    if isinstance(want, list):                    # 序覆盖：已知节按给定序前置
+        seen = [w for w in want if w in by_id]
+        seen_set = set(seen)
+        order = ([by_id[w] for w in seen]
+                 + [s for s in SECTION_SPECS if s.id not in seen_set])
+    return order, overrides
+
+
 class ContextAssembler:
+    """P2-6 起分节组装（ZCode builder.ts 同构）：节声明数据表驱动。
+
+    - 节顺序 = 提示词最终顺序（:data:`SECTION_SPECS`；context_sections.json
+      可覆盖 enabled/budget_tokens/prune_priority/order）
+    - 每节独立构建，**单节失败只跳过该节 + warning**（不崩组装）
+    - 节预算超限 → 节内截断标 ``[section truncated]``
+    - 总预算（CONTEXT_BUDGET_TOKENS）超限 → 按 prune_priority **整节裁**：
+      大者先裁（skills 索引最先、环境块次之）；**宪法/核心节永不裁**
+      （priority 0）
+    - ``last_sections``：本次组装的节元数据（id/chars/truncated/dropped
+      ——P2-3 事件化的打样面：节=事件单位）
+    """
+
     def __init__(self, cwd: Path, tools: list[str] | None = None,
                  model: str | None = None, *,
                  with_repomap: bool = False,
@@ -96,50 +177,85 @@ class ContextAssembler:
         self.mentioned_files = mentioned_files or set()
         self.cwd = Path(cwd)
         self.tools = tools or []
+        self.last_sections: list[dict] = []    # P2-6：节元数据（打样面）
 
+    # ------------------------------------------------------------ 组装
     def build(self, *, with_env: bool = True) -> str:
-        """组装完整 system（追加顺序即注入顺序；预算软约束超了截环境块）。"""
-        parts: list[str] = [_stealth_system(_core_prompt_for(self.model))]
-        # 2) 工具规范段
-        notes = [f"- {name}：{TOOL_NOTES[name]}" for name in self.tools
-                 if name in TOOL_NOTES]
-        if notes:
-            parts.append("## 工具使用要点\n" + "\n".join(notes))
-        # 4) 宪法（先拼重头，环境块是可截的软段）
-        parts.append(self.constitution_block())
-        # 5.5) 仓库地图（P1-8）：预算内符号地图（mentioned=本会话摸过的
-        # 文件提权；aider repomap 同构）
-        from loadn.core import repomap as rm
-        if self.with_repomap:
-            m = rm.get_repo_map(self.cwd, mentioned=self.mentioned_files)
-            if m:
-                parts.append(m)
-        # 6) 记忆：P1-4 项目抽取记忆（宪法后、全局 MEMORY.md 前；[memory]
-        # 标注+溯源会话 id）→ 既有全局/项目自动记忆
-        from loadn.core import memory as mem_mod
-        proj_block = mem_mod.render_block(self.cwd)
-        if proj_block:
-            parts.append(proj_block)
-        memory_parts = []
-        proj_mem = _read_first([_claude_project_memory(self.cwd)])
-        if proj_mem:
-            memory_parts.append(proj_mem.strip()[:4000])
-        global_mem = _read_first([loadn_home() / "MEMORY.md"])
-        if global_mem:
-            memory_parts.append(global_mem.strip()[:4000])
-        if memory_parts:
-            parts.append("## 长期记忆\n" + "\n\n---\n\n".join(memory_parts)
-                         + "\n\n" + MEMORY_NOTE)
-        # 3) 环境块 + 5) skills 索引
-        if with_env:
-            parts.append(self.env_block())
-        parts.append(self.skills_block())
-        out = "\n\n".join(p for p in parts if p and p.strip())
-        # 预算纪律：超 ~12k token（按 1.6 字/token 粗估）截掉环境块重建
-        if len(out) > CONTEXT_BUDGET_TOKENS * 2:
-            parts = [p for p in parts if not p.startswith("## 环境")]
-            out = "\n\n".join(p for p in parts if p and p.strip())
-        return out
+        """组装完整 system（节序即注入顺序；预算纪律见类 docstring）。"""
+        from loadn.util import get_logger
+        log = get_logger(__name__)
+        order, overrides = _resolve_specs(_section_config(self.cwd))
+        built: list[tuple[SectionSpec, str]] = []
+        for spec in order:
+            o = overrides.get(spec.id) or {}
+            if o.get("enabled") is False:          # 节开关（数据表/配置面）
+                continue
+            if spec.id == "env" and not with_env:
+                continue
+            if spec.id == "repomap" and not self.with_repomap:
+                continue
+            try:
+                text = self._build_section(spec.id)
+            except Exception as e:  # noqa: BLE001 — 单节失败只跳过该节
+                log.warning("context 节 %s 构建失败（跳过）：%r", spec.id, e)
+                continue
+            if not text or not text.strip():
+                continue
+            budget = _pos_int(o.get("budget_tokens"), spec.budget_tokens)
+            if budget and len(text) > budget * 2:   # 2 chars/token 粗估
+                text = text[:budget * 2] + "\n[section truncated]"
+            built.append((spec, text))
+        # 总预算：可裁节按优先级降序整节丢，直到回到预算内（无可裁即止——
+        # 宪法/核心 priority 0 永不裁）
+        total = sum(len(t) for _, t in built)
+        drop_ids: set[str] = set()
+        prunable = sorted((b for b in built if b[0].prune_priority > 0),
+                          key=lambda b: -b[0].prune_priority)
+        for spec, text in prunable:
+            if total <= CONTEXT_BUDGET_TOKENS * 2:
+                break
+            drop_ids.add(spec.id)
+            total -= len(text)
+        self.last_sections = [
+            {"id": s.id, "chars": len(t),
+             "truncated": t.endswith("[section truncated]"),
+             "dropped": s.id in drop_ids} for s, t in built]
+        return "\n\n".join(t for s, t in built if s.id not in drop_ids)
+
+    def _build_section(self, sid: str) -> str:
+        """单节构建（异常由 build 捕获——单节失败不崩组装）。"""
+        if sid == "core":
+            return _stealth_system(_core_prompt_for(self.model))
+        if sid == "tools":
+            notes = [f"- {name}：{TOOL_NOTES[name]}" for name in self.tools
+                     if name in TOOL_NOTES]
+            return "## 工具使用要点\n" + "\n".join(notes) if notes else ""
+        if sid == "constitution":
+            return self.constitution_block()
+        if sid == "repomap":
+            from loadn.core import repomap as rm
+            return rm.get_repo_map(self.cwd,
+                                   mentioned=self.mentioned_files) or ""
+        if sid == "memory_project":
+            from loadn.core import memory as mem_mod
+            return mem_mod.render_block(self.cwd) or ""
+        if sid == "memory":
+            memory_parts = []
+            proj_mem = _read_first([_claude_project_memory(self.cwd)])
+            if proj_mem:
+                memory_parts.append(proj_mem.strip()[:4000])
+            global_mem = _read_first([loadn_home() / "MEMORY.md"])
+            if global_mem:
+                memory_parts.append(global_mem.strip()[:4000])
+            if not memory_parts:
+                return ""
+            return ("## 长期记忆\n" + "\n\n---\n\n".join(memory_parts)
+                    + "\n\n" + MEMORY_NOTE)
+        if sid == "env":
+            return self.env_block()
+        if sid == "skills":
+            return self.skills_block()
+        return ""
 
     # ------------------------------------------------------------ 分段
     def constitution_block(self) -> str:
