@@ -9,7 +9,12 @@ B5-5  admit 后三件套正常加载（信任路径可用性）
 B5-6  store 损坏 → 视为空（fail-closed 未信任，不炸）
 B5-7  子目录运行继承已信任 root；用户全局 ~/.claude/skills 永不受门控
 """
+
 from __future__ import annotations
+
+import pytest
+
+pytestmark = [pytest.mark.coverage("sec.b5")]
 
 import json
 from pathlib import Path

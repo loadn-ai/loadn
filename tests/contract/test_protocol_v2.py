@@ -7,7 +7,12 @@
   且 v1 桥不重复外发 permission_*；tool_result is_error 照常（桥语义）
 - durable 标记自洽（P2-2 选择性落盘的输入）
 """
+
 from __future__ import annotations
+
+import pytest
+
+pytestmark = [pytest.mark.coverage("proto.v2")]
 
 import json
 import subprocess

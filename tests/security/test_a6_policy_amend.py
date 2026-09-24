@@ -9,7 +9,12 @@ A6-4  平台审批链：create（坏 prefix 拒）→ decide 批准 → ws 的 p
       落规则（justification 入审批摘要）→ 引擎下轮生效
 A6-5  未信任工作区的 policy.json 不加载（信任门盖住回写面）
 """
+
 from __future__ import annotations
+
+import pytest
+
+pytestmark = [pytest.mark.coverage("sec.a6")]
 
 import json
 import threading

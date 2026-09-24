@@ -10,7 +10,12 @@
 
 改契约 = 独立 PR + PROTOCOL bump + 本文件同步——两侧任一漂移此处红牌。
 """
+
 from __future__ import annotations
+
+import pytest
+
+pytestmark = [pytest.mark.coverage("proto.v1")]
 
 import json
 import os

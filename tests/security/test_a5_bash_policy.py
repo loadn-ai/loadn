@@ -7,7 +7,12 @@ A5-4  旧串规则逐子命令化：全子命令命中才放行；不可拆构�
 A5-5  degraded 模拟：无 bashlex 时回退整串匹配并标注 policy:degraded
 （审批回写闭环=P0-4 会话 2：A6 组）
 """
+
 from __future__ import annotations
+
+import pytest
+
+pytestmark = [pytest.mark.coverage("sec.a5")]
 
 import json
 from pathlib import Path

@@ -5,7 +5,12 @@
 2. 删行 → prev_hash 断链
 3. 整库重算重写（攻击者把链算得天衣无缝）→ 外置锚点比对暴露
 """
+
 from __future__ import annotations
+
+import pytest
+
+pytestmark = [pytest.mark.coverage("sec.e2")]
 
 import sqlite3
 import stat

@@ -9,7 +9,12 @@ A7-4  DNS 重绑定：白名单域名解析出私网 IP → egress 拒 + anomaly
       解析公网 IP → 放行；解析失败 → 放行（连不上自然 502）；TTL 缓存
       只解析一次
 """
+
 from __future__ import annotations
+
+import pytest
+
+pytestmark = [pytest.mark.coverage("sec.a7")]
 
 import pytest
 

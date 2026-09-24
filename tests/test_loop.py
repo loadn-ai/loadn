@@ -1,6 +1,10 @@
 """LoopController 全分支（零 token，ScriptedProvider 驱动）。"""
 from __future__ import annotations
 
+import pytest
+
+pytestmark = [pytest.mark.coverage("engine.compact")]
+
 import json
 
 import tests.helpers as H

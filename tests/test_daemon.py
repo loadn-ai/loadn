@@ -5,7 +5,12 @@
 - 断开→重连→同会话续作（AgentCore 复用——daemon 内 cores 不重建）
 - 桥：spawn→UDS→stdout 透传（宿主视角仍是 NDJSON 子进程）
 """
+
 from __future__ import annotations
+
+import pytest
+
+pytestmark = [pytest.mark.coverage("engine.daemon")]
 
 import asyncio
 import json

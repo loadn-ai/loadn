@@ -1,6 +1,10 @@
 """宪法祖先链 + @import + Skill 工具 + skills 索引（零 token）。"""
 from __future__ import annotations
 
+import pytest
+
+pytestmark = [pytest.mark.coverage("engine.compact")]
+
 from pathlib import Path
 
 import pytest
