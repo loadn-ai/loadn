@@ -10,9 +10,13 @@
 """
 from __future__ import annotations
 
+import pytest
+
 from loadn.core import cache_warmer as cw
 from loadn.core.cache_warmer import CacheWarmer, evaluate, warming_delay_s
 from loadn.providers.fake import FakeProvider
+
+pytestmark = [pytest.mark.coverage("engine.warmer")]
 
 
 class FakeClock:

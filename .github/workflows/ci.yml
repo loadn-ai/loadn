@@ -59,6 +59,21 @@ jobs:
         env:
           LOADN_PROVIDER: fake
 
+  coverage:
+    # T1（tests/TEST-PLAN.md）：双包行覆盖率 + 门禁（基线 78.8%；
+    # 每张 T 卡收口时收紧 fail-under——TEST-PLAN §六目标 85%）
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - run: pip install -e ".[webui,dev]" pytest-cov
+      - run: pytest -q --cov=loadn --cov=loadn_webui --cov-report=term
+             --cov-fail-under=78
+        env:
+          LOADN_PROVIDER: fake
+
   ui:
     # 前端可构建（tsc + vite build），dist 不入库但随 release 发布
     runs-on: ubuntu-latest

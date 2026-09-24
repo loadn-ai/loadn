@@ -3,7 +3,11 @@ from __future__ import annotations
 
 import json
 
+import pytest
+
 from loadn_webui import policy
+
+pytestmark = [pytest.mark.coverage("sec.e3")]
 
 # ---------------------------------------------------------------- E3
 
