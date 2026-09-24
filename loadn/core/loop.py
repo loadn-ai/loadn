@@ -462,7 +462,10 @@ class AgentCore:
                                 break
                             if did:
                                 self.session.mark_compact(
-                                    self.compactor.last_summary)
+                                    self.compactor.last_summary,
+                                    tokens_cropped=getattr(
+                                        self.compactor,
+                                        "last_dropped_tokens", None))
                                 overflowed = True
                                 break        # 出内层，回 while True 重发
                             summary.subtype = "error_during_execution"
@@ -608,7 +611,10 @@ class AgentCore:
                         messages, last_input_usage,
                         self.settings.context_window)
                     if did:
-                        self.session.mark_compact(self.compactor.last_summary)
+                        self.session.mark_compact(
+                            self.compactor.last_summary,
+                            tokens_cropped=getattr(
+                                self.compactor, "last_dropped_tokens", None))
 
                 # v0.7 反思检查点：长磨不迷路（coq 6h 那场靠运气做到的事
                 # 变成机制）——周期性强制总结已确立/已废/下一步

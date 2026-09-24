@@ -81,8 +81,12 @@ class SessionManager:
                 return str((ev.get("payload") or {}).get("summary") or "")
         return ""
 
-    def mark_compact(self, summary: str) -> None:
-        self.transcript.append("compact", {"summary": summary}, fsync=True)
+    def mark_compact(self, summary: str,
+                     tokens_cropped: int | None = None) -> None:
+        payload = {"summary": summary}
+        if tokens_cropped:
+            payload["tokens_cropped"] = int(tokens_cropped)  # P3-7 时间线标记
+        self.transcript.append("compact", payload, fsync=True)
         self.state.compact_points.append(self.transcript.last_uuid() or "")
         self._replay_state()
 

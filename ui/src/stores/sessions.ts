@@ -101,6 +101,19 @@ export interface ApprovalInfo {
   agent_note?: string | null;
   status: string;
   created_at?: string;
+  /** P3-7 三要素 enrich：平台解析的参数 / justification 文案 / 本 turn 改动 */
+  params?: Record<string, unknown>;
+  justification?: string;
+  turn_changes?: { path: string; lines?: string; hash?: string }[] | null;
+}
+
+/** P3-7 压缩时间线：turn 刻度 + compact 标记（何时裁了多少 token） */
+export interface TimelineMarker {
+  kind: 'turn' | 'compact';
+  turns?: number | null;
+  tokens?: number;
+  tokens_cropped?: number | null;
+  summary_first?: string;
 }
 
 interface Store {
@@ -117,6 +130,7 @@ interface Store {
   artifacts: ArtifactInfo[];
   live: LiveTurn | null;
   approvals: ApprovalInfo[];
+  timeline: TimelineMarker[];
   es: EventSource | null;
   connected: boolean;
   theme: 'dark' | 'light';
@@ -130,6 +144,7 @@ interface Store {
   loadMeta: () => Promise<void>;
   loadApprovals: () => Promise<void>;
   decideApproval: (id: number, approve: boolean) => Promise<string | null>;
+  loadTimeline: () => Promise<void>;
   openSession: (sid: string) => Promise<void>;
   closeSession: () => void;
   createSession: (body: Record<string, unknown>) => Promise<SessionInfo>;
@@ -187,7 +202,7 @@ export const useStore = create<Store>((set, get) => ({
   defaultEngine: 'claude',
   currentSid: null, messages: [], turns: [], artifacts: [],
   live: null,
-  approvals: [], es: null, connected: false,
+  approvals: [], timeline: [], es: null, connected: false,
   theme: initialTheme(),
   sessionExtras: null,
   rightTab: 'artifacts',
@@ -220,6 +235,16 @@ export const useStore = create<Store>((set, get) => ({
     }
   },
 
+  async loadTimeline() {
+    const sid = get().currentSid;
+    if (!sid) return;
+    try {
+      const d = await api<{ timeline: TimelineMarker[] }>(
+        `/api/sessions/${encodeURIComponent(sid)}/timeline`);
+      if (get().currentSid === sid) set({ timeline: d.timeline });
+    } catch { /* 拉取失败不阻塞 */ }
+  },
+
   async loadSessions() {
     const d = await api<{ sessions: SessionInfo[] }>('/api/sessions');
     set({ sessions: d.sessions });
@@ -238,7 +263,7 @@ export const useStore = create<Store>((set, get) => ({
   async openSession(sid) {
     get().closeSession();
     set({ currentSid: sid, messages: [], turns: [], artifacts: [], live: null,
-          sessionExtras: null });
+          sessionExtras: null, timeline: [] });
     localStorage.setItem('wd_sid', sid);   // 刷新/重开恢复
     const d = await api<{ messages: MessageInfo[]; turns: TurnInfo[]; artifacts: ArtifactInfo[] } & SessionExtras>(
       `/api/sessions/${encodeURIComponent(sid)}`);
@@ -283,6 +308,7 @@ export const useStore = create<Store>((set, get) => ({
       () => set({ connected: false }),
       () => get().currentSid === sid,
     ).then((es) => { if (get().currentSid === sid) set({ es }); else es.close(); });
+    void get().loadTimeline();     // P3-7 压缩时间线（turn_done 时增量刷新）
     void get().loadSessions();
   },
 
@@ -290,7 +316,8 @@ export const useStore = create<Store>((set, get) => ({
     const { es } = get();
     if (es) { es.close(); }
     localStorage.removeItem('wd_sid');
-    set({ es: null, connected: false, currentSid: null, sessionExtras: null });
+    set({ es: null, connected: false, currentSid: null, sessionExtras: null,
+          timeline: [] });
   },
 
   async createSession(body) {
@@ -724,6 +751,7 @@ function handleEvent(
         set(() => ({ messages: d.messages, turns: d.turns, artifacts: d.artifacts,
                      live: cur && cur.turnId !== data.turn_id ? cur : null }));
         void get().loadSessions();
+        void get().loadTimeline();   // P3-7：compact/turn 标记可能新增
       })();
       break;
     case 'files':

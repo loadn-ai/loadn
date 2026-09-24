@@ -60,6 +60,8 @@ class Compactor:
         # 摘要优先用小模型（per-call 覆盖）；未配置时同模型（调用很短，可接受）
         self.small_model = small_model
         self.last_summary: str = ""
+        # 最近一次压缩裁掉的 token 估算（chars/4——UI 时间线标记用）
+        self.last_dropped_tokens: int = 0
 
     async def maybe_compact(self, messages: list[Message], usage: dict,
                             context_window: int) -> tuple[list[Message], bool]:
@@ -82,6 +84,10 @@ class Compactor:
         dropped = [m for r in rounds[:keep_idx] for m in r]
         if not dropped:
             return messages, False
+        # 裁掉量估算（chars/4）：进 compact 事件——时间线「何时裁了多少」
+        self.last_dropped_tokens = sum(
+            len(getattr(b, "text", "")) for m in dropped
+            for b in m.content) // 4
         summary = await self._summarize(dropped, context_window, prev_summary)
         self.last_summary = summary
         head = Message(role="user", content=[TextBlock(

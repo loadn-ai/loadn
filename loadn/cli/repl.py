@@ -52,7 +52,10 @@ async def run_repl(bundle, emitter, fmt: str, stop) -> int:
                 msgs, context_window=core.settings.context_window,
                 prev_summary=core.session.last_compact_summary())
             if did:
-                core.session.mark_compact(core.compactor.last_summary)
+                core.session.mark_compact(
+                    core.compactor.last_summary,
+                    tokens_cropped=getattr(
+                        core.compactor, "last_dropped_tokens", None))
                 # 压缩后重置内存上下文：下一轮从 compact 点重放
                 print("已压缩")
             continue

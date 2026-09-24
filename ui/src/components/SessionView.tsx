@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 import ApprovalBanner from './ApprovalBanner';
+import CompactTimeline from './CompactTimeline';
 import { useStore } from '../stores/sessions';
 import { fmtTokens, fmtTime } from '../api/client';
 import ChatStream from './ChatStream';
@@ -75,6 +76,7 @@ export default function SessionView({ onMenu }: { onMenu: () => void }) {
       </header>
       <div className="session-body">
         <div className="chat-col">
+          <CompactTimeline />
           {tabs.length > 1 && (
             <div className="main-tabs">
               {tabs.map(t => (
