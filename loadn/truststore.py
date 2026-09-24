@@ -41,7 +41,9 @@ MAX_DIGEST_FILES = 2000       # 资源树扫描上限（防恶意仓库撑爆哈
 MAX_DIGEST_BYTES = 8 * 1024 * 1024
 
 _MARKER_DIRS = (".loadn", ".agent", ".claude")
-_MARKER_FILES = ("settings.json",)
+# settings.json=hooks/permissions；policy.json=P0-4b 审批回写的 bash 规则
+# （未信任仓库不得自带回写规则自我放行）
+_MARKER_FILES = ("settings.json", "policy.json")
 # 信任摘要面=命令/权限/提示注入的结构性资源：settings.json（hooks+
 # permissions）与 agents/**（subagent system_add）。**skills 不在摘要面**：
 # 外部 skill 的内容钉在 P0-3 供应链锁（skills.lock.json）——两把锁管不同

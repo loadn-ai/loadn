@@ -70,12 +70,24 @@ class PermissionEngine:
             if raw_bash is None:
                 continue
             try:
-                from loadn.core.bash_policy import parse_rules
+                from loadn.bash_policy import parse_rules
                 bash_rules += parse_rules(raw_bash)
             except ValueError as e:
                 from loadn.util import get_logger
                 get_logger(__name__).error(
                     "bash_rules 配置错误，该源（%s）全部规则拒载：%s", path, e)
+        # P0-4b：审批回写规则（.loadn/policy.json，v1 bash_rules 格式）——
+        # 同样在信任门后（未信任仓库不得自带回写规则）；坏文件拒载告警
+        if ok:
+            try:
+                from loadn.bash_policy import _read_policy, parse_rules, policy_path
+                bash_rules += parse_rules(_read_policy(policy_path(cwd))["bash_rules"])
+            except ValueError as e:
+                from loadn.util import get_logger
+                get_logger(__name__).error(
+                    "policy.json 回写规则解析失败，拒载：%s", e)
+            except OSError:
+                pass
         return cls(mode=mode, deny=deny, allow=allow, bash_rules=bash_rules)
 
     # ------------------------------------------------------------ 评估
@@ -108,7 +120,7 @@ class PermissionEngine:
     def _check_bash(self, cmd: str) -> Decision:
         """Bash 裁决：deny 串规则 > bypass/plan 模式位 > token 规则
         （bash_rules 配置了时）> 旧串规则（逐子命令匹配）。"""
-        from loadn.core import bash_policy as bp
+        from loadn import bash_policy as bp
         hit = _match_rules(self.deny, "Bash", {"command": cmd})
         if hit:
             return Decision(False, f"权限规则拒绝：{hit}")
@@ -200,7 +212,7 @@ def _bash_covered(pats: list[str], cmd: str) -> str | None:
       （返回命中说明；任一段无覆盖/不可拆 → None=fail-closed 不放行）
     - 无 bashlex（degraded）：旧整串首行 fnmatch（能力降级，标注在上层）
     """
-    from loadn.core.bash_policy import HAVE_BASHLEX, split_subcommands
+    from loadn.bash_policy import HAVE_BASHLEX, split_subcommands
     if not HAVE_BASHLEX:
         first = cmd.strip().splitlines()[0] if cmd.strip() else ""
         hit = next((p for p in pats if first and fnmatch.fnmatch(first, p)), None)

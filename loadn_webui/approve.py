@@ -38,6 +38,9 @@ ACTION_TYPES = {
     "browser_export": "导出登录态",
     # 网络侧不可逆面：任务级临时放行外联域（限时+审计+到期收回）
     "egress": "临时放行外联",
+    # 执行侧规则化（P0-4b）：批准 = 把 token 前缀规则写进会话工作区
+    # .loadn/policy.json（下轮生效，同类命令不再 ask）
+    "bash_allow": "放行 Bash 命令规则",
 }
 
 
@@ -55,6 +58,11 @@ def _render_summary(action_type: str, params: dict) -> str:
         return f"支付 {params.get('amount', '?')} → {params.get('to', '?')}"
     if action_type == "wechat_export":
         return f"导出登录态：{params.get('target', '?')}"
+    if action_type == "bash_allow":
+        prefix = params.get("prefix") or []
+        note = (params.get("justification") or "")[:60]
+        return (f"放行命令规则：{' '.join(str(x) for x in prefix) or '?'}"
+                + (f"（{note}）" if note else ""))
     if action_type == "egress":
         ttl = int(params.get("ttl_s") or 7200)
         h, m = ttl // 3600, (ttl % 3600) // 60
@@ -118,6 +126,14 @@ def create(sid: str, action_type: str, params: dict, note: str = "",
         from .egress_grants import valid_host
         if not valid_host(str(params.get("host") or "")):
             raise ValueError("egress 审批需要合法 host（params.host，如 api.example.com）")
+    if action_type == "bash_allow":
+        # prefix 提前验（P0-4b）：token 数组形态，坏前缀创建即拒
+        from loadn.bash_policy import parse_rules
+        try:
+            parse_rules([{"prefix": params.get("prefix") or [],
+                          "decision": "allow"}])
+        except ValueError as e:
+            raise ValueError(f"bash_allow 审批需要合法 params.prefix：{e}") from None
     with _conn() as c:
         _ensure(c)
         cur = c.execute(
@@ -171,6 +187,43 @@ def decide(aid: int, approve: bool, by: str = "user") -> dict:
                       {"id": aid, "decision": "approved-executed", "host": host},
                       sid=row["sid"])
                 return {"ok": True, "status": "executed", "granted": g}
+            if row["action_type"] == "bash_allow":
+                # P0-4b：裁决即规则化——token 前缀规则写进会话工作区
+                # .loadn/policy.json（flock 原子），引擎下轮加载生效；审批行
+                # 直接终态 executed（与 egress 同款「执行方=平台」语义）
+                from loadn.bash_policy import amend_policy, parse_rules
+
+                from .workspace import ws_of
+                params = json.loads(row["params_json"])
+                prefix = params.get("prefix")
+                try:
+                    parse_rules([{"prefix": prefix or [],
+                                  "decision": "allow"}])   # 前置校验，坏前缀不落盘
+                    rule = amend_policy(
+                        ws_of(row["sid"]),
+                        prefix=prefix or [],
+                        decision="allow",
+                        justification=str(params.get("justification") or "")[:200],
+                        source=f"approval:{aid}")
+                except ValueError as e:
+                    return {"ok": False, "status": "pending",
+                            "error": f"prefix 非法，未生效：{e}"}
+                # 回写改变信任摘要 → 平台（合法写方）re-admit 刷新之
+                #（write_settings 同款）；agent 私改 policy.json 不经此路，
+                # 摘要不匹配 → 规则不加载（A6 攻击面）
+                try:
+                    from loadn.truststore import admit as _admit
+                    _admit(ws_of(row["sid"]))
+                except Exception:                            # noqa: BLE001
+                    pass
+                c.execute("UPDATE approvals SET status='executed', decided_at=?,"
+                          " decided_by=?, executed_at=? WHERE id=?",
+                          (_now(), by, _now(), aid))
+                audit("approval_decision",
+                      {"id": aid, "decision": "approved-executed",
+                       "bash_prefix": prefix},
+                      sid=row["sid"])
+                return {"ok": True, "status": "executed", "rule": rule}
             code = f"{secrets.randbelow(1000000):06d}"
             code_hash = hashlib.sha256(code.encode()).hexdigest()
             c.execute("UPDATE approvals SET status='approved', decided_at=?,"
