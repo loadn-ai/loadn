@@ -167,6 +167,10 @@ def audit(type_: str, detail: dict, *, sid: str | None = None,
         raise ValueError(f"未知审计事件类型 {type_!r}（TYPES 枚举外）")
     ts = datetime.now(timezone.utc).isoformat(timespec="microseconds")  # 秒级在同秒多写下链尾判定不稳（实测教训）
     detail_json = json.dumps(detail, ensure_ascii=False, default=str)
+    # P0-5：账本永不落明文凭证——记账前统一过 URL 脱敏（userinfo/query
+    # 里的 token 一律 ***；哈希链在脱敏后文本上计算，校验天然一致）
+    from .net_policy import redact as _redact
+    detail_json = _redact(detail_json)
     try:
         with _conn() as c:
             # 链尾=全部表中 ts 最新的一行（分表各表 id 独立——旧法逐表
