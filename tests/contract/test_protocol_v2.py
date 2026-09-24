@@ -129,3 +129,109 @@ def test_v1_same_run_no_permission_events(tmp_path):
     users = [e for e in out if e["type"] == "user"]
     assert users and any(
         any(b.get("is_error") for b in u["message"]["content"]) for u in users)
+
+
+# ================================================================ T3 补全
+def test_v2_emits_tool_use_failure(tmp_path):
+    """T3 真跑对赌：v2 下工具失败 → 原生 tool_use_failure（此前 manifest
+    声明但引擎从未发出——补的是实现不是测试）。"""
+    out = _deny_tool_run(tmp_path, "v2")
+    types = [e["type"] for e in out]
+    assert "tool_use_failure" in types
+    tf = next(e for e in out if e["type"] == "tool_use_failure")
+    assert tf["tool"] == "Bash" and tf["tool_use_id"]
+    assert "权限拒绝" in tf["reason"] or tf["reason"]
+    # 失败源=权限拒时 permission_request 与 tool_use_failure 成对（先请求后终态）
+    assert types.index("permission_request") < types.index("tool_use_failure")
+    # tool_result is_error 仍照发（v1 桥语义不因原生行改变）
+    users = [e for e in out if e["type"] == "user"]
+    assert any(any(b.get("is_error") for b in u["message"]["content"])
+               for u in users)
+
+
+def test_v1_no_tool_use_failure_native(tmp_path):
+    """同场景 v1：无原生 tool_use_failure 行（桥=user 的 is_error 回填）。"""
+    out = _deny_tool_run(tmp_path, "v1")
+    assert all(e["type"] != "tool_use_failure" for e in out)
+    users = [e for e in out if e["type"] == "user"]
+    assert users and any(
+        any(b.get("is_error") for b in u["message"]["content"]) for u in users)
+
+
+def test_todos_event_shape(tmp_path):
+    """todos 事件 shape 对赌：{todos:[{content,status,activeForm}]}——
+    TodoWrite 成功即外发（清单变更=事件）。"""
+    fake = tmp_path / ".fake"
+    fake.mkdir(parents=True)
+    (fake / "todos").write_text(json.dumps(
+        [{"content": "第一步", "status": "in_progress",
+          "activeForm": "做第一步"}]))
+    out = _run_engine(
+        ["-p", "--output-format", "stream-json", "--dangerously-skip-permissions",
+         "--session-id", "tdc0ffee-0000-4000-8000-000000000003", "干活"],
+        tmp_path, fake)   # bypass：headless 下 TodoWrite 默认 ask→deny
+    # 顺手对赌 plan 事件 shape（planner 判定随首轮外发）
+    plans = [e for e in out if e["type"] == "plan"]
+    assert plans and isinstance(plans[0].get("parallelizable"), bool)
+    todos = [e for e in out if e["type"] == "todos"]
+    assert todos, "TodoWrite 成功后必须外发 todos 事件"
+    items = todos[0]["todos"]
+    assert items and items[0]["subject"] == "第一步"      # Todo.to_dict 形态
+    assert items[0]["status"] in ("pending", "in_progress", "completed")
+    assert items[0]["id"] and "session_id" in todos[0]
+
+
+def test_result_event_diffs_shape(tmp_path):
+    """turn 级 diff（P3-1）契约面：transcript result 事件可选 diffs 字段
+    shape={path,hash,lines}（v1 消费方忽略未知键——存在即须成形）。"""
+    fake = tmp_path / ".fake"
+    fake.mkdir(parents=True)
+    (fake / "tools").write_text(json.dumps(
+        [{"name": "Write", "input": {"file_path": str(tmp_path / "w.md"),
+                                     "content": "# hi\n"}}] * 2))
+    # Write 控制文件形态：list[dict]（fake _read_tool_calls）
+    out = _run_engine(
+        ["-p", "--output-format", "stream-json", "--dangerously-skip-permissions",
+         "--session-id", "dfc0ffee-0000-4000-8000-000000000004", "干活"],
+        tmp_path, fake)
+    assert any(e["type"] == "result" for e in out)     # turn 真的跑完
+    tlog = (tmp_path / "home" / "sessions"
+            / "dfc0ffee-0000-4000-8000-000000000004" / "transcript.jsonl")
+    results = [json.loads(ln) for ln in tlog.read_text().splitlines()
+               if json.loads(ln).get("type") == "result"]
+    assert results
+    diffs = results[-1]["payload"].get("diffs")
+    assert diffs, "写路径 turn 的 result 事件应带 diffs"
+    d = diffs[0]
+    assert set(d) >= {"path", "hash", "lines"} and d["path"].endswith("w.md")
+    assert isinstance(d["lines"], str) and d["lines"]
+
+
+async def test_platform_consumes_v2_durable(monkeypatch):
+    """T3 durable 落盘对赌：Engine._consume 转发 permission_request /
+    tool_use_failure → publish（session_events+SSE）——此前被静默丢弃，
+    permission_request 的 durable 契约（manifest）落空。"""
+    import time as _time
+
+    from loadn_webui.claude_runner import StopHandle
+    from loadn_webui.engine import ActiveTurn, Engine
+    eng = Engine()
+    got: list[tuple[str, dict]] = []
+
+    def fake_publish(sid, type_, data, turn_id=None):
+        got.append((type_, data))
+
+    monkeypatch.setattr(eng, "publish", fake_publish)
+    at = ActiveTurn(turn_id=7, session_id="sid-x", stop=StopHandle(),
+                    started_at=_time.time())
+    await eng._consume("sid-x", 7, at, {
+        "type": "permission_request", "session_id": "sid-x",
+        "tool": "Bash", "input": {"command": "x"},
+        "reason": "权限拒绝：deny 规则", "params_hash": "ab12"})
+    await eng._consume("sid-x", 7, at, {
+        "type": "tool_use_failure", "session_id": "sid-x",
+        "tool": "Bash", "tool_use_id": "tu_1", "reason": "权限拒绝"})
+    kinds = [t for t, _ in got]
+    assert kinds == ["permission_request", "tool_use_failure"]
+    assert got[0][1]["turn_id"] == 7 and got[0][1]["params_hash"] == "ab12"
+    assert got[1][1]["tool_use_id"] == "tu_1"

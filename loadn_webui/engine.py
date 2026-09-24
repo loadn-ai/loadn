@@ -601,6 +601,16 @@ class Engine:
                 if not s.get("consumed") and s.get("text") == text:
                     s["consumed"] = True
                     break
+        elif t in ("permission_request", "tool_use_failure"):
+            # T3（契约补全）：v2 原生事件此前被 _consume 静默丢弃——
+            # permission_request 是 durable（审计要求，manifest 声明），
+            # 落 session_events + SSE 推送；tool_use_failure 同路（宿主
+            # 失败面可见）。stream_json 外发时 payload 已打平——两种形态
+            # 都收（打平字段 + 显式 payload 段），turn_id 关联
+            payload = {k: v for k, v in ev.items()
+                       if k not in ("type", "session_id", "payload")}
+            payload.update(ev.get("payload") or {})
+            self._emit(at, sid, t, {"turn_id": tid, **payload})
 
     @staticmethod
     def _collect_recent(ws: Path, since: float) -> list[dict]:
