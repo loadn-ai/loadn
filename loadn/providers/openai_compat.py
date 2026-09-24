@@ -82,7 +82,13 @@ class OpenAICompatProvider:
         api_key = cfg.get("api_key") or ""
         if api_key:
             headers["authorization"] = f"Bearer {api_key}"
-        self._client = httpx.AsyncClient(
+        # P1-3 VCR 磁带：env 配置时包 CassetteTransport（显式注入优先）
+        from loadn.providers.cassette import maybe_cassette_client
+        self._client = maybe_cassette_client(
+            "openai_compat",
+            headers=headers,
+            timeout=httpx.Timeout(connect=15.0, read=None, write=60.0, pool=15.0),
+        ) or httpx.AsyncClient(
             headers=headers,
             transport=transport or extra.get("transport"),
             timeout=httpx.Timeout(connect=15.0, read=None, write=60.0, pool=15.0),
