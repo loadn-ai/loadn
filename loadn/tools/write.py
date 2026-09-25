@@ -54,6 +54,14 @@ class WriteTool(Tool):
             if path.exists() and key not in ctx.files_touched:
                 raise ToolError(
                     f"文件已存在但本会话未读取过，先用 Read 读取再覆盖：{path}")
+            # mtime 复查（突变抽查修——与 Edit._write_guarded 对齐）：
+            # Read 之后、Write 之前文件被外部变更 → 拒绝覆盖（外部改动
+            # 不丢，要求重读重写）。此前 Write 只查「读过没」不查「读过
+            # 之后变没变」——外部改动会被静默覆盖
+            if key in ctx.files_touched \
+                    and path.stat().st_mtime != ctx.files_touched[key]:
+                raise ToolError(
+                    f"文件在读取后被外部变更，已放弃写入（请重读重试）：{path}")
             path.parent.mkdir(parents=True, exist_ok=True)
             from loadn.core import turn_diff as td
             before = td.snapshot(path)
