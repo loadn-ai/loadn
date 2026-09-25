@@ -63,8 +63,10 @@ def _iter_code_files(cwd: Path) -> list[Path]:
 
 
 # ---------------------------------------------------------------- 提取
+# T9 修（真 bug）：此前 ^ 行首锚——缩进的 def（方法级符号）全部漏抓，
+# Python 侧只抓得到顶层 def/class（repomap 对类方法全盲）。改 \s* 缩进容许
 _DEF_RE = re.compile(
-    r"^(?:async\s+)?(?:def|class|func|fn|type|struct|interface|enum)\s+"
+    r"^\s*(?:async\s+)?(?:def|class|func|fn|type|struct|interface|enum)\s+"
     r"([A-Za-z_][\w]*)", re.M)
 
 
