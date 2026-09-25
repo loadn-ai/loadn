@@ -236,8 +236,12 @@ def main() -> int:
                     "content": [{"type": "text", "text": f"未知工具 {name}"}]}})
                 continue
             try:
-                text = run(str(args.get("code") or ""), sid=sid)
-                err = False
+                # T6 修（真 bug）：此前直调 run() 绕过 codemode_enabled
+                # 配置门——tool_run 才是带门的入口（进程内消费方同语义）。
+                # tool_run 把 CodemodeError 吞成「拒绝：…」文本（引擎侧
+                # 静默语义）——stdio 面据此标 isError（agent 可读错误）
+                text = tool_run({"code": str(args.get("code") or "")}, sid)
+                err = text.startswith("拒绝：")
             except CodemodeError as e:
                 text, err = f"拒绝：{e}", True
             send({"jsonrpc": "2.0", "id": rid, "result": {
