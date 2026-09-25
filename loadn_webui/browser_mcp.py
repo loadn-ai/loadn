@@ -80,11 +80,13 @@ class BrowserSession:
     def _ensure(self):
         if self._browser is not None:
             return
-        from playwright.sync_api import sync_playwright
-        self._pw = sync_playwright().start()
+        # 配置检查先于依赖 import（T5 修）：cdp 未配置时给配置错误文案，
+        # 而非让未装 playwright 的环境先炸 ImportError（fail-fast 语义）
         cdp = CONFIG.resources.cdp_url
         if not cdp:
             raise RuntimeError("resources.cdp_url 未配置（AIO 沙箱浏览器）")
+        from playwright.sync_api import sync_playwright
+        self._pw = sync_playwright().start()
         token = os.environ.get("LOADN_CDP_TOKEN", "")
         kw = {"headers": {"Authorization": f"Bearer {token}"}} if token else {}
         self._browser = self._pw.chromium.connect_over_cdp(cdp, **kw)
