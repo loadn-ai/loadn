@@ -32,7 +32,7 @@ def test_smoke_suite_green_with_report():
     reports = sorted((REPO / "evals" / "reports").glob("*-smoke.md"))
     assert reports, "报告未落盘"
     body = reports[-1].read_text(encoding="utf-8")
-    assert "通过 **5** / 失败 **0**" in body
+    assert "通过 **10** / 失败 **0**" in body
 
 
 def test_broken_scenario_gates_red(tmp_path, monkeypatch):

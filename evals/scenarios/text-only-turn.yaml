@@ -1,0 +1,12 @@
+name: text-only-turn
+suites: [smoke]
+description: 极小冒烟——零工具纯文本轮（事件链与 result 硬字段仍全验）
+prompt: 只回一句话
+files: {}
+tools_enabled: []
+script:
+  - - "收到，无需工具。"
+assert_events:
+  - {type: assistant, count_min: 1}
+  - {type: user, count_min: 0}
+assert_result_subtype: success

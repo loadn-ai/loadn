@@ -1,0 +1,21 @@
+name: read-missing-rescue
+suites: [smoke]
+description: 失败自救链——Read 不存在的文件得 is_error 后改用 Write 建档
+prompt: 读配置，没有就建
+files: {}
+tools_enabled: [Read, Write]
+script:
+  - - tool: Read
+      input: {file_path: config.yaml}
+  - - tool: Write
+      input:
+        file_path: config.yaml
+        content: "default: true\n"
+final_text_text: "缺失即建档"
+assert_files:
+  - path: config.yaml
+    contains: ["default: true"]
+assert_events:
+  - {type: user, count_min: 1}     # 合批单 user
+  - {type: tool_result, count_min: 2}
+assert_result_subtype: success

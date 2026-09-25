@@ -1,0 +1,26 @@
+name: nested-dir-edit
+suites: [smoke]
+description: 深路径——子目录 Write + 同文件 Edit（相对路径锚 ws 全链）
+prompt: 在子目录建文件再修正
+files: {}
+tools_enabled: [Write, Read, Edit]
+script:
+  - - tool: Write
+      input:
+        file_path: src/deep/note.md
+        content: "v1\n"
+  - - tool: Read
+      input: {file_path: src/deep/note.md}
+  - - tool: Edit
+      input:
+        file_path: src/deep/note.md
+        old_string: "v1"
+        new_string: "v2"
+final_text_text: "深路径读写链完成"
+assert_files:
+  - path: src/deep/note.md
+    contains: ["v2"]
+assert_events:
+  - {type: user, count_min: 1}     # 多工具合批单 user
+  - {type: tool_result, count_min: 3}
+assert_result_subtype: success
