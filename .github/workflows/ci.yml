@@ -70,7 +70,7 @@ jobs:
           python-version: "3.12"
       - run: pip install -e ".[webui,dev]" pytest-cov
       - run: pytest -q --cov=loadn --cov=loadn_webui --cov-report=term
-             --cov-fail-under=78
+             --cov-fail-under=83
         env:
           LOADN_PROVIDER: fake
 
@@ -110,7 +110,7 @@ jobs:
           python-version: "3.12"
       - run: pip install -e ".[webui,dev]" pytest-cov
       - run: pip install playwright && playwright install chromium --with-deps || true
-      - run: pytest -q --cov=loadn_webui --cov-fail-under=78
+      - run: pytest -q --cov=loadn_webui --cov-fail-under=83
         env:
           LOADN_PROVIDER: fake
 

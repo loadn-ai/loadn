@@ -57,7 +57,7 @@
    追踪（COVERAGE_PROCESS_START）若轻量可行
 
 ## 五、任务卡（轮询迭代队列；一张一会话）
-- [ ] T1 测试规则完善 + marker/taxonomy/CI 覆盖率门禁
+- [x] T1 测试规则完善 + marker/taxonomy/CI 覆盖率门禁
 - [ ] T2 backup.py 全单测（0%→90%：备份/恢复/轮转/损坏降级）
 - [ ] T3 契约 v2 对赌补全（permission_result/tool_use_failure/durable/
       todos-shape/diffs）
@@ -71,7 +71,18 @@
 每卡纪律：发现 bug 即修（真测出的问题才算）+ 台账记录；不许为覆盖率
 写空转测试（mock 被测物/删断言=违宪）。
 
-## 六、验收
-- `pytest --cov` 总覆盖 ≥85%，零覆盖模块=0
-- `python scripts/maturity.py` 无 🔴 空 coverage 能力
-- CI test job 全绿（3.10-3.12）+ 覆盖率门禁生效
+## 六、验收（2026-09-25 收口实录——诚实口径）
+**终值：83.1%（15013/18064），基线 78.8% → +4.3pp；1224 passed。**
+
+- ✅ 记分卡 26✅/0🔴/0🟡（零红零黄）；evals smoke 10 场景全绿
+- ✅ 原零覆盖模块全部清零（backup 88.9%/repl 80%/hooks 89.7%/
+  titlegen 78.7%/skillhub 91.3%/docx 82.3%）；唯余两个 __main__.py
+  三行入口（e2e 子进程已跑、进程内 coverage 不追——结构性盲区非测试缺失）
+- ⚠️ 85% 目标未达（差 1.9pp），差距构成诚实分析：
+  1. **子进程 coverage 盲区**（最大头）：cli/main 69.7%、bridge 34%、
+     ops ~40%、webui/cli 49%——这些面的测试**存在且全绿**（e2e_cli/
+     daemon 子进程中继/release build），但 pytest-cov 不追踪子进程；
+     可用 COVERAGE_PROCESS_START 补量测（backlog）
+  2. resources.py 67%（外部端点面，需真端点/重桩——backlog）
+  3. mcp/client HTTP 半边（oauth 重试等已有测试但部分分支需伪造 SSE）
+- CI 门禁 78 → **83** 收紧（与实值对齐）
