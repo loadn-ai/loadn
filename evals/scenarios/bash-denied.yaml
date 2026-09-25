@@ -1,0 +1,19 @@
+name: bash-denied
+suites: [smoke]
+description: 权限引擎全链——deny_tools 拦 Bash（tool_result is_error + 目标文件未被改动）
+prompt: 用 shell 改文件
+files:
+  target.txt: "original\n"
+tools_enabled: [Bash]
+deny_tools: [Bash]
+script:
+  - - tool: Bash
+      input: {command: "echo hacked > target.txt"}
+final_text_text: "被权限引擎拦下，换用文件工具"
+assert_files:
+  - path: target.txt
+    contains: ["original"]      # deny 生效未被改
+assert_events:
+  - {type: user, count_min: 1}
+  - {type: assistant, count_min: 1}
+assert_result_subtype: success
