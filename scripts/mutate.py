@@ -188,6 +188,20 @@ TARGET_TESTS: dict[str, list[str]] = {
         "tests/test_cassette.py",
         "tests/test_m6c_units.py",
     ],
+    "loadn/tools/bash.py": [
+        "tests/test_tools_bash.py",
+        "tests/test_task_registry.py",
+    ],
+    "loadn/tools/grep.py": [
+        "tests/test_tools_search.py",
+        "tests/test_grep_capability.py",
+    ],
+    "loadn/tools/read.py": [
+        "tests/test_tools_files.py",
+    ],
+    "loadn/tools/interactive.py": [
+        "tests/test_tools_interactive.py",
+    ],
     "loadn/core/loop.py": [
         "tests/test_loop.py",
         "tests/contract/test_protocol_v2.py",
