@@ -44,6 +44,10 @@ def test_hot_reload_gates_range(monkeypatch):
         assert CONFIG.security.egress_ask_wait_s == 15
         _reload({"security": {"egress_ask_wait_s": 14}})    # 下界外
         assert CONFIG.security.egress_ask_wait_s == 15
+        _reload({"security": {"egress_ask_wait_s": 600}})   # 上界内生效
+        assert CONFIG.security.egress_ask_wait_s == 600
+        _reload({"security": {"egress_ask_wait_s": 601}})   # 上界外保旧
+        assert CONFIG.security.egress_ask_wait_s == 600
         # yaml 1.1 裸 off → False → 归一 "off"；非法 mode 串保旧
         _reload({"security": {"egress_mode": False}})
         assert CONFIG.security.egress_mode == "off"
@@ -198,3 +202,97 @@ def test_grants_clamp_bounds_and_revoke_miss():
     finally:
         egress_grants._GRANTS.pop("s-cl", None)
         egress_grants._GRANTS.pop("s-cl2", None)
+
+
+# ---------------------------------------------------------------- fail-closed 面
+async def test_gate_rebind_denied_both_paths(monkeypatch):
+    """DNS 重绑定双路 fail-closed：白名单域解析出私网拒；授权域同理。
+
+    白名单只管「去哪」，重绑定管「实际到了哪」——两路 return False
+    反转成 True 即放行私网回流（安全关键，此前从未对赌）。
+    """
+    from loadn_webui import net_policy
+    monkeypatch.setattr(CONFIG.security, "egress_mode", "enforce")
+    monkeypatch.setattr(CONFIG.security, "egress_allow", ["rebind.example.com"])
+    monkeypatch.setattr(net_policy, "rebind_check",
+                        lambda host: (False, "private-ip"))
+    px = egress_proxy.EgressProxy(port=0)
+    ok, why = await px._gate("rebind.example.com", 443)
+    assert not ok and why == "dns-rebind"          # 白名单路径
+    egress_grants.grant("s-reb", "granted.example.com", 7200)
+    try:
+        ok2, why2 = await px._gate("granted.example.com", 443, sid="s-reb")
+        assert not ok2 and why2 == "dns-rebind"    # 临时授权路径
+    finally:
+        egress_grants._GRANTS.pop("s-reb", None)
+
+
+async def test_ask_create_failure_fail_closed(monkeypatch):
+    """弹卡创建失败 → 回退直接拒（fail-closed），绝不放行。"""
+    from loadn_webui import approve as approve_mod
+    monkeypatch.setattr(CONFIG.security, "egress_mode", "enforce")
+    monkeypatch.setattr(CONFIG.security, "egress_allow", [])
+    monkeypatch.setattr(CONFIG.security, "egress_on_deny", "ask")
+
+    def boom(*a, **k):
+        raise ValueError("approve store down")
+
+    monkeypatch.setattr(approve_mod, "create", boom)
+    px = egress_proxy.EgressProxy(port=0)
+    ok, why = await px._gate("askfail.example.com", 443, sid="s-askfail")
+    assert not ok and why == "not-in-allowlist"
+
+
+def test_deny_body_chinese_readable():
+    """403 体原生 UTF-8（ensure_ascii=False）——agent 可读设计点。"""
+    body = egress_proxy._deny_body("x.example.com", "not-in-allowlist")
+    assert "不在出口白名单".encode() in body
+
+
+async def test_socket_mode_0660(tmp_path):
+    """共享/会话级 socket 权限 0o660（组内 rw、无 world 位）。"""
+    import os as _os
+    px = egress_proxy.EgressProxy(port=0, uds_path=str(tmp_path / "e.sock"))
+    await px.start()
+    per = px._session_path("s-mode")
+    try:
+        assert _os.stat(tmp_path / "e.sock").st_mode & 0o777 == 0o660
+        await px.ensure_session_uds("s-mode")
+        assert _os.stat(per).st_mode & 0o777 == 0o660
+    finally:
+        await px.stop()
+        per.unlink(missing_ok=True)
+
+
+async def test_llm_gateway_default_path(monkeypatch):
+    """网关缺省路由契约：裸域名请求（无路径）→ 真上游收到 /v1/messages。"""
+    upstream_seen: dict = {}
+
+    async def upstream(reader, writer):
+        upstream_seen["line"] = (await reader.readline()).decode().strip()
+        while (await reader.readline()) not in (b"\r\n", b"\n", b""):
+            pass
+        writer.write(b"HTTP/1.1 200 OK\r\nContent-Length: 2\r\n\r\nok")
+        await writer.drain()
+        writer.close()
+
+    srv = await asyncio.start_server(upstream, "127.0.0.1", 0)
+    up_port = srv.sockets[0].getsockname()[1]
+    monkeypatch.setattr(egress_proxy, "_UPSTREAM",
+                        (f"http://127.0.0.1:{up_port}", "T"))
+    monkeypatch.setattr(CONFIG.security, "egress_mode", "enforce")
+    px = egress_proxy.EgressProxy(port=0)
+    port = await px.start()
+    try:
+        r, w = await asyncio.open_connection("127.0.0.1", port)
+        w.write(b"POST http://llm-gw.internal HTTP/1.1\r\n"
+                b"Content-Length: 0\r\n\r\n")
+        await w.drain()
+        status = await asyncio.wait_for(r.readline(), timeout=10)
+        assert status.startswith(b"HTTP/1.1 200"), status
+        w.close()
+        assert upstream_seen["line"].startswith("POST /v1/messages")
+    finally:
+        await px.stop()
+        srv.close()
+

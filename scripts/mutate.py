@@ -124,6 +124,7 @@ TARGET_TESTS: dict[str, list[str]] = {
         "tests/security/test_d1_sandbox.py",
         "tests/test_sandbox_units.py",
         "tests/test_egress_align.py",
+        "tests/test_egress_balance.py",
     ],
     "loadn_webui/egress_proxy.py": [
         "tests/test_egress_units.py",

@@ -73,11 +73,14 @@ def test_wrap_generic_full_argv(tmp_path):
     wrapped = sandbox._wrap_generic(
         ["/bin/echo", "ok"], {"PATH": "/usr/bin:/bin"}, cwd=tmp_path,
         extra_binds=[("rw", str(real), str(real)),
-                     ("try-ro", str(tmp_path / "absent"), "")])
+                     ("try-ro", str(tmp_path / "absent"), ""),
+                     ("try-ro", str(real), "")])   # dst 空 → 同路径回退 src
     assert wrapped is not None
     assert wrapped[0] == "/usr/bin/bwrap"
     assert wrapped[-2:] == ["/bin/echo", "ok"]
     assert "--unshare-ipc" in wrapped and "--die-with-parent" in wrapped
+    assert "" not in wrapped                        # dst 空串不得漏进 argv
+    assert wrapped.count(str(real)) >= 2            # 同路径 bind（src=dst）
     # 必需 ro 缺失 → None（回落直跑）
     assert sandbox._wrap_generic(
         ["/bin/echo"], {}, cwd=tmp_path,
@@ -183,3 +186,46 @@ def test_wrap_loadn_net_bridge_toggle(monkeypatch, tmp_path):
     assert "--unshare-net" in argv2 and "--share-net" not in argv2
     assert "socat" in joined and "8793" in joined     # 真桥前缀（非早退直跑）
     assert str(uds) in argv2                          # socket ro-bind 进沙箱
+
+
+def test_bwrap_available_false_when_binary_missing(monkeypatch):
+    """which 无 bwrap → False（不进探测分支）。"""
+    monkeypatch.setattr(sandbox.shutil, "which", lambda _: None)
+    assert sandbox.bwrap_available() is False
+
+
+def test_resolve_tier_placeholder_reasons():
+    """占位档 reason 语义（审计/修复指引消费）+ 未知档防御。"""
+    assert sandbox.resolve_tier("seatbelt") == ("off", "seatbelt-not-implemented")
+    assert sandbox.resolve_tier("appcontainer") == \
+        ("off", "appcontainer-not-implemented")
+    assert sandbox.resolve_tier("remote") == ("off", "remote-not-implemented")
+    assert sandbox.resolve_tier("nonsense") == ("off", "unknown-tier:nonsense")
+
+
+def test_shared_binds_skips_blank_and_dup(monkeypatch, tmp_path):
+    """resource_bridges 空 path 与重复条目跳过（or→and 会把 "" 展开成
+    cwd 挂载、重复条目漏去重二次挂载）。"""
+    from pathlib import Path
+    d = tmp_path / "shared"
+    d.mkdir()
+    monkeypatch.setattr(CONFIG.security, "resource_bridges",
+                        [{"path": "", "mode": "ro"},        # 空串（非空白）
+                         {"path": str(d), "mode": "ro"},
+                         {"path": str(d), "mode": "ro"}])   # 重复
+    monkeypatch.setattr(CONFIG.security, "shared_readonly", [])
+    argv: list = []
+    sandbox._shared_binds(argv)
+    assert argv.count(str(d)) == 2            # 单次挂载（src=dst 同路径）
+    assert str(Path().resolve()) not in argv  # 空 path 不得展开成 cwd
+
+
+def test_wrap_loadn_default_bridge_port(monkeypatch, tmp_path):
+    """env 无 https_proxy → socat 桥缺省 8793（回落共享端口约定）。"""
+    monkeypatch.setattr(sandbox.shutil, "which", lambda _: "/usr/bin/bwrap")
+    uds = tmp_path / "e.sock"
+    uds.write_text("")
+    monkeypatch.setattr(sandbox, "_egress_uds", lambda sid="": uds)
+    joined = " ".join(sandbox.wrap_loadn(["loadn"], {}, sid_session="s",
+                                         cwd=tmp_path))
+    assert "TCP-LISTEN:8793" in joined
