@@ -86,3 +86,73 @@
   2. resources.py 67%（外部端点面，需真端点/重桩——backlog）
   3. mcp/client HTTP 半边（oauth 重试等已有测试但部分分支需伪造 SSE）
 - CI 门禁 78 → **83** 收紧（与实值对齐）
+
+## 七、突变测试收口（M0-M5，2026-09-27；runner=scripts/mutate.py）
+
+**全组终值：483/731 变异被杀死（66.1%）**；5 算子（比较反转/and·or/
+True·False/if 恒真恒假/常数+1）× 19 个安全与核心文件。
+
+### 逐文件终值
+
+| 批 | 文件 | 杀/总 | 率 | 补测杀死的代表性盲区 |
+|---|---|---|---|---|
+| M1 | policy.py | 53/88 | 60% | hook 写路径敏感路径分派；L184 parts 缺失迭代 None |
+| M1 | approve.py | 43/84 | 51% | _render_summary 8 动作类型摘要内容 |
+| M1 | vault.py | 33/60 | 55% | LDV1 格式门/34B 边界/资源密钥未知名 |
+| M1 | truststore.py | 19/34 | 56% | 纯 skills 工作区=项目根（供应链漏检面） |
+| M1 | canary.py | 12/21 | 57% | is_locked 空标记/嵌套新目录 |
+| M1 | net_policy.py | 37/45 | 82% | 存活全等价（缓存容量/偏移+1） |
+| M1 | bash_policy.py | 39/55 | 71% | 决策平局第一条语义/命令替换 fail-closed |
+| M2 | edit.py | 13/43 | 30% | fuzzy 单命中门/无命中/ipynb 禁 fuzzy |
+| M2 | write.py | 6/11 | 55% | mtime 复查守卫（真 bug 修复面） |
+| M2 | multiedit.py | 5/7 | 71% | 参数校验/原子性/链式顺序（原 0%） |
+| M2 | turn_diff.py | 15/19 | 79% | 超限粗粒度/同内容空 diff |
+| M2 | autocommit.py | 17/21 | 81% | — |
+| M2 | autolint.py | 15/18 | 83% | — |
+| M3 | sandbox.py | 43/53 | 81% | UDS 桥双态/降档告警去重/空 path 展开成 cwd |
+| M3 | egress_proxy.py | 66/89 | 74% | **dns-rebind 双路+ask 失败 fail-closed 反转** |
+| M3 | egress_grants.py | 23/23 | 100% | TTL 三界/revoke 未命中 |
+| M4 | session.py | 13/20 | 65% | compact 摘要链/todos 重放形状/usage 索引 |
+| M4 | hooks.py | 17/21 | 81% | 非对象条目炸穿/**失败钩子越权改写** |
+| M4 | daemon.py | 14/19 | 74% | 断连摘除保他人/socket 0600/init 真模型名 |
+
+（每卡补测均经手动注入复验；低率文件=等价变异占比高，见白名单）
+
+### 等价变异白名单（重扫对照基线——新增存活先对这张表再判盲区）
+
+1. **耐久性位**：fsync=True/False、mkdir(exist_ok/parents)——崩溃窗口
+   语义，测试面不可观测
+2. **常数边界 ±1**：截断 [:2000]→2001、timeout 10→11、token 长度、
+   1<<20 流缓冲、缓存容量——行为同型
+3. **ensure_ascii=False**：\uXXXX 转义对 JSON 语义等价（可读性位除外，
+   已按设计点补杀 _deny_body 一例）
+4. **日志门**：告警条件反转只差 warning 行
+5. **真值回退 or-链**：`.get(x) or ""` 在值域恒非空的实际路径
+6. **死代码/死存储**（记 backlog 待清理）：sandbox._resolve_in、
+   mark_compact L90（append 即被 replay 覆盖）、db.add_usage model 形参、
+   schema default 文档位
+7. **挂死即破坏**（保守计活）：daemon 入口守卫反转=导入即 serve
+8. **DDL/驱动参数**：幂等位、sqlite timeout
+
+### runner 基建坑实录（4 起，可信度本身需审计的实证）
+
+1. 多行变异单行替换→语法错误假杀（虚高 30pp）→跳过多行片段
+2. 同秒 mtime 假阳→存活复验；同尺寸变异+陈旧 pyc→-B+
+   PYTHONDONTWRITEBYTECODE+restore 连 pyc 删
+3. 并发段互相 git checkout 冲掉变异→全体假存活（杀伤率逐段递减即信号）
+   →单命令串行；未提交 edit 会被扫描冲掉（四起丢失）→先 commit 再扫
+4. 窄测试集映射漏文件→假存活（vault/balance 两起）→新测试文件先进映射
+
+### 复核重扫（M5，修复版 runner 对四个早期文件）
+
+canary 57/policy 59/truststore 56/approve 51（总 55.5%）——与原值差异
+主因=后续测试扩充真杀（canary -4 活/policy -10 活/approve -15 活），
+**假杀实证仅 policy L184 一例**（已补测杀死）；pyc 污染风险基本未兑现
+（restore 删 pyc 防御自 M1-vault 起生效）。
+
+### CI 回归门
+
+`.github/workflows/ci.yml` `mutation` job：周跑（周一 04:23 UTC）+
+workflow_dispatch，代表性子集（canary/multiedit/turn_diff/net_policy）
+逐文件杀伤率下限（55/60/65/75%，留 5-10pp 防抖动）；全套 600+ 变异
+按台账队列本地跑。

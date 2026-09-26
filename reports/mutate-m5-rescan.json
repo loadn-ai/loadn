@@ -1,0 +1,1553 @@
+{
+ "results": {
+  "loadn_webui/canary.py": {
+   "file": "loadn_webui/canary.py",
+   "total": 21,
+   "killed": 12,
+   "survived": [
+    {
+     "file": "loadn_webui/canary.py",
+     "line": 115,
+     "kind": "const:bool",
+     "orig": "False",
+     "new": "True"
+    },
+    {
+     "file": "loadn_webui/canary.py",
+     "line": 114,
+     "kind": "const:bool",
+     "orig": "True",
+     "new": "False"
+    },
+    {
+     "file": "loadn_webui/canary.py",
+     "line": 44,
+     "kind": "const:int+1",
+     "orig": "20",
+     "new": "21"
+    },
+    {
+     "file": "loadn_webui/canary.py",
+     "line": 45,
+     "kind": "const:int+1",
+     "orig": "16",
+     "new": "17"
+    },
+    {
+     "file": "loadn_webui/canary.py",
+     "line": 48,
+     "kind": "const:bool",
+     "orig": "True",
+     "new": "False"
+    },
+    {
+     "file": "loadn_webui/canary.py",
+     "line": 95,
+     "kind": "const:bool",
+     "orig": "True",
+     "new": "False"
+    },
+    {
+     "file": "loadn_webui/canary.py",
+     "line": 95,
+     "kind": "const:bool",
+     "orig": "True",
+     "new": "False"
+    },
+    {
+     "file": "loadn_webui/canary.py",
+     "line": 96,
+     "kind": "const:bool",
+     "orig": "True",
+     "new": "False"
+    },
+    {
+     "file": "loadn_webui/canary.py",
+     "line": 43,
+     "kind": "const:int+1",
+     "orig": "8",
+     "new": "9"
+    }
+   ],
+   "timeout": []
+  },
+  "loadn_webui/policy.py": {
+   "file": "loadn_webui/policy.py",
+   "total": 88,
+   "killed": 52,
+   "survived": [
+    {
+     "file": "loadn_webui/policy.py",
+     "line": 184,
+     "kind": "bool:BoolOp",
+     "orig": "getattr(node, \"parts\", None) or []",
+     "new": "getattr(node, 'parts', None) and []"
+    },
+    {
+     "file": "loadn_webui/policy.py",
+     "line": 447,
+     "kind": "cmp:Eq",
+     "orig": "d.action == ACTION_ALLOW",
+     "new": "d.action != ACTION_ALLOW"
+    },
+    {
+     "file": "loadn_webui/policy.py",
+     "line": 98,
+     "kind": "bool:BoolOp",
+     "orig": "(\"r\" in f or \"recursive\" in flags) and (\"f\" in f or \"force\" in flags)",
+     "new": "('r' in f or 'recursive' in flags) or ('f' in f or 'force' in flags)"
+    },
+    {
+     "file": "loadn_webui/policy.py",
+     "line": 148,
+     "kind": "const:bool",
+     "orig": "False",
+     "new": "True"
+    },
+    {
+     "file": "loadn_webui/policy.py",
+     "line": 182,
+     "kind": "bool:BoolOp",
+     "orig": "isinstance(v, str) and v",
+     "new": "isinstance(v, str) or v"
+    },
+    {
+     "file": "loadn_webui/policy.py",
+     "line": 393,
+     "kind": "const:bool",
+     "orig": "True",
+     "new": "False"
+    },
+    {
+     "file": "loadn_webui/policy.py",
+     "line": 75,
+     "kind": "bool:BoolOp",
+     "orig": "CONFIG.security.glob_warn_patterns or []",
+     "new": "CONFIG.security.glob_warn_patterns and []"
+    },
+    {
+     "file": "loadn_webui/policy.py",
+     "line": 146,
+     "kind": "const:bool",
+     "orig": "False",
+     "new": "True"
+    },
+    {
+     "file": "loadn_webui/policy.py",
+     "line": 374,
+     "kind": "const:bool",
+     "orig": "False",
+     "new": "True"
+    },
+    {
+     "file": "loadn_webui/policy.py",
+     "line": 476,
+     "kind": "const:int+1",
+     "orig": "2",
+     "new": "3"
+    },
+    {
+     "file": "loadn_webui/policy.py",
+     "line": 98,
+     "kind": "cmp:In",
+     "orig": "\"recursive\" in flags",
+     "new": "'recursive' not in flags"
+    },
+    {
+     "file": "loadn_webui/policy.py",
+     "line": 98,
+     "kind": "cmp:In",
+     "orig": "\"force\" in flags",
+     "new": "'force' not in flags"
+    },
+    {
+     "file": "loadn_webui/policy.py",
+     "line": 165,
+     "kind": "cmp:Eq",
+     "orig": "k == \"literal\"",
+     "new": "k != 'literal'"
+    },
+    {
+     "file": "loadn_webui/policy.py",
+     "line": 342,
+     "kind": "cmp:Eq",
+     "orig": "p == \"..\"",
+     "new": "p != '..'"
+    },
+    {
+     "file": "loadn_webui/policy.py",
+     "line": 344,
+     "kind": "const:int+1",
+     "orig": "16",
+     "new": "17"
+    },
+    {
+     "file": "loadn_webui/policy.py",
+     "line": 388,
+     "kind": "const:bool",
+     "orig": "True",
+     "new": "False"
+    },
+    {
+     "file": "loadn_webui/policy.py",
+     "line": 388,
+     "kind": "const:bool",
+     "orig": "True",
+     "new": "False"
+    },
+    {
+     "file": "loadn_webui/policy.py",
+     "line": 167,
+     "kind": "cmp:In",
+     "orig": "k in (\"parameter\", \"commandsubstitution\", \"tilde\")",
+     "new": "k not in ('parameter', 'commandsubstitution', 'tilde')"
+    },
+    {
+     "file": "loadn_webui/policy.py",
+     "line": 348,
+     "kind": "const:bool",
+     "orig": "True",
+     "new": "False"
+    },
+    {
+     "file": "loadn_webui/policy.py",
+     "line": 348,
+     "kind": "const:bool",
+     "orig": "True",
+     "new": "False"
+    },
+    {
+     "file": "loadn_webui/policy.py",
+     "line": 381,
+     "kind": "const:int+1",
+     "orig": "1",
+     "new": "2"
+    },
+    {
+     "file": "loadn_webui/policy.py",
+     "line": 384,
+     "kind": "const:bool",
+     "orig": "True",
+     "new": "False"
+    },
+    {
+     "file": "loadn_webui/policy.py",
+     "line": 384,
+     "kind": "const:bool",
+     "orig": "True",
+     "new": "False"
+    },
+    {
+     "file": "loadn_webui/policy.py",
+     "line": 386,
+     "kind": "const:bool",
+     "orig": "True",
+     "new": "False"
+    },
+    {
+     "file": "loadn_webui/policy.py",
+     "line": 386,
+     "kind": "const:bool",
+     "orig": "True",
+     "new": "False"
+    },
+    {
+     "file": "loadn_webui/policy.py",
+     "line": 392,
+     "kind": "const:int+1",
+     "orig": "50",
+     "new": "51"
+    },
+    {
+     "file": "loadn_webui/policy.py",
+     "line": 401,
+     "kind": "const:int+1",
+     "orig": "500",
+     "new": "501"
+    },
+    {
+     "file": "loadn_webui/policy.py",
+     "line": 454,
+     "kind": "const:int+1",
+     "orig": "300",
+     "new": "301"
+    },
+    {
+     "file": "loadn_webui/policy.py",
+     "line": 169,
+     "kind": "cmp:Eq",
+     "orig": "k == \"assign\"",
+     "new": "k != 'assign'"
+    },
+    {
+     "file": "loadn_webui/policy.py",
+     "line": 437,
+     "kind": "const:int+1",
+     "orig": "500",
+     "new": "501"
+    },
+    {
+     "file": "loadn_webui/policy.py",
+     "line": 454,
+     "kind": "const:bool",
+     "orig": "False",
+     "new": "True"
+    },
+    {
+     "file": "loadn_webui/policy.py",
+     "line": 168,
+     "kind": "bool:BoolOp",
+     "orig": "_first_literal(w) or \"\"",
+     "new": "_first_literal(w) and ''"
+    },
+    {
+     "file": "loadn_webui/policy.py",
+     "line": 256,
+     "kind": "cmp:In",
+     "orig": "\".\" in w",
+     "new": "'.' not in w"
+    },
+    {
+     "file": "loadn_webui/policy.py",
+     "line": 256,
+     "kind": "cmp:In",
+     "orig": "\"/\" in w",
+     "new": "'/' not in w"
+    },
+    {
+     "file": "loadn_webui/policy.py",
+     "line": 457,
+     "kind": "const:bool",
+     "orig": "False",
+     "new": "True"
+    },
+    {
+     "file": "loadn_webui/policy.py",
+     "line": 224,
+     "kind": "const:int+1",
+     "orig": "12",
+     "new": "13"
+    }
+   ],
+   "timeout": []
+  },
+  "loadn/truststore.py": {
+   "file": "loadn/truststore.py",
+   "total": 34,
+   "killed": 19,
+   "survived": [
+    {
+     "file": "loadn/truststore.py",
+     "line": 39,
+     "kind": "const:int+1",
+     "orig": "1",
+     "new": "2"
+    },
+    {
+     "file": "loadn/truststore.py",
+     "line": 40,
+     "kind": "const:int+1",
+     "orig": "2000",
+     "new": "2001"
+    },
+    {
+     "file": "loadn/truststore.py",
+     "line": 41,
+     "kind": "const:int+1",
+     "orig": "1024",
+     "new": "1025"
+    },
+    {
+     "file": "loadn/truststore.py",
+     "line": 41,
+     "kind": "const:int+1",
+     "orig": "8",
+     "new": "9"
+    },
+    {
+     "file": "loadn/truststore.py",
+     "line": 41,
+     "kind": "const:int+1",
+     "orig": "1024",
+     "new": "1025"
+    },
+    {
+     "file": "loadn/truststore.py",
+     "line": 106,
+     "kind": "bool:BoolOp",
+     "orig": "_resource_files(cur) or _skill_dirs(cur)",
+     "new": "_resource_files(cur) and _skill_dirs(cur)"
+    },
+    {
+     "file": "loadn/truststore.py",
+     "line": 147,
+     "kind": "const:bool",
+     "orig": "True",
+     "new": "False"
+    },
+    {
+     "file": "loadn/truststore.py",
+     "line": 64,
+     "kind": "bool:BoolOp",
+     "orig": "g == base or g in base.parents",
+     "new": "g == base and g in base.parents"
+    },
+    {
+     "file": "loadn/truststore.py",
+     "line": 76,
+     "kind": "cmp:GtE",
+     "orig": "len(out) >= MAX_DIGEST_FILES",
+     "new": "len(out) < MAX_DIGEST_FILES"
+    },
+    {
+     "file": "loadn/truststore.py",
+     "line": 91,
+     "kind": "cmp:Eq",
+     "orig": "g == base",
+     "new": "g != base"
+    },
+    {
+     "file": "loadn/truststore.py",
+     "line": 91,
+     "kind": "cmp:In",
+     "orig": "g in base.parents",
+     "new": "g not in base.parents"
+    },
+    {
+     "file": "loadn/truststore.py",
+     "line": 149,
+     "kind": "const:int+1",
+     "orig": "2",
+     "new": "3"
+    },
+    {
+     "file": "loadn/truststore.py",
+     "line": 149,
+     "kind": "const:bool",
+     "orig": "True",
+     "new": "False"
+    },
+    {
+     "file": "loadn/truststore.py",
+     "line": 150,
+     "kind": "const:bool",
+     "orig": "False",
+     "new": "True"
+    },
+    {
+     "file": "loadn/truststore.py",
+     "line": 96,
+     "kind": "bool:BoolOp",
+     "orig": "d.is_dir() or d.is_symlink()",
+     "new": "d.is_dir() and d.is_symlink()"
+    }
+   ],
+   "timeout": []
+  },
+  "loadn_webui/approve.py": {
+   "file": "loadn_webui/approve.py",
+   "total": 84,
+   "killed": 43,
+   "survived": [
+    {
+     "file": "loadn_webui/approve.py",
+     "line": 30,
+     "kind": "const:int+1",
+     "orig": "600",
+     "new": "601"
+    },
+    {
+     "file": "loadn_webui/approve.py",
+     "line": 127,
+     "kind": "const:bool",
+     "orig": "True",
+     "new": "False"
+    },
+    {
+     "file": "loadn_webui/approve.py",
+     "line": 378,
+     "kind": "cmp:Eq",
+     "orig": "ev.get(\"type\") == \"result\"",
+     "new": "ev.get('type') != 'result'"
+    },
+    {
+     "file": "loadn_webui/approve.py",
+     "line": 37,
+     "kind": "bool:BoolOp",
+     "orig": "CONFIG.security.approval_ttl_s or DEFAULT_TTL_S",
+     "new": "CONFIG.security.approval_ttl_s and DEFAULT_TTL_S"
+    },
+    {
+     "file": "loadn_webui/approve.py",
+     "line": 95,
+     "kind": "const:bool",
+     "orig": "True",
+     "new": "False"
+    },
+    {
+     "file": "loadn_webui/approve.py",
+     "line": 96,
+     "kind": "const:int+1",
+     "orig": "10",
+     "new": "11"
+    },
+    {
+     "file": "loadn_webui/approve.py",
+     "line": 254,
+     "kind": "const:bool",
+     "orig": "True",
+     "new": "False"
+    },
+    {
+     "file": "loadn_webui/approve.py",
+     "line": 261,
+     "kind": "const:bool",
+     "orig": "True",
+     "new": "False"
+    },
+    {
+     "file": "loadn_webui/approve.py",
+     "line": 324,
+     "kind": "cmp:IsNot",
+     "orig": "out is not None",
+     "new": "out is None"
+    },
+    {
+     "file": "loadn_webui/approve.py",
+     "line": 355,
+     "kind": "bool:BoolOp",
+     "orig": "params.get(\"justification\") or \"\"",
+     "new": "params.get('justification') and ''"
+    },
+    {
+     "file": "loadn_webui/approve.py",
+     "line": 380,
+     "kind": "bool:BoolOp",
+     "orig": "diffs or None",
+     "new": "diffs and None"
+    },
+    {
+     "file": "loadn_webui/approve.py",
+     "line": 76,
+     "kind": "const:int+1",
+     "orig": "60",
+     "new": "61"
+    },
+    {
+     "file": "loadn_webui/approve.py",
+     "line": 82,
+     "kind": "const:int+1",
+     "orig": "7200",
+     "new": "7201"
+    },
+    {
+     "file": "loadn_webui/approve.py",
+     "line": 83,
+     "kind": "const:int+1",
+     "orig": "60",
+     "new": "61"
+    },
+    {
+     "file": "loadn_webui/approve.py",
+     "line": 165,
+     "kind": "bool:BoolOp",
+     "orig": "note or \"\"",
+     "new": "note and ''"
+    },
+    {
+     "file": "loadn_webui/approve.py",
+     "line": 178,
+     "kind": "const:bool",
+     "orig": "False",
+     "new": "True"
+    },
+    {
+     "file": "loadn_webui/approve.py",
+     "line": 327,
+     "kind": "cmp:Eq",
+     "orig": "json.loads(r[\"params_json\"]).get(\"host\") == host",
+     "new": "json.loads(r['params_json']).get('host') != host"
+    },
+    {
+     "file": "loadn_webui/approve.py",
+     "line": 351,
+     "kind": "bool:BoolOp",
+     "orig": "r.pop(\"params_json\") or \"{}\"",
+     "new": "r.pop('params_json') and '{}'"
+    },
+    {
+     "file": "loadn_webui/approve.py",
+     "line": 86,
+     "kind": "const:int+1",
+     "orig": "80",
+     "new": "81"
+    },
+    {
+     "file": "loadn_webui/approve.py",
+     "line": 142,
+     "kind": "bool:BoolOp",
+     "orig": "params.get(\"host\") or \"\"",
+     "new": "params.get('host') and ''"
+    },
+    {
+     "file": "loadn_webui/approve.py",
+     "line": 159,
+     "kind": "bool:BoolOp",
+     "orig": "note or \"\"",
+     "new": "note and ''"
+    },
+    {
+     "file": "loadn_webui/approve.py",
+     "line": 165,
+     "kind": "const:int+1",
+     "orig": "200",
+     "new": "201"
+    },
+    {
+     "file": "loadn_webui/approve.py",
+     "line": 196,
+     "kind": "bool:BoolOp",
+     "orig": "params.get(\"ttl_s\") or egress_grants.DEFAULT_TTL_S",
+     "new": "params.get('ttl_s') and egress_grants.DEFAULT_TTL_S"
+    },
+    {
+     "file": "loadn_webui/approve.py",
+     "line": 204,
+     "kind": "const:bool",
+     "orig": "True",
+     "new": "False"
+    },
+    {
+     "file": "loadn_webui/approve.py",
+     "line": 241,
+     "kind": "const:bool",
+     "orig": "True",
+     "new": "False"
+    },
+    {
+     "file": "loadn_webui/approve.py",
+     "line": 370,
+     "kind": "const:int+1",
+     "orig": "400",
+     "new": "401"
+    },
+    {
+     "file": "loadn_webui/approve.py",
+     "line": 379,
+     "kind": "bool:BoolOp",
+     "orig": "ev.get(\"payload\") or {}",
+     "new": "ev.get('payload') and {}"
+    },
+    {
+     "file": "loadn_webui/approve.py",
+     "line": 86,
+     "kind": "const:bool",
+     "orig": "False",
+     "new": "True"
+    },
+    {
+     "file": "loadn_webui/approve.py",
+     "line": 148,
+     "kind": "bool:BoolOp",
+     "orig": "params.get(\"prefix\") or []",
+     "new": "params.get('prefix') and []"
+    },
+    {
+     "file": "loadn_webui/approve.py",
+     "line": 159,
+     "kind": "const:int+1",
+     "orig": "500",
+     "new": "501"
+    },
+    {
+     "file": "loadn_webui/approve.py",
+     "line": 159,
+     "kind": "const:bool",
+     "orig": "False",
+     "new": "True"
+    },
+    {
+     "file": "loadn_webui/approve.py",
+     "line": 192,
+     "kind": "bool:BoolOp",
+     "orig": "params.get(\"host\") or \"\"",
+     "new": "params.get('host') and ''"
+    },
+    {
+     "file": "loadn_webui/approve.py",
+     "line": 194,
+     "kind": "const:bool",
+     "orig": "False",
+     "new": "True"
+    },
+    {
+     "file": "loadn_webui/approve.py",
+     "line": 242,
+     "kind": "const:int+1",
+     "orig": "1000000",
+     "new": "1000001"
+    },
+    {
+     "file": "loadn_webui/approve.py",
+     "line": 219,
+     "kind": "bool:BoolOp",
+     "orig": "prefix or []",
+     "new": "prefix and []"
+    },
+    {
+     "file": "loadn_webui/approve.py",
+     "line": 224,
+     "kind": "const:bool",
+     "orig": "False",
+     "new": "True"
+    },
+    {
+     "file": "loadn_webui/approve.py",
+     "line": 90,
+     "kind": "const:bool",
+     "orig": "False",
+     "new": "True"
+    },
+    {
+     "file": "loadn_webui/approve.py",
+     "line": 90,
+     "kind": "const:bool",
+     "orig": "True",
+     "new": "False"
+    },
+    {
+     "file": "loadn_webui/approve.py",
+     "line": 215,
+     "kind": "bool:BoolOp",
+     "orig": "prefix or []",
+     "new": "prefix and []"
+    },
+    {
+     "file": "loadn_webui/approve.py",
+     "line": 221,
+     "kind": "bool:BoolOp",
+     "orig": "params.get(\"justification\") or \"\"",
+     "new": "params.get('justification') and ''"
+    },
+    {
+     "file": "loadn_webui/approve.py",
+     "line": 221,
+     "kind": "const:int+1",
+     "orig": "200",
+     "new": "201"
+    }
+   ],
+   "timeout": []
+  }
+ },
+ "survived": [
+  {
+   "file": "loadn_webui/canary.py",
+   "line": 115,
+   "kind": "const:bool",
+   "orig": "False",
+   "new": "True",
+   "why": "tests-green"
+  },
+  {
+   "file": "loadn_webui/canary.py",
+   "line": 114,
+   "kind": "const:bool",
+   "orig": "True",
+   "new": "False",
+   "why": "tests-green"
+  },
+  {
+   "file": "loadn_webui/canary.py",
+   "line": 44,
+   "kind": "const:int+1",
+   "orig": "20",
+   "new": "21",
+   "why": "tests-green"
+  },
+  {
+   "file": "loadn_webui/canary.py",
+   "line": 45,
+   "kind": "const:int+1",
+   "orig": "16",
+   "new": "17",
+   "why": "tests-green"
+  },
+  {
+   "file": "loadn_webui/canary.py",
+   "line": 48,
+   "kind": "const:bool",
+   "orig": "True",
+   "new": "False",
+   "why": "tests-green"
+  },
+  {
+   "file": "loadn_webui/canary.py",
+   "line": 95,
+   "kind": "const:bool",
+   "orig": "True",
+   "new": "False",
+   "why": "tests-green"
+  },
+  {
+   "file": "loadn_webui/canary.py",
+   "line": 95,
+   "kind": "const:bool",
+   "orig": "True",
+   "new": "False",
+   "why": "tests-green"
+  },
+  {
+   "file": "loadn_webui/canary.py",
+   "line": 96,
+   "kind": "const:bool",
+   "orig": "True",
+   "new": "False",
+   "why": "tests-green"
+  },
+  {
+   "file": "loadn_webui/canary.py",
+   "line": 43,
+   "kind": "const:int+1",
+   "orig": "8",
+   "new": "9",
+   "why": "tests-green"
+  },
+  {
+   "file": "loadn_webui/policy.py",
+   "line": 184,
+   "kind": "bool:BoolOp",
+   "orig": "getattr(node, \"parts\", None) or []",
+   "new": "getattr(node, 'parts', None) and []",
+   "why": "tests-green"
+  },
+  {
+   "file": "loadn_webui/policy.py",
+   "line": 447,
+   "kind": "cmp:Eq",
+   "orig": "d.action == ACTION_ALLOW",
+   "new": "d.action != ACTION_ALLOW",
+   "why": "tests-green"
+  },
+  {
+   "file": "loadn_webui/policy.py",
+   "line": 98,
+   "kind": "bool:BoolOp",
+   "orig": "(\"r\" in f or \"recursive\" in flags) and (\"f\" in f or \"force\" in flags)",
+   "new": "('r' in f or 'recursive' in flags) or ('f' in f or 'force' in flags)",
+   "why": "tests-green"
+  },
+  {
+   "file": "loadn_webui/policy.py",
+   "line": 148,
+   "kind": "const:bool",
+   "orig": "False",
+   "new": "True",
+   "why": "tests-green"
+  },
+  {
+   "file": "loadn_webui/policy.py",
+   "line": 182,
+   "kind": "bool:BoolOp",
+   "orig": "isinstance(v, str) and v",
+   "new": "isinstance(v, str) or v",
+   "why": "tests-green"
+  },
+  {
+   "file": "loadn_webui/policy.py",
+   "line": 393,
+   "kind": "const:bool",
+   "orig": "True",
+   "new": "False",
+   "why": "tests-green"
+  },
+  {
+   "file": "loadn_webui/policy.py",
+   "line": 75,
+   "kind": "bool:BoolOp",
+   "orig": "CONFIG.security.glob_warn_patterns or []",
+   "new": "CONFIG.security.glob_warn_patterns and []",
+   "why": "tests-green"
+  },
+  {
+   "file": "loadn_webui/policy.py",
+   "line": 146,
+   "kind": "const:bool",
+   "orig": "False",
+   "new": "True",
+   "why": "tests-green"
+  },
+  {
+   "file": "loadn_webui/policy.py",
+   "line": 374,
+   "kind": "const:bool",
+   "orig": "False",
+   "new": "True",
+   "why": "tests-green"
+  },
+  {
+   "file": "loadn_webui/policy.py",
+   "line": 476,
+   "kind": "const:int+1",
+   "orig": "2",
+   "new": "3",
+   "why": "tests-green"
+  },
+  {
+   "file": "loadn_webui/policy.py",
+   "line": 98,
+   "kind": "cmp:In",
+   "orig": "\"recursive\" in flags",
+   "new": "'recursive' not in flags",
+   "why": "tests-green"
+  },
+  {
+   "file": "loadn_webui/policy.py",
+   "line": 98,
+   "kind": "cmp:In",
+   "orig": "\"force\" in flags",
+   "new": "'force' not in flags",
+   "why": "tests-green"
+  },
+  {
+   "file": "loadn_webui/policy.py",
+   "line": 165,
+   "kind": "cmp:Eq",
+   "orig": "k == \"literal\"",
+   "new": "k != 'literal'",
+   "why": "tests-green"
+  },
+  {
+   "file": "loadn_webui/policy.py",
+   "line": 342,
+   "kind": "cmp:Eq",
+   "orig": "p == \"..\"",
+   "new": "p != '..'",
+   "why": "tests-green"
+  },
+  {
+   "file": "loadn_webui/policy.py",
+   "line": 344,
+   "kind": "const:int+1",
+   "orig": "16",
+   "new": "17",
+   "why": "tests-green"
+  },
+  {
+   "file": "loadn_webui/policy.py",
+   "line": 388,
+   "kind": "const:bool",
+   "orig": "True",
+   "new": "False",
+   "why": "tests-green"
+  },
+  {
+   "file": "loadn_webui/policy.py",
+   "line": 388,
+   "kind": "const:bool",
+   "orig": "True",
+   "new": "False",
+   "why": "tests-green"
+  },
+  {
+   "file": "loadn_webui/policy.py",
+   "line": 167,
+   "kind": "cmp:In",
+   "orig": "k in (\"parameter\", \"commandsubstitution\", \"tilde\")",
+   "new": "k not in ('parameter', 'commandsubstitution', 'tilde')",
+   "why": "tests-green"
+  },
+  {
+   "file": "loadn_webui/policy.py",
+   "line": 348,
+   "kind": "const:bool",
+   "orig": "True",
+   "new": "False",
+   "why": "tests-green"
+  },
+  {
+   "file": "loadn_webui/policy.py",
+   "line": 348,
+   "kind": "const:bool",
+   "orig": "True",
+   "new": "False",
+   "why": "tests-green"
+  },
+  {
+   "file": "loadn_webui/policy.py",
+   "line": 381,
+   "kind": "const:int+1",
+   "orig": "1",
+   "new": "2",
+   "why": "tests-green"
+  },
+  {
+   "file": "loadn_webui/policy.py",
+   "line": 384,
+   "kind": "const:bool",
+   "orig": "True",
+   "new": "False",
+   "why": "tests-green"
+  },
+  {
+   "file": "loadn_webui/policy.py",
+   "line": 384,
+   "kind": "const:bool",
+   "orig": "True",
+   "new": "False",
+   "why": "tests-green"
+  },
+  {
+   "file": "loadn_webui/policy.py",
+   "line": 386,
+   "kind": "const:bool",
+   "orig": "True",
+   "new": "False",
+   "why": "tests-green"
+  },
+  {
+   "file": "loadn_webui/policy.py",
+   "line": 386,
+   "kind": "const:bool",
+   "orig": "True",
+   "new": "False",
+   "why": "tests-green"
+  },
+  {
+   "file": "loadn_webui/policy.py",
+   "line": 392,
+   "kind": "const:int+1",
+   "orig": "50",
+   "new": "51",
+   "why": "tests-green"
+  },
+  {
+   "file": "loadn_webui/policy.py",
+   "line": 401,
+   "kind": "const:int+1",
+   "orig": "500",
+   "new": "501",
+   "why": "tests-green"
+  },
+  {
+   "file": "loadn_webui/policy.py",
+   "line": 454,
+   "kind": "const:int+1",
+   "orig": "300",
+   "new": "301",
+   "why": "tests-green"
+  },
+  {
+   "file": "loadn_webui/policy.py",
+   "line": 169,
+   "kind": "cmp:Eq",
+   "orig": "k == \"assign\"",
+   "new": "k != 'assign'",
+   "why": "tests-green"
+  },
+  {
+   "file": "loadn_webui/policy.py",
+   "line": 437,
+   "kind": "const:int+1",
+   "orig": "500",
+   "new": "501",
+   "why": "tests-green"
+  },
+  {
+   "file": "loadn_webui/policy.py",
+   "line": 454,
+   "kind": "const:bool",
+   "orig": "False",
+   "new": "True",
+   "why": "tests-green"
+  },
+  {
+   "file": "loadn_webui/policy.py",
+   "line": 168,
+   "kind": "bool:BoolOp",
+   "orig": "_first_literal(w) or \"\"",
+   "new": "_first_literal(w) and ''",
+   "why": "tests-green"
+  },
+  {
+   "file": "loadn_webui/policy.py",
+   "line": 256,
+   "kind": "cmp:In",
+   "orig": "\".\" in w",
+   "new": "'.' not in w",
+   "why": "tests-green"
+  },
+  {
+   "file": "loadn_webui/policy.py",
+   "line": 256,
+   "kind": "cmp:In",
+   "orig": "\"/\" in w",
+   "new": "'/' not in w",
+   "why": "tests-green"
+  },
+  {
+   "file": "loadn_webui/policy.py",
+   "line": 457,
+   "kind": "const:bool",
+   "orig": "False",
+   "new": "True",
+   "why": "tests-green"
+  },
+  {
+   "file": "loadn_webui/policy.py",
+   "line": 224,
+   "kind": "const:int+1",
+   "orig": "12",
+   "new": "13",
+   "why": "tests-green"
+  },
+  {
+   "file": "loadn/truststore.py",
+   "line": 39,
+   "kind": "const:int+1",
+   "orig": "1",
+   "new": "2",
+   "why": "tests-green"
+  },
+  {
+   "file": "loadn/truststore.py",
+   "line": 40,
+   "kind": "const:int+1",
+   "orig": "2000",
+   "new": "2001",
+   "why": "tests-green"
+  },
+  {
+   "file": "loadn/truststore.py",
+   "line": 41,
+   "kind": "const:int+1",
+   "orig": "1024",
+   "new": "1025",
+   "why": "tests-green"
+  },
+  {
+   "file": "loadn/truststore.py",
+   "line": 41,
+   "kind": "const:int+1",
+   "orig": "8",
+   "new": "9",
+   "why": "tests-green"
+  },
+  {
+   "file": "loadn/truststore.py",
+   "line": 41,
+   "kind": "const:int+1",
+   "orig": "1024",
+   "new": "1025",
+   "why": "tests-green"
+  },
+  {
+   "file": "loadn/truststore.py",
+   "line": 106,
+   "kind": "bool:BoolOp",
+   "orig": "_resource_files(cur) or _skill_dirs(cur)",
+   "new": "_resource_files(cur) and _skill_dirs(cur)",
+   "why": "tests-green"
+  },
+  {
+   "file": "loadn/truststore.py",
+   "line": 147,
+   "kind": "const:bool",
+   "orig": "True",
+   "new": "False",
+   "why": "tests-green"
+  },
+  {
+   "file": "loadn/truststore.py",
+   "line": 64,
+   "kind": "bool:BoolOp",
+   "orig": "g == base or g in base.parents",
+   "new": "g == base and g in base.parents",
+   "why": "tests-green"
+  },
+  {
+   "file": "loadn/truststore.py",
+   "line": 76,
+   "kind": "cmp:GtE",
+   "orig": "len(out) >= MAX_DIGEST_FILES",
+   "new": "len(out) < MAX_DIGEST_FILES",
+   "why": "tests-green"
+  },
+  {
+   "file": "loadn/truststore.py",
+   "line": 91,
+   "kind": "cmp:Eq",
+   "orig": "g == base",
+   "new": "g != base",
+   "why": "tests-green"
+  },
+  {
+   "file": "loadn/truststore.py",
+   "line": 91,
+   "kind": "cmp:In",
+   "orig": "g in base.parents",
+   "new": "g not in base.parents",
+   "why": "tests-green"
+  },
+  {
+   "file": "loadn/truststore.py",
+   "line": 149,
+   "kind": "const:int+1",
+   "orig": "2",
+   "new": "3",
+   "why": "tests-green"
+  },
+  {
+   "file": "loadn/truststore.py",
+   "line": 149,
+   "kind": "const:bool",
+   "orig": "True",
+   "new": "False",
+   "why": "tests-green"
+  },
+  {
+   "file": "loadn/truststore.py",
+   "line": 150,
+   "kind": "const:bool",
+   "orig": "False",
+   "new": "True",
+   "why": "tests-green"
+  },
+  {
+   "file": "loadn/truststore.py",
+   "line": 96,
+   "kind": "bool:BoolOp",
+   "orig": "d.is_dir() or d.is_symlink()",
+   "new": "d.is_dir() and d.is_symlink()",
+   "why": "tests-green"
+  },
+  {
+   "file": "loadn_webui/approve.py",
+   "line": 30,
+   "kind": "const:int+1",
+   "orig": "600",
+   "new": "601",
+   "why": "tests-green"
+  },
+  {
+   "file": "loadn_webui/approve.py",
+   "line": 127,
+   "kind": "const:bool",
+   "orig": "True",
+   "new": "False",
+   "why": "tests-green"
+  },
+  {
+   "file": "loadn_webui/approve.py",
+   "line": 378,
+   "kind": "cmp:Eq",
+   "orig": "ev.get(\"type\") == \"result\"",
+   "new": "ev.get('type') != 'result'",
+   "why": "tests-green"
+  },
+  {
+   "file": "loadn_webui/approve.py",
+   "line": 37,
+   "kind": "bool:BoolOp",
+   "orig": "CONFIG.security.approval_ttl_s or DEFAULT_TTL_S",
+   "new": "CONFIG.security.approval_ttl_s and DEFAULT_TTL_S",
+   "why": "tests-green"
+  },
+  {
+   "file": "loadn_webui/approve.py",
+   "line": 95,
+   "kind": "const:bool",
+   "orig": "True",
+   "new": "False",
+   "why": "tests-green"
+  },
+  {
+   "file": "loadn_webui/approve.py",
+   "line": 96,
+   "kind": "const:int+1",
+   "orig": "10",
+   "new": "11",
+   "why": "tests-green"
+  },
+  {
+   "file": "loadn_webui/approve.py",
+   "line": 254,
+   "kind": "const:bool",
+   "orig": "True",
+   "new": "False",
+   "why": "tests-green"
+  },
+  {
+   "file": "loadn_webui/approve.py",
+   "line": 261,
+   "kind": "const:bool",
+   "orig": "True",
+   "new": "False",
+   "why": "tests-green"
+  },
+  {
+   "file": "loadn_webui/approve.py",
+   "line": 324,
+   "kind": "cmp:IsNot",
+   "orig": "out is not None",
+   "new": "out is None",
+   "why": "tests-green"
+  },
+  {
+   "file": "loadn_webui/approve.py",
+   "line": 355,
+   "kind": "bool:BoolOp",
+   "orig": "params.get(\"justification\") or \"\"",
+   "new": "params.get('justification') and ''",
+   "why": "tests-green"
+  },
+  {
+   "file": "loadn_webui/approve.py",
+   "line": 380,
+   "kind": "bool:BoolOp",
+   "orig": "diffs or None",
+   "new": "diffs and None",
+   "why": "tests-green"
+  },
+  {
+   "file": "loadn_webui/approve.py",
+   "line": 76,
+   "kind": "const:int+1",
+   "orig": "60",
+   "new": "61",
+   "why": "tests-green"
+  },
+  {
+   "file": "loadn_webui/approve.py",
+   "line": 82,
+   "kind": "const:int+1",
+   "orig": "7200",
+   "new": "7201",
+   "why": "tests-green"
+  },
+  {
+   "file": "loadn_webui/approve.py",
+   "line": 83,
+   "kind": "const:int+1",
+   "orig": "60",
+   "new": "61",
+   "why": "tests-green"
+  },
+  {
+   "file": "loadn_webui/approve.py",
+   "line": 165,
+   "kind": "bool:BoolOp",
+   "orig": "note or \"\"",
+   "new": "note and ''",
+   "why": "tests-green"
+  },
+  {
+   "file": "loadn_webui/approve.py",
+   "line": 178,
+   "kind": "const:bool",
+   "orig": "False",
+   "new": "True",
+   "why": "tests-green"
+  },
+  {
+   "file": "loadn_webui/approve.py",
+   "line": 327,
+   "kind": "cmp:Eq",
+   "orig": "json.loads(r[\"params_json\"]).get(\"host\") == host",
+   "new": "json.loads(r['params_json']).get('host') != host",
+   "why": "tests-green"
+  },
+  {
+   "file": "loadn_webui/approve.py",
+   "line": 351,
+   "kind": "bool:BoolOp",
+   "orig": "r.pop(\"params_json\") or \"{}\"",
+   "new": "r.pop('params_json') and '{}'",
+   "why": "tests-green"
+  },
+  {
+   "file": "loadn_webui/approve.py",
+   "line": 86,
+   "kind": "const:int+1",
+   "orig": "80",
+   "new": "81",
+   "why": "tests-green"
+  },
+  {
+   "file": "loadn_webui/approve.py",
+   "line": 142,
+   "kind": "bool:BoolOp",
+   "orig": "params.get(\"host\") or \"\"",
+   "new": "params.get('host') and ''",
+   "why": "tests-green"
+  },
+  {
+   "file": "loadn_webui/approve.py",
+   "line": 159,
+   "kind": "bool:BoolOp",
+   "orig": "note or \"\"",
+   "new": "note and ''",
+   "why": "tests-green"
+  },
+  {
+   "file": "loadn_webui/approve.py",
+   "line": 165,
+   "kind": "const:int+1",
+   "orig": "200",
+   "new": "201",
+   "why": "tests-green"
+  },
+  {
+   "file": "loadn_webui/approve.py",
+   "line": 196,
+   "kind": "bool:BoolOp",
+   "orig": "params.get(\"ttl_s\") or egress_grants.DEFAULT_TTL_S",
+   "new": "params.get('ttl_s') and egress_grants.DEFAULT_TTL_S",
+   "why": "tests-green"
+  },
+  {
+   "file": "loadn_webui/approve.py",
+   "line": 204,
+   "kind": "const:bool",
+   "orig": "True",
+   "new": "False",
+   "why": "tests-green"
+  },
+  {
+   "file": "loadn_webui/approve.py",
+   "line": 241,
+   "kind": "const:bool",
+   "orig": "True",
+   "new": "False",
+   "why": "tests-green"
+  },
+  {
+   "file": "loadn_webui/approve.py",
+   "line": 370,
+   "kind": "const:int+1",
+   "orig": "400",
+   "new": "401",
+   "why": "tests-green"
+  },
+  {
+   "file": "loadn_webui/approve.py",
+   "line": 379,
+   "kind": "bool:BoolOp",
+   "orig": "ev.get(\"payload\") or {}",
+   "new": "ev.get('payload') and {}",
+   "why": "tests-green"
+  },
+  {
+   "file": "loadn_webui/approve.py",
+   "line": 86,
+   "kind": "const:bool",
+   "orig": "False",
+   "new": "True",
+   "why": "tests-green"
+  },
+  {
+   "file": "loadn_webui/approve.py",
+   "line": 148,
+   "kind": "bool:BoolOp",
+   "orig": "params.get(\"prefix\") or []",
+   "new": "params.get('prefix') and []",
+   "why": "tests-green"
+  },
+  {
+   "file": "loadn_webui/approve.py",
+   "line": 159,
+   "kind": "const:int+1",
+   "orig": "500",
+   "new": "501",
+   "why": "tests-green"
+  },
+  {
+   "file": "loadn_webui/approve.py",
+   "line": 159,
+   "kind": "const:bool",
+   "orig": "False",
+   "new": "True",
+   "why": "tests-green"
+  },
+  {
+   "file": "loadn_webui/approve.py",
+   "line": 192,
+   "kind": "bool:BoolOp",
+   "orig": "params.get(\"host\") or \"\"",
+   "new": "params.get('host') and ''",
+   "why": "tests-green"
+  },
+  {
+   "file": "loadn_webui/approve.py",
+   "line": 194,
+   "kind": "const:bool",
+   "orig": "False",
+   "new": "True",
+   "why": "tests-green"
+  },
+  {
+   "file": "loadn_webui/approve.py",
+   "line": 242,
+   "kind": "const:int+1",
+   "orig": "1000000",
+   "new": "1000001",
+   "why": "tests-green"
+  },
+  {
+   "file": "loadn_webui/approve.py",
+   "line": 219,
+   "kind": "bool:BoolOp",
+   "orig": "prefix or []",
+   "new": "prefix and []",
+   "why": "tests-green"
+  },
+  {
+   "file": "loadn_webui/approve.py",
+   "line": 224,
+   "kind": "const:bool",
+   "orig": "False",
+   "new": "True",
+   "why": "tests-green"
+  },
+  {
+   "file": "loadn_webui/approve.py",
+   "line": 90,
+   "kind": "const:bool",
+   "orig": "False",
+   "new": "True",
+   "why": "tests-green"
+  },
+  {
+   "file": "loadn_webui/approve.py",
+   "line": 90,
+   "kind": "const:bool",
+   "orig": "True",
+   "new": "False",
+   "why": "tests-green"
+  },
+  {
+   "file": "loadn_webui/approve.py",
+   "line": 215,
+   "kind": "bool:BoolOp",
+   "orig": "prefix or []",
+   "new": "prefix and []",
+   "why": "tests-green"
+  },
+  {
+   "file": "loadn_webui/approve.py",
+   "line": 221,
+   "kind": "bool:BoolOp",
+   "orig": "params.get(\"justification\") or \"\"",
+   "new": "params.get('justification') and ''",
+   "why": "tests-green"
+  },
+  {
+   "file": "loadn_webui/approve.py",
+   "line": 221,
+   "kind": "const:int+1",
+   "orig": "200",
+   "new": "201",
+   "why": "tests-green"
+  }
+ ]
+}

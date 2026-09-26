@@ -1,0 +1,496 @@
+{
+ "results": {
+  "loadn/core/session.py": {
+   "file": "loadn/core/session.py",
+   "total": 20,
+   "killed": 4,
+   "survived": [
+    {
+     "file": "loadn/core/session.py",
+     "line": 74,
+     "kind": "const:bool",
+     "orig": "False",
+     "new": "True"
+    },
+    {
+     "file": "loadn/core/session.py",
+     "line": 108,
+     "kind": "bool:BoolOp",
+     "orig": "st.get(\"compact_points\") or []",
+     "new": "st.get('compact_points') and []"
+    },
+    {
+     "file": "loadn/core/session.py",
+     "line": 80,
+     "kind": "cmp:Eq",
+     "orig": "ev.get(\"type\") == \"compact\"",
+     "new": "ev.get('type') != 'compact'"
+    },
+    {
+     "file": "loadn/core/session.py",
+     "line": 90,
+     "kind": "bool:BoolOp",
+     "orig": "self.transcript.last_uuid() or \"\"",
+     "new": "self.transcript.last_uuid() and ''"
+    },
+    {
+     "file": "loadn/core/session.py",
+     "line": 110,
+     "kind": "bool:BoolOp",
+     "orig": "st.get(\"todos\") or []",
+     "new": "st.get('todos') and []"
+    },
+    {
+     "file": "loadn/core/session.py",
+     "line": 32,
+     "kind": "const:bool",
+     "orig": "True",
+     "new": "False"
+    },
+    {
+     "file": "loadn/core/session.py",
+     "line": 89,
+     "kind": "const:bool",
+     "orig": "True",
+     "new": "False"
+    },
+    {
+     "file": "loadn/core/session.py",
+     "line": 42,
+     "kind": "const:bool",
+     "orig": "True",
+     "new": "False"
+    },
+    {
+     "file": "loadn/core/session.py",
+     "line": 55,
+     "kind": "bool:BoolOp",
+     "orig": "ev.get(\"payload\") or {}",
+     "new": "ev.get('payload') and {}"
+    },
+    {
+     "file": "loadn/core/session.py",
+     "line": 81,
+     "kind": "bool:BoolOp",
+     "orig": "(ev.get(\"payload\") or {}).get(\"summary\") or \"\"",
+     "new": "(ev.get('payload') or {}).get('summary') and ''"
+    },
+    {
+     "file": "loadn/core/session.py",
+     "line": 99,
+     "kind": "bool:BoolOp",
+     "orig": "summary.model_usage or None",
+     "new": "summary.model_usage and None"
+    },
+    {
+     "file": "loadn/core/session.py",
+     "line": 100,
+     "kind": "bool:BoolOp",
+     "orig": "summary.model_usage or {\"\": None}",
+     "new": "summary.model_usage and {'': None}"
+    },
+    {
+     "file": "loadn/core/session.py",
+     "line": 114,
+     "kind": "bool:BoolOp",
+     "orig": "t.get(\"content\") or t.get(\"subject\") or \"任务\"",
+     "new": "t.get('content') and t.get('subject') and '任务'"
+    },
+    {
+     "file": "loadn/core/session.py",
+     "line": 115,
+     "kind": "bool:BoolOp",
+     "orig": "t.get(\"description\") or t.get(\"content\") or \"\"",
+     "new": "t.get('description') and t.get('content') and ''"
+    },
+    {
+     "file": "loadn/core/session.py",
+     "line": 81,
+     "kind": "bool:BoolOp",
+     "orig": "ev.get(\"payload\") or {}",
+     "new": "ev.get('payload') and {}"
+    },
+    {
+     "file": "loadn/core/session.py",
+     "line": 113,
+     "kind": "const:int+1",
+     "orig": "1",
+     "new": "2"
+    }
+   ],
+   "timeout": []
+  },
+  "loadn/core/hooks.py": {
+   "file": "loadn/core/hooks.py",
+   "total": 21,
+   "killed": 15,
+   "survived": [
+    {
+     "file": "loadn/core/hooks.py",
+     "line": 52,
+     "kind": "cmp:NotEq",
+     "orig": "why != \"no-resources\"",
+     "new": "why == 'no-resources'"
+    },
+    {
+     "file": "loadn/core/hooks.py",
+     "line": 103,
+     "kind": "bool:BoolOp",
+     "orig": "rc == 0 and stdout.strip().startswith(\"{\")",
+     "new": "rc == 0 or stdout.strip().startswith('{')"
+    },
+    {
+     "file": "loadn/core/hooks.py",
+     "line": 84,
+     "kind": "const:int+1",
+     "orig": "2000",
+     "new": "2001"
+    },
+    {
+     "file": "loadn/core/hooks.py",
+     "line": 101,
+     "kind": "const:int+1",
+     "orig": "2000",
+     "new": "2001"
+    },
+    {
+     "file": "loadn/core/hooks.py",
+     "line": 61,
+     "kind": "bool:BoolOp",
+     "orig": "isinstance(e, dict) and e.get(\"command\")",
+     "new": "isinstance(e, dict) or e.get('command')"
+    },
+    {
+     "file": "loadn/core/hooks.py",
+     "line": 122,
+     "kind": "const:bool",
+     "orig": "False",
+     "new": "True"
+    }
+   ],
+   "timeout": []
+  },
+  "loadn/transport/daemon.py": {
+   "file": "loadn/transport/daemon.py",
+   "total": 19,
+   "killed": 10,
+   "survived": [
+    {
+     "file": "loadn/transport/daemon.py",
+     "line": 52,
+     "kind": "const:int+1",
+     "orig": "24",
+     "new": "25"
+    },
+    {
+     "file": "loadn/transport/daemon.py",
+     "line": 56,
+     "kind": "const:int+1",
+     "orig": "0o600",
+     "new": "385"
+    },
+    {
+     "file": "loadn/transport/daemon.py",
+     "line": 47,
+     "kind": "const:bool",
+     "orig": "True",
+     "new": "False"
+    },
+    {
+     "file": "loadn/transport/daemon.py",
+     "line": 86,
+     "kind": "cmp:IsNot",
+     "orig": "w is not writer",
+     "new": "w is writer"
+    },
+    {
+     "file": "loadn/transport/daemon.py",
+     "line": 147,
+     "kind": "bool:BoolOp",
+     "orig": "getattr(core.provider, \"model_name\", \"\") or \"\"",
+     "new": "getattr(core.provider, 'model_name', '') and ''"
+    },
+    {
+     "file": "loadn/transport/daemon.py",
+     "line": 66,
+     "kind": "const:int+1",
+     "orig": "15",
+     "new": "16"
+    },
+    {
+     "file": "loadn/transport/daemon.py",
+     "line": 118,
+     "kind": "const:bool",
+     "orig": "False",
+     "new": "True"
+    },
+    {
+     "file": "loadn/transport/daemon.py",
+     "line": 136,
+     "kind": "const:bool",
+     "orig": "False",
+     "new": "True"
+    }
+   ],
+   "timeout": [
+    {
+     "file": "loadn/transport/daemon.py",
+     "line": 186,
+     "kind": "cmp:Eq",
+     "orig": "__name__ == \"__main__\"",
+     "new": "__name__ != '__main__'"
+    }
+   ]
+  }
+ },
+ "survived": [
+  {
+   "file": "loadn/core/session.py",
+   "line": 74,
+   "kind": "const:bool",
+   "orig": "False",
+   "new": "True",
+   "why": "tests-green"
+  },
+  {
+   "file": "loadn/core/session.py",
+   "line": 108,
+   "kind": "bool:BoolOp",
+   "orig": "st.get(\"compact_points\") or []",
+   "new": "st.get('compact_points') and []",
+   "why": "tests-green"
+  },
+  {
+   "file": "loadn/core/session.py",
+   "line": 80,
+   "kind": "cmp:Eq",
+   "orig": "ev.get(\"type\") == \"compact\"",
+   "new": "ev.get('type') != 'compact'",
+   "why": "tests-green"
+  },
+  {
+   "file": "loadn/core/session.py",
+   "line": 90,
+   "kind": "bool:BoolOp",
+   "orig": "self.transcript.last_uuid() or \"\"",
+   "new": "self.transcript.last_uuid() and ''",
+   "why": "tests-green"
+  },
+  {
+   "file": "loadn/core/session.py",
+   "line": 110,
+   "kind": "bool:BoolOp",
+   "orig": "st.get(\"todos\") or []",
+   "new": "st.get('todos') and []",
+   "why": "tests-green"
+  },
+  {
+   "file": "loadn/core/session.py",
+   "line": 32,
+   "kind": "const:bool",
+   "orig": "True",
+   "new": "False",
+   "why": "tests-green"
+  },
+  {
+   "file": "loadn/core/session.py",
+   "line": 89,
+   "kind": "const:bool",
+   "orig": "True",
+   "new": "False",
+   "why": "tests-green"
+  },
+  {
+   "file": "loadn/core/session.py",
+   "line": 42,
+   "kind": "const:bool",
+   "orig": "True",
+   "new": "False",
+   "why": "tests-green"
+  },
+  {
+   "file": "loadn/core/session.py",
+   "line": 55,
+   "kind": "bool:BoolOp",
+   "orig": "ev.get(\"payload\") or {}",
+   "new": "ev.get('payload') and {}",
+   "why": "tests-green"
+  },
+  {
+   "file": "loadn/core/session.py",
+   "line": 81,
+   "kind": "bool:BoolOp",
+   "orig": "(ev.get(\"payload\") or {}).get(\"summary\") or \"\"",
+   "new": "(ev.get('payload') or {}).get('summary') and ''",
+   "why": "tests-green"
+  },
+  {
+   "file": "loadn/core/session.py",
+   "line": 99,
+   "kind": "bool:BoolOp",
+   "orig": "summary.model_usage or None",
+   "new": "summary.model_usage and None",
+   "why": "tests-green"
+  },
+  {
+   "file": "loadn/core/session.py",
+   "line": 100,
+   "kind": "bool:BoolOp",
+   "orig": "summary.model_usage or {\"\": None}",
+   "new": "summary.model_usage and {'': None}",
+   "why": "tests-green"
+  },
+  {
+   "file": "loadn/core/session.py",
+   "line": 114,
+   "kind": "bool:BoolOp",
+   "orig": "t.get(\"content\") or t.get(\"subject\") or \"任务\"",
+   "new": "t.get('content') and t.get('subject') and '任务'",
+   "why": "tests-green"
+  },
+  {
+   "file": "loadn/core/session.py",
+   "line": 115,
+   "kind": "bool:BoolOp",
+   "orig": "t.get(\"description\") or t.get(\"content\") or \"\"",
+   "new": "t.get('description') and t.get('content') and ''",
+   "why": "tests-green"
+  },
+  {
+   "file": "loadn/core/session.py",
+   "line": 81,
+   "kind": "bool:BoolOp",
+   "orig": "ev.get(\"payload\") or {}",
+   "new": "ev.get('payload') and {}",
+   "why": "tests-green"
+  },
+  {
+   "file": "loadn/core/session.py",
+   "line": 113,
+   "kind": "const:int+1",
+   "orig": "1",
+   "new": "2",
+   "why": "tests-green"
+  },
+  {
+   "file": "loadn/core/hooks.py",
+   "line": 52,
+   "kind": "cmp:NotEq",
+   "orig": "why != \"no-resources\"",
+   "new": "why == 'no-resources'",
+   "why": "tests-green"
+  },
+  {
+   "file": "loadn/core/hooks.py",
+   "line": 103,
+   "kind": "bool:BoolOp",
+   "orig": "rc == 0 and stdout.strip().startswith(\"{\")",
+   "new": "rc == 0 or stdout.strip().startswith('{')",
+   "why": "tests-green"
+  },
+  {
+   "file": "loadn/core/hooks.py",
+   "line": 84,
+   "kind": "const:int+1",
+   "orig": "2000",
+   "new": "2001",
+   "why": "tests-green"
+  },
+  {
+   "file": "loadn/core/hooks.py",
+   "line": 101,
+   "kind": "const:int+1",
+   "orig": "2000",
+   "new": "2001",
+   "why": "tests-green"
+  },
+  {
+   "file": "loadn/core/hooks.py",
+   "line": 61,
+   "kind": "bool:BoolOp",
+   "orig": "isinstance(e, dict) and e.get(\"command\")",
+   "new": "isinstance(e, dict) or e.get('command')",
+   "why": "tests-green"
+  },
+  {
+   "file": "loadn/core/hooks.py",
+   "line": 122,
+   "kind": "const:bool",
+   "orig": "False",
+   "new": "True",
+   "why": "tests-green"
+  },
+  {
+   "file": "loadn/transport/daemon.py",
+   "line": 186,
+   "kind": "cmp:Eq",
+   "orig": "__name__ == \"__main__\"",
+   "new": "__name__ != '__main__'",
+   "why": "timeout"
+  },
+  {
+   "file": "loadn/transport/daemon.py",
+   "line": 52,
+   "kind": "const:int+1",
+   "orig": "24",
+   "new": "25",
+   "why": "tests-green"
+  },
+  {
+   "file": "loadn/transport/daemon.py",
+   "line": 56,
+   "kind": "const:int+1",
+   "orig": "0o600",
+   "new": "385",
+   "why": "tests-green"
+  },
+  {
+   "file": "loadn/transport/daemon.py",
+   "line": 47,
+   "kind": "const:bool",
+   "orig": "True",
+   "new": "False",
+   "why": "tests-green"
+  },
+  {
+   "file": "loadn/transport/daemon.py",
+   "line": 86,
+   "kind": "cmp:IsNot",
+   "orig": "w is not writer",
+   "new": "w is writer",
+   "why": "tests-green"
+  },
+  {
+   "file": "loadn/transport/daemon.py",
+   "line": 147,
+   "kind": "bool:BoolOp",
+   "orig": "getattr(core.provider, \"model_name\", \"\") or \"\"",
+   "new": "getattr(core.provider, 'model_name', '') and ''",
+   "why": "tests-green"
+  },
+  {
+   "file": "loadn/transport/daemon.py",
+   "line": 66,
+   "kind": "const:int+1",
+   "orig": "15",
+   "new": "16",
+   "why": "tests-green"
+  },
+  {
+   "file": "loadn/transport/daemon.py",
+   "line": 118,
+   "kind": "const:bool",
+   "orig": "False",
+   "new": "True",
+   "why": "tests-green"
+  },
+  {
+   "file": "loadn/transport/daemon.py",
+   "line": 136,
+   "kind": "const:bool",
+   "orig": "False",
+   "new": "True",
+   "why": "tests-green"
+  }
+ ]
+}

@@ -30,7 +30,8 @@ from dataclasses import dataclass, field
 from pathlib import Path
 
 REPO = Path(__file__).resolve().parent.parent
-PY = str(REPO / ".venv/bin/python")
+# CI 无 .venv（setup-python 直装）——env 覆盖解释器路径
+PY = os.environ.get("LOADN_MUT_PY", str(REPO / ".venv/bin/python"))
 
 # ---------------------------------------------------------------- 目标组
 GROUPS: dict[str, list[str]] = {
