@@ -1,0 +1,704 @@
+{
+ "results": {
+  "loadn_webui/policy.py": {
+   "file": "loadn_webui/policy.py",
+   "total": 88,
+   "killed": 42,
+   "survived": [
+    {
+     "file": "loadn_webui/policy.py",
+     "line": 70,
+     "kind": "bool:BoolOp",
+     "orig": "set(CONFIG.security.net_cmds) or {\"curl\", \"wget\"}",
+     "new": "set(CONFIG.security.net_cmds) and {'curl', 'wget'}"
+    },
+    {
+     "file": "loadn_webui/policy.py",
+     "line": 432,
+     "kind": "cmp:In",
+     "orig": "subcommand in CONFIG.security.irreversible_tools",
+     "new": "subcommand not in CONFIG.security.irreversible_tools"
+    },
+    {
+     "file": "loadn_webui/policy.py",
+     "line": 447,
+     "kind": "cmp:Eq",
+     "orig": "d.action == ACTION_ALLOW",
+     "new": "d.action != ACTION_ALLOW"
+    },
+    {
+     "file": "loadn_webui/policy.py",
+     "line": 98,
+     "kind": "bool:BoolOp",
+     "orig": "(\"r\" in f or \"recursive\" in flags) and (\"f\" in f or \"force\" in flags)",
+     "new": "('r' in f or 'recursive' in flags) or ('f' in f or 'force' in flags)"
+    },
+    {
+     "file": "loadn_webui/policy.py",
+     "line": 148,
+     "kind": "const:bool",
+     "orig": "False",
+     "new": "True"
+    },
+    {
+     "file": "loadn_webui/policy.py",
+     "line": 182,
+     "kind": "bool:BoolOp",
+     "orig": "isinstance(v, str) and v",
+     "new": "isinstance(v, str) or v"
+    },
+    {
+     "file": "loadn_webui/policy.py",
+     "line": 393,
+     "kind": "const:bool",
+     "orig": "True",
+     "new": "False"
+    },
+    {
+     "file": "loadn_webui/policy.py",
+     "line": 482,
+     "kind": "cmp:In",
+     "orig": "tool in (\"write\", \"edit\", \"multiedit\")",
+     "new": "tool not in ('write', 'edit', 'multiedit')"
+    },
+    {
+     "file": "loadn_webui/policy.py",
+     "line": 59,
+     "kind": "bool:BoolOp",
+     "orig": "CONFIG.security.hard_blocklist_l0 or []",
+     "new": "CONFIG.security.hard_blocklist_l0 and []"
+    },
+    {
+     "file": "loadn_webui/policy.py",
+     "line": 65,
+     "kind": "bool:BoolOp",
+     "orig": "CONFIG.security.l0_extra_cmd_names or ()",
+     "new": "CONFIG.security.l0_extra_cmd_names and ()"
+    },
+    {
+     "file": "loadn_webui/policy.py",
+     "line": 75,
+     "kind": "bool:BoolOp",
+     "orig": "CONFIG.security.glob_warn_patterns or []",
+     "new": "CONFIG.security.glob_warn_patterns and []"
+    },
+    {
+     "file": "loadn_webui/policy.py",
+     "line": 146,
+     "kind": "const:bool",
+     "orig": "False",
+     "new": "True"
+    },
+    {
+     "file": "loadn_webui/policy.py",
+     "line": 289,
+     "kind": "bool:BoolOp",
+     "orig": "CONFIG.security.sensitive_path_patterns or []",
+     "new": "CONFIG.security.sensitive_path_patterns and []"
+    },
+    {
+     "file": "loadn_webui/policy.py",
+     "line": 295,
+     "kind": "bool:BoolOp",
+     "orig": "CONFIG.security.sensitive_abs_paths or ()",
+     "new": "CONFIG.security.sensitive_abs_paths and ()"
+    },
+    {
+     "file": "loadn_webui/policy.py",
+     "line": 374,
+     "kind": "const:bool",
+     "orig": "False",
+     "new": "True"
+    },
+    {
+     "file": "loadn_webui/policy.py",
+     "line": 476,
+     "kind": "const:int+1",
+     "orig": "2",
+     "new": "3"
+    },
+    {
+     "file": "loadn_webui/policy.py",
+     "line": 487,
+     "kind": "cmp:Eq",
+     "orig": "tool == \"read\"",
+     "new": "tool != 'read'"
+    },
+    {
+     "file": "loadn_webui/policy.py",
+     "line": 98,
+     "kind": "cmp:In",
+     "orig": "\"recursive\" in flags",
+     "new": "'recursive' not in flags"
+    },
+    {
+     "file": "loadn_webui/policy.py",
+     "line": 98,
+     "kind": "cmp:In",
+     "orig": "\"force\" in flags",
+     "new": "'force' not in flags"
+    },
+    {
+     "file": "loadn_webui/policy.py",
+     "line": 165,
+     "kind": "cmp:Eq",
+     "orig": "k == \"literal\"",
+     "new": "k != 'literal'"
+    },
+    {
+     "file": "loadn_webui/policy.py",
+     "line": 342,
+     "kind": "cmp:Eq",
+     "orig": "p == \"..\"",
+     "new": "p != '..'"
+    },
+    {
+     "file": "loadn_webui/policy.py",
+     "line": 344,
+     "kind": "const:int+1",
+     "orig": "16",
+     "new": "17"
+    },
+    {
+     "file": "loadn_webui/policy.py",
+     "line": 388,
+     "kind": "const:bool",
+     "orig": "True",
+     "new": "False"
+    },
+    {
+     "file": "loadn_webui/policy.py",
+     "line": 388,
+     "kind": "const:bool",
+     "orig": "True",
+     "new": "False"
+    },
+    {
+     "file": "loadn_webui/policy.py",
+     "line": 483,
+     "kind": "bool:BoolOp",
+     "orig": "inp.get(\"file_path\") or inp.get(\"path\") or \"\"",
+     "new": "inp.get('file_path') and inp.get('path') and ''"
+    },
+    {
+     "file": "loadn_webui/policy.py",
+     "line": 167,
+     "kind": "cmp:In",
+     "orig": "k in (\"parameter\", \"commandsubstitution\", \"tilde\")",
+     "new": "k not in ('parameter', 'commandsubstitution', 'tilde')"
+    },
+    {
+     "file": "loadn_webui/policy.py",
+     "line": 348,
+     "kind": "const:bool",
+     "orig": "True",
+     "new": "False"
+    },
+    {
+     "file": "loadn_webui/policy.py",
+     "line": 348,
+     "kind": "const:bool",
+     "orig": "True",
+     "new": "False"
+    },
+    {
+     "file": "loadn_webui/policy.py",
+     "line": 381,
+     "kind": "const:int+1",
+     "orig": "1",
+     "new": "2"
+    },
+    {
+     "file": "loadn_webui/policy.py",
+     "line": 384,
+     "kind": "const:bool",
+     "orig": "True",
+     "new": "False"
+    },
+    {
+     "file": "loadn_webui/policy.py",
+     "line": 384,
+     "kind": "const:bool",
+     "orig": "True",
+     "new": "False"
+    },
+    {
+     "file": "loadn_webui/policy.py",
+     "line": 386,
+     "kind": "const:bool",
+     "orig": "True",
+     "new": "False"
+    },
+    {
+     "file": "loadn_webui/policy.py",
+     "line": 386,
+     "kind": "const:bool",
+     "orig": "True",
+     "new": "False"
+    },
+    {
+     "file": "loadn_webui/policy.py",
+     "line": 392,
+     "kind": "const:int+1",
+     "orig": "50",
+     "new": "51"
+    },
+    {
+     "file": "loadn_webui/policy.py",
+     "line": 401,
+     "kind": "const:int+1",
+     "orig": "500",
+     "new": "501"
+    },
+    {
+     "file": "loadn_webui/policy.py",
+     "line": 454,
+     "kind": "const:int+1",
+     "orig": "300",
+     "new": "301"
+    },
+    {
+     "file": "loadn_webui/policy.py",
+     "line": 169,
+     "kind": "cmp:Eq",
+     "orig": "k == \"assign\"",
+     "new": "k != 'assign'"
+    },
+    {
+     "file": "loadn_webui/policy.py",
+     "line": 256,
+     "kind": "bool:BoolOp",
+     "orig": "not w.startswith(\"-\") and \".\" in w and \"/\" in w",
+     "new": "not w.startswith('-') or '.' in w or '/' in w"
+    },
+    {
+     "file": "loadn_webui/policy.py",
+     "line": 437,
+     "kind": "const:int+1",
+     "orig": "500",
+     "new": "501"
+    },
+    {
+     "file": "loadn_webui/policy.py",
+     "line": 454,
+     "kind": "const:bool",
+     "orig": "False",
+     "new": "True"
+    },
+    {
+     "file": "loadn_webui/policy.py",
+     "line": 488,
+     "kind": "bool:BoolOp",
+     "orig": "inp.get(\"file_path\") or inp.get(\"path\") or \"\"",
+     "new": "inp.get('file_path') and inp.get('path') and ''"
+    },
+    {
+     "file": "loadn_webui/policy.py",
+     "line": 168,
+     "kind": "bool:BoolOp",
+     "orig": "_first_literal(w) or \"\"",
+     "new": "_first_literal(w) and ''"
+    },
+    {
+     "file": "loadn_webui/policy.py",
+     "line": 256,
+     "kind": "cmp:In",
+     "orig": "\".\" in w",
+     "new": "'.' not in w"
+    },
+    {
+     "file": "loadn_webui/policy.py",
+     "line": 256,
+     "kind": "cmp:In",
+     "orig": "\"/\" in w",
+     "new": "'/' not in w"
+    },
+    {
+     "file": "loadn_webui/policy.py",
+     "line": 457,
+     "kind": "const:bool",
+     "orig": "False",
+     "new": "True"
+    },
+    {
+     "file": "loadn_webui/policy.py",
+     "line": 224,
+     "kind": "const:int+1",
+     "orig": "12",
+     "new": "13"
+    }
+   ],
+   "timeout": []
+  }
+ },
+ "survived": [
+  {
+   "file": "loadn_webui/policy.py",
+   "line": 70,
+   "kind": "bool:BoolOp",
+   "orig": "set(CONFIG.security.net_cmds) or {\"curl\", \"wget\"}",
+   "new": "set(CONFIG.security.net_cmds) and {'curl', 'wget'}",
+   "why": "tests-green"
+  },
+  {
+   "file": "loadn_webui/policy.py",
+   "line": 432,
+   "kind": "cmp:In",
+   "orig": "subcommand in CONFIG.security.irreversible_tools",
+   "new": "subcommand not in CONFIG.security.irreversible_tools",
+   "why": "tests-green"
+  },
+  {
+   "file": "loadn_webui/policy.py",
+   "line": 447,
+   "kind": "cmp:Eq",
+   "orig": "d.action == ACTION_ALLOW",
+   "new": "d.action != ACTION_ALLOW",
+   "why": "tests-green"
+  },
+  {
+   "file": "loadn_webui/policy.py",
+   "line": 98,
+   "kind": "bool:BoolOp",
+   "orig": "(\"r\" in f or \"recursive\" in flags) and (\"f\" in f or \"force\" in flags)",
+   "new": "('r' in f or 'recursive' in flags) or ('f' in f or 'force' in flags)",
+   "why": "tests-green"
+  },
+  {
+   "file": "loadn_webui/policy.py",
+   "line": 148,
+   "kind": "const:bool",
+   "orig": "False",
+   "new": "True",
+   "why": "tests-green"
+  },
+  {
+   "file": "loadn_webui/policy.py",
+   "line": 182,
+   "kind": "bool:BoolOp",
+   "orig": "isinstance(v, str) and v",
+   "new": "isinstance(v, str) or v",
+   "why": "tests-green"
+  },
+  {
+   "file": "loadn_webui/policy.py",
+   "line": 393,
+   "kind": "const:bool",
+   "orig": "True",
+   "new": "False",
+   "why": "tests-green"
+  },
+  {
+   "file": "loadn_webui/policy.py",
+   "line": 482,
+   "kind": "cmp:In",
+   "orig": "tool in (\"write\", \"edit\", \"multiedit\")",
+   "new": "tool not in ('write', 'edit', 'multiedit')",
+   "why": "tests-green"
+  },
+  {
+   "file": "loadn_webui/policy.py",
+   "line": 59,
+   "kind": "bool:BoolOp",
+   "orig": "CONFIG.security.hard_blocklist_l0 or []",
+   "new": "CONFIG.security.hard_blocklist_l0 and []",
+   "why": "tests-green"
+  },
+  {
+   "file": "loadn_webui/policy.py",
+   "line": 65,
+   "kind": "bool:BoolOp",
+   "orig": "CONFIG.security.l0_extra_cmd_names or ()",
+   "new": "CONFIG.security.l0_extra_cmd_names and ()",
+   "why": "tests-green"
+  },
+  {
+   "file": "loadn_webui/policy.py",
+   "line": 75,
+   "kind": "bool:BoolOp",
+   "orig": "CONFIG.security.glob_warn_patterns or []",
+   "new": "CONFIG.security.glob_warn_patterns and []",
+   "why": "tests-green"
+  },
+  {
+   "file": "loadn_webui/policy.py",
+   "line": 146,
+   "kind": "const:bool",
+   "orig": "False",
+   "new": "True",
+   "why": "tests-green"
+  },
+  {
+   "file": "loadn_webui/policy.py",
+   "line": 289,
+   "kind": "bool:BoolOp",
+   "orig": "CONFIG.security.sensitive_path_patterns or []",
+   "new": "CONFIG.security.sensitive_path_patterns and []",
+   "why": "tests-green"
+  },
+  {
+   "file": "loadn_webui/policy.py",
+   "line": 295,
+   "kind": "bool:BoolOp",
+   "orig": "CONFIG.security.sensitive_abs_paths or ()",
+   "new": "CONFIG.security.sensitive_abs_paths and ()",
+   "why": "tests-green"
+  },
+  {
+   "file": "loadn_webui/policy.py",
+   "line": 374,
+   "kind": "const:bool",
+   "orig": "False",
+   "new": "True",
+   "why": "tests-green"
+  },
+  {
+   "file": "loadn_webui/policy.py",
+   "line": 476,
+   "kind": "const:int+1",
+   "orig": "2",
+   "new": "3",
+   "why": "tests-green"
+  },
+  {
+   "file": "loadn_webui/policy.py",
+   "line": 487,
+   "kind": "cmp:Eq",
+   "orig": "tool == \"read\"",
+   "new": "tool != 'read'",
+   "why": "tests-green"
+  },
+  {
+   "file": "loadn_webui/policy.py",
+   "line": 98,
+   "kind": "cmp:In",
+   "orig": "\"recursive\" in flags",
+   "new": "'recursive' not in flags",
+   "why": "tests-green"
+  },
+  {
+   "file": "loadn_webui/policy.py",
+   "line": 98,
+   "kind": "cmp:In",
+   "orig": "\"force\" in flags",
+   "new": "'force' not in flags",
+   "why": "tests-green"
+  },
+  {
+   "file": "loadn_webui/policy.py",
+   "line": 165,
+   "kind": "cmp:Eq",
+   "orig": "k == \"literal\"",
+   "new": "k != 'literal'",
+   "why": "tests-green"
+  },
+  {
+   "file": "loadn_webui/policy.py",
+   "line": 342,
+   "kind": "cmp:Eq",
+   "orig": "p == \"..\"",
+   "new": "p != '..'",
+   "why": "tests-green"
+  },
+  {
+   "file": "loadn_webui/policy.py",
+   "line": 344,
+   "kind": "const:int+1",
+   "orig": "16",
+   "new": "17",
+   "why": "tests-green"
+  },
+  {
+   "file": "loadn_webui/policy.py",
+   "line": 388,
+   "kind": "const:bool",
+   "orig": "True",
+   "new": "False",
+   "why": "tests-green"
+  },
+  {
+   "file": "loadn_webui/policy.py",
+   "line": 388,
+   "kind": "const:bool",
+   "orig": "True",
+   "new": "False",
+   "why": "tests-green"
+  },
+  {
+   "file": "loadn_webui/policy.py",
+   "line": 483,
+   "kind": "bool:BoolOp",
+   "orig": "inp.get(\"file_path\") or inp.get(\"path\") or \"\"",
+   "new": "inp.get('file_path') and inp.get('path') and ''",
+   "why": "tests-green"
+  },
+  {
+   "file": "loadn_webui/policy.py",
+   "line": 167,
+   "kind": "cmp:In",
+   "orig": "k in (\"parameter\", \"commandsubstitution\", \"tilde\")",
+   "new": "k not in ('parameter', 'commandsubstitution', 'tilde')",
+   "why": "tests-green"
+  },
+  {
+   "file": "loadn_webui/policy.py",
+   "line": 348,
+   "kind": "const:bool",
+   "orig": "True",
+   "new": "False",
+   "why": "tests-green"
+  },
+  {
+   "file": "loadn_webui/policy.py",
+   "line": 348,
+   "kind": "const:bool",
+   "orig": "True",
+   "new": "False",
+   "why": "tests-green"
+  },
+  {
+   "file": "loadn_webui/policy.py",
+   "line": 381,
+   "kind": "const:int+1",
+   "orig": "1",
+   "new": "2",
+   "why": "tests-green"
+  },
+  {
+   "file": "loadn_webui/policy.py",
+   "line": 384,
+   "kind": "const:bool",
+   "orig": "True",
+   "new": "False",
+   "why": "tests-green"
+  },
+  {
+   "file": "loadn_webui/policy.py",
+   "line": 384,
+   "kind": "const:bool",
+   "orig": "True",
+   "new": "False",
+   "why": "tests-green"
+  },
+  {
+   "file": "loadn_webui/policy.py",
+   "line": 386,
+   "kind": "const:bool",
+   "orig": "True",
+   "new": "False",
+   "why": "tests-green"
+  },
+  {
+   "file": "loadn_webui/policy.py",
+   "line": 386,
+   "kind": "const:bool",
+   "orig": "True",
+   "new": "False",
+   "why": "tests-green"
+  },
+  {
+   "file": "loadn_webui/policy.py",
+   "line": 392,
+   "kind": "const:int+1",
+   "orig": "50",
+   "new": "51",
+   "why": "tests-green"
+  },
+  {
+   "file": "loadn_webui/policy.py",
+   "line": 401,
+   "kind": "const:int+1",
+   "orig": "500",
+   "new": "501",
+   "why": "tests-green"
+  },
+  {
+   "file": "loadn_webui/policy.py",
+   "line": 454,
+   "kind": "const:int+1",
+   "orig": "300",
+   "new": "301",
+   "why": "tests-green"
+  },
+  {
+   "file": "loadn_webui/policy.py",
+   "line": 169,
+   "kind": "cmp:Eq",
+   "orig": "k == \"assign\"",
+   "new": "k != 'assign'",
+   "why": "tests-green"
+  },
+  {
+   "file": "loadn_webui/policy.py",
+   "line": 256,
+   "kind": "bool:BoolOp",
+   "orig": "not w.startswith(\"-\") and \".\" in w and \"/\" in w",
+   "new": "not w.startswith('-') or '.' in w or '/' in w",
+   "why": "tests-green"
+  },
+  {
+   "file": "loadn_webui/policy.py",
+   "line": 437,
+   "kind": "const:int+1",
+   "orig": "500",
+   "new": "501",
+   "why": "tests-green"
+  },
+  {
+   "file": "loadn_webui/policy.py",
+   "line": 454,
+   "kind": "const:bool",
+   "orig": "False",
+   "new": "True",
+   "why": "tests-green"
+  },
+  {
+   "file": "loadn_webui/policy.py",
+   "line": 488,
+   "kind": "bool:BoolOp",
+   "orig": "inp.get(\"file_path\") or inp.get(\"path\") or \"\"",
+   "new": "inp.get('file_path') and inp.get('path') and ''",
+   "why": "tests-green"
+  },
+  {
+   "file": "loadn_webui/policy.py",
+   "line": 168,
+   "kind": "bool:BoolOp",
+   "orig": "_first_literal(w) or \"\"",
+   "new": "_first_literal(w) and ''",
+   "why": "tests-green"
+  },
+  {
+   "file": "loadn_webui/policy.py",
+   "line": 256,
+   "kind": "cmp:In",
+   "orig": "\".\" in w",
+   "new": "'.' not in w",
+   "why": "tests-green"
+  },
+  {
+   "file": "loadn_webui/policy.py",
+   "line": 256,
+   "kind": "cmp:In",
+   "orig": "\"/\" in w",
+   "new": "'/' not in w",
+   "why": "tests-green"
+  },
+  {
+   "file": "loadn_webui/policy.py",
+   "line": 457,
+   "kind": "const:bool",
+   "orig": "False",
+   "new": "True",
+   "why": "tests-green"
+  },
+  {
+   "file": "loadn_webui/policy.py",
+   "line": 224,
+   "kind": "const:int+1",
+   "orig": "12",
+   "new": "13",
+   "why": "tests-green"
+  }
+ ]
+}

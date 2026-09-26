@@ -70,6 +70,8 @@ TARGET_TESTS: dict[str, list[str]] = {
         "tests/security/test_a5_bash_policy.py",
         "tests/security/test_a6_policy_amend.py",
         "tests/security/test_guard_negatives.py",
+        "tests/security/test_policy_hook_gates.py",
+        "tests/test_security_knobs.py",
         "tests/test_egress_align.py",
     ],
     "loadn_webui/approve.py": [
