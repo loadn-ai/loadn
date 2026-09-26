@@ -24,7 +24,6 @@ import ast
 import json
 import os
 import subprocess
-import sys
 import time
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -98,6 +97,7 @@ TARGET_TESTS: dict[str, list[str]] = {
     "loadn/bash_policy.py": [
         "tests/security/test_a5_bash_policy.py",
         "tests/security/test_a6_policy_amend.py",
+        "tests/security/test_bashpol_gates.py",
     ],
     "loadn/tools/edit.py": [
         "tests/security/test_guard_negatives.py",
@@ -111,6 +111,7 @@ TARGET_TESTS: dict[str, list[str]] = {
     ],
     "loadn/tools/multiedit.py": [
         "tests/test_file_mutex.py",
+        "tests/test_multiedit_units.py",
     ],
     "loadn/core/turn_diff.py": [
         "tests/test_turn_diff.py",
@@ -262,11 +263,11 @@ def restore(path: Path) -> None:
     subprocess.run(["git", "checkout", "--", str(path)], cwd=REPO,
                    check=False)
     # 同尺寸变异+同秒 mtime 时 git checkout 不触发 pyc 失效（M1-vault 实证
-    # 的基建坑）——restore 连 pyc 一并清，杜绝陈旧字节码
-    pyc = path.parent / "__pycache__" / (
-        path.stem + ".cpython-" + str(sys.version_info[0])
-        + str(sys.version_info[1]) + ".pyc")
-    pyc.unlink(missing_ok=True)
+    # 的基建坑）——restore 连 pyc 一并清。glob 全部 cpython 版本：驱动进程
+    # 与测试解释器版本可能错配（CI smoke 0% 假存活的实证），算名字会删错
+    for pyc in (path.parent / "__pycache__").glob(
+            path.stem + ".cpython-*.pyc"):
+        pyc.unlink(missing_ok=True)
 
 
 # ---------------------------------------------------------------- 执行

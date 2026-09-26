@@ -102,7 +102,7 @@ True·False/if 恒真恒假/常数+1）× 19 个安全与核心文件。
 | M1 | truststore.py | 19/34 | 56% | 纯 skills 工作区=项目根（供应链漏检面） |
 | M1 | canary.py | 12/21 | 57% | is_locked 空标记/嵌套新目录 |
 | M1 | net_policy.py | 37/45 | 82% | 存活全等价（缓存容量/偏移+1） |
-| M1 | bash_policy.py | 39/55 | 71% | 决策平局第一条语义/命令替换 fail-closed |
+| M1 | bash_policy.py | 41/55 | 75% | 决策平局第一条语义/命令替换 fail-closed |
 | M2 | edit.py | 13/43 | 30% | fuzzy 单命中门/无命中/ipynb 禁 fuzzy |
 | M2 | write.py | 6/11 | 55% | mtime 复查守卫（真 bug 修复面） |
 | M2 | multiedit.py | 5/7 | 71% | 参数校验/原子性/链式顺序（原 0%） |
@@ -140,7 +140,9 @@ True·False/if 恒真恒假/常数+1）× 19 个安全与核心文件。
 2. 同秒 mtime 假阳→存活复验；同尺寸变异+陈旧 pyc→-B+
    PYTHONDONTWRITEBYTECODE+restore 连 pyc 删
 3. 并发段互相 git checkout 冲掉变异→全体假存活（杀伤率逐段递减即信号）
-   →单命令串行；未提交 edit 会被扫描冲掉（四起丢失）→先 commit 再扫
+   →单命令串行；未提交 edit 会被扫描冲掉（**六起丢失**：runner 修复×2、
+   补测文件、映射修复×2——multiedit/bash_policy 两卡映射修好后未提交
+   蒸发，CI 冒烟 0% 才暴露）→先 commit 再扫
 4. 窄测试集映射漏文件→假存活（vault/balance 两起）→新测试文件先进映射
 
 ### 复核重扫（M5，修复版 runner 对四个早期文件）
