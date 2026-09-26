@@ -1,0 +1,1824 @@
+{
+ "results": {
+  "loadn/core/tool_repair.py": {
+   "file": "loadn/core/tool_repair.py",
+   "total": 16,
+   "killed": 14,
+   "survived": [
+    {
+     "file": "loadn/core/tool_repair.py",
+     "line": 50,
+     "kind": "bool:BoolOp",
+     "orig": "not text or not text.strip()",
+     "new": "not text and (not text.strip())"
+    },
+    {
+     "file": "loadn/core/tool_repair.py",
+     "line": 58,
+     "kind": "const:int+1",
+     "orig": "1",
+     "new": "2"
+    }
+   ],
+   "timeout": []
+  },
+  "loadn/core/memory.py": {
+   "file": "loadn/core/memory.py",
+   "total": 68,
+   "killed": 30,
+   "survived": [
+    {
+     "file": "loadn/core/memory.py",
+     "line": 36,
+     "kind": "const:int+1",
+     "orig": "200",
+     "new": "201"
+    },
+    {
+     "file": "loadn/core/memory.py",
+     "line": 171,
+     "kind": "const:int+1",
+     "orig": "12",
+     "new": "13"
+    },
+    {
+     "file": "loadn/core/memory.py",
+     "line": 56,
+     "kind": "bool:BoolOp",
+     "orig": "out.returncode == 0 and out.stdout.strip()",
+     "new": "out.returncode == 0 or out.stdout.strip()"
+    },
+    {
+     "file": "loadn/core/memory.py",
+     "line": 199,
+     "kind": "cmp:IsNot",
+     "orig": "session is not None",
+     "new": "session is None"
+    },
+    {
+     "file": "loadn/core/memory.py",
+     "line": 270,
+     "kind": "bool:BoolOp",
+     "orig": "not segment or not last_id",
+     "new": "not segment and (not last_id)"
+    },
+    {
+     "file": "loadn/core/memory.py",
+     "line": 56,
+     "kind": "cmp:Eq",
+     "orig": "out.returncode == 0",
+     "new": "out.returncode != 0"
+    },
+    {
+     "file": "loadn/core/memory.py",
+     "line": 60,
+     "kind": "const:int+1",
+     "orig": "12",
+     "new": "13"
+    },
+    {
+     "file": "loadn/core/memory.py",
+     "line": 78,
+     "kind": "const:bool",
+     "orig": "True",
+     "new": "False"
+    },
+    {
+     "file": "loadn/core/memory.py",
+     "line": 119,
+     "kind": "bool:BoolOp",
+     "orig": "e.get(\"content\") or \"\"",
+     "new": "e.get('content') and ''"
+    },
+    {
+     "file": "loadn/core/memory.py",
+     "line": 121,
+     "kind": "const:bool",
+     "orig": "False",
+     "new": "True"
+    },
+    {
+     "file": "loadn/core/memory.py",
+     "line": 146,
+     "kind": "const:int+1",
+     "orig": "12",
+     "new": "13"
+    },
+    {
+     "file": "loadn/core/memory.py",
+     "line": 251,
+     "kind": "cmp:Eq",
+     "orig": "m[\"_id\"] == b",
+     "new": "m['_id'] != b"
+    },
+    {
+     "file": "loadn/core/memory.py",
+     "line": 281,
+     "kind": "bool:BoolOp",
+     "orig": "content and not canary_hit(content)",
+     "new": "content or not canary_hit(content)"
+    },
+    {
+     "file": "loadn/core/memory.py",
+     "line": 303,
+     "kind": "cmp:Eq",
+     "orig": "c.kind == \"text_delta\"",
+     "new": "c.kind != 'text_delta'"
+    },
+    {
+     "file": "loadn/core/memory.py",
+     "line": 317,
+     "kind": "bool:BoolOp",
+     "orig": "not summary or not content",
+     "new": "not summary and (not content)"
+    },
+    {
+     "file": "loadn/core/memory.py",
+     "line": 54,
+     "kind": "const:bool",
+     "orig": "True",
+     "new": "False"
+    },
+    {
+     "file": "loadn/core/memory.py",
+     "line": 55,
+     "kind": "const:bool",
+     "orig": "True",
+     "new": "False"
+    },
+    {
+     "file": "loadn/core/memory.py",
+     "line": 55,
+     "kind": "const:int+1",
+     "orig": "5",
+     "new": "6"
+    },
+    {
+     "file": "loadn/core/memory.py",
+     "line": 80,
+     "kind": "const:bool",
+     "orig": "False",
+     "new": "True"
+    },
+    {
+     "file": "loadn/core/memory.py",
+     "line": 80,
+     "kind": "const:int+1",
+     "orig": "1",
+     "new": "2"
+    },
+    {
+     "file": "loadn/core/memory.py",
+     "line": 96,
+     "kind": "const:int+1",
+     "orig": "1",
+     "new": "2"
+    },
+    {
+     "file": "loadn/core/memory.py",
+     "line": 97,
+     "kind": "const:int+1",
+     "orig": "2",
+     "new": "3"
+    },
+    {
+     "file": "loadn/core/memory.py",
+     "line": 178,
+     "kind": "const:int+1",
+     "orig": "16",
+     "new": "17"
+    },
+    {
+     "file": "loadn/core/memory.py",
+     "line": 252,
+     "kind": "const:bool",
+     "orig": "True",
+     "new": "False"
+    },
+    {
+     "file": "loadn/core/memory.py",
+     "line": 302,
+     "kind": "const:bool",
+     "orig": "False",
+     "new": "True"
+    },
+    {
+     "file": "loadn/core/memory.py",
+     "line": 322,
+     "kind": "const:int+1",
+     "orig": "1",
+     "new": "2"
+    },
+    {
+     "file": "loadn/core/memory.py",
+     "line": 96,
+     "kind": "cmp:LtE",
+     "orig": "\"\\u4e00\" <= ch <= \"\\u9fff\"",
+     "new": "'一' > ch <= '\\u9fff'"
+    },
+    {
+     "file": "loadn/core/memory.py",
+     "line": 155,
+     "kind": "const:int+1",
+     "orig": "2000",
+     "new": "2001"
+    },
+    {
+     "file": "loadn/core/memory.py",
+     "line": 167,
+     "kind": "const:int+1",
+     "orig": "80",
+     "new": "81"
+    },
+    {
+     "file": "loadn/core/memory.py",
+     "line": 128,
+     "kind": "const:bool",
+     "orig": "True",
+     "new": "False"
+    },
+    {
+     "file": "loadn/core/memory.py",
+     "line": 142,
+     "kind": "const:int+1",
+     "orig": "80",
+     "new": "81"
+    },
+    {
+     "file": "loadn/core/memory.py",
+     "line": 161,
+     "kind": "const:bool",
+     "orig": "True",
+     "new": "False"
+    },
+    {
+     "file": "loadn/core/memory.py",
+     "line": 282,
+     "kind": "const:int+1",
+     "orig": "20",
+     "new": "21"
+    },
+    {
+     "file": "loadn/core/memory.py",
+     "line": 297,
+     "kind": "const:int+1",
+     "orig": "8000",
+     "new": "8001"
+    },
+    {
+     "file": "loadn/core/memory.py",
+     "line": 315,
+     "kind": "bool:BoolOp",
+     "orig": "it.get(\"summary\") or \"\"",
+     "new": "it.get('summary') and ''"
+    },
+    {
+     "file": "loadn/core/memory.py",
+     "line": 315,
+     "kind": "const:int+1",
+     "orig": "40",
+     "new": "41"
+    },
+    {
+     "file": "loadn/core/memory.py",
+     "line": 316,
+     "kind": "bool:BoolOp",
+     "orig": "it.get(\"content\") or \"\"",
+     "new": "it.get('content') and ''"
+    },
+    {
+     "file": "loadn/core/memory.py",
+     "line": 316,
+     "kind": "const:int+1",
+     "orig": "2000",
+     "new": "2001"
+    }
+   ],
+   "timeout": []
+  },
+  "loadn/core/compactor.py": {
+   "file": "loadn/core/compactor.py",
+   "total": 50,
+   "killed": 12,
+   "survived": [
+    {
+     "file": "loadn/core/compactor.py",
+     "line": 80,
+     "kind": "const:int+1",
+     "orig": "200_000",
+     "new": "200001"
+    },
+    {
+     "file": "loadn/core/compactor.py",
+     "line": 170,
+     "kind": "cmp:Eq",
+     "orig": "m.role == \"assistant\"",
+     "new": "m.role != 'assistant'"
+    },
+    {
+     "file": "loadn/core/compactor.py",
+     "line": 73,
+     "kind": "bool:BoolOp",
+     "orig": "usage.get(\"input_tokens\") or 0",
+     "new": "usage.get('input_tokens') and 0"
+    },
+    {
+     "file": "loadn/core/compactor.py",
+     "line": 74,
+     "kind": "bool:BoolOp",
+     "orig": "usage.get(\"cache_read_input_tokens\") or 0",
+     "new": "usage.get('cache_read_input_tokens') and 0"
+    },
+    {
+     "file": "loadn/core/compactor.py",
+     "line": 90,
+     "kind": "const:int+1",
+     "orig": "4",
+     "new": "5"
+    },
+    {
+     "file": "loadn/core/compactor.py",
+     "line": 103,
+     "kind": "const:int+1",
+     "orig": "20_000",
+     "new": "20001"
+    },
+    {
+     "file": "loadn/core/compactor.py",
+     "line": 149,
+     "kind": "cmp:Eq",
+     "orig": "m.role == \"user\"",
+     "new": "m.role != 'user'"
+    },
+    {
+     "file": "loadn/core/compactor.py",
+     "line": 175,
+     "kind": "bool:BoolOp",
+     "orig": "cur or []",
+     "new": "cur and []"
+    },
+    {
+     "file": "loadn/core/compactor.py",
+     "line": 193,
+     "kind": "const:int+1",
+     "orig": "1",
+     "new": "2"
+    },
+    {
+     "file": "loadn/core/compactor.py",
+     "line": 193,
+     "kind": "const:int+1",
+     "orig": "1",
+     "new": "2"
+    },
+    {
+     "file": "loadn/core/compactor.py",
+     "line": 234,
+     "kind": "bool:BoolOp",
+     "orig": "b.input.get(\"file_path\") or b.input.get(\"notebook_path\")",
+     "new": "b.input.get('file_path') and b.input.get('notebook_path')"
+    },
+    {
+     "file": "loadn/core/compactor.py",
+     "line": 235,
+     "kind": "bool:BoolOp",
+     "orig": "not isinstance(fp, str) or not fp",
+     "new": "not isinstance(fp, str) and (not fp)"
+    },
+    {
+     "file": "loadn/core/compactor.py",
+     "line": 237,
+     "kind": "cmp:In",
+     "orig": "b.name in (\"Write\", \"Edit\", \"MultiEdit\", \"NotebookEdit\")",
+     "new": "b.name not in ('Write', 'Edit', 'MultiEdit', 'NotebookEdit')"
+    },
+    {
+     "file": "loadn/core/compactor.py",
+     "line": 76,
+     "kind": "const:bool",
+     "orig": "False",
+     "new": "True"
+    },
+    {
+     "file": "loadn/core/compactor.py",
+     "line": 86,
+     "kind": "const:bool",
+     "orig": "False",
+     "new": "True"
+    },
+    {
+     "file": "loadn/core/compactor.py",
+     "line": 132,
+     "kind": "cmp:Eq",
+     "orig": "c.kind == \"text_delta\"",
+     "new": "c.kind != 'text_delta'"
+    },
+    {
+     "file": "loadn/core/compactor.py",
+     "line": 195,
+     "kind": "const:int+1",
+     "orig": "2",
+     "new": "3"
+    },
+    {
+     "file": "loadn/core/compactor.py",
+     "line": 213,
+     "kind": "cmp:Gt",
+     "orig": "len(b.content) > PRUNE_KEEP_CHARS",
+     "new": "len(b.content) <= PRUNE_KEEP_CHARS"
+    },
+    {
+     "file": "loadn/core/compactor.py",
+     "line": 221,
+     "kind": "bool:BoolOp",
+     "orig": "text or \"（工具调用，细节见工作区与日志）\"",
+     "new": "text and '（工具调用，细节见工作区与日志）'"
+    },
+    {
+     "file": "loadn/core/compactor.py",
+     "line": 238,
+     "kind": "cmp:NotIn",
+     "orig": "fp not in writes",
+     "new": "fp in writes"
+    },
+    {
+     "file": "loadn/core/compactor.py",
+     "line": 240,
+     "kind": "bool:BoolOp",
+     "orig": "b.name == \"Read\" and fp not in reads",
+     "new": "b.name == 'Read' or fp not in reads"
+    },
+    {
+     "file": "loadn/core/compactor.py",
+     "line": 120,
+     "kind": "bool:BoolOp",
+     "orig": "ledger or \"（无）\"",
+     "new": "ledger and '（无）'"
+    },
+    {
+     "file": "loadn/core/compactor.py",
+     "line": 123,
+     "kind": "bool:BoolOp",
+     "orig": "ledger or \"（无）\"",
+     "new": "ledger and '（无）'"
+    },
+    {
+     "file": "loadn/core/compactor.py",
+     "line": 130,
+     "kind": "const:bool",
+     "orig": "False",
+     "new": "True"
+    },
+    {
+     "file": "loadn/core/compactor.py",
+     "line": 134,
+     "kind": "cmp:Eq",
+     "orig": "c.kind == \"error\"",
+     "new": "c.kind != 'error'"
+    },
+    {
+     "file": "loadn/core/compactor.py",
+     "line": 240,
+     "kind": "cmp:Eq",
+     "orig": "b.name == \"Read\"",
+     "new": "b.name != 'Read'"
+    },
+    {
+     "file": "loadn/core/compactor.py",
+     "line": 240,
+     "kind": "cmp:NotIn",
+     "orig": "fp not in reads",
+     "new": "fp in reads"
+    },
+    {
+     "file": "loadn/core/compactor.py",
+     "line": 119,
+     "kind": "const:int+1",
+     "orig": "20_000",
+     "new": "20001"
+    },
+    {
+     "file": "loadn/core/compactor.py",
+     "line": 161,
+     "kind": "const:int+1",
+     "orig": "200",
+     "new": "201"
+    },
+    {
+     "file": "loadn/core/compactor.py",
+     "line": 244,
+     "kind": "const:int+1",
+     "orig": "50",
+     "new": "51"
+    },
+    {
+     "file": "loadn/core/compactor.py",
+     "line": 246,
+     "kind": "const:int+1",
+     "orig": "50",
+     "new": "51"
+    },
+    {
+     "file": "loadn/core/compactor.py",
+     "line": 110,
+     "kind": "const:int+1",
+     "orig": "2",
+     "new": "3"
+    },
+    {
+     "file": "loadn/core/compactor.py",
+     "line": 217,
+     "kind": "const:int+1",
+     "orig": "1500",
+     "new": "1501"
+    },
+    {
+     "file": "loadn/core/compactor.py",
+     "line": 219,
+     "kind": "const:int+1",
+     "orig": "1500",
+     "new": "1501"
+    },
+    {
+     "file": "loadn/core/compactor.py",
+     "line": 158,
+     "kind": "cmp:In",
+     "orig": "k in (\"file_path\", \"command\", \"path\", \"url\")",
+     "new": "k not in ('file_path', 'command', 'path', 'url')"
+    },
+    {
+     "file": "loadn/core/compactor.py",
+     "line": 214,
+     "kind": "const:int+1",
+     "orig": "500",
+     "new": "501"
+    },
+    {
+     "file": "loadn/core/compactor.py",
+     "line": 215,
+     "kind": "const:int+1",
+     "orig": "300",
+     "new": "301"
+    },
+    {
+     "file": "loadn/core/compactor.py",
+     "line": 160,
+     "kind": "const:int+1",
+     "orig": "120",
+     "new": "121"
+    }
+   ],
+   "timeout": []
+  },
+  "loadn/core/context.py": {
+   "file": "loadn/core/context.py",
+   "total": 85,
+   "killed": 44,
+   "survived": [
+    {
+     "file": "loadn/core/context.py",
+     "line": 396,
+     "kind": "cmp:Gt",
+     "orig": "depth > MEMORY_IMPORT_DEPTH",
+     "new": "depth <= MEMORY_IMPORT_DEPTH"
+    },
+    {
+     "file": "loadn/core/context.py",
+     "line": 91,
+     "kind": "const:bool",
+     "orig": "True",
+     "new": "False"
+    },
+    {
+     "file": "loadn/core/context.py",
+     "line": 177,
+     "kind": "bool:BoolOp",
+     "orig": "mentioned_files or set()",
+     "new": "mentioned_files and set()"
+    },
+    {
+     "file": "loadn/core/context.py",
+     "line": 354,
+     "kind": "cmp:Eq",
+     "orig": "d == d.parent",
+     "new": "d != d.parent"
+    },
+    {
+     "file": "loadn/core/context.py",
+     "line": 361,
+     "kind": "cmp:NotIn",
+     "orig": "boundary not in cwd.parents",
+     "new": "boundary in cwd.parents"
+    },
+    {
+     "file": "loadn/core/context.py",
+     "line": 395,
+     "kind": "cmp:IsNot",
+     "orig": "seen is not None",
+     "new": "seen is None"
+    },
+    {
+     "file": "loadn/core/context.py",
+     "line": 401,
+     "kind": "cmp:Gt",
+     "orig": "depth + 1 > MEMORY_IMPORT_DEPTH",
+     "new": "depth + 1 <= MEMORY_IMPORT_DEPTH"
+    },
+    {
+     "file": "loadn/core/context.py",
+     "line": 407,
+     "kind": "bool:BoolOp",
+     "orig": "p in seen or not p.is_file()",
+     "new": "p in seen and (not p.is_file())"
+    },
+    {
+     "file": "loadn/core/context.py",
+     "line": 421,
+     "kind": "cmp:LtE",
+     "orig": "len(text) <= limit",
+     "new": "len(text) > limit"
+    },
+    {
+     "file": "loadn/core/context.py",
+     "line": 107,
+     "kind": "const:int+1",
+     "orig": "50",
+     "new": "51"
+    },
+    {
+     "file": "loadn/core/context.py",
+     "line": 109,
+     "kind": "const:int+1",
+     "orig": "80",
+     "new": "81"
+    },
+    {
+     "file": "loadn/core/context.py",
+     "line": 110,
+     "kind": "const:int+1",
+     "orig": "60",
+     "new": "61"
+    },
+    {
+     "file": "loadn/core/context.py",
+     "line": 111,
+     "kind": "const:int+1",
+     "orig": "70",
+     "new": "71"
+    },
+    {
+     "file": "loadn/core/context.py",
+     "line": 112,
+     "kind": "const:int+1",
+     "orig": "90",
+     "new": "91"
+    },
+    {
+     "file": "loadn/core/context.py",
+     "line": 113,
+     "kind": "const:int+1",
+     "orig": "100",
+     "new": "101"
+    },
+    {
+     "file": "loadn/core/context.py",
+     "line": 146,
+     "kind": "bool:BoolOp",
+     "orig": "k in by_id and isinstance(v, dict)",
+     "new": "k in by_id or isinstance(v, dict)"
+    },
+    {
+     "file": "loadn/core/context.py",
+     "line": 202,
+     "kind": "bool:BoolOp",
+     "orig": "not text or not text.strip()",
+     "new": "not text and (not text.strip())"
+    },
+    {
+     "file": "loadn/core/context.py",
+     "line": 241,
+     "kind": "bool:BoolOp",
+     "orig": "mem_mod.render_block(self.cwd) or \"\"",
+     "new": "mem_mod.render_block(self.cwd) and ''"
+    },
+    {
+     "file": "loadn/core/context.py",
+     "line": 367,
+     "kind": "cmp:Eq",
+     "orig": "d == boundary",
+     "new": "d != boundary"
+    },
+    {
+     "file": "loadn/core/context.py",
+     "line": 367,
+     "kind": "cmp:Eq",
+     "orig": "d == d.parent",
+     "new": "d != d.parent"
+    },
+    {
+     "file": "loadn/core/context.py",
+     "line": 400,
+     "kind": "const:int+1",
+     "orig": "1",
+     "new": "2"
+    },
+    {
+     "file": "loadn/core/context.py",
+     "line": 407,
+     "kind": "cmp:In",
+     "orig": "p in seen",
+     "new": "p not in seen"
+    },
+    {
+     "file": "loadn/core/context.py",
+     "line": 193,
+     "kind": "cmp:Eq",
+     "orig": "spec.id == \"env\"",
+     "new": "spec.id != 'env'"
+    },
+    {
+     "file": "loadn/core/context.py",
+     "line": 285,
+     "kind": "cmp:Eq",
+     "orig": "path.parent == self.cwd",
+     "new": "path.parent != self.cwd"
+    },
+    {
+     "file": "loadn/core/context.py",
+     "line": 401,
+     "kind": "const:int+1",
+     "orig": "1",
+     "new": "2"
+    },
+    {
+     "file": "loadn/core/context.py",
+     "line": 414,
+     "kind": "const:int+1",
+     "orig": "1",
+     "new": "2"
+    },
+    {
+     "file": "loadn/core/context.py",
+     "line": 432,
+     "kind": "const:bool",
+     "orig": "True",
+     "new": "False"
+    },
+    {
+     "file": "loadn/core/context.py",
+     "line": 432,
+     "kind": "const:bool",
+     "orig": "True",
+     "new": "False"
+    },
+    {
+     "file": "loadn/core/context.py",
+     "line": 432,
+     "kind": "const:int+1",
+     "orig": "5",
+     "new": "6"
+    },
+    {
+     "file": "loadn/core/context.py",
+     "line": 43,
+     "kind": "const:int+1",
+     "orig": "1",
+     "new": "2"
+    },
+    {
+     "file": "loadn/core/context.py",
+     "line": 205,
+     "kind": "const:int+1",
+     "orig": "2",
+     "new": "3"
+    },
+    {
+     "file": "loadn/core/context.py",
+     "line": 458,
+     "kind": "cmp:GtE",
+     "orig": "len(out) >= ENV_TREE_MAX_ENTRIES",
+     "new": "len(out) < ENV_TREE_MAX_ENTRIES"
+    },
+    {
+     "file": "loadn/core/context.py",
+     "line": 460,
+     "kind": "bool:BoolOp",
+     "orig": "q.name in _SKIP_DIRS or q.name.startswith(\".\")",
+     "new": "q.name in _SKIP_DIRS and q.name.startswith('.')"
+    },
+    {
+     "file": "loadn/core/context.py",
+     "line": 246,
+     "kind": "const:int+1",
+     "orig": "4000",
+     "new": "4001"
+    },
+    {
+     "file": "loadn/core/context.py",
+     "line": 249,
+     "kind": "const:int+1",
+     "orig": "4000",
+     "new": "4001"
+    },
+    {
+     "file": "loadn/core/context.py",
+     "line": 427,
+     "kind": "const:bool",
+     "orig": "True",
+     "new": "False"
+    },
+    {
+     "file": "loadn/core/context.py",
+     "line": 428,
+     "kind": "const:int+1",
+     "orig": "5",
+     "new": "6"
+    },
+    {
+     "file": "loadn/core/context.py",
+     "line": 460,
+     "kind": "cmp:In",
+     "orig": "q.name in _SKIP_DIRS",
+     "new": "q.name not in _SKIP_DIRS"
+    },
+    {
+     "file": "loadn/core/context.py",
+     "line": 206,
+     "kind": "const:int+1",
+     "orig": "2",
+     "new": "3"
+    },
+    {
+     "file": "loadn/core/context.py",
+     "line": 457,
+     "kind": "const:int+1",
+     "orig": "8",
+     "new": "9"
+    }
+   ],
+   "timeout": [
+    {
+     "file": "loadn/core/context.py",
+     "line": 367,
+     "kind": "bool:BoolOp",
+     "orig": "d == boundary or d == d.parent",
+     "new": "d == boundary and d == d.parent"
+    }
+   ]
+  }
+ },
+ "survived": [
+  {
+   "file": "loadn/core/tool_repair.py",
+   "line": 50,
+   "kind": "bool:BoolOp",
+   "orig": "not text or not text.strip()",
+   "new": "not text and (not text.strip())",
+   "why": "tests-green"
+  },
+  {
+   "file": "loadn/core/tool_repair.py",
+   "line": 58,
+   "kind": "const:int+1",
+   "orig": "1",
+   "new": "2",
+   "why": "tests-green"
+  },
+  {
+   "file": "loadn/core/memory.py",
+   "line": 36,
+   "kind": "const:int+1",
+   "orig": "200",
+   "new": "201",
+   "why": "tests-green"
+  },
+  {
+   "file": "loadn/core/memory.py",
+   "line": 171,
+   "kind": "const:int+1",
+   "orig": "12",
+   "new": "13",
+   "why": "tests-green"
+  },
+  {
+   "file": "loadn/core/memory.py",
+   "line": 56,
+   "kind": "bool:BoolOp",
+   "orig": "out.returncode == 0 and out.stdout.strip()",
+   "new": "out.returncode == 0 or out.stdout.strip()",
+   "why": "tests-green"
+  },
+  {
+   "file": "loadn/core/memory.py",
+   "line": 199,
+   "kind": "cmp:IsNot",
+   "orig": "session is not None",
+   "new": "session is None",
+   "why": "tests-green"
+  },
+  {
+   "file": "loadn/core/memory.py",
+   "line": 270,
+   "kind": "bool:BoolOp",
+   "orig": "not segment or not last_id",
+   "new": "not segment and (not last_id)",
+   "why": "tests-green"
+  },
+  {
+   "file": "loadn/core/memory.py",
+   "line": 56,
+   "kind": "cmp:Eq",
+   "orig": "out.returncode == 0",
+   "new": "out.returncode != 0",
+   "why": "tests-green"
+  },
+  {
+   "file": "loadn/core/memory.py",
+   "line": 60,
+   "kind": "const:int+1",
+   "orig": "12",
+   "new": "13",
+   "why": "tests-green"
+  },
+  {
+   "file": "loadn/core/memory.py",
+   "line": 78,
+   "kind": "const:bool",
+   "orig": "True",
+   "new": "False",
+   "why": "tests-green"
+  },
+  {
+   "file": "loadn/core/memory.py",
+   "line": 119,
+   "kind": "bool:BoolOp",
+   "orig": "e.get(\"content\") or \"\"",
+   "new": "e.get('content') and ''",
+   "why": "tests-green"
+  },
+  {
+   "file": "loadn/core/memory.py",
+   "line": 121,
+   "kind": "const:bool",
+   "orig": "False",
+   "new": "True",
+   "why": "tests-green"
+  },
+  {
+   "file": "loadn/core/memory.py",
+   "line": 146,
+   "kind": "const:int+1",
+   "orig": "12",
+   "new": "13",
+   "why": "tests-green"
+  },
+  {
+   "file": "loadn/core/memory.py",
+   "line": 251,
+   "kind": "cmp:Eq",
+   "orig": "m[\"_id\"] == b",
+   "new": "m['_id'] != b",
+   "why": "tests-green"
+  },
+  {
+   "file": "loadn/core/memory.py",
+   "line": 281,
+   "kind": "bool:BoolOp",
+   "orig": "content and not canary_hit(content)",
+   "new": "content or not canary_hit(content)",
+   "why": "tests-green"
+  },
+  {
+   "file": "loadn/core/memory.py",
+   "line": 303,
+   "kind": "cmp:Eq",
+   "orig": "c.kind == \"text_delta\"",
+   "new": "c.kind != 'text_delta'",
+   "why": "tests-green"
+  },
+  {
+   "file": "loadn/core/memory.py",
+   "line": 317,
+   "kind": "bool:BoolOp",
+   "orig": "not summary or not content",
+   "new": "not summary and (not content)",
+   "why": "tests-green"
+  },
+  {
+   "file": "loadn/core/memory.py",
+   "line": 54,
+   "kind": "const:bool",
+   "orig": "True",
+   "new": "False",
+   "why": "tests-green"
+  },
+  {
+   "file": "loadn/core/memory.py",
+   "line": 55,
+   "kind": "const:bool",
+   "orig": "True",
+   "new": "False",
+   "why": "tests-green"
+  },
+  {
+   "file": "loadn/core/memory.py",
+   "line": 55,
+   "kind": "const:int+1",
+   "orig": "5",
+   "new": "6",
+   "why": "tests-green"
+  },
+  {
+   "file": "loadn/core/memory.py",
+   "line": 80,
+   "kind": "const:bool",
+   "orig": "False",
+   "new": "True",
+   "why": "tests-green"
+  },
+  {
+   "file": "loadn/core/memory.py",
+   "line": 80,
+   "kind": "const:int+1",
+   "orig": "1",
+   "new": "2",
+   "why": "tests-green"
+  },
+  {
+   "file": "loadn/core/memory.py",
+   "line": 96,
+   "kind": "const:int+1",
+   "orig": "1",
+   "new": "2",
+   "why": "tests-green"
+  },
+  {
+   "file": "loadn/core/memory.py",
+   "line": 97,
+   "kind": "const:int+1",
+   "orig": "2",
+   "new": "3",
+   "why": "tests-green"
+  },
+  {
+   "file": "loadn/core/memory.py",
+   "line": 178,
+   "kind": "const:int+1",
+   "orig": "16",
+   "new": "17",
+   "why": "tests-green"
+  },
+  {
+   "file": "loadn/core/memory.py",
+   "line": 252,
+   "kind": "const:bool",
+   "orig": "True",
+   "new": "False",
+   "why": "tests-green"
+  },
+  {
+   "file": "loadn/core/memory.py",
+   "line": 302,
+   "kind": "const:bool",
+   "orig": "False",
+   "new": "True",
+   "why": "tests-green"
+  },
+  {
+   "file": "loadn/core/memory.py",
+   "line": 322,
+   "kind": "const:int+1",
+   "orig": "1",
+   "new": "2",
+   "why": "tests-green"
+  },
+  {
+   "file": "loadn/core/memory.py",
+   "line": 96,
+   "kind": "cmp:LtE",
+   "orig": "\"\\u4e00\" <= ch <= \"\\u9fff\"",
+   "new": "'一' > ch <= '\\u9fff'",
+   "why": "tests-green"
+  },
+  {
+   "file": "loadn/core/memory.py",
+   "line": 155,
+   "kind": "const:int+1",
+   "orig": "2000",
+   "new": "2001",
+   "why": "tests-green"
+  },
+  {
+   "file": "loadn/core/memory.py",
+   "line": 167,
+   "kind": "const:int+1",
+   "orig": "80",
+   "new": "81",
+   "why": "tests-green"
+  },
+  {
+   "file": "loadn/core/memory.py",
+   "line": 128,
+   "kind": "const:bool",
+   "orig": "True",
+   "new": "False",
+   "why": "tests-green"
+  },
+  {
+   "file": "loadn/core/memory.py",
+   "line": 142,
+   "kind": "const:int+1",
+   "orig": "80",
+   "new": "81",
+   "why": "tests-green"
+  },
+  {
+   "file": "loadn/core/memory.py",
+   "line": 161,
+   "kind": "const:bool",
+   "orig": "True",
+   "new": "False",
+   "why": "tests-green"
+  },
+  {
+   "file": "loadn/core/memory.py",
+   "line": 282,
+   "kind": "const:int+1",
+   "orig": "20",
+   "new": "21",
+   "why": "tests-green"
+  },
+  {
+   "file": "loadn/core/memory.py",
+   "line": 297,
+   "kind": "const:int+1",
+   "orig": "8000",
+   "new": "8001",
+   "why": "tests-green"
+  },
+  {
+   "file": "loadn/core/memory.py",
+   "line": 315,
+   "kind": "bool:BoolOp",
+   "orig": "it.get(\"summary\") or \"\"",
+   "new": "it.get('summary') and ''",
+   "why": "tests-green"
+  },
+  {
+   "file": "loadn/core/memory.py",
+   "line": 315,
+   "kind": "const:int+1",
+   "orig": "40",
+   "new": "41",
+   "why": "tests-green"
+  },
+  {
+   "file": "loadn/core/memory.py",
+   "line": 316,
+   "kind": "bool:BoolOp",
+   "orig": "it.get(\"content\") or \"\"",
+   "new": "it.get('content') and ''",
+   "why": "tests-green"
+  },
+  {
+   "file": "loadn/core/memory.py",
+   "line": 316,
+   "kind": "const:int+1",
+   "orig": "2000",
+   "new": "2001",
+   "why": "tests-green"
+  },
+  {
+   "file": "loadn/core/compactor.py",
+   "line": 80,
+   "kind": "const:int+1",
+   "orig": "200_000",
+   "new": "200001",
+   "why": "tests-green"
+  },
+  {
+   "file": "loadn/core/compactor.py",
+   "line": 170,
+   "kind": "cmp:Eq",
+   "orig": "m.role == \"assistant\"",
+   "new": "m.role != 'assistant'",
+   "why": "tests-green"
+  },
+  {
+   "file": "loadn/core/compactor.py",
+   "line": 73,
+   "kind": "bool:BoolOp",
+   "orig": "usage.get(\"input_tokens\") or 0",
+   "new": "usage.get('input_tokens') and 0",
+   "why": "tests-green"
+  },
+  {
+   "file": "loadn/core/compactor.py",
+   "line": 74,
+   "kind": "bool:BoolOp",
+   "orig": "usage.get(\"cache_read_input_tokens\") or 0",
+   "new": "usage.get('cache_read_input_tokens') and 0",
+   "why": "tests-green"
+  },
+  {
+   "file": "loadn/core/compactor.py",
+   "line": 90,
+   "kind": "const:int+1",
+   "orig": "4",
+   "new": "5",
+   "why": "tests-green"
+  },
+  {
+   "file": "loadn/core/compactor.py",
+   "line": 103,
+   "kind": "const:int+1",
+   "orig": "20_000",
+   "new": "20001",
+   "why": "tests-green"
+  },
+  {
+   "file": "loadn/core/compactor.py",
+   "line": 149,
+   "kind": "cmp:Eq",
+   "orig": "m.role == \"user\"",
+   "new": "m.role != 'user'",
+   "why": "tests-green"
+  },
+  {
+   "file": "loadn/core/compactor.py",
+   "line": 175,
+   "kind": "bool:BoolOp",
+   "orig": "cur or []",
+   "new": "cur and []",
+   "why": "tests-green"
+  },
+  {
+   "file": "loadn/core/compactor.py",
+   "line": 193,
+   "kind": "const:int+1",
+   "orig": "1",
+   "new": "2",
+   "why": "tests-green"
+  },
+  {
+   "file": "loadn/core/compactor.py",
+   "line": 193,
+   "kind": "const:int+1",
+   "orig": "1",
+   "new": "2",
+   "why": "tests-green"
+  },
+  {
+   "file": "loadn/core/compactor.py",
+   "line": 234,
+   "kind": "bool:BoolOp",
+   "orig": "b.input.get(\"file_path\") or b.input.get(\"notebook_path\")",
+   "new": "b.input.get('file_path') and b.input.get('notebook_path')",
+   "why": "tests-green"
+  },
+  {
+   "file": "loadn/core/compactor.py",
+   "line": 235,
+   "kind": "bool:BoolOp",
+   "orig": "not isinstance(fp, str) or not fp",
+   "new": "not isinstance(fp, str) and (not fp)",
+   "why": "tests-green"
+  },
+  {
+   "file": "loadn/core/compactor.py",
+   "line": 237,
+   "kind": "cmp:In",
+   "orig": "b.name in (\"Write\", \"Edit\", \"MultiEdit\", \"NotebookEdit\")",
+   "new": "b.name not in ('Write', 'Edit', 'MultiEdit', 'NotebookEdit')",
+   "why": "tests-green"
+  },
+  {
+   "file": "loadn/core/compactor.py",
+   "line": 76,
+   "kind": "const:bool",
+   "orig": "False",
+   "new": "True",
+   "why": "tests-green"
+  },
+  {
+   "file": "loadn/core/compactor.py",
+   "line": 86,
+   "kind": "const:bool",
+   "orig": "False",
+   "new": "True",
+   "why": "tests-green"
+  },
+  {
+   "file": "loadn/core/compactor.py",
+   "line": 132,
+   "kind": "cmp:Eq",
+   "orig": "c.kind == \"text_delta\"",
+   "new": "c.kind != 'text_delta'",
+   "why": "tests-green"
+  },
+  {
+   "file": "loadn/core/compactor.py",
+   "line": 195,
+   "kind": "const:int+1",
+   "orig": "2",
+   "new": "3",
+   "why": "tests-green"
+  },
+  {
+   "file": "loadn/core/compactor.py",
+   "line": 213,
+   "kind": "cmp:Gt",
+   "orig": "len(b.content) > PRUNE_KEEP_CHARS",
+   "new": "len(b.content) <= PRUNE_KEEP_CHARS",
+   "why": "tests-green"
+  },
+  {
+   "file": "loadn/core/compactor.py",
+   "line": 221,
+   "kind": "bool:BoolOp",
+   "orig": "text or \"（工具调用，细节见工作区与日志）\"",
+   "new": "text and '（工具调用，细节见工作区与日志）'",
+   "why": "tests-green"
+  },
+  {
+   "file": "loadn/core/compactor.py",
+   "line": 238,
+   "kind": "cmp:NotIn",
+   "orig": "fp not in writes",
+   "new": "fp in writes",
+   "why": "tests-green"
+  },
+  {
+   "file": "loadn/core/compactor.py",
+   "line": 240,
+   "kind": "bool:BoolOp",
+   "orig": "b.name == \"Read\" and fp not in reads",
+   "new": "b.name == 'Read' or fp not in reads",
+   "why": "tests-green"
+  },
+  {
+   "file": "loadn/core/compactor.py",
+   "line": 120,
+   "kind": "bool:BoolOp",
+   "orig": "ledger or \"（无）\"",
+   "new": "ledger and '（无）'",
+   "why": "tests-green"
+  },
+  {
+   "file": "loadn/core/compactor.py",
+   "line": 123,
+   "kind": "bool:BoolOp",
+   "orig": "ledger or \"（无）\"",
+   "new": "ledger and '（无）'",
+   "why": "tests-green"
+  },
+  {
+   "file": "loadn/core/compactor.py",
+   "line": 130,
+   "kind": "const:bool",
+   "orig": "False",
+   "new": "True",
+   "why": "tests-green"
+  },
+  {
+   "file": "loadn/core/compactor.py",
+   "line": 134,
+   "kind": "cmp:Eq",
+   "orig": "c.kind == \"error\"",
+   "new": "c.kind != 'error'",
+   "why": "tests-green"
+  },
+  {
+   "file": "loadn/core/compactor.py",
+   "line": 240,
+   "kind": "cmp:Eq",
+   "orig": "b.name == \"Read\"",
+   "new": "b.name != 'Read'",
+   "why": "tests-green"
+  },
+  {
+   "file": "loadn/core/compactor.py",
+   "line": 240,
+   "kind": "cmp:NotIn",
+   "orig": "fp not in reads",
+   "new": "fp in reads",
+   "why": "tests-green"
+  },
+  {
+   "file": "loadn/core/compactor.py",
+   "line": 119,
+   "kind": "const:int+1",
+   "orig": "20_000",
+   "new": "20001",
+   "why": "tests-green"
+  },
+  {
+   "file": "loadn/core/compactor.py",
+   "line": 161,
+   "kind": "const:int+1",
+   "orig": "200",
+   "new": "201",
+   "why": "tests-green"
+  },
+  {
+   "file": "loadn/core/compactor.py",
+   "line": 244,
+   "kind": "const:int+1",
+   "orig": "50",
+   "new": "51",
+   "why": "tests-green"
+  },
+  {
+   "file": "loadn/core/compactor.py",
+   "line": 246,
+   "kind": "const:int+1",
+   "orig": "50",
+   "new": "51",
+   "why": "tests-green"
+  },
+  {
+   "file": "loadn/core/compactor.py",
+   "line": 110,
+   "kind": "const:int+1",
+   "orig": "2",
+   "new": "3",
+   "why": "tests-green"
+  },
+  {
+   "file": "loadn/core/compactor.py",
+   "line": 217,
+   "kind": "const:int+1",
+   "orig": "1500",
+   "new": "1501",
+   "why": "tests-green"
+  },
+  {
+   "file": "loadn/core/compactor.py",
+   "line": 219,
+   "kind": "const:int+1",
+   "orig": "1500",
+   "new": "1501",
+   "why": "tests-green"
+  },
+  {
+   "file": "loadn/core/compactor.py",
+   "line": 158,
+   "kind": "cmp:In",
+   "orig": "k in (\"file_path\", \"command\", \"path\", \"url\")",
+   "new": "k not in ('file_path', 'command', 'path', 'url')",
+   "why": "tests-green"
+  },
+  {
+   "file": "loadn/core/compactor.py",
+   "line": 214,
+   "kind": "const:int+1",
+   "orig": "500",
+   "new": "501",
+   "why": "tests-green"
+  },
+  {
+   "file": "loadn/core/compactor.py",
+   "line": 215,
+   "kind": "const:int+1",
+   "orig": "300",
+   "new": "301",
+   "why": "tests-green"
+  },
+  {
+   "file": "loadn/core/compactor.py",
+   "line": 160,
+   "kind": "const:int+1",
+   "orig": "120",
+   "new": "121",
+   "why": "tests-green"
+  },
+  {
+   "file": "loadn/core/context.py",
+   "line": 396,
+   "kind": "cmp:Gt",
+   "orig": "depth > MEMORY_IMPORT_DEPTH",
+   "new": "depth <= MEMORY_IMPORT_DEPTH",
+   "why": "tests-green"
+  },
+  {
+   "file": "loadn/core/context.py",
+   "line": 91,
+   "kind": "const:bool",
+   "orig": "True",
+   "new": "False",
+   "why": "tests-green"
+  },
+  {
+   "file": "loadn/core/context.py",
+   "line": 177,
+   "kind": "bool:BoolOp",
+   "orig": "mentioned_files or set()",
+   "new": "mentioned_files and set()",
+   "why": "tests-green"
+  },
+  {
+   "file": "loadn/core/context.py",
+   "line": 354,
+   "kind": "cmp:Eq",
+   "orig": "d == d.parent",
+   "new": "d != d.parent",
+   "why": "tests-green"
+  },
+  {
+   "file": "loadn/core/context.py",
+   "line": 361,
+   "kind": "cmp:NotIn",
+   "orig": "boundary not in cwd.parents",
+   "new": "boundary in cwd.parents",
+   "why": "tests-green"
+  },
+  {
+   "file": "loadn/core/context.py",
+   "line": 367,
+   "kind": "bool:BoolOp",
+   "orig": "d == boundary or d == d.parent",
+   "new": "d == boundary and d == d.parent",
+   "why": "timeout"
+  },
+  {
+   "file": "loadn/core/context.py",
+   "line": 395,
+   "kind": "cmp:IsNot",
+   "orig": "seen is not None",
+   "new": "seen is None",
+   "why": "tests-green"
+  },
+  {
+   "file": "loadn/core/context.py",
+   "line": 401,
+   "kind": "cmp:Gt",
+   "orig": "depth + 1 > MEMORY_IMPORT_DEPTH",
+   "new": "depth + 1 <= MEMORY_IMPORT_DEPTH",
+   "why": "tests-green"
+  },
+  {
+   "file": "loadn/core/context.py",
+   "line": 407,
+   "kind": "bool:BoolOp",
+   "orig": "p in seen or not p.is_file()",
+   "new": "p in seen and (not p.is_file())",
+   "why": "tests-green"
+  },
+  {
+   "file": "loadn/core/context.py",
+   "line": 421,
+   "kind": "cmp:LtE",
+   "orig": "len(text) <= limit",
+   "new": "len(text) > limit",
+   "why": "tests-green"
+  },
+  {
+   "file": "loadn/core/context.py",
+   "line": 107,
+   "kind": "const:int+1",
+   "orig": "50",
+   "new": "51",
+   "why": "tests-green"
+  },
+  {
+   "file": "loadn/core/context.py",
+   "line": 109,
+   "kind": "const:int+1",
+   "orig": "80",
+   "new": "81",
+   "why": "tests-green"
+  },
+  {
+   "file": "loadn/core/context.py",
+   "line": 110,
+   "kind": "const:int+1",
+   "orig": "60",
+   "new": "61",
+   "why": "tests-green"
+  },
+  {
+   "file": "loadn/core/context.py",
+   "line": 111,
+   "kind": "const:int+1",
+   "orig": "70",
+   "new": "71",
+   "why": "tests-green"
+  },
+  {
+   "file": "loadn/core/context.py",
+   "line": 112,
+   "kind": "const:int+1",
+   "orig": "90",
+   "new": "91",
+   "why": "tests-green"
+  },
+  {
+   "file": "loadn/core/context.py",
+   "line": 113,
+   "kind": "const:int+1",
+   "orig": "100",
+   "new": "101",
+   "why": "tests-green"
+  },
+  {
+   "file": "loadn/core/context.py",
+   "line": 146,
+   "kind": "bool:BoolOp",
+   "orig": "k in by_id and isinstance(v, dict)",
+   "new": "k in by_id or isinstance(v, dict)",
+   "why": "tests-green"
+  },
+  {
+   "file": "loadn/core/context.py",
+   "line": 202,
+   "kind": "bool:BoolOp",
+   "orig": "not text or not text.strip()",
+   "new": "not text and (not text.strip())",
+   "why": "tests-green"
+  },
+  {
+   "file": "loadn/core/context.py",
+   "line": 241,
+   "kind": "bool:BoolOp",
+   "orig": "mem_mod.render_block(self.cwd) or \"\"",
+   "new": "mem_mod.render_block(self.cwd) and ''",
+   "why": "tests-green"
+  },
+  {
+   "file": "loadn/core/context.py",
+   "line": 367,
+   "kind": "cmp:Eq",
+   "orig": "d == boundary",
+   "new": "d != boundary",
+   "why": "tests-green"
+  },
+  {
+   "file": "loadn/core/context.py",
+   "line": 367,
+   "kind": "cmp:Eq",
+   "orig": "d == d.parent",
+   "new": "d != d.parent",
+   "why": "tests-green"
+  },
+  {
+   "file": "loadn/core/context.py",
+   "line": 400,
+   "kind": "const:int+1",
+   "orig": "1",
+   "new": "2",
+   "why": "tests-green"
+  },
+  {
+   "file": "loadn/core/context.py",
+   "line": 407,
+   "kind": "cmp:In",
+   "orig": "p in seen",
+   "new": "p not in seen",
+   "why": "tests-green"
+  },
+  {
+   "file": "loadn/core/context.py",
+   "line": 193,
+   "kind": "cmp:Eq",
+   "orig": "spec.id == \"env\"",
+   "new": "spec.id != 'env'",
+   "why": "tests-green"
+  },
+  {
+   "file": "loadn/core/context.py",
+   "line": 285,
+   "kind": "cmp:Eq",
+   "orig": "path.parent == self.cwd",
+   "new": "path.parent != self.cwd",
+   "why": "tests-green"
+  },
+  {
+   "file": "loadn/core/context.py",
+   "line": 401,
+   "kind": "const:int+1",
+   "orig": "1",
+   "new": "2",
+   "why": "tests-green"
+  },
+  {
+   "file": "loadn/core/context.py",
+   "line": 414,
+   "kind": "const:int+1",
+   "orig": "1",
+   "new": "2",
+   "why": "tests-green"
+  },
+  {
+   "file": "loadn/core/context.py",
+   "line": 432,
+   "kind": "const:bool",
+   "orig": "True",
+   "new": "False",
+   "why": "tests-green"
+  },
+  {
+   "file": "loadn/core/context.py",
+   "line": 432,
+   "kind": "const:bool",
+   "orig": "True",
+   "new": "False",
+   "why": "tests-green"
+  },
+  {
+   "file": "loadn/core/context.py",
+   "line": 432,
+   "kind": "const:int+1",
+   "orig": "5",
+   "new": "6",
+   "why": "tests-green"
+  },
+  {
+   "file": "loadn/core/context.py",
+   "line": 43,
+   "kind": "const:int+1",
+   "orig": "1",
+   "new": "2",
+   "why": "tests-green"
+  },
+  {
+   "file": "loadn/core/context.py",
+   "line": 205,
+   "kind": "const:int+1",
+   "orig": "2",
+   "new": "3",
+   "why": "tests-green"
+  },
+  {
+   "file": "loadn/core/context.py",
+   "line": 458,
+   "kind": "cmp:GtE",
+   "orig": "len(out) >= ENV_TREE_MAX_ENTRIES",
+   "new": "len(out) < ENV_TREE_MAX_ENTRIES",
+   "why": "tests-green"
+  },
+  {
+   "file": "loadn/core/context.py",
+   "line": 460,
+   "kind": "bool:BoolOp",
+   "orig": "q.name in _SKIP_DIRS or q.name.startswith(\".\")",
+   "new": "q.name in _SKIP_DIRS and q.name.startswith('.')",
+   "why": "tests-green"
+  },
+  {
+   "file": "loadn/core/context.py",
+   "line": 246,
+   "kind": "const:int+1",
+   "orig": "4000",
+   "new": "4001",
+   "why": "tests-green"
+  },
+  {
+   "file": "loadn/core/context.py",
+   "line": 249,
+   "kind": "const:int+1",
+   "orig": "4000",
+   "new": "4001",
+   "why": "tests-green"
+  },
+  {
+   "file": "loadn/core/context.py",
+   "line": 427,
+   "kind": "const:bool",
+   "orig": "True",
+   "new": "False",
+   "why": "tests-green"
+  },
+  {
+   "file": "loadn/core/context.py",
+   "line": 428,
+   "kind": "const:int+1",
+   "orig": "5",
+   "new": "6",
+   "why": "tests-green"
+  },
+  {
+   "file": "loadn/core/context.py",
+   "line": 460,
+   "kind": "cmp:In",
+   "orig": "q.name in _SKIP_DIRS",
+   "new": "q.name not in _SKIP_DIRS",
+   "why": "tests-green"
+  },
+  {
+   "file": "loadn/core/context.py",
+   "line": 206,
+   "kind": "const:int+1",
+   "orig": "2",
+   "new": "3",
+   "why": "tests-green"
+  },
+  {
+   "file": "loadn/core/context.py",
+   "line": 457,
+   "kind": "const:int+1",
+   "orig": "8",
+   "new": "9",
+   "why": "tests-green"
+  }
+ ]
+}

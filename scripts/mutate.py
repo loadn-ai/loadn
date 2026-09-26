@@ -159,6 +159,7 @@ TARGET_TESTS: dict[str, list[str]] = {
     "loadn/core/compactor.py": [
         "tests/test_loop.py",
         "tests/test_p37_approval_timeline.py",
+        "tests/test_compactor_units.py",
     ],
     "loadn/core/memory.py": [
         "tests/test_memory.py",
