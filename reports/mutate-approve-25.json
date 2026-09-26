@@ -1,0 +1,254 @@
+{
+ "results": {
+  "loadn_webui/approve.py": {
+   "file": "loadn_webui/approve.py",
+   "total": 25,
+   "killed": 9,
+   "survived": [
+    {
+     "file": "loadn_webui/approve.py",
+     "line": 37,
+     "kind": "bool:BoolOp",
+     "orig": "CONFIG.security.approval_ttl_s or DEFAULT_TTL_S",
+     "new": "CONFIG.security.approval_ttl_s and DEFAULT_TTL_S"
+    },
+    {
+     "file": "loadn_webui/approve.py",
+     "line": 76,
+     "kind": "bool:BoolOp",
+     "orig": "params.get(\"justification\") or \"\"",
+     "new": "params.get('justification') and ''"
+    },
+    {
+     "file": "loadn_webui/approve.py",
+     "line": 82,
+     "kind": "bool:BoolOp",
+     "orig": "params.get(\"ttl_s\") or 7200",
+     "new": "params.get('ttl_s') and 7200"
+    },
+    {
+     "file": "loadn_webui/approve.py",
+     "line": 95,
+     "kind": "const:bool",
+     "orig": "True",
+     "new": "False"
+    },
+    {
+     "file": "loadn_webui/approve.py",
+     "line": 96,
+     "kind": "const:int+1",
+     "orig": "10",
+     "new": "11"
+    },
+    {
+     "file": "loadn_webui/approve.py",
+     "line": 254,
+     "kind": "const:bool",
+     "orig": "True",
+     "new": "False"
+    },
+    {
+     "file": "loadn_webui/approve.py",
+     "line": 261,
+     "kind": "const:bool",
+     "orig": "True",
+     "new": "False"
+    },
+    {
+     "file": "loadn_webui/approve.py",
+     "line": 324,
+     "kind": "cmp:IsNot",
+     "orig": "out is not None",
+     "new": "out is None"
+    },
+    {
+     "file": "loadn_webui/approve.py",
+     "line": 355,
+     "kind": "bool:BoolOp",
+     "orig": "params.get(\"justification\") or \"\"",
+     "new": "params.get('justification') and ''"
+    },
+    {
+     "file": "loadn_webui/approve.py",
+     "line": 380,
+     "kind": "bool:BoolOp",
+     "orig": "diffs or None",
+     "new": "diffs and None"
+    },
+    {
+     "file": "loadn_webui/approve.py",
+     "line": 76,
+     "kind": "const:int+1",
+     "orig": "60",
+     "new": "61"
+    },
+    {
+     "file": "loadn_webui/approve.py",
+     "line": 82,
+     "kind": "const:int+1",
+     "orig": "7200",
+     "new": "7201"
+    },
+    {
+     "file": "loadn_webui/approve.py",
+     "line": 83,
+     "kind": "const:int+1",
+     "orig": "3600",
+     "new": "3601"
+    },
+    {
+     "file": "loadn_webui/approve.py",
+     "line": 83,
+     "kind": "const:int+1",
+     "orig": "60",
+     "new": "61"
+    },
+    {
+     "file": "loadn_webui/approve.py",
+     "line": 165,
+     "kind": "bool:BoolOp",
+     "orig": "note or \"\"",
+     "new": "note and ''"
+    },
+    {
+     "file": "loadn_webui/approve.py",
+     "line": 178,
+     "kind": "const:bool",
+     "orig": "False",
+     "new": "True"
+    }
+   ],
+   "timeout": []
+  }
+ },
+ "survived": [
+  {
+   "file": "loadn_webui/approve.py",
+   "line": 37,
+   "kind": "bool:BoolOp",
+   "orig": "CONFIG.security.approval_ttl_s or DEFAULT_TTL_S",
+   "new": "CONFIG.security.approval_ttl_s and DEFAULT_TTL_S",
+   "why": "tests-green"
+  },
+  {
+   "file": "loadn_webui/approve.py",
+   "line": 76,
+   "kind": "bool:BoolOp",
+   "orig": "params.get(\"justification\") or \"\"",
+   "new": "params.get('justification') and ''",
+   "why": "tests-green"
+  },
+  {
+   "file": "loadn_webui/approve.py",
+   "line": 82,
+   "kind": "bool:BoolOp",
+   "orig": "params.get(\"ttl_s\") or 7200",
+   "new": "params.get('ttl_s') and 7200",
+   "why": "tests-green"
+  },
+  {
+   "file": "loadn_webui/approve.py",
+   "line": 95,
+   "kind": "const:bool",
+   "orig": "True",
+   "new": "False",
+   "why": "tests-green"
+  },
+  {
+   "file": "loadn_webui/approve.py",
+   "line": 96,
+   "kind": "const:int+1",
+   "orig": "10",
+   "new": "11",
+   "why": "tests-green"
+  },
+  {
+   "file": "loadn_webui/approve.py",
+   "line": 254,
+   "kind": "const:bool",
+   "orig": "True",
+   "new": "False",
+   "why": "tests-green"
+  },
+  {
+   "file": "loadn_webui/approve.py",
+   "line": 261,
+   "kind": "const:bool",
+   "orig": "True",
+   "new": "False",
+   "why": "tests-green"
+  },
+  {
+   "file": "loadn_webui/approve.py",
+   "line": 324,
+   "kind": "cmp:IsNot",
+   "orig": "out is not None",
+   "new": "out is None",
+   "why": "tests-green"
+  },
+  {
+   "file": "loadn_webui/approve.py",
+   "line": 355,
+   "kind": "bool:BoolOp",
+   "orig": "params.get(\"justification\") or \"\"",
+   "new": "params.get('justification') and ''",
+   "why": "tests-green"
+  },
+  {
+   "file": "loadn_webui/approve.py",
+   "line": 380,
+   "kind": "bool:BoolOp",
+   "orig": "diffs or None",
+   "new": "diffs and None",
+   "why": "tests-green"
+  },
+  {
+   "file": "loadn_webui/approve.py",
+   "line": 76,
+   "kind": "const:int+1",
+   "orig": "60",
+   "new": "61",
+   "why": "tests-green"
+  },
+  {
+   "file": "loadn_webui/approve.py",
+   "line": 82,
+   "kind": "const:int+1",
+   "orig": "7200",
+   "new": "7201",
+   "why": "tests-green"
+  },
+  {
+   "file": "loadn_webui/approve.py",
+   "line": 83,
+   "kind": "const:int+1",
+   "orig": "3600",
+   "new": "3601",
+   "why": "tests-green"
+  },
+  {
+   "file": "loadn_webui/approve.py",
+   "line": 83,
+   "kind": "const:int+1",
+   "orig": "60",
+   "new": "61",
+   "why": "tests-green"
+  },
+  {
+   "file": "loadn_webui/approve.py",
+   "line": 165,
+   "kind": "bool:BoolOp",
+   "orig": "note or \"\"",
+   "new": "note and ''",
+   "why": "tests-green"
+  },
+  {
+   "file": "loadn_webui/approve.py",
+   "line": 178,
+   "kind": "const:bool",
+   "orig": "False",
+   "new": "True",
+   "why": "tests-green"
+  }
+ ]
+}

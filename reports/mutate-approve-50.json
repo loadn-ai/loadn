@@ -1,0 +1,284 @@
+{
+ "results": {
+  "loadn_webui/approve.py": {
+   "file": "loadn_webui/approve.py",
+   "total": 25,
+   "killed": 7,
+   "survived": [
+    {
+     "file": "loadn_webui/approve.py",
+     "line": 327,
+     "kind": "cmp:Eq",
+     "orig": "json.loads(r[\"params_json\"]).get(\"host\") == host",
+     "new": "json.loads(r['params_json']).get('host') != host"
+    },
+    {
+     "file": "loadn_webui/approve.py",
+     "line": 351,
+     "kind": "bool:BoolOp",
+     "orig": "r.pop(\"params_json\") or \"{}\"",
+     "new": "r.pop('params_json') and '{}'"
+    },
+    {
+     "file": "loadn_webui/approve.py",
+     "line": 83,
+     "kind": "const:int+1",
+     "orig": "3600",
+     "new": "3601"
+    },
+    {
+     "file": "loadn_webui/approve.py",
+     "line": 86,
+     "kind": "const:int+1",
+     "orig": "80",
+     "new": "81"
+    },
+    {
+     "file": "loadn_webui/approve.py",
+     "line": 142,
+     "kind": "bool:BoolOp",
+     "orig": "params.get(\"host\") or \"\"",
+     "new": "params.get('host') and ''"
+    },
+    {
+     "file": "loadn_webui/approve.py",
+     "line": 159,
+     "kind": "bool:BoolOp",
+     "orig": "note or \"\"",
+     "new": "note and ''"
+    },
+    {
+     "file": "loadn_webui/approve.py",
+     "line": 165,
+     "kind": "const:int+1",
+     "orig": "200",
+     "new": "201"
+    },
+    {
+     "file": "loadn_webui/approve.py",
+     "line": 196,
+     "kind": "bool:BoolOp",
+     "orig": "params.get(\"ttl_s\") or egress_grants.DEFAULT_TTL_S",
+     "new": "params.get('ttl_s') and egress_grants.DEFAULT_TTL_S"
+    },
+    {
+     "file": "loadn_webui/approve.py",
+     "line": 204,
+     "kind": "const:bool",
+     "orig": "True",
+     "new": "False"
+    },
+    {
+     "file": "loadn_webui/approve.py",
+     "line": 241,
+     "kind": "const:bool",
+     "orig": "True",
+     "new": "False"
+    },
+    {
+     "file": "loadn_webui/approve.py",
+     "line": 370,
+     "kind": "const:int+1",
+     "orig": "400",
+     "new": "401"
+    },
+    {
+     "file": "loadn_webui/approve.py",
+     "line": 379,
+     "kind": "bool:BoolOp",
+     "orig": "ev.get(\"payload\") or {}",
+     "new": "ev.get('payload') and {}"
+    },
+    {
+     "file": "loadn_webui/approve.py",
+     "line": 86,
+     "kind": "const:bool",
+     "orig": "False",
+     "new": "True"
+    },
+    {
+     "file": "loadn_webui/approve.py",
+     "line": 148,
+     "kind": "bool:BoolOp",
+     "orig": "params.get(\"prefix\") or []",
+     "new": "params.get('prefix') and []"
+    },
+    {
+     "file": "loadn_webui/approve.py",
+     "line": 159,
+     "kind": "const:int+1",
+     "orig": "500",
+     "new": "501"
+    },
+    {
+     "file": "loadn_webui/approve.py",
+     "line": 159,
+     "kind": "const:bool",
+     "orig": "False",
+     "new": "True"
+    },
+    {
+     "file": "loadn_webui/approve.py",
+     "line": 192,
+     "kind": "bool:BoolOp",
+     "orig": "params.get(\"host\") or \"\"",
+     "new": "params.get('host') and ''"
+    },
+    {
+     "file": "loadn_webui/approve.py",
+     "line": 194,
+     "kind": "const:bool",
+     "orig": "False",
+     "new": "True"
+    }
+   ],
+   "timeout": []
+  }
+ },
+ "survived": [
+  {
+   "file": "loadn_webui/approve.py",
+   "line": 327,
+   "kind": "cmp:Eq",
+   "orig": "json.loads(r[\"params_json\"]).get(\"host\") == host",
+   "new": "json.loads(r['params_json']).get('host') != host",
+   "why": "tests-green"
+  },
+  {
+   "file": "loadn_webui/approve.py",
+   "line": 351,
+   "kind": "bool:BoolOp",
+   "orig": "r.pop(\"params_json\") or \"{}\"",
+   "new": "r.pop('params_json') and '{}'",
+   "why": "tests-green"
+  },
+  {
+   "file": "loadn_webui/approve.py",
+   "line": 83,
+   "kind": "const:int+1",
+   "orig": "3600",
+   "new": "3601",
+   "why": "tests-green"
+  },
+  {
+   "file": "loadn_webui/approve.py",
+   "line": 86,
+   "kind": "const:int+1",
+   "orig": "80",
+   "new": "81",
+   "why": "tests-green"
+  },
+  {
+   "file": "loadn_webui/approve.py",
+   "line": 142,
+   "kind": "bool:BoolOp",
+   "orig": "params.get(\"host\") or \"\"",
+   "new": "params.get('host') and ''",
+   "why": "tests-green"
+  },
+  {
+   "file": "loadn_webui/approve.py",
+   "line": 159,
+   "kind": "bool:BoolOp",
+   "orig": "note or \"\"",
+   "new": "note and ''",
+   "why": "tests-green"
+  },
+  {
+   "file": "loadn_webui/approve.py",
+   "line": 165,
+   "kind": "const:int+1",
+   "orig": "200",
+   "new": "201",
+   "why": "tests-green"
+  },
+  {
+   "file": "loadn_webui/approve.py",
+   "line": 196,
+   "kind": "bool:BoolOp",
+   "orig": "params.get(\"ttl_s\") or egress_grants.DEFAULT_TTL_S",
+   "new": "params.get('ttl_s') and egress_grants.DEFAULT_TTL_S",
+   "why": "tests-green"
+  },
+  {
+   "file": "loadn_webui/approve.py",
+   "line": 204,
+   "kind": "const:bool",
+   "orig": "True",
+   "new": "False",
+   "why": "tests-green"
+  },
+  {
+   "file": "loadn_webui/approve.py",
+   "line": 241,
+   "kind": "const:bool",
+   "orig": "True",
+   "new": "False",
+   "why": "tests-green"
+  },
+  {
+   "file": "loadn_webui/approve.py",
+   "line": 370,
+   "kind": "const:int+1",
+   "orig": "400",
+   "new": "401",
+   "why": "tests-green"
+  },
+  {
+   "file": "loadn_webui/approve.py",
+   "line": 379,
+   "kind": "bool:BoolOp",
+   "orig": "ev.get(\"payload\") or {}",
+   "new": "ev.get('payload') and {}",
+   "why": "tests-green"
+  },
+  {
+   "file": "loadn_webui/approve.py",
+   "line": 86,
+   "kind": "const:bool",
+   "orig": "False",
+   "new": "True",
+   "why": "tests-green"
+  },
+  {
+   "file": "loadn_webui/approve.py",
+   "line": 148,
+   "kind": "bool:BoolOp",
+   "orig": "params.get(\"prefix\") or []",
+   "new": "params.get('prefix') and []",
+   "why": "tests-green"
+  },
+  {
+   "file": "loadn_webui/approve.py",
+   "line": 159,
+   "kind": "const:int+1",
+   "orig": "500",
+   "new": "501",
+   "why": "tests-green"
+  },
+  {
+   "file": "loadn_webui/approve.py",
+   "line": 159,
+   "kind": "const:bool",
+   "orig": "False",
+   "new": "True",
+   "why": "tests-green"
+  },
+  {
+   "file": "loadn_webui/approve.py",
+   "line": 192,
+   "kind": "bool:BoolOp",
+   "orig": "params.get(\"host\") or \"\"",
+   "new": "params.get('host') and ''",
+   "why": "tests-green"
+  },
+  {
+   "file": "loadn_webui/approve.py",
+   "line": 194,
+   "kind": "const:bool",
+   "orig": "False",
+   "new": "True",
+   "why": "tests-green"
+  }
+ ]
+}

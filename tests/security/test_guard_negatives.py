@@ -136,3 +136,42 @@ async def test_write_rejects_stale_read(tmp_path):
         await WriteTool().execute(
             {"file_path": str(f), "content": "agent overwrite\n"}, ctx)
     assert f.read_text() == "changed externally\n"     # 外部版保住
+
+
+# ---------------------------------------------------------------- M1-approve 突变补测
+@pytest.mark.parametrize("action,params,must_contain", [
+    ("mail_send", {"to": "a@b.c", "subject": "标题"}, ["a@b.c", "标题"]),
+    ("account_write", {"platform": "google", "user": "u"}, ["google", "user"]),
+    ("sms_send", {"to": "138", "text": "内容"}, ["138", "内容"]),
+    ("pay", {"amount": "99", "to": "merchant"}, ["99", "merchant"]),
+    ("wechat_send", {"to": "wxid", "text": "hello"}, ["wxid", "hello"]),
+    ("bash_allow", {"prefix": ["pip", "install"]}, ["pip install"]),
+    ("browser_open", {"host": "x.example.com"}, ["x.example.com"]),
+    ("egress", {"host": "api.example.com", "ttl_s": 7200},
+     ["api.example.com", "2h00m"]),
+])
+def test_render_summary_per_action(action, params, must_contain):
+    """每类动作的摘要必须含关键目标（反注入面——L60-86 分支对赌）。"""
+    from loadn_webui import approve as ap
+    s = ap._render_summary(action, params)
+    for needle in must_contain:
+        assert needle in s, (action, needle, s)
+
+
+def test_render_summary_account_write_excludes_platform_key():
+    from loadn_webui import approve as ap
+    s = ap._render_summary("account_write", {"platform": "p", "password": "x"})
+    assert "password" in s and "platform" not in s.split("（")[1]
+
+
+def test_render_summary_bash_allow_none_prefix():
+    """prefix=None 走 or [] 回退不崩（prefix or [] 对赌）。"""
+    from loadn_webui import approve as ap
+    s = ap._render_summary("bash_allow", {"prefix": None})
+    assert "?" in s or "放行命令规则" in s
+
+
+def test_render_summary_egress_default_ttl():
+    from loadn_webui import approve as ap
+    s = ap._render_summary("egress", {"host": "h.example"})   # 无 ttl_s
+    assert "2h" in s                                        # 默认 7200=2h00m
