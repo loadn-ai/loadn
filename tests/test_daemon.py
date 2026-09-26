@@ -120,6 +120,7 @@ async def test_auth_rejected(daemon, tmp_path):
     assert evs and evs[0]["type"] == "error" and "auth" in evs[0]["error"]
     w.close()
     assert (daemon.home / "var" / "engine.token").stat().st_mode & 0o777 == 0o600
+    assert daemon.sock.stat().st_mode & 0o777 == 0o600   # socket 同 0600
 
 
 # ---------------------------------------------------------------- turn + 断连重连
@@ -131,6 +132,7 @@ async def test_turn_and_resume_same_session(daemon):
     init = next(e for e in evs if e["type"] == "system" and
                 e.get("subtype") == "init")
     assert init["session_id"] == sid
+    assert init.get("model") not in ("", None, "unknown")  # 真名非回退位
     # 断开（_run_turn 已 close）→ 重连同 sid：同会话续作——transcript 两轮
     # user 事件俱在（挂起保活的进程内证据；行为级=第二轮也正常出终态）
     evs2 = await _run_turn(daemon, sid, "第二轮")

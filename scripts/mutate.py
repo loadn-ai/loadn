@@ -141,14 +141,17 @@ TARGET_TESTS: dict[str, list[str]] = {
     "loadn/core/session.py": [
         "tests/test_t9_units.py",
         "tests/test_session_eng.py",
+        "tests/test_m4_units.py",
     ],
     "loadn/core/hooks.py": [
         "tests/test_hooks_ext_cmds.py",
         "tests/test_ext.py",
+        "tests/test_m4_units.py",
     ],
     "loadn/transport/daemon.py": [
         "tests/test_transport_units.py",
         "tests/test_daemon.py",
+        "tests/test_m4_units.py",
     ],
 }
 
