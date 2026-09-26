@@ -179,6 +179,10 @@ TARGET_TESTS: dict[str, list[str]] = {
         "tests/test_loop.py",
         "tests/contract/test_protocol_v2.py",
         "tests/test_ext.py",
+        "tests/test_loop_grind.py",
+        "tests/test_loop_units.py",
+        "tests/test_cache_warmer.py",
+        "tests/test_t8_units.py",
     ],
 }
 
