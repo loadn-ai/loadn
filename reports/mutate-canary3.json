@@ -1,0 +1,164 @@
+{
+ "results": {
+  "loadn_webui/canary.py": {
+   "file": "loadn_webui/canary.py",
+   "total": 21,
+   "killed": 11,
+   "survived": [
+    {
+     "file": "loadn_webui/canary.py",
+     "line": 115,
+     "kind": "const:bool",
+     "orig": "False",
+     "new": "True"
+    },
+    {
+     "file": "loadn_webui/canary.py",
+     "line": 105,
+     "kind": "bool:BoolOp",
+     "orig": "f.read_text() or \"locked\"",
+     "new": "f.read_text() and 'locked'"
+    },
+    {
+     "file": "loadn_webui/canary.py",
+     "line": 114,
+     "kind": "const:bool",
+     "orig": "True",
+     "new": "False"
+    },
+    {
+     "file": "loadn_webui/canary.py",
+     "line": 44,
+     "kind": "const:int+1",
+     "orig": "20",
+     "new": "21"
+    },
+    {
+     "file": "loadn_webui/canary.py",
+     "line": 45,
+     "kind": "const:int+1",
+     "orig": "16",
+     "new": "17"
+    },
+    {
+     "file": "loadn_webui/canary.py",
+     "line": 47,
+     "kind": "const:bool",
+     "orig": "True",
+     "new": "False"
+    },
+    {
+     "file": "loadn_webui/canary.py",
+     "line": 95,
+     "kind": "const:bool",
+     "orig": "True",
+     "new": "False"
+    },
+    {
+     "file": "loadn_webui/canary.py",
+     "line": 95,
+     "kind": "const:bool",
+     "orig": "True",
+     "new": "False"
+    },
+    {
+     "file": "loadn_webui/canary.py",
+     "line": 96,
+     "kind": "const:bool",
+     "orig": "True",
+     "new": "False"
+    },
+    {
+     "file": "loadn_webui/canary.py",
+     "line": 43,
+     "kind": "const:int+1",
+     "orig": "8",
+     "new": "9"
+    }
+   ],
+   "timeout": []
+  }
+ },
+ "survived": [
+  {
+   "file": "loadn_webui/canary.py",
+   "line": 115,
+   "kind": "const:bool",
+   "orig": "False",
+   "new": "True",
+   "why": "tests-green"
+  },
+  {
+   "file": "loadn_webui/canary.py",
+   "line": 105,
+   "kind": "bool:BoolOp",
+   "orig": "f.read_text() or \"locked\"",
+   "new": "f.read_text() and 'locked'",
+   "why": "tests-green"
+  },
+  {
+   "file": "loadn_webui/canary.py",
+   "line": 114,
+   "kind": "const:bool",
+   "orig": "True",
+   "new": "False",
+   "why": "tests-green"
+  },
+  {
+   "file": "loadn_webui/canary.py",
+   "line": 44,
+   "kind": "const:int+1",
+   "orig": "20",
+   "new": "21",
+   "why": "tests-green"
+  },
+  {
+   "file": "loadn_webui/canary.py",
+   "line": 45,
+   "kind": "const:int+1",
+   "orig": "16",
+   "new": "17",
+   "why": "tests-green"
+  },
+  {
+   "file": "loadn_webui/canary.py",
+   "line": 47,
+   "kind": "const:bool",
+   "orig": "True",
+   "new": "False",
+   "why": "tests-green"
+  },
+  {
+   "file": "loadn_webui/canary.py",
+   "line": 95,
+   "kind": "const:bool",
+   "orig": "True",
+   "new": "False",
+   "why": "tests-green"
+  },
+  {
+   "file": "loadn_webui/canary.py",
+   "line": 95,
+   "kind": "const:bool",
+   "orig": "True",
+   "new": "False",
+   "why": "tests-green"
+  },
+  {
+   "file": "loadn_webui/canary.py",
+   "line": 96,
+   "kind": "const:bool",
+   "orig": "True",
+   "new": "False",
+   "why": "tests-green"
+  },
+  {
+   "file": "loadn_webui/canary.py",
+   "line": 43,
+   "kind": "const:int+1",
+   "orig": "8",
+   "new": "9",
+   "why": "tests-green"
+  }
+ ]
+}

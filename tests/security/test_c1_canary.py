@@ -69,3 +69,22 @@ def test_lock_session_writes_marker(tmp_path, monkeypatch):
     canary.lock_session("sess-lock", "canary 外渗")
     marker = tmp_path / "run" / "locked" / "sess-lock"
     assert marker.exists() and "canary" in marker.read_text()
+
+
+# ---------------------------------------------------------------- M1 突变补测
+def test_is_locked_empty_marker_still_locked(monkeypatch, tmp_path):
+    """空标记文件仍算锁定（read_text() or "locked" 的 fallback 对赌）。"""
+    from loadn_webui.config import PATHS
+    monkeypatch.setitem(PATHS, "run", tmp_path / "run")
+    d = tmp_path / "run" / "locked"
+    d.mkdir(parents=True)
+    (d / "sess-e").write_text("", encoding="utf-8")   # 空标记
+    assert canary.is_locked("sess-e") == "locked"     # 空→fallback 非 None
+
+
+def test_plant_into_fresh_nested_ws(tmp_path):
+    """plant 到不存在的嵌套 ws 目录（mkdir(parents=True) 对赌）。"""
+    deep = tmp_path / "jobs" / "42" / "ws"
+    toks = canary.plant("sess-deep", ws=deep)
+    assert (deep / "notes" / ".canary_tokens.md").exists()
+    assert len(toks) == 3
