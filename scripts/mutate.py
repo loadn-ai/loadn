@@ -175,6 +175,16 @@ TARGET_TESTS: dict[str, list[str]] = {
         "tests/test_prompt_variants.py",
         "tests/test_m6a_units.py",
     ],
+    "loadn/providers/anthropic.py": [
+        "tests/test_providers_anthropic.py",
+        "tests/test_fingerprint.py",
+    ],
+    "loadn/providers/openai_compat.py": [
+        "tests/test_providers_openai.py",
+    ],
+    "loadn/providers/cassette.py": [
+        "tests/test_cassette.py",
+    ],
     "loadn/core/loop.py": [
         "tests/test_loop.py",
         "tests/contract/test_protocol_v2.py",
