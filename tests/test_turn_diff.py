@@ -141,3 +141,28 @@ async def test_budget_500_files(tmp_path):
     dt = time.perf_counter() - t0
     assert len(ctx.extras["turn_diff"]) == 500
     assert dt < 60, f"500 文件耗时 {dt:.1f}s"      # 快照+diff 有界
+
+
+# ---------------------------------------------------------------- M2 突变补测
+def test_coarse_granularity_over_size_cap(tmp_path):
+    """超单文件字节上限 → 粗粒度摘要（非 unified diff——L43 对赌）。"""
+    big = ("x" * 100 + "\n") * 64            # ~6.4KB > MAX_DIFF_BYTES(部分)
+    import loadn.core.turn_diff as td
+    if len(big.encode()) <= td.MAX_DIFF_BYTES:
+        big = big * (td.MAX_DIFF_BYTES // len(big) + 2)
+    f = tmp_path / "big.txt"
+    f.write_text(big, encoding="utf-8")
+    after = ("y" * 100 + "\n") * 64
+    text, h = td.compute(f, big.encode(), after.encode())
+    assert text.startswith("# diff：") and "粗粒度" in text
+    assert "@@" not in text                    # 不是 unified diff
+
+
+def test_compute_identical_returns_empty(tmp_path):
+    """内容未变（mtime 变了）→ 空文本非 diff（L48 对赌）。"""
+    import loadn.core.turn_diff as td
+    f = tmp_path / "same.txt"
+    body = "same\n"
+    f.write_text(body, encoding="utf-8")
+    text, h = td.compute(f, body.encode(), body.encode())
+    assert text == "" and h                    # hash 仍给（账本键）
