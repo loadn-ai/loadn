@@ -155,6 +155,27 @@ TARGET_TESTS: dict[str, list[str]] = {
         "tests/test_daemon.py",
         "tests/test_m4_units.py",
     ],
+    # ---- M6 功能批（2026-09-27 起：断言强度验证——行覆盖高≠杀伤力）
+    "loadn/core/compactor.py": [
+        "tests/test_loop.py",
+        "tests/test_p37_approval_timeline.py",
+    ],
+    "loadn/core/memory.py": [
+        "tests/test_memory.py",
+    ],
+    "loadn/core/tool_repair.py": [
+        "tests/test_tool_repair.py",
+    ],
+    "loadn/core/context.py": [
+        "tests/test_context_sections.py",
+        "tests/test_permissions_context.py",
+        "tests/test_prompt_variants.py",
+    ],
+    "loadn/core/loop.py": [
+        "tests/test_loop.py",
+        "tests/contract/test_protocol_v2.py",
+        "tests/test_ext.py",
+    ],
 }
 
 MUT_TIMEOUT_S = 120         # 单变异窄测试集上限（挂死=存活）
