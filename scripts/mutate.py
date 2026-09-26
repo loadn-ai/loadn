@@ -80,8 +80,8 @@ TARGET_TESTS: dict[str, list[str]] = {
         "tests/test_w0_security.py",
     ],
     "loadn_webui/vault.py": [
+        "tests/test_vault.py",
         "tests/security/test_e2_audit_chain.py",
-        "tests/test_w0_security.py",
     ],
     "loadn/truststore.py": [
         "tests/security/test_b5_trust_gate.py",
