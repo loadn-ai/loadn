@@ -1,0 +1,194 @@
+{
+ "results": {
+  "loadn_webui/vault.py": {
+   "file": "loadn_webui/vault.py",
+   "total": 30,
+   "killed": 18,
+   "survived": [
+    {
+     "file": "loadn_webui/vault.py",
+     "line": 31,
+     "kind": "const:int+1",
+     "orig": "1",
+     "new": "2"
+    },
+    {
+     "file": "loadn_webui/vault.py",
+     "line": 143,
+     "kind": "bool:BoolOp",
+     "orig": "PATHS.get(\"backups\") or (PATHS[\"var\"] / \"backups\")",
+     "new": "PATHS.get('backups') and PATHS['var'] / 'backups'"
+    },
+    {
+     "file": "loadn_webui/vault.py",
+     "line": 151,
+     "kind": "const:bool",
+     "orig": "True",
+     "new": "False"
+    },
+    {
+     "file": "loadn_webui/vault.py",
+     "line": 191,
+     "kind": "cmp:NotIn",
+     "orig": "name not in RES_SECRET_FIELDS",
+     "new": "name in RES_SECRET_FIELDS"
+    },
+    {
+     "file": "loadn_webui/vault.py",
+     "line": 194,
+     "kind": "bool:BoolOp",
+     "orig": "data.get(RES_ENTRY) or {}",
+     "new": "data.get(RES_ENTRY) and {}"
+    },
+    {
+     "file": "loadn_webui/vault.py",
+     "line": 204,
+     "kind": "bool:BoolOp",
+     "orig": "get(RES_ENTRY) or {}",
+     "new": "get(RES_ENTRY) and {}"
+    },
+    {
+     "file": "loadn_webui/vault.py",
+     "line": 214,
+     "kind": "bool:BoolOp",
+     "orig": "data.get(RES_ENTRY) or {}",
+     "new": "data.get(RES_ENTRY) and {}"
+    },
+    {
+     "file": "loadn_webui/vault.py",
+     "line": 244,
+     "kind": "const:bool",
+     "orig": "False",
+     "new": "True"
+    },
+    {
+     "file": "loadn_webui/vault.py",
+     "line": 135,
+     "kind": "const:bool",
+     "orig": "False",
+     "new": "True"
+    },
+    {
+     "file": "loadn_webui/vault.py",
+     "line": 159,
+     "kind": "const:bool",
+     "orig": "False",
+     "new": "True"
+    },
+    {
+     "file": "loadn_webui/vault.py",
+     "line": 238,
+     "kind": "bool:BoolOp",
+     "orig": "yaml.safe_load(p.read_text()) or {}",
+     "new": "yaml.safe_load(p.read_text()) and {}"
+    },
+    {
+     "file": "loadn_webui/vault.py",
+     "line": 299,
+     "kind": "bool:BoolOp",
+     "orig": "e.get(\"updated_at\") or \"\"",
+     "new": "e.get('updated_at') and ''"
+    }
+   ],
+   "timeout": []
+  }
+ },
+ "survived": [
+  {
+   "file": "loadn_webui/vault.py",
+   "line": 31,
+   "kind": "const:int+1",
+   "orig": "1",
+   "new": "2",
+   "why": "tests-green"
+  },
+  {
+   "file": "loadn_webui/vault.py",
+   "line": 143,
+   "kind": "bool:BoolOp",
+   "orig": "PATHS.get(\"backups\") or (PATHS[\"var\"] / \"backups\")",
+   "new": "PATHS.get('backups') and PATHS['var'] / 'backups'",
+   "why": "tests-green"
+  },
+  {
+   "file": "loadn_webui/vault.py",
+   "line": 151,
+   "kind": "const:bool",
+   "orig": "True",
+   "new": "False",
+   "why": "tests-green"
+  },
+  {
+   "file": "loadn_webui/vault.py",
+   "line": 191,
+   "kind": "cmp:NotIn",
+   "orig": "name not in RES_SECRET_FIELDS",
+   "new": "name in RES_SECRET_FIELDS",
+   "why": "tests-green"
+  },
+  {
+   "file": "loadn_webui/vault.py",
+   "line": 194,
+   "kind": "bool:BoolOp",
+   "orig": "data.get(RES_ENTRY) or {}",
+   "new": "data.get(RES_ENTRY) and {}",
+   "why": "tests-green"
+  },
+  {
+   "file": "loadn_webui/vault.py",
+   "line": 204,
+   "kind": "bool:BoolOp",
+   "orig": "get(RES_ENTRY) or {}",
+   "new": "get(RES_ENTRY) and {}",
+   "why": "tests-green"
+  },
+  {
+   "file": "loadn_webui/vault.py",
+   "line": 214,
+   "kind": "bool:BoolOp",
+   "orig": "data.get(RES_ENTRY) or {}",
+   "new": "data.get(RES_ENTRY) and {}",
+   "why": "tests-green"
+  },
+  {
+   "file": "loadn_webui/vault.py",
+   "line": 244,
+   "kind": "const:bool",
+   "orig": "False",
+   "new": "True",
+   "why": "tests-green"
+  },
+  {
+   "file": "loadn_webui/vault.py",
+   "line": 135,
+   "kind": "const:bool",
+   "orig": "False",
+   "new": "True",
+   "why": "tests-green"
+  },
+  {
+   "file": "loadn_webui/vault.py",
+   "line": 159,
+   "kind": "const:bool",
+   "orig": "False",
+   "new": "True",
+   "why": "tests-green"
+  },
+  {
+   "file": "loadn_webui/vault.py",
+   "line": 238,
+   "kind": "bool:BoolOp",
+   "orig": "yaml.safe_load(p.read_text()) or {}",
+   "new": "yaml.safe_load(p.read_text()) and {}",
+   "why": "tests-green"
+  },
+  {
+   "file": "loadn_webui/vault.py",
+   "line": 299,
+   "kind": "bool:BoolOp",
+   "orig": "e.get(\"updated_at\") or \"\"",
+   "new": "e.get('updated_at') and ''",
+   "why": "tests-green"
+  }
+ ]
+}

@@ -1,0 +1,239 @@
+{
+ "results": {
+  "loadn/truststore.py": {
+   "file": "loadn/truststore.py",
+   "total": 34,
+   "killed": 19,
+   "survived": [
+    {
+     "file": "loadn/truststore.py",
+     "line": 39,
+     "kind": "const:int+1",
+     "orig": "1",
+     "new": "2"
+    },
+    {
+     "file": "loadn/truststore.py",
+     "line": 40,
+     "kind": "const:int+1",
+     "orig": "2000",
+     "new": "2001"
+    },
+    {
+     "file": "loadn/truststore.py",
+     "line": 41,
+     "kind": "const:int+1",
+     "orig": "1024",
+     "new": "1025"
+    },
+    {
+     "file": "loadn/truststore.py",
+     "line": 41,
+     "kind": "const:int+1",
+     "orig": "8",
+     "new": "9"
+    },
+    {
+     "file": "loadn/truststore.py",
+     "line": 41,
+     "kind": "const:int+1",
+     "orig": "1024",
+     "new": "1025"
+    },
+    {
+     "file": "loadn/truststore.py",
+     "line": 106,
+     "kind": "bool:BoolOp",
+     "orig": "_resource_files(cur) or _skill_dirs(cur)",
+     "new": "_resource_files(cur) and _skill_dirs(cur)"
+    },
+    {
+     "file": "loadn/truststore.py",
+     "line": 147,
+     "kind": "const:bool",
+     "orig": "True",
+     "new": "False"
+    },
+    {
+     "file": "loadn/truststore.py",
+     "line": 64,
+     "kind": "bool:BoolOp",
+     "orig": "g == base or g in base.parents",
+     "new": "g == base and g in base.parents"
+    },
+    {
+     "file": "loadn/truststore.py",
+     "line": 76,
+     "kind": "cmp:GtE",
+     "orig": "len(out) >= MAX_DIGEST_FILES",
+     "new": "len(out) < MAX_DIGEST_FILES"
+    },
+    {
+     "file": "loadn/truststore.py",
+     "line": 91,
+     "kind": "cmp:Eq",
+     "orig": "g == base",
+     "new": "g != base"
+    },
+    {
+     "file": "loadn/truststore.py",
+     "line": 91,
+     "kind": "cmp:In",
+     "orig": "g in base.parents",
+     "new": "g not in base.parents"
+    },
+    {
+     "file": "loadn/truststore.py",
+     "line": 149,
+     "kind": "const:int+1",
+     "orig": "2",
+     "new": "3"
+    },
+    {
+     "file": "loadn/truststore.py",
+     "line": 149,
+     "kind": "const:bool",
+     "orig": "True",
+     "new": "False"
+    },
+    {
+     "file": "loadn/truststore.py",
+     "line": 150,
+     "kind": "const:bool",
+     "orig": "False",
+     "new": "True"
+    },
+    {
+     "file": "loadn/truststore.py",
+     "line": 96,
+     "kind": "bool:BoolOp",
+     "orig": "d.is_dir() or d.is_symlink()",
+     "new": "d.is_dir() and d.is_symlink()"
+    }
+   ],
+   "timeout": []
+  }
+ },
+ "survived": [
+  {
+   "file": "loadn/truststore.py",
+   "line": 39,
+   "kind": "const:int+1",
+   "orig": "1",
+   "new": "2",
+   "why": "tests-green"
+  },
+  {
+   "file": "loadn/truststore.py",
+   "line": 40,
+   "kind": "const:int+1",
+   "orig": "2000",
+   "new": "2001",
+   "why": "tests-green"
+  },
+  {
+   "file": "loadn/truststore.py",
+   "line": 41,
+   "kind": "const:int+1",
+   "orig": "1024",
+   "new": "1025",
+   "why": "tests-green"
+  },
+  {
+   "file": "loadn/truststore.py",
+   "line": 41,
+   "kind": "const:int+1",
+   "orig": "8",
+   "new": "9",
+   "why": "tests-green"
+  },
+  {
+   "file": "loadn/truststore.py",
+   "line": 41,
+   "kind": "const:int+1",
+   "orig": "1024",
+   "new": "1025",
+   "why": "tests-green"
+  },
+  {
+   "file": "loadn/truststore.py",
+   "line": 106,
+   "kind": "bool:BoolOp",
+   "orig": "_resource_files(cur) or _skill_dirs(cur)",
+   "new": "_resource_files(cur) and _skill_dirs(cur)",
+   "why": "tests-green"
+  },
+  {
+   "file": "loadn/truststore.py",
+   "line": 147,
+   "kind": "const:bool",
+   "orig": "True",
+   "new": "False",
+   "why": "tests-green"
+  },
+  {
+   "file": "loadn/truststore.py",
+   "line": 64,
+   "kind": "bool:BoolOp",
+   "orig": "g == base or g in base.parents",
+   "new": "g == base and g in base.parents",
+   "why": "tests-green"
+  },
+  {
+   "file": "loadn/truststore.py",
+   "line": 76,
+   "kind": "cmp:GtE",
+   "orig": "len(out) >= MAX_DIGEST_FILES",
+   "new": "len(out) < MAX_DIGEST_FILES",
+   "why": "tests-green"
+  },
+  {
+   "file": "loadn/truststore.py",
+   "line": 91,
+   "kind": "cmp:Eq",
+   "orig": "g == base",
+   "new": "g != base",
+   "why": "tests-green"
+  },
+  {
+   "file": "loadn/truststore.py",
+   "line": 91,
+   "kind": "cmp:In",
+   "orig": "g in base.parents",
+   "new": "g not in base.parents",
+   "why": "tests-green"
+  },
+  {
+   "file": "loadn/truststore.py",
+   "line": 149,
+   "kind": "const:int+1",
+   "orig": "2",
+   "new": "3",
+   "why": "tests-green"
+  },
+  {
+   "file": "loadn/truststore.py",
+   "line": 149,
+   "kind": "const:bool",
+   "orig": "True",
+   "new": "False",
+   "why": "tests-green"
+  },
+  {
+   "file": "loadn/truststore.py",
+   "line": 150,
+   "kind": "const:bool",
+   "orig": "False",
+   "new": "True",
+   "why": "tests-green"
+  },
+  {
+   "file": "loadn/truststore.py",
+   "line": 96,
+   "kind": "bool:BoolOp",
+   "orig": "d.is_dir() or d.is_symlink()",
+   "new": "d.is_dir() and d.is_symlink()",
+   "why": "tests-green"
+  }
+ ]
+}

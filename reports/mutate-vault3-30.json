@@ -1,0 +1,239 @@
+{
+ "results": {
+  "loadn_webui/vault.py": {
+   "file": "loadn_webui/vault.py",
+   "total": 30,
+   "killed": 15,
+   "survived": [
+    {
+     "file": "loadn_webui/vault.py",
+     "line": 73,
+     "kind": "const:int+1",
+     "orig": "0o600",
+     "new": "385"
+    },
+    {
+     "file": "loadn_webui/vault.py",
+     "line": 111,
+     "kind": "const:bool",
+     "orig": "True",
+     "new": "False"
+    },
+    {
+     "file": "loadn_webui/vault.py",
+     "line": 148,
+     "kind": "const:int+1",
+     "orig": "0o600",
+     "new": "385"
+    },
+    {
+     "file": "loadn_webui/vault.py",
+     "line": 163,
+     "kind": "const:bool",
+     "orig": "True",
+     "new": "False"
+    },
+    {
+     "file": "loadn_webui/vault.py",
+     "line": 186,
+     "kind": "bool:BoolOp",
+     "orig": "e.get(name) or \"\"",
+     "new": "e.get(name) and ''"
+    },
+    {
+     "file": "loadn_webui/vault.py",
+     "line": 248,
+     "kind": "const:bool",
+     "orig": "True",
+     "new": "False"
+    },
+    {
+     "file": "loadn_webui/vault.py",
+     "line": 296,
+     "kind": "bool:BoolOp",
+     "orig": "e.get(f) or \"\"",
+     "new": "e.get(f) and ''"
+    },
+    {
+     "file": "loadn_webui/vault.py",
+     "line": 68,
+     "kind": "const:bool",
+     "orig": "True",
+     "new": "False"
+    },
+    {
+     "file": "loadn_webui/vault.py",
+     "line": 89,
+     "kind": "const:int+1",
+     "orig": "16",
+     "new": "17"
+    },
+    {
+     "file": "loadn_webui/vault.py",
+     "line": 216,
+     "kind": "bool:BoolOp",
+     "orig": "getattr(CONFIG.resources, k, \"\") or \"\"",
+     "new": "getattr(CONFIG.resources, k, '') and ''"
+    },
+    {
+     "file": "loadn_webui/vault.py",
+     "line": 250,
+     "kind": "const:bool",
+     "orig": "True",
+     "new": "False"
+    },
+    {
+     "file": "loadn_webui/vault.py",
+     "line": 250,
+     "kind": "const:bool",
+     "orig": "False",
+     "new": "True"
+    },
+    {
+     "file": "loadn_webui/vault.py",
+     "line": 83,
+     "kind": "const:bool",
+     "orig": "False",
+     "new": "True"
+    },
+    {
+     "file": "loadn_webui/vault.py",
+     "line": 89,
+     "kind": "const:int+1",
+     "orig": "4",
+     "new": "5"
+    },
+    {
+     "file": "loadn_webui/vault.py",
+     "line": 89,
+     "kind": "const:int+1",
+     "orig": "2",
+     "new": "3"
+    }
+   ],
+   "timeout": []
+  }
+ },
+ "survived": [
+  {
+   "file": "loadn_webui/vault.py",
+   "line": 73,
+   "kind": "const:int+1",
+   "orig": "0o600",
+   "new": "385",
+   "why": "tests-green"
+  },
+  {
+   "file": "loadn_webui/vault.py",
+   "line": 111,
+   "kind": "const:bool",
+   "orig": "True",
+   "new": "False",
+   "why": "tests-green"
+  },
+  {
+   "file": "loadn_webui/vault.py",
+   "line": 148,
+   "kind": "const:int+1",
+   "orig": "0o600",
+   "new": "385",
+   "why": "tests-green"
+  },
+  {
+   "file": "loadn_webui/vault.py",
+   "line": 163,
+   "kind": "const:bool",
+   "orig": "True",
+   "new": "False",
+   "why": "tests-green"
+  },
+  {
+   "file": "loadn_webui/vault.py",
+   "line": 186,
+   "kind": "bool:BoolOp",
+   "orig": "e.get(name) or \"\"",
+   "new": "e.get(name) and ''",
+   "why": "tests-green"
+  },
+  {
+   "file": "loadn_webui/vault.py",
+   "line": 248,
+   "kind": "const:bool",
+   "orig": "True",
+   "new": "False",
+   "why": "tests-green"
+  },
+  {
+   "file": "loadn_webui/vault.py",
+   "line": 296,
+   "kind": "bool:BoolOp",
+   "orig": "e.get(f) or \"\"",
+   "new": "e.get(f) and ''",
+   "why": "tests-green"
+  },
+  {
+   "file": "loadn_webui/vault.py",
+   "line": 68,
+   "kind": "const:bool",
+   "orig": "True",
+   "new": "False",
+   "why": "tests-green"
+  },
+  {
+   "file": "loadn_webui/vault.py",
+   "line": 89,
+   "kind": "const:int+1",
+   "orig": "16",
+   "new": "17",
+   "why": "tests-green"
+  },
+  {
+   "file": "loadn_webui/vault.py",
+   "line": 216,
+   "kind": "bool:BoolOp",
+   "orig": "getattr(CONFIG.resources, k, \"\") or \"\"",
+   "new": "getattr(CONFIG.resources, k, '') and ''",
+   "why": "tests-green"
+  },
+  {
+   "file": "loadn_webui/vault.py",
+   "line": 250,
+   "kind": "const:bool",
+   "orig": "True",
+   "new": "False",
+   "why": "tests-green"
+  },
+  {
+   "file": "loadn_webui/vault.py",
+   "line": 250,
+   "kind": "const:bool",
+   "orig": "False",
+   "new": "True",
+   "why": "tests-green"
+  },
+  {
+   "file": "loadn_webui/vault.py",
+   "line": 83,
+   "kind": "const:bool",
+   "orig": "False",
+   "new": "True",
+   "why": "tests-green"
+  },
+  {
+   "file": "loadn_webui/vault.py",
+   "line": 89,
+   "kind": "const:int+1",
+   "orig": "4",
+   "new": "5",
+   "why": "tests-green"
+  },
+  {
+   "file": "loadn_webui/vault.py",
+   "line": 89,
+   "kind": "const:int+1",
+   "orig": "2",
+   "new": "3",
+   "why": "tests-green"
+  }
+ ]
+}

@@ -109,3 +109,16 @@ async def test_admin_vault_editor_roundtrip(client):
     assert r.status_code == 200
     assert (await client.delete("/api/admin/vault/editor-test")).status_code == 404
     assert v.get("editor-test") is None
+
+
+def test_decrypt_min_frame_boundary():
+    """34B 恰好最小帧长：过格式门进 AESGCM（InvalidTag），不误报 LDV1
+    （L89 常数+1 对赌——门槛边界精确性）。"""
+    import pytest as _pytest
+    from cryptography.exceptions import InvalidTag
+
+    from loadn_webui.vault import _decrypt
+    blob = b"LDV1" + b"\x00\x00" + b"\x00" * 12 + b"\x00" * 16   # =34B
+    assert len(blob) == 34
+    with _pytest.raises(InvalidTag):
+        _decrypt(blob)                    # 过门后 GCM 校验失败（非 LDV1 错）

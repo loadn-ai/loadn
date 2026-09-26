@@ -24,6 +24,7 @@ import ast
 import json
 import os
 import subprocess
+import sys
 import time
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -252,6 +253,12 @@ def apply_mutant(path: Path, m: Mutant) -> None:
 def restore(path: Path) -> None:
     subprocess.run(["git", "checkout", "--", str(path)], cwd=REPO,
                    check=False)
+    # 同尺寸变异+同秒 mtime 时 git checkout 不触发 pyc 失效（M1-vault 实证
+    # 的基建坑）——restore 连 pyc 一并清，杜绝陈旧字节码
+    pyc = path.parent / "__pycache__" / (
+        path.stem + ".cpython-" + str(sys.version_info[0])
+        + str(sys.version_info[1]) + ".pyc")
+    pyc.unlink(missing_ok=True)
 
 
 # ---------------------------------------------------------------- 执行
