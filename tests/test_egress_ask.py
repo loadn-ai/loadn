@@ -113,6 +113,9 @@ async def test_session_override_and_fail_open(client, monkeypatch):
     monkeypatch.setattr(CONFIG.security, "egress_allow", [])
     monkeypatch.setattr(CONFIG.security, "egress_mode", "enforce")
     monkeypatch.setattr(CONFIG.security, "egress_on_deny", "ask")
+    # 全局 wait 上限（默认 120s）：防变异路径把 gate 打进 ask 全程等满，
+    # 撞突变 runner 超时被误判存活（第二处显式 1s 保持原语义）
+    monkeypatch.setattr(CONFIG.security, "egress_ask_wait_s", 2)
     r = await client.post("/api/sessions", json={"title": "egress 覆盖"})
     sid = r.json()["session"]["id"]
 

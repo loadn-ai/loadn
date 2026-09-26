@@ -118,3 +118,68 @@ def test_egress_uds_gating(monkeypatch, tmp_path):
     assert sandbox._egress_uds() is None                 # 无 socket → 不启用
     (run / "egress.sock").write_text("")
     assert sandbox._egress_uds() == run / "egress.sock"  # off 档也存在
+
+
+# ---------------------------------------------------------------- M3 突变补测
+def test_bwrap_available_false_on_probe_fail(monkeypatch):
+    """探测子进程非零退出 → False（returncode 判定从未被对赌）。"""
+    import subprocess
+
+    class _P:
+        returncode = 1
+
+    monkeypatch.setattr(subprocess, "run", lambda *a, **k: _P())
+    assert sandbox.bwrap_available() is False
+    monkeypatch.setattr(subprocess, "run",
+                        lambda *a, **k: (_ for _ in ()).throw(OSError()))
+    assert sandbox.bwrap_available() is False   # 探测异常同败（降档语义）
+
+
+def test_wrap_engine_downgrade_warn_deduped(monkeypatch, tmp_path):
+    """降档告警去重：同 reason 第二次静默；显式 off 零告警 + direct。"""
+    import io
+    import logging
+
+    monkeypatch.setattr(sandbox, "resolve_tier",
+                        lambda req=None: ("off", "bwrap-unavailable"))
+    buf = io.StringIO()
+    h = logging.StreamHandler(buf)
+    sandbox.log.addHandler(h)
+    try:
+        cmd, mode = sandbox.wrap_engine(["x"], {}, engine="loadn",
+                                        sid="s1", cwd=str(tmp_path))
+        assert (cmd, mode) == (["x"], "direct-fallback")   # 降档 ≠ direct
+        assert "bwrap-unavailable" in buf.getvalue()        # 首次必告警
+        buf.seek(0), buf.truncate(0)
+        sandbox.wrap_engine(["x"], {}, engine="loadn", sid="s1",
+                            cwd=str(tmp_path))
+        assert buf.getvalue() == ""                         # 同因第二次静默
+        monkeypatch.setattr(sandbox, "resolve_tier", lambda req=None: ("off", ""))
+        buf.seek(0), buf.truncate(0)
+        _, mode2 = sandbox.wrap_engine(["x"], {}, engine="loadn",
+                                       sid="s1", cwd=str(tmp_path))
+        assert mode2 == "direct" and buf.getvalue() == ""   # 显式 off 零告警
+    finally:
+        sandbox.log.removeHandler(h)
+
+
+def test_wrap_loadn_net_bridge_toggle(monkeypatch, tmp_path):
+    """UDS 桥双态：无 socket=share-net 直跑；有=unshare-net+socat 桥前缀。"""
+    monkeypatch.setattr(sandbox.shutil, "which", lambda _: "/usr/bin/bwrap")
+    monkeypatch.setattr(sandbox, "_egress_uds", lambda sid="": None)
+    argv = sandbox.wrap_loadn(["loadn", "hi"], {"https_proxy":
+                                                "http://127.0.0.1:8793"},
+                              sid_session="s", cwd=tmp_path)
+    assert "--share-net" in argv and "--unshare-net" not in argv
+    assert "socat" not in " ".join(argv) and argv[-2:] == ["loadn", "hi"]
+
+    uds = tmp_path / "egress-x.sock"
+    uds.write_text("")
+    monkeypatch.setattr(sandbox, "_egress_uds", lambda sid="": uds)
+    argv2 = sandbox.wrap_loadn(["loadn", "hi"], {"https_proxy":
+                                                 "http://127.0.0.1:8793"},
+                               sid_session="s", cwd=tmp_path)
+    joined = " ".join(argv2)
+    assert "--unshare-net" in argv2 and "--share-net" not in argv2
+    assert "socat" in joined and "8793" in joined     # 真桥前缀（非早退直跑）
+    assert str(uds) in argv2                          # socket ro-bind 进沙箱

@@ -129,10 +129,13 @@ TARGET_TESTS: dict[str, list[str]] = {
         "tests/test_egress_units.py",
         "tests/test_egress_ask.py",
         "tests/test_egress_align.py",
+        "tests/test_egress_balance.py",
+        "tests/test_egress_gates.py",
     ],
     "loadn_webui/egress_grants.py": [
         "tests/test_egress_balance.py",
         "tests/test_egress_ask.py",
+        "tests/test_egress_gates.py",
     ],
     "loadn/core/session.py": [
         "tests/test_t9_units.py",
@@ -148,7 +151,7 @@ TARGET_TESTS: dict[str, list[str]] = {
     ],
 }
 
-MUT_TIMEOUT_S = 90          # 单变异窄测试集上限（挂死=存活）
+MUT_TIMEOUT_S = 120         # 单变异窄测试集上限（挂死=存活）
 BASELINE_TIMEOUT_S = 600    # 基线（未变异）集上限
 
 _CMP_SWAP = {ast.Eq: ast.NotEq, ast.NotEq: ast.Eq,
@@ -266,10 +269,12 @@ def run_tests(tests: list[str], timeout: float) -> tuple[int, float]:
     t0 = time.time()
     try:
         r = subprocess.run(
-            [PY, "-m", "pytest", "-x", "-q", "-p", "no:cacheprovider",
+            [PY, "-B", "-m", "pytest", "-x", "-q", "-p", "no:cacheprovider",
              *tests],
             cwd=REPO, capture_output=True, timeout=timeout,
-            env={**os.environ, "LOADN_PROVIDER": "fake"})
+            env={**os.environ, "LOADN_PROVIDER": "fake",
+                 # 同尺寸变异+同秒 mtime 时陈旧 pyc 不失效（M1-vault 实证）
+                 "PYTHONDONTWRITEBYTECODE": "1"})
         return r.returncode, time.time() - t0
     except subprocess.TimeoutExpired:
         return -1, time.time() - t0
