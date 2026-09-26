@@ -163,14 +163,17 @@ TARGET_TESTS: dict[str, list[str]] = {
     ],
     "loadn/core/memory.py": [
         "tests/test_memory.py",
+        "tests/test_m6a_units.py",
     ],
     "loadn/core/tool_repair.py": [
         "tests/test_tool_repair.py",
+        "tests/test_m6a_units.py",
     ],
     "loadn/core/context.py": [
         "tests/test_context_sections.py",
         "tests/test_permissions_context.py",
         "tests/test_prompt_variants.py",
+        "tests/test_m6a_units.py",
     ],
     "loadn/core/loop.py": [
         "tests/test_loop.py",
