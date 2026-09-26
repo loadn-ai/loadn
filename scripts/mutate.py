@@ -195,9 +195,11 @@ TARGET_TESTS: dict[str, list[str]] = {
     "loadn/tools/grep.py": [
         "tests/test_tools_search.py",
         "tests/test_grep_capability.py",
+        "tests/test_m6d_units.py",
     ],
     "loadn/tools/read.py": [
         "tests/test_tools_files.py",
+        "tests/test_m6d_units.py",
     ],
     "loadn/tools/interactive.py": [
         "tests/test_tools_interactive.py",
