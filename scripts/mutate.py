@@ -178,12 +178,15 @@ TARGET_TESTS: dict[str, list[str]] = {
     "loadn/providers/anthropic.py": [
         "tests/test_providers_anthropic.py",
         "tests/test_fingerprint.py",
+        "tests/test_m6c_units.py",
     ],
     "loadn/providers/openai_compat.py": [
         "tests/test_providers_openai.py",
+        "tests/test_m6c_units.py",
     ],
     "loadn/providers/cassette.py": [
         "tests/test_cassette.py",
+        "tests/test_m6c_units.py",
     ],
     "loadn/core/loop.py": [
         "tests/test_loop.py",
