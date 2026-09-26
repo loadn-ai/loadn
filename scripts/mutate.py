@@ -268,7 +268,8 @@ def run_tests(tests: list[str], timeout: float) -> tuple[int, float]:
         return -1, time.time() - t0
 
 
-def scan(files: list[str], report_path: Path, from_idx: int = 0) -> dict:
+def scan(files: list[str], report_path: Path, from_idx: int = 0,
+         max_n: int = 0) -> dict:
     results: dict[str, Report] = {}
     all_survived: list[dict] = []
     for rel in files:
@@ -283,6 +284,8 @@ def scan(files: list[str], report_path: Path, from_idx: int = 0) -> dict:
             print(f"!! 基线红 {rel}（rc={rc}）——跳过该文件")
             continue
         mutants = gen_mutants(path)[from_idx:]
+        if max_n:
+            mutants = mutants[:max_n]
         rep = Report(file=rel, total=len(mutants))
         print(f"== {rel}: {len(mutants)} 变异（from {from_idx}）")
         for i, m in enumerate(mutants):
@@ -338,6 +341,8 @@ def main() -> int:
     ap.add_argument("--report", default=None)
     ap.add_argument("--from-idx", type=int, default=0,
                     help="跳过前 N 个变异（分段跑大文件）")
+    ap.add_argument("--max", type=int, default=0,
+                    help="本段最多 N 个变异（0=不限）")
     args = ap.parse_args()
     files: list[str] = []
     if args.targets:
@@ -350,7 +355,7 @@ def main() -> int:
     rp = REPO / (args.report or
                  f"reports/mutate-{int(time.time())}.json")
     rp.parent.mkdir(exist_ok=True)
-    out = scan(files, rp, from_idx=args.from_idx)
+    out = scan(files, rp, from_idx=args.from_idx, max_n=args.max)
     return 0 if out["kill_rate"] >= 0.85 else 1
 
 
