@@ -28,6 +28,11 @@
 
 ### 执行沙箱
 
+以上安全运维七键（sandbox/codemode_enabled/lsp_enabled/shared_readonly/
+resource_bridges/approval_ttl_s/approval_enforce/egress_proxy_port）另有
+WebUI 写入口：安全中心 `PUT /api/admin/security/ops`（局部键语义，与
+本表 yaml 写同效——sandbox 档位重启生效，其余热生效）。
+
 | 键 | 默认 | 说明 |
 |---|---|---|
 | `sandbox` | `off` | 档位枚举（非法值拒启）：`off` 直跑（诚实标注未隔离）/ `bwrap` Linux 原生档（探测 bwrap+user namespace，不可用 fail-closed 降 off+审计）/ `vm-bwrap` 桌面 VM 执行域（执行语义=bwrap）/ `seatbelt`·`appcontainer`·`remote` 占位档（降 off+审计） |
@@ -43,6 +48,7 @@
 | `egress_ask_wait_s` | `120` | ask 挂起等待上限秒（**15-600**；超时/拒绝→403 带理由与 hint） |
 | `egress_allow` | 出厂白名单¹ | 后缀匹配（`export.arxiv.org` 类子域一并覆盖）；支持 `config.yaml` 热重载免重启 |
 | `egress_proxy_port` | `0` | 出口代理端口（0=随机绑定 lifespan 回写；生产可固定 8793） |
+| `egress_grant_ttl_s` | `7200` | 审批式临时放行默认 TTL 秒（**300-86400**；钳制域在 egress_grants 常量） |
 
 ¹ 出厂含 api.anthropic.com / open.bigmodel.cn / pypi.org / registry.npmjs.org /
 github.com / arxiv.org / 2captcha.com / opencode.ai / llm-gw.internal 等

@@ -1081,7 +1081,17 @@ def egress_put_policy(body: dict):
     try:
         return settings_admin.put_security_egress(body)
     except ValueError as e:
-        raise HTTPException(400, str(e)) from e
+        raise HTTPException(400, str(e))
+
+
+@router.put("/admin/security/ops")
+async def put_security_ops(body: dict):
+    """安全运维面写（v0.6.5 显式配置化七键）：sandbox 档位/功能开关/
+    授权面/审批 TTL——yaml round-trip + CONFIG 原地更新。"""
+    try:
+        return settings_admin.put_security_ops(body)
+    except ValueError as e:
+        raise HTTPException(400, str(e))
 
 
 @router.delete("/admin/egress/allow")

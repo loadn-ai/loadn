@@ -24,6 +24,9 @@ log = get_logger(__name__)
 
 GW_HOST = "llm-gw.internal"          # 虚拟域：代理内 LLM 网关（凭证注入点）
 GW_PATHS_PREFIX = ("/v1/messages", "/api/anthropic")   # 透传路径族
+# 网关上游总超时：长 thinking/大输出流硬顶（生产长任务可调大——模块常量，
+# 暂不进 config：与 httpx client 生命周期绑定，热更意义小）
+GW_UPSTREAM_TIMEOUT_S = 600
 
 # 运行实例（lifespan start() 注册；spawn 侧 ensure_session_uds 的入口）
 _INSTANCE: EgressProxy | None = None
@@ -473,7 +476,7 @@ class EgressProxy:
             _record(GW_HOST, "allow-gateway", CONFIG.security.egress_mode)
             up_url = base + (u.path or "/v1/messages") + \
                 (f"?{u.query}" if u.query else "")
-            async with _hx.AsyncClient(timeout=600) as client:
+            async with _hx.AsyncClient(timeout=GW_UPSTREAM_TIMEOUT_S) as client:
                 up_resp = await client.request(method, up_url,
                                                content=body or None,
                                                headers=fwd)

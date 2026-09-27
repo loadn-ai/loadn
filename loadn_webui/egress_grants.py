@@ -18,8 +18,17 @@ from .util import get_logger
 
 log = get_logger(__name__)
 
-DEFAULT_TTL_S = 2 * 3600               # 默认 2h
 MIN_TTL_S, MAX_TTL_S = 300, 24 * 3600  # 钳制域：5 分钟 - 24 小时
+
+
+def _default_ttl_s() -> int:
+    """默认 TTL 走 CONFIG.security.egress_grant_ttl_s（热更；启动校验兜底）。"""
+    try:
+        from .config import CONFIG
+        v = int(CONFIG.security.egress_grant_ttl_s or 7200)
+        return max(MIN_TTL_S, min(MAX_TTL_S, v))
+    except Exception:                                   # noqa: BLE001
+        return 7200
 
 # sid -> {host: expires_epoch}
 _GRANTS: dict[str, dict[str, float]] = {}
@@ -38,10 +47,10 @@ def valid_host(host: str) -> str | None:
     return h
 
 
-def grant(sid: str, host: str, ttl_s: int = DEFAULT_TTL_S, *,
+def grant(sid: str, host: str, ttl_s: int = 0, *,
           approval_id: int | None = None) -> dict:
     """落授权（ttl 钳制到 [300, 86400]）。审计留痕，返回含到期时间。"""
-    ttl = max(MIN_TTL_S, min(MAX_TTL_S, int(ttl_s or DEFAULT_TTL_S)))
+    ttl = max(MIN_TTL_S, min(MAX_TTL_S, int(ttl_s or _default_ttl_s())))
     exp = time.time() + ttl
     _GRANTS.setdefault(sid, {})[host] = exp
     out = {"sid": sid, "host": host, "ttl_s": ttl,

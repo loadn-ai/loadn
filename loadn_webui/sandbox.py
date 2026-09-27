@@ -254,7 +254,13 @@ def wrap_loadn(cmd: list[str], env: dict, *, sid_session: str,
     argv += ["--setenv", "PYTHONDONTWRITEBYTECODE", "1"]
     if uds is None:
         return argv + cmd
-    proxy_port = env.get("https_proxy", "").rsplit(":", 1)[-1] or "8793"
+    # 桥端口三源回退：spawn env 的 https_proxy（claude_runner 注入，最具体）
+    # > CONFIG.egress_proxy_port（lifespan 已回写实际绑定值——固定端口部署
+    # 不再猜过期默认）> 8793（随机端口直调场景的最后回退）
+    proxy_port = env.get("https_proxy", "").rsplit(":", 1)[-1]
+    if not proxy_port.isdigit():
+        from .config import CONFIG as _CFG
+        proxy_port = str(_CFG.security.egress_proxy_port or 8793)
     boot = (f"ip link set lo up 2>/dev/null; "
             f"socat TCP-LISTEN:{proxy_port},bind=127.0.0.1,fork,reuseaddr "
             f"UNIX-CONNECT:{uds} & "

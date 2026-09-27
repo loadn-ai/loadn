@@ -87,11 +87,6 @@ class RunConfig:
     replay_max_events: int = 200
     # 终态 turn 的 session_events 保留天数（超期清理；活跃 turn 永不清）。
     events_retain_days: float = 7
-    # 精准回放：fresh connect 只回放活跃 turn 的尾部条数（前端 live 尾窗 60，
-    # 200 有富余）；无活跃 turn 零回放。断线补发（Last-Event-ID）不受此限。
-    replay_max_events: int = 200
-    # 终态 turn 的 session_events 保留天数（超期清理；活跃 turn 永不清）。
-    events_retain_days: float = 7
 
 
 @dataclass
@@ -182,6 +177,9 @@ class SecurityConfig:
     egress_on_deny: str = "ask"
     # ask 挂起等待上限秒（15-600；超时/拒绝 → 403 带理由与 hint）
     egress_ask_wait_s: int = 120
+    # 审批式临时放行默认 TTL 秒（钳制域 300-86400 在 egress_grants 内常量；
+    # 用户点「批准」即落这张限时单——重启即清是既定语义）
+    egress_grant_ttl_s: int = 7200
     # SSRF 内网敏感域（fetch_page 等宿主中介抓取的禁入后缀清单）——私网/回环/
     # 链路本地 IP 段无条件拦截，这里只补「解析得到公网 IP 但属于平台侧通道」的域
     ssrf_deny_hosts: list = field(default_factory=lambda: [
@@ -337,6 +335,9 @@ def load_config() -> Config:
     if cfg.security.egress_on_deny not in ("deny", "ask"):
         raise ValueError(f"security.egress_on_deny={cfg.security.egress_on_deny!r} "
                          "非法（deny | ask，config.yaml）——拒绝启动")
+    if not 300 <= int(cfg.security.egress_grant_ttl_s or 7200) <= 86400:
+        raise ValueError("security.egress_grant_ttl_s 需为 300-86400 的秒数"
+                         "（临时放行默认 TTL）")
     if not 15 <= int(cfg.security.egress_ask_wait_s or 120) <= 600:
         raise ValueError("security.egress_ask_wait_s 需为 15-600 的秒数"
                          "（config.yaml）——拒绝启动")

@@ -11,7 +11,7 @@ from html.parser import HTMLParser
 
 import httpx
 
-from loadn.constants import WEBFETCH_MAX_CHARS
+from loadn.constants import WEBFETCH_MAX_CHARS, WEBFETCH_TIMEOUT_S
 from loadn.tools.base import Tool, ToolContext, ToolError
 from loadn.tools.truncate import Truncator
 
@@ -97,7 +97,7 @@ class WebFetchTool(Tool):
         if not url.startswith(("http://", "https://")):
             raise ToolError(f"url 需以 http:// 或 https:// 开头：{url}")
         try:
-            async with httpx.AsyncClient(follow_redirects=True, timeout=30.0,
+            async with httpx.AsyncClient(follow_redirects=True, timeout=WEBFETCH_TIMEOUT_S,
                                          headers={"User-Agent": _UA}) as client:
                 resp = await client.get(url)
         except (httpx.HTTPError, OSError) as e:

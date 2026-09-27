@@ -531,3 +531,61 @@ async def test_notify() -> dict:
     """真实推一条测试通知（发给用户自己；provider 未配置时 ok=False）。"""
     from .notify import ping
     return await ping()
+
+
+def put_security_ops(body: dict) -> dict:
+    """安全运维面写（v0.6.5 显式配置化七键的 WebUI 入口——安全中心）：
+    sandbox 档位 / codemode·lsp 开关 / shared_readonly·resource_bridges
+    授权面 / approval TTL 与终态 / egress 代理端口。键可省略（只改给的）。
+
+    红线键（审计链/确认码门本体/信任门/SSRF 段）不在此面——宪法不可配。
+    sandbox 档位变更重启语义（spawn 期生效），与 egress 热更不同。
+    """
+    from .config import SANDBOX_TIERS
+    updates: dict = {}
+    if (sbx := body.get("sandbox")) is not None:
+        if sbx not in SANDBOX_TIERS:
+            raise ValueError(f"sandbox 需为 {' | '.join(SANDBOX_TIERS)}")
+        updates["sandbox"] = sbx
+    for k in ("codemode_enabled", "lsp_enabled"):
+        if (v := body.get(k)) is not None:
+            if not isinstance(v, bool):
+                raise ValueError(f"{k} 需为布尔")
+            updates[k] = v
+    for k in ("shared_readonly", "resource_bridges"):
+        if (v := body.get(k)) is not None:
+            if not isinstance(v, list):
+                raise ValueError(f"{k} 需为数组")
+            if k == "resource_bridges":
+                for b in v:
+                    if not isinstance(b, dict) or not str(b.get("path") or "").strip() \
+                            or b.get("mode") not in ("ro", "rw", "dev"):
+                        raise ValueError(
+                            "resource_bridges 每项需 {path: 绝对路径, mode: ro|rw|dev}")
+            updates[k] = v
+    if (ttl := body.get("approval_ttl_s")) is not None:
+        if not isinstance(ttl, int) or isinstance(ttl, bool) \
+                or not 60 <= ttl <= 86400:
+            raise ValueError("approval_ttl_s 需为 60-86400 的整数（秒）")
+        updates["approval_ttl_s"] = ttl
+    if (ae := body.get("approval_enforce")) is not None:
+        if ae not in ("enforce", "warn"):
+            raise ValueError("approval_enforce 需为 enforce | warn")
+        updates["approval_enforce"] = ae
+    if (pp := body.get("egress_proxy_port")) is not None:
+        if not isinstance(pp, int) or isinstance(pp, bool) \
+                or not 0 <= pp <= 65535:
+            raise ValueError("egress_proxy_port 需为 0-65535（0=随机）")
+        updates["egress_proxy_port"] = pp
+    if not updates:
+        raise ValueError("无可更新字段")
+    data = _load_yaml_conf(_conf_path())
+    data.setdefault("security", {}).update(updates)
+    _dump_yaml_conf(_conf_path(), data)
+    for k, v in updates.items():
+        setattr(CONFIG.security, k, v)
+    from .audit import audit
+    audit("policy_change", {"action": "security-ops-put", **updates})
+    log.info("安全运维面更新：%s（sandbox 档位重启生效，其余热生效）",
+             {k: v for k, v in updates.items()})
+    return {"ok": True, **updates}

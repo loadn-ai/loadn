@@ -164,7 +164,8 @@ def test_schema_gate_same_rev_no_problem(fake_env):
 # ---------------------------------------------------------------- health
 
 def test_healthcheck_unreachable(fake_env, monkeypatch):
-    monkeypatch.setattr(ops, "HEALTH_URL", "http://127.0.0.1:1/api/health")
+    monkeypatch.setattr(ops, "_health_url",
+                         lambda: "http://127.0.0.1:1/api/health")
     assert not ops._healthcheck(1)
 
 

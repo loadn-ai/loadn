@@ -117,3 +117,51 @@ def test_skill_scan_skips_symlinks(tmp_path):
     link.symlink_to(real)
     texts = list(ss._iter_texts(tmp_path))
     assert real in texts and link not in texts        # 链接本身不进扫描
+
+
+# ------------------------------------------------------- 安全运维面写口
+async def test_security_ops_put(client, monkeypatch):
+    """PUT /admin/security/ops：七键局部写+校验拒（v0.6.5 运维面 WebUI 入口）。"""
+    import copy
+    snap = copy.deepcopy(CONFIG.security.__dict__)
+    try:
+        r = await client.put("/api/admin/security/ops",
+                             json={"codemode_enabled": True})
+        assert r.status_code == 200 and CONFIG.security.codemode_enabled is True
+        assert snap["sandbox"] == CONFIG.security.sandbox   # 缺键不动
+        r2 = await client.put("/api/admin/security/ops",
+                              json={"sandbox": "bwrap",
+                                    "shared_readonly": ["/data/pub"],
+                                    "resource_bridges": [
+                                        {"path": "/dev/dri", "mode": "dev"}],
+                                    "approval_ttl_s": 900})
+        assert r2.status_code == 200, r2.text
+        assert CONFIG.security.sandbox == "bwrap"
+        assert CONFIG.security.approval_ttl_s == 900
+        # 校验拒四形
+        for bad in ({"sandbox": "nope"}, {"approval_ttl_s": 10},
+                    {"resource_bridges": [{"path": "", "mode": "ro"}]},
+                    {"egress_proxy_port": 70000}):
+            rb = await client.put("/api/admin/security/ops", json=bad)
+            assert rb.status_code == 400, bad
+        # 空体拒
+        assert (await client.put("/api/admin/security/ops",
+                                 json={})).status_code == 400
+    finally:
+        CONFIG.security.__dict__.update(snap)
+
+
+def test_egress_grant_ttl_config(monkeypatch):
+    """临时放行默认 TTL 走 CONFIG（新键 egress_grant_ttl_s，钳制域内热取）。"""
+    from loadn_webui import egress_grants as eg
+    monkeypatch.setattr(CONFIG.security, "egress_grant_ttl_s", 3600)
+    out = eg.grant("s-ttl", "ttl.example.com")           # 不传 ttl → 配置默认
+    try:
+        assert out["ttl_s"] == 3600
+        monkeypatch.setattr(CONFIG.security, "egress_grant_ttl_s", 5)
+        assert eg.grant("s-ttl2", "t2.example.com")["ttl_s"] == 300  # 下钳
+        assert eg.grant("s-ttl3", "t3.example.com", 99)["ttl_s"] == 300  # 显式也钳
+    finally:
+        eg._GRANTS.pop("s-ttl", None)
+        eg._GRANTS.pop("s-ttl2", None)
+        eg._GRANTS.pop("s-ttl3", None)

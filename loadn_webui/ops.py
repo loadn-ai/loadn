@@ -42,7 +42,21 @@ OPS_LOG = LOGS_DIR / "ops.log"
 
 DATA_ROOT = Path(os.environ.get("LOADN_WEBUI_HOME")
                  or Path.home() / ".loadn-data")  # 开源默认
-HEALTH_URL = "http://127.0.0.1:8792/api/health"
+def _health_url() -> str:
+    """健康检查地址：跟随 server 配置（改端口后 ops 不失效）。
+
+    独立进程（release build）可能无 config.yaml——回落默认端口与
+    load_config 行为一致；导入 config 失败不炸 ops 主流程。
+    """
+    try:
+        from .config import CONFIG
+        host = CONFIG.server.host or "127.0.0.1"
+        port = CONFIG.server.port or 8792
+    except Exception:                                   # noqa: BLE001
+        host, port = "127.0.0.1", 8792
+    if host in ("0.0.0.0", "::"):
+        host = "127.0.0.1"                              # 探测走回环
+    return f"http://{host}:{port}/api/health"
 SMOKE_PORT = 8799
 
 # release 目录内必须存在的顶层（布局契约=CODE_ROOT 派生前提）
@@ -613,7 +627,7 @@ def _healthcheck(timeout_s: int, *, expect: str | None = None) -> bool:
     t0 = time.monotonic()
     while time.monotonic() - t0 < timeout_s:
         try:
-            resp = urllib.request.urlopen(HEALTH_URL, timeout=5)
+            resp = urllib.request.urlopen(_health_url(), timeout=5)
             if resp.status == 200:
                 if expect:
                     data = json.loads(resp.read())

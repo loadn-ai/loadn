@@ -34,7 +34,6 @@ engines:
 
 run:
   max_concurrent_turns: 3       # 同时在跑的 claude 进程上限（订阅并发保护）
-  event_buffer_per_session: 1000  # SSE 断线补发保留窗口（条/会话）
 
 server:
   host: 127.0.0.1         # 非 127.0.0.1 时强制要求 token

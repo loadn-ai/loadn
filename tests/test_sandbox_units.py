@@ -221,11 +221,15 @@ def test_shared_binds_skips_blank_and_dup(monkeypatch, tmp_path):
 
 
 def test_wrap_loadn_default_bridge_port(monkeypatch, tmp_path):
-    """env 无 https_proxy → socat 桥缺省 8793（回落共享端口约定）。"""
+    """env 无 https_proxy → 桥端口三源回退（CONFIG 实际值 > 8793 兜底）。"""
     monkeypatch.setattr(sandbox.shutil, "which", lambda _: "/usr/bin/bwrap")
     uds = tmp_path / "e.sock"
     uds.write_text("")
     monkeypatch.setattr(sandbox, "_egress_uds", lambda sid="": uds)
     joined = " ".join(sandbox.wrap_loadn(["loadn"], {}, sid_session="s",
                                          cwd=tmp_path))
-    assert "TCP-LISTEN:8793" in joined
+    from loadn_webui.config import CONFIG as _CFG
+    if _CFG.security.egress_proxy_port:      # 测试环境 lifespan 回写的实际值
+        assert f"TCP-LISTEN:{_CFG.security.egress_proxy_port}" in joined
+    else:
+        assert "TCP-LISTEN:8793" in joined   # 随机端口直调场景兜底

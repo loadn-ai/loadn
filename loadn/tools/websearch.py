@@ -13,7 +13,7 @@ import os
 
 import httpx
 
-from loadn.constants import WEBSEARCH_TOP_K
+from loadn.constants import WEBSEARCH_TIMEOUT_S, WEBSEARCH_TOP_K
 from loadn.tools.base import Tool, ToolContext, ToolError
 
 BOCHA_URL = "https://api.bochaai.com/v1/web-search"
@@ -63,7 +63,7 @@ class WebSearchTool(Tool):
     async def _search(self, url: str, key: str, body: dict, parser) -> list[dict]:
         """公共请求层：Bearer key、20s 超时、网络/非 200 一律 ToolError。"""
         try:
-            async with httpx.AsyncClient(timeout=20.0) as client:
+            async with httpx.AsyncClient(timeout=WEBSEARCH_TIMEOUT_S) as client:
                 resp = await client.post(
                     url, headers={"Authorization": f"Bearer {key}"}, json=body)
         except (httpx.HTTPError, OSError) as e:

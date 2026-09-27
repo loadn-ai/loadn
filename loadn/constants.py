@@ -4,6 +4,10 @@ from __future__ import annotations
 # ---------------------------------------------------------------- 工具纪律
 BASH_OUTPUT_MAX = 30_000          # Bash 输出超限截中间保首尾（字符）
 BASH_TIMEOUT_DEFAULT_S = 120      # Bash 默认超时（工具级可覆盖）
+MCP_CALL_TIMEOUT_S = 30           # MCP 工具调用总超时（慢 server 部署可调）
+MCP_HTTP_TIMEOUT_S = 30.0         # streamable-HTTP 客户端超时
+WEBSEARCH_TIMEOUT_S = 20.0        # 搜索 API 超时
+WEBFETCH_TIMEOUT_S = 30.0         # 网页抓取超时
 BASH_AUTO_BG_S = 60               # 前台超此线自动转后台（Terminal-Bench 死法①）
 BASH_KILL_GRACE_S = 3.0           # SIGTERM → SIGKILL 宽限
 READ_LINES_DEFAULT = 2000         # Read 默认行数
