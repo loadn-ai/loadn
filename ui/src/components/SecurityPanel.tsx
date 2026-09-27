@@ -334,7 +334,6 @@ export default function SecurityPanel({ onClose }: { onClose: () => void }) {
           {open === 'sandbox' && <SandboxDetail events={events} jump={jump} tier={posture.sandbox} />}
           {open === 'sandbox' && posture.ops && <OpsDetail ops={posture.ops} reload={load} />}
           {open === 'approvals' && <ApprovalsDetail events={events} jump={jump} />}
-          {open === 'approvals' && posture.ops && <OpsDetail ops={posture.ops} reload={load} />}
           {open === 'egress' && <EgressDetail />}
           {open === 'vault' && <VaultDetail />}
           {open === 'canary' && <CanaryDetail locked={posture.canary.locked_sessions} reload={load} jump={jump} />}
@@ -477,17 +476,12 @@ function OpsDetail({ ops, reload }: { ops: OpsConfig; reload: () => void }) {
     }
     put({ shared_readonly: sr, resource_bridges: rb });
   };
-  const row: React.CSSProperties = {
-    display: 'flex', alignItems: 'center', gap: 10,
-    padding: '8px 0', borderBottom: '1px solid var(--border,#333)',
-  };
   return (
-    <div style={{ marginTop: 14 }}>
-      <DetailHead title="安全运维面（v0.6.5 显式配置化的 WebUI 入口）"
-        note="yaml round-trip 持久化 · 沙箱档位重启生效，其余热生效" />
+    <div className="setting-card" style={{ marginTop: 14 }}>
+      <h4>安全运维面 <span className="muted">（yaml round-trip 持久化 · 沙箱档位重启生效，其余热生效）</span></h4>
       {err && <div style={{ color: 'var(--accent,#e5484d)', fontSize: 12, margin: '6px 0' }}>写入被拒：{err}</div>}
-      <div style={row}>
-        <span style={{ width: 130 }}>沙箱档位</span>
+      <div className="setting-row">
+        <span className="setting-k">沙箱档位</span>
         <select value={sandbox} onChange={e => setSandbox(e.target.value)} defaultValue=''
           style={{ flex: 1, maxWidth: 220 }}>
           <option value='' disabled>选择档位…</option>
@@ -497,8 +491,8 @@ function OpsDetail({ ops, reload }: { ops: OpsConfig; reload: () => void }) {
         <button className="mini-btn" disabled={!sandbox || busy === 'saving'}
           onClick={saveSandbox}>切换（重启生效）</button>
       </div>
-      <div style={row}>
-        <span style={{ width: 130 }}>codemode 受限执行域</span>
+      <div className="setting-row">
+        <span className="setting-k">codemode</span>
         <label style={{ cursor: 'pointer' }}>
           <input type="checkbox" checked={ops.codemode_enabled}
             onChange={e => toggle('codemode_enabled', e.target.checked)} />
@@ -507,8 +501,8 @@ function OpsDetail({ ops, reload }: { ops: OpsConfig; reload: () => void }) {
           </span>
         </label>
       </div>
-      <div style={row}>
-        <span style={{ width: 130 }}>LSP 诊断回注</span>
+      <div className="setting-row">
+        <span className="setting-k">LSP 回注</span>
         <label style={{ cursor: 'pointer' }}>
           <input type="checkbox" checked={ops.lsp_enabled}
             onChange={e => toggle('lsp_enabled', e.target.checked)} />
@@ -517,36 +511,36 @@ function OpsDetail({ ops, reload }: { ops: OpsConfig; reload: () => void }) {
           </span>
         </label>
       </div>
-      <div style={row}>
-        <span style={{ width: 130 }}>审批卡 TTL（秒）</span>
+      <div className="setting-row">
+        <span className="setting-k">审批 TTL</span>
         <input type="number" placeholder={String(ops.approval_ttl_s)}
           value={ttl} onChange={e => setTtl(e.target.value)}
-          style={{ width: 100 }} />
+          style={{ width: 100, minWidth: 100, flex: 'none' }} />
         <span className="muted" style={{ fontSize: 12 }}>60-86400</span>
         <button className="mini-btn" disabled={!ttl || busy === 'saving'}
           onClick={saveTtl}>保存</button>
       </div>
-      <div style={row}>
-        <span style={{ width: 130 }}>临时放行默认 TTL（秒）</span>
+      <div className="setting-row">
+        <span className="setting-k">放行 TTL</span>
         <input type="number" placeholder={String(ops.egress_grant_ttl_s)}
           value={grantTtl} onChange={e => setGrantTtl(e.target.value)}
-          style={{ width: 100 }} />
+          style={{ width: 100, minWidth: 100, flex: 'none' }} />
         <span className="muted" style={{ fontSize: 12 }}>300-86400</span>
         <button className="mini-btn" disabled={!grantTtl || busy === 'saving'}
           onClick={saveGrantTtl}>保存</button>
       </div>
-      <div style={row}>
-        <span style={{ width: 130 }}>egress 代理端口</span>
+      <div className="setting-row">
+        <span className="setting-k">代理端口</span>
         <input type="number" placeholder={String(ops.egress_proxy_port)}
           value={proxyPort} onChange={e => setProxyPort(e.target.value)}
-          style={{ width: 100 }} />
+          style={{ width: 100, minWidth: 100, flex: 'none' }} />
         <span className="muted" style={{ fontSize: 12 }}>0=随机（生产可固定）</span>
         <button className="mini-btn" disabled={proxyPort === '' || busy === 'saving'}
           onClick={saveProxyPort}>保存</button>
       </div>
-      <div style={{ ...row, alignItems: 'flex-start', flexDirection: 'column' as const }}>
+      <div className="setting-row" style={{ alignItems: 'flex-start', flexDirection: 'column' as const }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: 10, width: '100%' }}>
-          <span style={{ width: 130 }}>授权面（列表）</span>
+          <span className="setting-k">授权面</span>
           <span className="muted" style={{ fontSize: 12, flex: 1 }}>
             shared_readonly：每行一个绝对路径（ro）；resource_bridges：ro|rw|dev 加空格加路径
           </span>

@@ -556,9 +556,26 @@ function SettingsTab() {
   }
 
   if (!tg || !run) return <div className="admin-body muted">加载中…</div>;
+  const groupNav = [
+    { id: 'g-basic', label: '基础' }, { id: 'g-engine', label: '引擎与模型' },
+    { id: 'g-notify', label: '通知与分享' }, { id: 'g-res', label: '外部资源' },
+  ];
+  const G = ({ id, title }: { id: string; title: string }) => (
+    <div id={id} className="settings-group-h">
+      <span>{title}</span>
+      <a className="link" onClick={() => document.getElementById('settings-top')
+        ?.scrollIntoView({ behavior: 'smooth' })}>↑ 顶部</a>
+    </div>
+  );
   return (
-    <div className="admin-body">
+    <div className="admin-body" id="settings-top">
+      <div className="settings-nav">
+        {groupNav.map(g =>
+          <a key={g.id} className="chip" onClick={() => document.getElementById(g.id)
+            ?.scrollIntoView({ behavior: 'smooth', block: 'start' })}>{g.label}</a>)}
+      </div>
       <AppearanceCard />
+      <G id="g-basic" title="基础 / 会话与外观" />
       <div className="setting-card">
         <h4>自动标题 <span className="muted">（首条消息 → 外部小模型生成任务名）</span></h4>
         <div className="setting-row">
@@ -615,7 +632,9 @@ function SettingsTab() {
         </div>
       </div>
 
-      {eng && cl && <div className="setting-card">
+      <G id="g-engine" title="引擎与模型" />
+      {eng && cl &&
+      <div className="setting-card">
         <h4>引擎与模型 <span className="muted">（默认引擎 / 推理力度 / 模型与路径覆盖；新会话生效）</span></h4>
         <div className="setting-row">
           <span className="setting-k">默认引擎</span>
@@ -677,7 +696,9 @@ function SettingsTab() {
         <div className="setting-note muted">改动不影响在跑会话——下一个 turn / 新会话按新值组装 argv；bin 留空走自动探测，模型留空走继承链（会话覆盖 &gt; claude 节 &gt; 引擎节 &gt; CLI 默认）。</div>
       </div>}
 
-      {nf && <div className="setting-card">
+      <G id="g-notify" title="通知与分享" />
+      {nf &&
+      <div className="setting-card">
         <h4>运维通知 <span className="muted">（任务报错 / 调度唤醒 / 完成 → 推给自己手机）</span></h4>
         <div className="setting-row">
           <span className="setting-k">通道</span>
@@ -766,7 +787,9 @@ function SettingsTab() {
           运行中 turn 不受影响，下一 turn 生效。</div>
       </div>}
 
-      {res && <div className="setting-card">
+      <G id="g-res" title="外部资源与服务器" />
+      {res &&
+      <div className="setting-card">
         <h4>外部资源 <span className="muted">（agent 动手能力：OCR/沙箱/短信/VLM/打码/搜索/真机；密钥只存不回显）</span></h4>
         <div className="setting-row">
           <span className="setting-k">OCR 服务</span>
