@@ -1,0 +1,12 @@
+{
+ "results": {
+  "loadn/bash_policy.py": {
+   "file": "loadn/bash_policy.py",
+   "total": 0,
+   "killed": 0,
+   "survived": [],
+   "timeout": []
+  }
+ },
+ "survived": []
+}

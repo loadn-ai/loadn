@@ -1,0 +1,104 @@
+{
+ "results": {
+  "loadn_webui/egress_grants.py": {
+   "file": "loadn_webui/egress_grants.py",
+   "total": 23,
+   "killed": 17,
+   "survived": [
+    {
+     "file": "loadn_webui/egress_grants.py",
+     "line": 21,
+     "kind": "const:int+1",
+     "orig": "2",
+     "new": "3"
+    },
+    {
+     "file": "loadn_webui/egress_grants.py",
+     "line": 21,
+     "kind": "const:int+1",
+     "orig": "3600",
+     "new": "3601"
+    },
+    {
+     "file": "loadn_webui/egress_grants.py",
+     "line": 22,
+     "kind": "const:int+1",
+     "orig": "300",
+     "new": "301"
+    },
+    {
+     "file": "loadn_webui/egress_grants.py",
+     "line": 58,
+     "kind": "bool:BoolOp",
+     "orig": "not hosts or host not in hosts",
+     "new": "not hosts and host not in hosts"
+    },
+    {
+     "file": "loadn_webui/egress_grants.py",
+     "line": 22,
+     "kind": "const:int+1",
+     "orig": "24",
+     "new": "25"
+    },
+    {
+     "file": "loadn_webui/egress_grants.py",
+     "line": 22,
+     "kind": "const:int+1",
+     "orig": "3600",
+     "new": "3601"
+    }
+   ],
+   "timeout": []
+  }
+ },
+ "survived": [
+  {
+   "file": "loadn_webui/egress_grants.py",
+   "line": 21,
+   "kind": "const:int+1",
+   "orig": "2",
+   "new": "3",
+   "why": "tests-green"
+  },
+  {
+   "file": "loadn_webui/egress_grants.py",
+   "line": 21,
+   "kind": "const:int+1",
+   "orig": "3600",
+   "new": "3601",
+   "why": "tests-green"
+  },
+  {
+   "file": "loadn_webui/egress_grants.py",
+   "line": 22,
+   "kind": "const:int+1",
+   "orig": "300",
+   "new": "301",
+   "why": "tests-green"
+  },
+  {
+   "file": "loadn_webui/egress_grants.py",
+   "line": 58,
+   "kind": "bool:BoolOp",
+   "orig": "not hosts or host not in hosts",
+   "new": "not hosts and host not in hosts",
+   "why": "tests-green"
+  },
+  {
+   "file": "loadn_webui/egress_grants.py",
+   "line": 22,
+   "kind": "const:int+1",
+   "orig": "24",
+   "new": "25",
+   "why": "tests-green"
+  },
+  {
+   "file": "loadn_webui/egress_grants.py",
+   "line": 22,
+   "kind": "const:int+1",
+   "orig": "3600",
+   "new": "3601",
+   "why": "tests-green"
+  }
+ ]
+}

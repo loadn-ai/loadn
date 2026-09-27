@@ -1,0 +1,104 @@
+{
+ "results": {
+  "loadn/core/turn_diff.py": {
+   "file": "loadn/core/turn_diff.py",
+   "total": 19,
+   "killed": 13,
+   "survived": [
+    {
+     "file": "loadn/core/turn_diff.py",
+     "line": 23,
+     "kind": "const:int+1",
+     "orig": "200",
+     "new": "201"
+    },
+    {
+     "file": "loadn/core/turn_diff.py",
+     "line": 22,
+     "kind": "const:int+1",
+     "orig": "512",
+     "new": "513"
+    },
+    {
+     "file": "loadn/core/turn_diff.py",
+     "line": 22,
+     "kind": "const:int+1",
+     "orig": "1024",
+     "new": "1025"
+    },
+    {
+     "file": "loadn/core/turn_diff.py",
+     "line": 43,
+     "kind": "bool:BoolOp",
+     "orig": "len(before) > MAX_DIFF_BYTES or len(after) > MAX_DIFF_BYTES",
+     "new": "len(before) > MAX_DIFF_BYTES and len(after) > MAX_DIFF_BYTES"
+    },
+    {
+     "file": "loadn/core/turn_diff.py",
+     "line": 53,
+     "kind": "bool:BoolOp",
+     "orig": "diff is None or time.perf_counter() - t0 > budget_s",
+     "new": "diff is None and time.perf_counter() - t0 > budget_s"
+    },
+    {
+     "file": "loadn/core/turn_diff.py",
+     "line": 48,
+     "kind": "const:bool",
+     "orig": "True",
+     "new": "False"
+    }
+   ],
+   "timeout": []
+  }
+ },
+ "survived": [
+  {
+   "file": "loadn/core/turn_diff.py",
+   "line": 23,
+   "kind": "const:int+1",
+   "orig": "200",
+   "new": "201",
+   "why": "tests-green"
+  },
+  {
+   "file": "loadn/core/turn_diff.py",
+   "line": 22,
+   "kind": "const:int+1",
+   "orig": "512",
+   "new": "513",
+   "why": "tests-green"
+  },
+  {
+   "file": "loadn/core/turn_diff.py",
+   "line": 22,
+   "kind": "const:int+1",
+   "orig": "1024",
+   "new": "1025",
+   "why": "tests-green"
+  },
+  {
+   "file": "loadn/core/turn_diff.py",
+   "line": 43,
+   "kind": "bool:BoolOp",
+   "orig": "len(before) > MAX_DIFF_BYTES or len(after) > MAX_DIFF_BYTES",
+   "new": "len(before) > MAX_DIFF_BYTES and len(after) > MAX_DIFF_BYTES",
+   "why": "tests-green"
+  },
+  {
+   "file": "loadn/core/turn_diff.py",
+   "line": 53,
+   "kind": "bool:BoolOp",
+   "orig": "diff is None or time.perf_counter() - t0 > budget_s",
+   "new": "diff is None and time.perf_counter() - t0 > budget_s",
+   "why": "tests-green"
+  },
+  {
+   "file": "loadn/core/turn_diff.py",
+   "line": 48,
+   "kind": "const:bool",
+   "orig": "True",
+   "new": "False",
+   "why": "tests-green"
+  }
+ ]
+}

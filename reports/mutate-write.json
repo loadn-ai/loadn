@@ -1,0 +1,89 @@
+{
+ "results": {
+  "loadn/tools/write.py": {
+   "file": "loadn/tools/write.py",
+   "total": 11,
+   "killed": 6,
+   "survived": [
+    {
+     "file": "loadn/tools/write.py",
+     "line": 36,
+     "kind": "bool:BoolOp",
+     "orig": "not raw or not isinstance(raw, str)",
+     "new": "not raw and (not isinstance(raw, str))"
+    },
+    {
+     "file": "loadn/tools/write.py",
+     "line": 22,
+     "kind": "const:int+1",
+     "orig": "1024",
+     "new": "1025"
+    },
+    {
+     "file": "loadn/tools/write.py",
+     "line": 65,
+     "kind": "const:bool",
+     "orig": "True",
+     "new": "False"
+    },
+    {
+     "file": "loadn/tools/write.py",
+     "line": 46,
+     "kind": "const:int+1",
+     "orig": "1024",
+     "new": "1025"
+    },
+    {
+     "file": "loadn/tools/write.py",
+     "line": 47,
+     "kind": "const:int+1",
+     "orig": "1024",
+     "new": "1025"
+    }
+   ],
+   "timeout": []
+  }
+ },
+ "survived": [
+  {
+   "file": "loadn/tools/write.py",
+   "line": 36,
+   "kind": "bool:BoolOp",
+   "orig": "not raw or not isinstance(raw, str)",
+   "new": "not raw and (not isinstance(raw, str))",
+   "why": "tests-green"
+  },
+  {
+   "file": "loadn/tools/write.py",
+   "line": 22,
+   "kind": "const:int+1",
+   "orig": "1024",
+   "new": "1025",
+   "why": "tests-green"
+  },
+  {
+   "file": "loadn/tools/write.py",
+   "line": 65,
+   "kind": "const:bool",
+   "orig": "True",
+   "new": "False",
+   "why": "tests-green"
+  },
+  {
+   "file": "loadn/tools/write.py",
+   "line": 46,
+   "kind": "const:int+1",
+   "orig": "1024",
+   "new": "1025",
+   "why": "tests-green"
+  },
+  {
+   "file": "loadn/tools/write.py",
+   "line": 47,
+   "kind": "const:int+1",
+   "orig": "1024",
+   "new": "1025",
+   "why": "tests-green"
+  }
+ ]
+}

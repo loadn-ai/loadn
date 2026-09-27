@@ -1,0 +1,119 @@
+{
+ "results": {
+  "loadn/bash_policy.py": {
+   "file": "loadn/bash_policy.py",
+   "total": 30,
+   "killed": 23,
+   "survived": [
+    {
+     "file": "loadn/bash_policy.py",
+     "line": 215,
+     "kind": "const:int+1",
+     "orig": "1",
+     "new": "2"
+    },
+    {
+     "file": "loadn/bash_policy.py",
+     "line": 32,
+     "kind": "const:bool",
+     "orig": "True",
+     "new": "False"
+    },
+    {
+     "file": "loadn/bash_policy.py",
+     "line": 42,
+     "kind": "const:int+1",
+     "orig": "1",
+     "new": "2"
+    },
+    {
+     "file": "loadn/bash_policy.py",
+     "line": 42,
+     "kind": "const:int+1",
+     "orig": "2",
+     "new": "3"
+    },
+    {
+     "file": "loadn/bash_policy.py",
+     "line": 167,
+     "kind": "const:bool",
+     "orig": "False",
+     "new": "True"
+    },
+    {
+     "file": "loadn/bash_policy.py",
+     "line": 34,
+     "kind": "const:bool",
+     "orig": "False",
+     "new": "True"
+    },
+    {
+     "file": "loadn/bash_policy.py",
+     "line": 228,
+     "kind": "bool:BoolOp",
+     "orig": "isinstance(data, dict) and isinstance(data.get(\"bash_rules\"), list)",
+     "new": "isinstance(data, dict) or isinstance(data.get('bash_rules'), list)"
+    }
+   ],
+   "timeout": []
+  }
+ },
+ "survived": [
+  {
+   "file": "loadn/bash_policy.py",
+   "line": 215,
+   "kind": "const:int+1",
+   "orig": "1",
+   "new": "2",
+   "why": "tests-green"
+  },
+  {
+   "file": "loadn/bash_policy.py",
+   "line": 32,
+   "kind": "const:bool",
+   "orig": "True",
+   "new": "False",
+   "why": "tests-green"
+  },
+  {
+   "file": "loadn/bash_policy.py",
+   "line": 42,
+   "kind": "const:int+1",
+   "orig": "1",
+   "new": "2",
+   "why": "tests-green"
+  },
+  {
+   "file": "loadn/bash_policy.py",
+   "line": 42,
+   "kind": "const:int+1",
+   "orig": "2",
+   "new": "3",
+   "why": "tests-green"
+  },
+  {
+   "file": "loadn/bash_policy.py",
+   "line": 167,
+   "kind": "const:bool",
+   "orig": "False",
+   "new": "True",
+   "why": "tests-green"
+  },
+  {
+   "file": "loadn/bash_policy.py",
+   "line": 34,
+   "kind": "const:bool",
+   "orig": "False",
+   "new": "True",
+   "why": "tests-green"
+  },
+  {
+   "file": "loadn/bash_policy.py",
+   "line": 228,
+   "kind": "bool:BoolOp",
+   "orig": "isinstance(data, dict) and isinstance(data.get(\"bash_rules\"), list)",
+   "new": "isinstance(data, dict) or isinstance(data.get('bash_rules'), list)",
+   "why": "tests-green"
+  }
+ ]
+}

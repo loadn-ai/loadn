@@ -1,0 +1,509 @@
+{
+ "results": {
+  "loadn/tools/edit.py": {
+   "file": "loadn/tools/edit.py",
+   "total": 43,
+   "killed": 10,
+   "survived": [
+    {
+     "file": "loadn/tools/edit.py",
+     "line": 58,
+     "kind": "cmp:NotEq",
+     "orig": "len(hits) != 1",
+     "new": "len(hits) == 1"
+    },
+    {
+     "file": "loadn/tools/edit.py",
+     "line": 62,
+     "kind": "cmp:In",
+     "orig": "\"\\r\\n\" in text",
+     "new": "'\\r\\n' not in text"
+    },
+    {
+     "file": "loadn/tools/edit.py",
+     "line": 91,
+     "kind": "const:bool",
+     "orig": "True",
+     "new": "False"
+    },
+    {
+     "file": "loadn/tools/edit.py",
+     "line": 50,
+     "kind": "cmp:Lt",
+     "orig": "sum(len(x.strip()) for x in norm_old) < 8",
+     "new": "sum((len(x.strip()) for x in norm_old)) >= 8"
+    },
+    {
+     "file": "loadn/tools/edit.py",
+     "line": 58,
+     "kind": "const:int+1",
+     "orig": "1",
+     "new": "2"
+    },
+    {
+     "file": "loadn/tools/edit.py",
+     "line": 113,
+     "kind": "cmp:IsNot",
+     "orig": "hit is not None",
+     "new": "hit is None"
+    },
+    {
+     "file": "loadn/tools/edit.py",
+     "line": 185,
+     "kind": "bool:BoolOp",
+     "orig": "not raw or not isinstance(raw, str)",
+     "new": "not raw and (not isinstance(raw, str))"
+    },
+    {
+     "file": "loadn/tools/edit.py",
+     "line": 187,
+     "kind": "bool:BoolOp",
+     "orig": "not isinstance(old, str) or not isinstance(new, str)",
+     "new": "not isinstance(old, str) and (not isinstance(new, str))"
+    },
+    {
+     "file": "loadn/tools/edit.py",
+     "line": 50,
+     "kind": "const:int+1",
+     "orig": "8",
+     "new": "9"
+    },
+    {
+     "file": "loadn/tools/edit.py",
+     "line": 57,
+     "kind": "cmp:Eq",
+     "orig": "norm_src[i:i + n] == norm_old",
+     "new": "norm_src[i:i + n] != norm_old"
+    },
+    {
+     "file": "loadn/tools/edit.py",
+     "line": 116,
+     "kind": "const:int+1",
+     "orig": "1",
+     "new": "2"
+    },
+    {
+     "file": "loadn/tools/edit.py",
+     "line": 122,
+     "kind": "const:int+1",
+     "orig": "1",
+     "new": "2"
+    },
+    {
+     "file": "loadn/tools/edit.py",
+     "line": 210,
+     "kind": "const:int+1",
+     "orig": "3",
+     "new": "4"
+    },
+    {
+     "file": "loadn/tools/edit.py",
+     "line": 117,
+     "kind": "const:int+1",
+     "orig": "1",
+     "new": "2"
+    },
+    {
+     "file": "loadn/tools/edit.py",
+     "line": 175,
+     "kind": "const:bool",
+     "orig": "False",
+     "new": "True"
+    },
+    {
+     "file": "loadn/tools/edit.py",
+     "line": 189,
+     "kind": "const:bool",
+     "orig": "False",
+     "new": "True"
+    },
+    {
+     "file": "loadn/tools/edit.py",
+     "line": 214,
+     "kind": "const:int+1",
+     "orig": "3",
+     "new": "4"
+    },
+    {
+     "file": "loadn/tools/edit.py",
+     "line": 220,
+     "kind": "bool:BoolOp",
+     "orig": "line == target or line.strip() == target",
+     "new": "line == target and line.strip() == target"
+    },
+    {
+     "file": "loadn/tools/edit.py",
+     "line": 51,
+     "kind": "cmp:GtE",
+     "orig": "len(x.strip()) >= 4",
+     "new": "len(x.strip()) < 4"
+    },
+    {
+     "file": "loadn/tools/edit.py",
+     "line": 56,
+     "kind": "const:int+1",
+     "orig": "1",
+     "new": "2"
+    },
+    {
+     "file": "loadn/tools/edit.py",
+     "line": 151,
+     "kind": "const:bool",
+     "orig": "True",
+     "new": "False"
+    },
+    {
+     "file": "loadn/tools/edit.py",
+     "line": 151,
+     "kind": "const:bool",
+     "orig": "True",
+     "new": "False"
+    },
+    {
+     "file": "loadn/tools/edit.py",
+     "line": 197,
+     "kind": "cmp:NotEq",
+     "orig": "path.suffix != \".ipynb\"",
+     "new": "path.suffix == '.ipynb'"
+    },
+    {
+     "file": "loadn/tools/edit.py",
+     "line": 220,
+     "kind": "cmp:Eq",
+     "orig": "line == target",
+     "new": "line != target"
+    },
+    {
+     "file": "loadn/tools/edit.py",
+     "line": 220,
+     "kind": "cmp:Eq",
+     "orig": "line.strip() == target",
+     "new": "line.strip() != target"
+    },
+    {
+     "file": "loadn/tools/edit.py",
+     "line": 51,
+     "kind": "const:int+1",
+     "orig": "4",
+     "new": "5"
+    },
+    {
+     "file": "loadn/tools/edit.py",
+     "line": 230,
+     "kind": "const:int+1",
+     "orig": "15",
+     "new": "16"
+    },
+    {
+     "file": "loadn/tools/edit.py",
+     "line": 214,
+     "kind": "const:int+1",
+     "orig": "3",
+     "new": "4"
+    },
+    {
+     "file": "loadn/tools/edit.py",
+     "line": 228,
+     "kind": "const:int+1",
+     "orig": "1",
+     "new": "2"
+    },
+    {
+     "file": "loadn/tools/edit.py",
+     "line": 221,
+     "kind": "const:int+1",
+     "orig": "3",
+     "new": "4"
+    },
+    {
+     "file": "loadn/tools/edit.py",
+     "line": 221,
+     "kind": "const:int+1",
+     "orig": "4",
+     "new": "5"
+    },
+    {
+     "file": "loadn/tools/edit.py",
+     "line": 229,
+     "kind": "const:int+1",
+     "orig": "15",
+     "new": "16"
+    },
+    {
+     "file": "loadn/tools/edit.py",
+     "line": 223,
+     "kind": "const:int+1",
+     "orig": "1",
+     "new": "2"
+    }
+   ],
+   "timeout": []
+  }
+ },
+ "survived": [
+  {
+   "file": "loadn/tools/edit.py",
+   "line": 58,
+   "kind": "cmp:NotEq",
+   "orig": "len(hits) != 1",
+   "new": "len(hits) == 1",
+   "why": "tests-green"
+  },
+  {
+   "file": "loadn/tools/edit.py",
+   "line": 62,
+   "kind": "cmp:In",
+   "orig": "\"\\r\\n\" in text",
+   "new": "'\\r\\n' not in text",
+   "why": "tests-green"
+  },
+  {
+   "file": "loadn/tools/edit.py",
+   "line": 91,
+   "kind": "const:bool",
+   "orig": "True",
+   "new": "False",
+   "why": "tests-green"
+  },
+  {
+   "file": "loadn/tools/edit.py",
+   "line": 50,
+   "kind": "cmp:Lt",
+   "orig": "sum(len(x.strip()) for x in norm_old) < 8",
+   "new": "sum((len(x.strip()) for x in norm_old)) >= 8",
+   "why": "tests-green"
+  },
+  {
+   "file": "loadn/tools/edit.py",
+   "line": 58,
+   "kind": "const:int+1",
+   "orig": "1",
+   "new": "2",
+   "why": "tests-green"
+  },
+  {
+   "file": "loadn/tools/edit.py",
+   "line": 113,
+   "kind": "cmp:IsNot",
+   "orig": "hit is not None",
+   "new": "hit is None",
+   "why": "tests-green"
+  },
+  {
+   "file": "loadn/tools/edit.py",
+   "line": 185,
+   "kind": "bool:BoolOp",
+   "orig": "not raw or not isinstance(raw, str)",
+   "new": "not raw and (not isinstance(raw, str))",
+   "why": "tests-green"
+  },
+  {
+   "file": "loadn/tools/edit.py",
+   "line": 187,
+   "kind": "bool:BoolOp",
+   "orig": "not isinstance(old, str) or not isinstance(new, str)",
+   "new": "not isinstance(old, str) and (not isinstance(new, str))",
+   "why": "tests-green"
+  },
+  {
+   "file": "loadn/tools/edit.py",
+   "line": 50,
+   "kind": "const:int+1",
+   "orig": "8",
+   "new": "9",
+   "why": "tests-green"
+  },
+  {
+   "file": "loadn/tools/edit.py",
+   "line": 57,
+   "kind": "cmp:Eq",
+   "orig": "norm_src[i:i + n] == norm_old",
+   "new": "norm_src[i:i + n] != norm_old",
+   "why": "tests-green"
+  },
+  {
+   "file": "loadn/tools/edit.py",
+   "line": 116,
+   "kind": "const:int+1",
+   "orig": "1",
+   "new": "2",
+   "why": "tests-green"
+  },
+  {
+   "file": "loadn/tools/edit.py",
+   "line": 122,
+   "kind": "const:int+1",
+   "orig": "1",
+   "new": "2",
+   "why": "tests-green"
+  },
+  {
+   "file": "loadn/tools/edit.py",
+   "line": 210,
+   "kind": "const:int+1",
+   "orig": "3",
+   "new": "4",
+   "why": "tests-green"
+  },
+  {
+   "file": "loadn/tools/edit.py",
+   "line": 117,
+   "kind": "const:int+1",
+   "orig": "1",
+   "new": "2",
+   "why": "tests-green"
+  },
+  {
+   "file": "loadn/tools/edit.py",
+   "line": 175,
+   "kind": "const:bool",
+   "orig": "False",
+   "new": "True",
+   "why": "tests-green"
+  },
+  {
+   "file": "loadn/tools/edit.py",
+   "line": 189,
+   "kind": "const:bool",
+   "orig": "False",
+   "new": "True",
+   "why": "tests-green"
+  },
+  {
+   "file": "loadn/tools/edit.py",
+   "line": 214,
+   "kind": "const:int+1",
+   "orig": "3",
+   "new": "4",
+   "why": "tests-green"
+  },
+  {
+   "file": "loadn/tools/edit.py",
+   "line": 220,
+   "kind": "bool:BoolOp",
+   "orig": "line == target or line.strip() == target",
+   "new": "line == target and line.strip() == target",
+   "why": "tests-green"
+  },
+  {
+   "file": "loadn/tools/edit.py",
+   "line": 51,
+   "kind": "cmp:GtE",
+   "orig": "len(x.strip()) >= 4",
+   "new": "len(x.strip()) < 4",
+   "why": "tests-green"
+  },
+  {
+   "file": "loadn/tools/edit.py",
+   "line": 56,
+   "kind": "const:int+1",
+   "orig": "1",
+   "new": "2",
+   "why": "tests-green"
+  },
+  {
+   "file": "loadn/tools/edit.py",
+   "line": 151,
+   "kind": "const:bool",
+   "orig": "True",
+   "new": "False",
+   "why": "tests-green"
+  },
+  {
+   "file": "loadn/tools/edit.py",
+   "line": 151,
+   "kind": "const:bool",
+   "orig": "True",
+   "new": "False",
+   "why": "tests-green"
+  },
+  {
+   "file": "loadn/tools/edit.py",
+   "line": 197,
+   "kind": "cmp:NotEq",
+   "orig": "path.suffix != \".ipynb\"",
+   "new": "path.suffix == '.ipynb'",
+   "why": "tests-green"
+  },
+  {
+   "file": "loadn/tools/edit.py",
+   "line": 220,
+   "kind": "cmp:Eq",
+   "orig": "line == target",
+   "new": "line != target",
+   "why": "tests-green"
+  },
+  {
+   "file": "loadn/tools/edit.py",
+   "line": 220,
+   "kind": "cmp:Eq",
+   "orig": "line.strip() == target",
+   "new": "line.strip() != target",
+   "why": "tests-green"
+  },
+  {
+   "file": "loadn/tools/edit.py",
+   "line": 51,
+   "kind": "const:int+1",
+   "orig": "4",
+   "new": "5",
+   "why": "tests-green"
+  },
+  {
+   "file": "loadn/tools/edit.py",
+   "line": 230,
+   "kind": "const:int+1",
+   "orig": "15",
+   "new": "16",
+   "why": "tests-green"
+  },
+  {
+   "file": "loadn/tools/edit.py",
+   "line": 214,
+   "kind": "const:int+1",
+   "orig": "3",
+   "new": "4",
+   "why": "tests-green"
+  },
+  {
+   "file": "loadn/tools/edit.py",
+   "line": 228,
+   "kind": "const:int+1",
+   "orig": "1",
+   "new": "2",
+   "why": "tests-green"
+  },
+  {
+   "file": "loadn/tools/edit.py",
+   "line": 221,
+   "kind": "const:int+1",
+   "orig": "3",
+   "new": "4",
+   "why": "tests-green"
+  },
+  {
+   "file": "loadn/tools/edit.py",
+   "line": 221,
+   "kind": "const:int+1",
+   "orig": "4",
+   "new": "5",
+   "why": "tests-green"
+  },
+  {
+   "file": "loadn/tools/edit.py",
+   "line": 229,
+   "kind": "const:int+1",
+   "orig": "15",
+   "new": "16",
+   "why": "tests-green"
+  },
+  {
+   "file": "loadn/tools/edit.py",
+   "line": 223,
+   "kind": "const:int+1",
+   "orig": "1",
+   "new": "2",
+   "why": "tests-green"
+  }
+ ]
+}

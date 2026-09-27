@@ -1,0 +1,119 @@
+{
+ "results": {
+  "loadn/tools/multiedit.py": {
+   "file": "loadn/tools/multiedit.py",
+   "total": 7,
+   "killed": 0,
+   "survived": [
+    {
+     "file": "loadn/tools/multiedit.py",
+     "line": 51,
+     "kind": "bool:BoolOp",
+     "orig": "not raw or not isinstance(raw, str)",
+     "new": "not raw and (not isinstance(raw, str))"
+    },
+    {
+     "file": "loadn/tools/multiedit.py",
+     "line": 53,
+     "kind": "bool:BoolOp",
+     "orig": "not isinstance(edits, list) or not edits",
+     "new": "not isinstance(edits, list) and (not edits)"
+    },
+    {
+     "file": "loadn/tools/multiedit.py",
+     "line": 60,
+     "kind": "const:int+1",
+     "orig": "1",
+     "new": "2"
+    },
+    {
+     "file": "loadn/tools/multiedit.py",
+     "line": 64,
+     "kind": "bool:BoolOp",
+     "orig": "not isinstance(old, str) or not isinstance(new, str)",
+     "new": "not isinstance(old, str) and (not isinstance(new, str))"
+    },
+    {
+     "file": "loadn/tools/multiedit.py",
+     "line": 68,
+     "kind": "cmp:NotEq",
+     "orig": "path.suffix != \".ipynb\"",
+     "new": "path.suffix == '.ipynb'"
+    },
+    {
+     "file": "loadn/tools/multiedit.py",
+     "line": 38,
+     "kind": "const:bool",
+     "orig": "False",
+     "new": "True"
+    },
+    {
+     "file": "loadn/tools/multiedit.py",
+     "line": 66,
+     "kind": "const:bool",
+     "orig": "False",
+     "new": "True"
+    }
+   ],
+   "timeout": []
+  }
+ },
+ "survived": [
+  {
+   "file": "loadn/tools/multiedit.py",
+   "line": 51,
+   "kind": "bool:BoolOp",
+   "orig": "not raw or not isinstance(raw, str)",
+   "new": "not raw and (not isinstance(raw, str))",
+   "why": "tests-green"
+  },
+  {
+   "file": "loadn/tools/multiedit.py",
+   "line": 53,
+   "kind": "bool:BoolOp",
+   "orig": "not isinstance(edits, list) or not edits",
+   "new": "not isinstance(edits, list) and (not edits)",
+   "why": "tests-green"
+  },
+  {
+   "file": "loadn/tools/multiedit.py",
+   "line": 60,
+   "kind": "const:int+1",
+   "orig": "1",
+   "new": "2",
+   "why": "tests-green"
+  },
+  {
+   "file": "loadn/tools/multiedit.py",
+   "line": 64,
+   "kind": "bool:BoolOp",
+   "orig": "not isinstance(old, str) or not isinstance(new, str)",
+   "new": "not isinstance(old, str) and (not isinstance(new, str))",
+   "why": "tests-green"
+  },
+  {
+   "file": "loadn/tools/multiedit.py",
+   "line": 68,
+   "kind": "cmp:NotEq",
+   "orig": "path.suffix != \".ipynb\"",
+   "new": "path.suffix == '.ipynb'",
+   "why": "tests-green"
+  },
+  {
+   "file": "loadn/tools/multiedit.py",
+   "line": 38,
+   "kind": "const:bool",
+   "orig": "False",
+   "new": "True",
+   "why": "tests-green"
+  },
+  {
+   "file": "loadn/tools/multiedit.py",
+   "line": 66,
+   "kind": "const:bool",
+   "orig": "False",
+   "new": "True",
+   "why": "tests-green"
+  }
+ ]
+}

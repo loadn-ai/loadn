@@ -1,0 +1,29 @@
+{
+ "results": {
+  "loadn_webui/vault.py": {
+   "file": "loadn_webui/vault.py",
+   "total": 1,
+   "killed": 0,
+   "survived": [
+    {
+     "file": "loadn_webui/vault.py",
+     "line": 254,
+     "kind": "bool:BoolOp",
+     "orig": "name or \"\"",
+     "new": "name and ''"
+    }
+   ],
+   "timeout": []
+  }
+ },
+ "survived": [
+  {
+   "file": "loadn_webui/vault.py",
+   "line": 254,
+   "kind": "bool:BoolOp",
+   "orig": "name or \"\"",
+   "new": "name and ''",
+   "why": "tests-green"
+  }
+ ]
+}
