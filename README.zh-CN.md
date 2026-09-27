@@ -1,6 +1,4 @@
-# loadn
-
-**[简体中文](README.zh-CN.md)** | English
+# loadn（老登，读 **load-n**）
 
 **A self-contained coding-agent engine in pure Python.** One `pip install`, any
 Anthropic-form or OpenAI-compatible endpoint, and you get a headless agent with
@@ -8,13 +6,12 @@ tools, MCP, subagents, session persistence, and context compaction — speaking
 the Claude Code `stream-json` dialect, so existing harnesses can drive it as a
 drop-in subprocess engine.
 
-> Naming: loadn is the engine package of the loadn-ai platform (org:
-> **loadn-ai**). Product forms: `loadn` engine / `loadn-web` platform /
-> `loadn desktop`.
+> 命名：loadn 是 loadn-ai 平台的引擎包（org: **loadn-ai**）。吉祥物「老登」，
+> 昵称老 bike，仅作文案。平台产品形态：loadn webui / loadn desktop。
 
 ```
 ┌────────────────────────────────────────────────────────────┐
-│  CLI:  loadn -p / REPL / python -m loadn                   │
+│  CLI:  loadn -p / REPL / python -m loadn             │
 ├────────────────────────────────────────────────────────────┤
 │  AgentCore   loop · LoopGuard · Compactor (92% window)     │
 │              stream-event synth (--verbose deltas)         │
@@ -22,9 +19,9 @@ drop-in subprocess engine.
 │              SubagentManager (Task tool + .claude/agents)  │
 ├────────────────────────────────────────────────────────────┤
 │  Tools: Bash(+cwd/env, 60s auto-bg) Read Write Edit        │
-│         MultiEdit NotebookEdit Grep Glob Skill             │
-│         InteractiveShell(pty) WebFetch WebSearch TodoWrite │
-│         (+ MCP dynamic)                                    │
+│         MultiEdit NotebookEdit Grep Glob Skill              │
+│         InteractiveShell(pty) WebFetch WebSearch TodoWrite  │
+│         (+ MCP dynamic)                                     │
 ├────────────────────────────────────────────────────────────┤
 │  Providers: Anthropic-native SSE │ OpenAI-compatible       │
 │             retry/backoff │ usage accounting               │
@@ -34,30 +31,27 @@ drop-in subprocess engine.
 └────────────────────────────────────────────────────────────┘
 ```
 
-## Monorepo: engine + platform
+## Monorepo：引擎 + 平台
 
-This repo is more than the engine — a fully self-hostable **multi-session
-agent platform**:
+本仓库不止是引擎——一个可以完整自托管的 **多会话 agent 平台**：
 
-| Component | What it is | Start |
+| 组件 | 是什么 | 起步 |
 |---|---|---|
-| `loadn/` | The engine (main subject of this README) | `pip install loadn` |
-| `loadn_webui/` | Web platform: session management / scheduling / cost / sharing, with a built-in security stack (bwrap sandbox · physical network isolation · credential vault · hash-chained audit log · approval gates) | `pip install -e ".[webui]"` → `loadn-web init` → `loadn-web serve` |
-| `desktop/` | Desktop form (Tauri shell + Debian rootfs: the whole execution domain runs inside a Linux VM on mac/win) | `desktop/image/` build pipeline |
-| `ui/` | React frontend (admin center with security / traffic / cost panels) | `cd ui && npm run build` |
+| `loadn/` | 引擎（本 README 主体） | `pip install loadn` |
+| `loadn_webui/` | Web 平台：会话管理/调度/成本/分享，内置安全栈（bwrap 沙箱·物理断网·凭证库·审计账本·审批门） | `pip install -e ".[webui]"` → `loadn-web init` → `loadn-web serve` |
+| `ui/` | React 前端（管理中心含安全中心/流量/成本面板） | `cd ui && npm run build` |
 
-Docs index: [ARCHITECTURE](docs/ARCHITECTURE.md) (planes / data layout /
-test system) · [CONFIG](docs/CONFIG.md) (every config key) ·
-[EXTENDING](docs/EXTENDING.md) (customization seams: engines / providers /
-skills / MCP / hooks) · [PROTOCOL](docs/PROTOCOL.md) (engine dialect
-contract) · [RELEASE](docs/RELEASE.md) (deploy / upgrade / rollback) ·
-[ATTACK_SURFACE](docs/ATTACK_SURFACE.md) (attack surface + AI-BOM).
+文档索引：[ARCHITECTURE](docs/ARCHITECTURE.md)（三平面/数据布局）·
+[EXTENDING](docs/EXTENDING.md)（定制缝地图：引擎/provider/skill/MCP/hooks）·
+[PROTOCOL](docs/PROTOCOL.md)（引擎方言契约）·
+[RELEASE](docs/RELEASE.md)（发布/升级/回滚）·
+[ATTACK_SURFACE](docs/ATTACK_SURFACE.md)（攻击面+AI-BOM）。
 
 ## Why another agent engine
 
-- **Embeddable & hackable.** Typed Python 3.10+, one runtime dependency
-  (`httpx`). The core loop (`AgentCore.run_turn`) is a library first; the CLI
-  is a thin shell around it.
+- **Embeddable & hackable.** ~7k lines of typed Python 3.10+, one runtime
+  dependency (`httpx`). The core loop (`AgentCore.run_turn`) is a library
+  first; the CLI is a thin shell around it.
 - **Speaks `stream-json` natively.** The CLI's argv contract and event stream
   are deliberately isomorphic to Claude Code's headless mode
   (`-p --verbose --output-format stream-json`, prompt as `argv[-1]`,
@@ -70,36 +64,33 @@ contract) · [RELEASE](docs/RELEASE.md) (deploy / upgrade / rollback) ·
   LiteLLM, ...), with thinking/reasoning and tool-call translation handled in
   one adapter layer.
 - **Discipline built in.** Output truncation budgets, read-before-write file
-  guards, a two-tier loop-guard that interrupts repeated identical calls
-  (soft remind → hard break), dual-signal stall detection for subprocesses,
-  and compaction that keeps tool-call pairing intact. Stream interruptions
-  and retriable provider errors are retried inside the loop — a turn never
-  ends with a bogus success.
-- **Cheap by default.** Three prompt-cache breakpoints (tools tail / system /
-  last message) with a no-cache lane for auxiliary calls, a handoff-style
-  compactor that prunes before summarizing (with a file ledger and UPDATE
-  mode), a completion gate for grind mode (verbal-delivery interception +
-  artifact existence checks), last-call usage accounting, and
-  context-overflow self-rescue via forced compaction.
+  guards, a loop-guard that interrupts repeated identical calls, dual-signal
+  stall detection for subprocesses, and compaction that keeps tool-call
+  pairing intact. Stream interruptions and retriable provider errors are
+  retried inside the loop — a turn never ends with a bogus success.
+- **Cheap by default.** Three prompt-cache breakpoints (tools tail /
+  system / last message) with a no-cache lane for auxiliary calls, a
+  handoff-style compactor that prunes before summarizing (with a file
+  ledger and UPDATE mode), last-call usage accounting, and context-overflow
+  self-rescue via forced compaction.
 - **Won't die waiting on a shell.** Foreground commands that exceed 60s are
   automatically adopted into the background task table (the agent keeps
   working and `tail`s the log later); interactive programs (REPLs, terminal
   games, install wizards) get a pty-backed `InteractiveShell` tool that
-  scripts multi-round send/expect exchanges in a single call.
+  scripts multi-round send/expect exchanges in a single call; compiles are
+  prompted to run with `-j$(nproc)`.
 - **Context engineering.** The system prompt assembles from a CLAUDE.md /
-  AGENTS.md ancestor chain (git-root bounded, nearest last, `@import`
-  support), a skills index, long-term memory with boundary-driven background
-  extraction, and a repo map — mirroring Claude Code's layered memory.
-- **Mutation-tested.** 1344 tests (zero token, fake-provider driven) at 83.1%
-  line coverage — and beyond coverage, a homegrown mutation-testing runner
-  has injected **2589 bugs into 41 core files with a 76% kill rate**,
-  proving the assertions actually catch regressions, not just execute code
-  paths. See [tests/TEST-PLAN.md](tests/TEST-PLAN.md) §7.
+  AGENTS.md ancestor chain (git-root bounded, nearest last, `@import` support),
+  a user-level `AGENT.md`, a skills index, and long-term memory — mirroring
+  Claude Code's layered memory. Skills load on demand via the `Skill` tool;
+  custom subagent types come from `.claude/agents/*.md` frontmatter.
+- **Zero-token test suite.** 290+ tests drive every loop branch through a
+  scripted fake provider — CI needs no API keys.
 
 ## Install
 
 ```bash
-pip install loadn          # or: pip install git+https://github.com/loadn-ai/loadn
+pip install loadn          # or: pip install git+https://github.com/<you>/loadn
 ```
 
 No config required — endpoint resolution order:
@@ -138,9 +129,14 @@ Event stream shape (NDJSON on stdout, one JSON object per line):
 
 `stream_event` lines (Anthropic SSE-shaped deltas, only with `--verbose`) are
 best-effort transport for live rendering — the assembled `assistant` event is
-always the source of truth. Exit codes: `0` success, `1` any `error_*`
-outcome. During long tool runs the CLI emits a `system/heartbeat` line every
-30s so parent-process stall detectors don't kill healthy work.
+always the source of truth. Interrupted streams are retried in the loop with a
+fresh message id (deltas already seen may replay; consumers should reconcile on
+the `assistant` block).
+
+Exit codes: `0` success, `1` any `error_*` outcome (error text goes to stderr —
+same position the Claude CLI puts it). During long tool runs the CLI emits a
+`system/heartbeat` line every 30s so parent-process stall detectors don't
+kill healthy work.
 
 ## Use as a library
 
@@ -172,56 +168,55 @@ spawns `claude -p --output-format stream-json` can spawn `loadn` instead:
   camelCase per-model `modelUsage` for cost dashboards
 - per-session transcripts live under `$LOADN_HOME/sessions/<sid>/`
   (append-only JSONL; replay resumes from the last compaction point)
-- long-lived hosting: `loadn daemon` keeps AgentCore alive across
-  disconnects (UDS attach), so cache warmth and context survive UI reconnects
 
 ## Configuration & extension points
 
 | Thing | Where |
 |---|---|
 | Engine knobs (thresholds, budgets, limits) | `loadn/constants.py` |
-| Permission rules | `.loadn/settings.json` in the project (deny/allow, `Bash:git push*` patterns; `.agent/` legacy path still honored); modes `default/acceptEdits/plan/bypassPermissions` |
-| Hooks (Pre/PostToolUse, Stop, Session*) | `.loadn/settings.json` `hooks` — external commands, stdin JSON, exit 2 blocks |
-| MCP servers | `.mcp.json` in the project (stdio + streamable-HTTP with OAuth); tools appear as `mcp__<server>__<tool>` |
-| Skills | `.claude/skills/` / `.loadn/skills/` / `$LOADN_HOME/skills` SKILL.md — indexed in the system prompt; body loads on demand via the `Skill` tool (third-party installs go through a supply-chain lock) |
-| Custom subagents | `.claude/agents/*.md` / `$LOADN_HOME/agents` — frontmatter `name/description/tools/model`; usable as `Task(subagent_type=…)` |
-| Constitution chain | CLAUDE.md/AGENTS.md from the git root down to cwd, nearest last; `@./file.md` line imports; user-level `$LOADN_HOME/AGENT.md` on top |
-| Platform config (50+ keys) | [docs/CONFIG.md](docs/CONFIG.md) — sandbox tiers, egress allowlist/three-state policy, approval TTLs, resource bridges |
-| Thinking budget | `LOADN_THINKING_BUDGET` env or `extra.thinking_budget` (Anthropic-form `thinking.budget_tokens`; off by default) |
-| Prompt caching | on by default (3 breakpoints); `extra.disable_prompt_cache` kills it |
+| Permission rules | `.agent/settings.json` in the project (deny/allow, `Bash:git push*` patterns); modes `default/acceptEdits/plan/bypassPermissions` |
+| Hooks (Pre/PostToolUse, Stop, Session*) | `.agent/settings.json` `hooks` — external commands, stdin JSON, exit 2 blocks |
+| MCP servers | `.mcp.json` in the project (stdio; tools appear as `mcp__<server>__<tool>`) |
+| Skills | `.claude/skills/` / `.agent/skills/` / `$LOADN_HOME/skills` SKILL.md — name+description indexed in the system prompt; body loads on demand via the `Skill` tool |
+| Custom subagents | `.claude/agents/*.md` / `.agent/agents/*.md` / `$LOADN_HOME/agents` — frontmatter `name/description/tools/model`, body becomes the type's system addendum; usable as `Task(subagent_type=…)` |
+| Constitution chain | CLAUDE.md/AGENTS.md from the git root (or `$HOME`/cwd boundary) down to cwd, nearest last; `@./file.md` line imports (depth 3); user-level `$LOADN_HOME/AGENT.md` on top |
+| Small model for summaries | `small_model` key in `$LOADN_HOME/config.json` (per-call model override for compaction) |
+| Web search backend | `LOADN_SEARCH_PROVIDER` (`bocha`\|`zhipu`) + `LOADN_SEARCH_KEY` |
+| Model variant suffixes | `glm-5.3[1m]` — `[...]` is treated as a client-side window hint, stripped for API calls |
+| Thinking budget | `LOADN_THINKING_BUDGET` env or `extra.thinking_budget` in config.json (Anthropic-form `thinking.budget_tokens`, clamped; off by default) |
+| Prompt caching | on by default (3 breakpoints); `extra.disable_prompt_cache` kills it; auxiliary calls (summaries/planner/grace) bypass the cache lane |
+| Compaction knobs | `COMPACT_KEEP_TOKENS` (20k keep window), `PRUNE_KEEP_CHARS` (2000 skeletonize threshold), `LOOP_REMIND_AT` (soft-remind tier) in `loadn/constants.py` |
 
-## Testing your changes
+## Development
 
 ```bash
 pip install -e ".[dev]"
-pytest            # 1344 tests, zero API calls
+pytest            # 290+ tests, zero API calls
 ruff check .
 ```
 
 The fake provider (`LOADN_PROVIDER=fake`) replays control files from
-`$LOADN_FAKE_DIR` — the same protocol used by end-to-end CLI tests. Beyond
-pytest: 10 eval scenarios gate releases nightly, and
-`scripts/mutate.py` measures whether your tests actually kill injected bugs
-(contribution rule of thumb in [CLAUDE.md](CLAUDE.md) §测试同步纪律:
-new guard logic needs a negative-path test; new modules need an entry in the
-mutation TARGET_TESTS map).
+`$LOADN_FAKE_DIR` (`reply`/`tools`/`todos`/`fail`/`fastfail`/`bigusage`/
+`hang`/`giantline`) — the same protocol used by the end-to-end CLI tests.
 
 ## Status & roadmap
 
-- [x] v0.4.x — open-source readiness: portable defaults, engine plugin
-      entry point, community files, zero lint debt
-- [x] v0.6.0 — per-task isolated workspaces, rotation anchors, crash-recovery
-      bookkeeping, provider thinking continuation
-- [x] v0.6.3 — interactive egress control: off/warn/enforce + ask-to-approve
-      cards, session-level overrides, per-session attribution
-- [x] v0.6.5 — every security mechanism explicitly configurable; host
-      resource bridges
-- [x] post-0.6.5 — test-quality campaign: 83.1% coverage, 2589-mutant
-      verification across 41 files (76% kill rate), weekly mutation gate in CI
-- [ ] PyPI publication
-- [ ] desktop real-device validation (mac/win)
+- [x] v0.1.0 — W1–W5 complete: providers, tools, loop, permissions, hooks,
+      compaction, subagents, MCP, persistence, headless CLI, REPL
+- [x] v0.2.x — parallel task planner, background command discipline
+- [x] v0.3.0 — per-delta `stream_event`, MultiEdit/NotebookEdit/Bash
+      cwd+env/Skill tool, custom subagents, CLAUDE.md chain + `@import`,
+      small-model summaries, stream-interruption retry
+- [x] v0.4.0 — timeout-death hardening: Bash 60s auto-background,
+      pty `InteractiveShell`, `-j$(nproc)` discipline, thinking-budget knob
+- [x] v0.5.0 — harness-lore integration: prompt-cache breakpoints,
+      truncation-with-actions, handoff compactor (prune + ledger + UPDATE),
+      grace call, two-tier loop-guard, truncated-toolCall refusal,
+      context-overflow self-rescue, normalized-fuzzy Edit
 - [ ] Terminal-Bench baseline numbers
-- [ ] Ollama provider, DeepSeek native; TUI (textual)
+- [ ] Ollama provider, DeepSeek native
+- [ ] TUI (textual)
+- [ ] MCP server mode (loadn as an MCP server)
 
 See [CHANGELOG.md](CHANGELOG.md). Contributions welcome —
 [CONTRIBUTING.md](CONTRIBUTING.md) describes the layout and how to add a tool
