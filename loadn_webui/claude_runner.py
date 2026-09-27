@@ -158,6 +158,7 @@ class TurnCall:
     turn_id: int = 0
     sid: str = ""           # 会话 id（steer 文件按会话分段等）
     engine: str = "claude"     # 执行引擎（engines/ 注册名）
+    sandbox_requested: str | None = None   # 会话级沙箱档位覆盖（None=全局）
     rotate_input_tokens: int | None = None   # 外层上下文轮换阈值（loadn --no-compact 联动）
     disallowed_tools: list[str] = field(default_factory=list)   # opencode env 注入用
     env_extra: dict = field(default_factory=dict)
@@ -382,7 +383,8 @@ async def run_turn(call: TurnCall, stop: StopHandle | None = None) -> TurnProcRe
         await _proxy.ensure_session_uds(call.sid)
     cmd, sbx_mode = sandbox_mod.wrap_engine(
         cmd, env, engine=spec.name, sid=call.session_id, cwd=Path(call.cwd),
-        project_root=_ws_mod.project_root_of(call.sid), owner_sid=call.sid)
+        project_root=_ws_mod.project_root_of(call.sid), owner_sid=call.sid,
+        requested_tier=call.sandbox_requested)
     if sbx_mode != "direct":
         _audit("sandbox_violation" if sbx_mode == "direct-fallback" else "snapshot",
                {"mode": sbx_mode, "engine": spec.name, "sid": call.sid},

@@ -328,7 +328,8 @@ def _wrap_generic(cmd: list[str], env: dict, *, cwd: Path,
 
 def wrap_engine(cmd: list[str], env: dict, *, engine: str, sid: str,
                 cwd: Path, project_root: Path | None = None,
-                owner_sid: str = "") -> tuple[list[str], str]:
+                owner_sid: str = "",
+                requested_tier: str | None = None) -> tuple[list[str], str]:
     """spawn 入口：按引擎/profile 选包裹。返回 (argv, mode)。
 
     mode: "bwrap" | "direct"（配置显式 off）| "direct-fallback"（想要隔离
@@ -340,12 +341,16 @@ def wrap_engine(cmd: list[str], env: dict, *, engine: str, sid: str,
     owner_sid：平台会话 id（loadn 引擎会话级 egress socket 用）。
     """
     from .config import CONFIG
-    tier, reason = resolve_tier()
+    # 会话级档位覆盖（params.sandbox > 全局 config；None=全局）——运维/
+    # 宿主接管会话可放开隔离，普通会话保持全局默认。降档审计语义不变
+    effective_cfg = requested_tier if requested_tier is not None \
+        else CONFIG.security.sandbox
+    tier, reason = resolve_tier(requested_tier)
     if tier == "off":
         if reason and reason not in _warned:
             _warned.add(reason)
             log.warning("沙箱档位 %s 未生效（%s），引擎直跑（文件未隔离，审计记录）",
-                        CONFIG.security.sandbox, reason)
+                        effective_cfg, reason)
         # 想要隔离但降档 → direct-fallback（复用既有 sandbox_violation 遥测
         # 口径）；显式 off 才是诚意的 direct
         return cmd, "direct-fallback" if reason else "direct"

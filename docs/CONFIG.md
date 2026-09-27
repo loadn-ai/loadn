@@ -92,6 +92,21 @@ github.com / arxiv.org / 2captcha.com / opencode.ai / llm-gw.internal 等
 
 ## 会话级参数覆盖（params）
 
-`params.egress`（off/warn/enforce）等六个引擎参数支持**会话级覆盖**（PATCH
-`/api/sessions/{sid}` 的 `params` 段），优先级高于 `config.yaml` 全局值——
-用于单任务放开/收紧而不动全局；下一轮生效，进行中 turn 不受影响。
+`params.egress`（off/warn/enforce）、`params.sandbox`（off/bwrap/…）等
+八个键支持**会话级覆盖**（PATCH `/api/sessions/{sid}` 的 `params` 段），
+优先级高于 `config.yaml` 全局值——用于单任务放开/收紧而不动全局；下一轮
+生效，进行中 turn 不受影响。
+
+### 宿主接管配方（运维任务 / 跨项目资源访问）
+
+让某个会话「全面接管宿主机」的三件套（属性面板均可调）：
+
+1. **`params.sandbox: off`**——本会话引擎直跑宿主（文件系统全可见，
+   systemctl/journalctl 等运维命令可用）；权限引擎/审计/蜜罐仍然生效，
+   只是去掉文件隔离。普通会话保持全局档位不受影响。
+2. **`resource_bridges`**（全局，安全运维面可加）——比 off 更克制的
+   选择：保持 bwrap 隔离，只把指定宿主路径同路径 bind 进沙箱：
+   `{path: /data/code/papergo, mode: rw}`（rw=可写）、ro=只读、
+   dev=设备节点。读写面精确到路径。
+3. **`params.egress: off` + 白名单**——运维要访问本机服务/内网时放开
+   本会话外联（代理仍在路径上：直通+审计+凭证网关不变）。

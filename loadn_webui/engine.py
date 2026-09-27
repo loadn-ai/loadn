@@ -395,7 +395,8 @@ class Engine:
         from . import profile as profile_mod
         prof = profile_mod.get(sess["profile"])
         # 会话级参数覆盖（属性面板）：覆盖优先，其余跟 profile
-        eff = params_mod.effective(prof, params_mod.load(sess["params_json"]))
+        ov = params_mod.load(sess["params_json"])
+        eff = params_mod.effective(prof, ov)
         # 引擎优先级：聊天框的会话级覆盖 > profile.engine（_align_engine 的
         # id 迁移对两者同一处理）
         spec = engines_mod.resolve(sess["engine_override"] or prof.engine)
@@ -456,6 +457,7 @@ class Engine:
                 timeout_s=eff["timeout_s"], stall_timeout_s=eff["stall_timeout_s"],
                 max_turns=eff["max_turns"],
                 engine=spec.name, rotate_input_tokens=eff["rotate_input_tokens"],
+                sandbox_requested=ov.get("sandbox"),
                 disallowed_tools=list(prof.disallowed_tools),
                 turn_id=tid, sid=sid, env_extra=extra_env, on_event=on_event,
                 on_spawned=_on_spawned)

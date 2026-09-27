@@ -16,11 +16,15 @@ from .util import get_logger
 log = get_logger(__name__)
 
 ALLOWED = ("model", "effort", "max_turns", "timeout_s", "stall_timeout_s",
-           "rotate_input_tokens", "egress")
+           "rotate_input_tokens", "egress", "sandbox")
 
 _EFFORTS = ("low", "medium", "high")
 # 会话级外联档位（null/缺省=跟随全局 config；egress 代理判定链见 egress_proxy）
 EGRESS_MODES = ("off", "warn", "enforce")
+# 会话级沙箱档位（null/缺省=跟随全局；枚举与 config.SANDBOX_TIERS 同源）。
+# 用途：运维/宿主接管会话放开隔离（off）或收紧（bwrap）——下一 turn 生效，
+# spawn 期语义与全局档一致（含降档审计/sandbox_tier 遥测）
+from .config import SANDBOX_TIERS  # noqa: E402
 
 
 def validate(body_value) -> str | None:
@@ -49,6 +53,10 @@ def validate(body_value) -> str | None:
         elif k == "egress":
             if v not in EGRESS_MODES:
                 raise ValueError(f"egress 需为 {'|'.join(EGRESS_MODES)}（null=跟随全局）")
+            out[k] = v
+        elif k == "sandbox":
+            if v not in SANDBOX_TIERS:
+                raise ValueError(f"sandbox 需为 {'|'.join(SANDBOX_TIERS)}（null=跟随全局）")
             out[k] = v
         elif k == "max_turns":
             # 0 = 不限制（生效 None）；范围与 profile 收敛闸同量级
@@ -83,7 +91,7 @@ def load(raw) -> dict:
 
 
 def effective(prof, ov: dict) -> dict:
-    """七键生效值：覆盖优先（0 哨兵换算 None），否则 profile 侧。
+    """生效值：覆盖优先（0 哨兵换算 None），否则 profile 侧。
     egress 无 profile 侧——None=跟随全局 config（代理判定时解析）。"""
     def _get(k):
         if k in ov:
@@ -91,13 +99,18 @@ def effective(prof, ov: dict) -> dict:
             if k in ("max_turns", "rotate_input_tokens") and v == 0:
                 return None
             return v
-        return None if k == "egress" else getattr(prof, k)
+        # egress/sandbox 无 profile 侧——None=跟随全局（spawn/代理判定时解析）
+        return None if k in ("egress", "sandbox") else getattr(prof, k)
     return {k: _get(k) for k in ALLOWED}
 
 
 def defaults(prof) -> dict:
-    """profile 侧默认值（UI「跟随 profile（X）」提示用）。egress 恒 None。"""
-    return {k: (None if k == "egress" else getattr(prof, k)) for k in ALLOWED}
+    """profile 侧默认值（UI「跟随 profile（X）」提示用）。
+
+    egress/sandbox 无 profile 侧（会话级专属覆盖键）——恒 None=跟随全局。
+    """
+    return {k: (None if k in ("egress", "sandbox") else getattr(prof, k))
+            for k in ALLOWED}
 
 
 def session_egress_override(raw) -> str | None:

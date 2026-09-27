@@ -37,6 +37,7 @@ export default function PropertiesPanel() {
     <div className="props-tab">
       <BasicSection />
       <ParamsSection />
+      <SandboxSection />
       <EgressSection />
       <SkillsSection />
       <McpSection />
@@ -194,6 +195,44 @@ interface EgressView {
   allow: string[];
   grants: { host: string; expires_at: string }[];
   events: { ts: string; host: string; decision: string }[];
+}
+
+/** 任务级沙箱档位（params.sandbox；「跟随全局」=清除覆盖）——
+ *  宿主运维/跨项目接管会话放开隔离（off=直跑），普通任务保持全局默认。 */
+const SANDBOX_TIERS_UI: { v: string | null; label: string; tip: string }[] = [
+  { v: null, label: '跟随全局', tip: '清除本任务覆盖，用全局沙箱档位' },
+  { v: 'off', label: '直跑', tip: '本任务不隔离（宿主运维/跨仓接管用；下一 turn 生效）' },
+  { v: 'bwrap', label: '隔离', tip: '本任务强制 bwrap（全局放开时收紧单任务）' },
+];
+
+function SandboxSection() {
+  const sid = useStore(s => s.currentSid)!;
+  const extras = useStore(st => st.sessionExtras);
+  const patchParams = useStore(st => st.patchParams);
+  const [busy, setBusy] = useState(false);
+  const cur = (extras?.params?.sandbox as string | undefined) ?? null;
+
+  const setTier = (v: string | null) => {
+    const merged: ParamsMap = { ...(extras?.params ?? {}) };
+    if (v == null) delete merged.sandbox; else merged.sandbox = v;
+    setBusy(true);
+    void patchParams(sid, merged).catch(() => { /* patchParams 已 alert */ })
+      .finally(() => setBusy(false));
+  };
+
+  return (
+    <section className="props-section">
+      <h3>沙箱档位 <span className="muted">（下一 turn 生效）</span></h3>
+      <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
+        {SANDBOX_TIERS_UI.map(t =>
+          <button key={t.label} className={`chip ${cur === t.v ? 'on' : ''}`}
+            disabled={busy} title={t.tip} onClick={() => setTier(t.v)}>{t.label}</button>)}
+      </div>
+      <div className="muted" style={{ fontSize: 12, marginTop: 6 }}>
+        直跑=本任务可访问宿主全机（仍过权限引擎/审计）；配合资源桥接用。
+      </div>
+    </section>
+  );
 }
 
 /** 任务级外联档位（后端 params.EGRESS_MODES；「跟随全局」=清除覆盖） */

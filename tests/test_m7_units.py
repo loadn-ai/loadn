@@ -179,3 +179,39 @@ async def test_asset_missing_404_not_html_fallback(client):
     # 存在的资源：不可变长缓存（哈希名）
     r3 = await client.get("/")
     assert "no-store" in r3.headers.get("cache-control", "")
+
+
+# ------------------------------------------------------- 会话级沙箱档位
+def test_params_validate_and_effective_sandbox():
+    """params.sandbox：枚举校验 + effective None=跟随全局（第八键）。"""
+    from types import SimpleNamespace as NS
+
+    from loadn_webui import params as pm
+    assert pm.validate({"sandbox": "off"}) is not None or True  # validate 返回 json 串/None
+    import json as _j
+    raw = pm.validate({"sandbox": "bwrap"})
+    assert _j.loads(raw)["sandbox"] == "bwrap"
+    with pytest.raises(ValueError, match="sandbox"):
+        pm.validate({"sandbox": "nope"})
+    prof = NS(effort="high", model=None, max_turns=None, timeout_s=60,
+              stall_timeout_s=30, rotate_input_tokens=None)
+    eff = pm.effective(prof, {})
+    assert eff["sandbox"] is None                     # 缺省跟随全局
+    eff2 = pm.effective(prof, {"sandbox": "off"})
+    assert eff2["sandbox"] == "off"
+
+
+def test_wrap_engine_session_tier_override(monkeypatch, tmp_path):
+    """requested_tier 覆盖链：会话 off → direct（全局 bwrap 不吃）；None=全局。"""
+    from loadn_webui import sandbox as sb
+    from loadn_webui.config import CONFIG
+    monkeypatch.setattr(CONFIG.security, "sandbox", "bwrap")
+    monkeypatch.setattr(sb, "bwrap_available", lambda: True)
+    monkeypatch.setattr(sb, "resolve_tier", lambda req=None:
+                        ("off", "") if req == "off" else ("bwrap", ""))
+    cmd, mode = sb.wrap_engine(["x"], {}, engine="claude", sid="s",
+                               cwd=str(tmp_path), requested_tier="off")
+    assert mode == "direct"                            # 会话级 off 生效
+    cmd2, mode2 = sb.wrap_engine(["x"], {}, engine="claude", sid="s",
+                                 cwd=str(tmp_path))    # None=全局 bwrap
+    assert mode2 == "bwrap"
