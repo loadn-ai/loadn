@@ -229,6 +229,10 @@ TARGET_TESTS: dict[str, list[str]] = {
         "tests/test_browser_units.py",
         "tests/security/test_browser_cua.py",
     ],
+    "loadn_webui/engines/opencode.py": [
+        "tests/test_engines.py",
+        "tests/test_adoption.py",
+    ],
     "loadn_webui/api/routes.py": [
         "tests/test_w0_security.py",
         "tests/test_admin.py",
