@@ -72,6 +72,7 @@ loadn = ["py.typed"]
 
 [tool.pytest.ini_options]
 markers = [
+    "perf: 性能回归门（宽预算，挡数量级劣化——tests/test_perf_gate.py)",
   "coverage(id): 成熟度记分卡证据标记（P3-6 taxonomy）",
 ]
 addopts = ["--strict-markers"]

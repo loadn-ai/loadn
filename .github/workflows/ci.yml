@@ -125,6 +125,21 @@ jobs:
         with:
           python-version: "3.12"
       - run: pip install pip-audit && pip-audit -e ".[webui,dev]" --strict
+  perf:
+    # C-perf（tests/test_perf_gate.py）：性能回归门——周跑，宽预算
+    # （基线×4-8 余量）只挡数量级劣化，CI 波动不误报
+    if: github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - run: pip install -e ".[webui,dev]"
+      - run: pytest tests/test_perf_gate.py -q
+        env:
+          LOADN_PROVIDER: fake
   mutation:
     # M5（tests/TEST-PLAN.md §七）：突变杀伤率回归门——周跑代表性子集
     # （全套 600+ 变异按台账队列本地跑；这里只守杀伤率不回退的底线）
