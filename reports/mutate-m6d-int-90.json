@@ -1,0 +1,127 @@
+{
+ "file": "loadn_webui/claude_runner.py",
+ "total": 20,
+ "killed": 0,
+ "survived": [
+  {
+   "line": 472,
+   "kind": "cmp:Is",
+   "orig": "proc.returncode is None",
+   "new": "proc.returncode is not None"
+  },
+  {
+   "line": 551,
+   "kind": "const:int+1",
+   "orig": "500",
+   "new": "501"
+  },
+  {
+   "line": 572,
+   "kind": "const:bool",
+   "orig": "True",
+   "new": "False"
+  },
+  {
+   "line": 577,
+   "kind": "cmp:Gt",
+   "orig": "elapsed > call.timeout_s",
+   "new": "elapsed <= call.timeout_s"
+  },
+  {
+   "line": 584,
+   "kind": "bool:BoolOp",
+   "orig": "ts_age is None or ts_age > call.stall_timeout_s",
+   "new": "ts_age is None and ts_age > call.stall_timeout_s"
+  },
+  {
+   "line": 591,
+   "kind": "const:int+1",
+   "orig": "10",
+   "new": "11"
+  },
+  {
+   "line": 592,
+   "kind": "cmp:Lt",
+   "orig": "time.time() < deadline",
+   "new": "time.time() >= deadline"
+  },
+  {
+   "line": 633,
+   "kind": "const:bool",
+   "orig": "False",
+   "new": "True"
+  },
+  {
+   "line": 94,
+   "kind": "const:bool",
+   "orig": "False",
+   "new": "True"
+  },
+  {
+   "line": 95,
+   "kind": "cmp:In",
+   "orig": "m in cmd",
+   "new": "m not in cmd"
+  },
+  {
+   "line": 129,
+   "kind": "const:int+1",
+   "orig": "1",
+   "new": "2"
+  },
+  {
+   "line": 131,
+   "kind": "const:int+1",
+   "orig": "1",
+   "new": "2"
+  },
+  {
+   "line": 334,
+   "kind": "const:int+1",
+   "orig": "1000",
+   "new": "1001"
+  },
+  {
+   "line": 448,
+   "kind": "cmp:Is",
+   "orig": "ts_age is None",
+   "new": "ts_age is not None"
+  },
+  {
+   "line": 448,
+   "kind": "cmp:Gt",
+   "orig": "ts_age > call.stall_timeout_s",
+   "new": "ts_age <= call.stall_timeout_s"
+  },
+  {
+   "line": 584,
+   "kind": "cmp:Is",
+   "orig": "ts_age is None",
+   "new": "ts_age is not None"
+  },
+  {
+   "line": 584,
+   "kind": "cmp:Gt",
+   "orig": "ts_age > call.stall_timeout_s",
+   "new": "ts_age <= call.stall_timeout_s"
+  },
+  {
+   "line": 611,
+   "kind": "const:bool",
+   "orig": "False",
+   "new": "True"
+  },
+  {
+   "line": 612,
+   "kind": "const:bool",
+   "orig": "True",
+   "new": "False"
+  },
+  {
+   "line": 616,
+   "kind": "cmp:Is",
+   "orig": "err_msg is None",
+   "new": "err_msg is not None"
+  }
+ ]
+}

@@ -1,0 +1,46 @@
+{
+ "total": 8,
+ "killed": 0,
+ "survived": [
+  {
+   "line": 577,
+   "kind": "cmp:Gt",
+   "orig": "elapsed > call.timeout_s"
+  },
+  {
+   "line": 584,
+   "kind": "bool:BoolOp",
+   "orig": "ts_age is None or ts_age > call.stall_timeout_s"
+  },
+  {
+   "line": 591,
+   "kind": "const:int+1",
+   "orig": "10"
+  },
+  {
+   "line": 592,
+   "kind": "cmp:Lt",
+   "orig": "time.time() < deadline"
+  },
+  {
+   "line": 633,
+   "kind": "const:bool",
+   "orig": "False"
+  },
+  {
+   "line": 94,
+   "kind": "const:bool",
+   "orig": "False"
+  },
+  {
+   "line": 95,
+   "kind": "cmp:In",
+   "orig": "m in cmd"
+  },
+  {
+   "line": 129,
+   "kind": "const:int+1",
+   "orig": "1"
+  }
+ ]
+}

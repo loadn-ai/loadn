@@ -161,7 +161,7 @@ workflow_dispatch，代表性子集（canary/multiedit/turn_diff/net_policy）
 
 ### M6 功能批（2026-09-27/28，用户拍板扩展到功能/交互/逻辑面）
 
-**批总：1452/1858 变异杀死（78.2%）**，22 文件。核心发现：行覆盖高≠
+**批总：1488/1858 变异杀死（80.1%）**，22 文件。核心发现：行覆盖高≠
 断言强在全批复现——compactor 98% 行覆盖只有 24% 杀伤、loop 89% 覆盖
 51% 起步、engine.py 是反面标杆（w0 真服务器窄集 236/236=100%）。
 
@@ -180,7 +180,7 @@ workflow_dispatch，代表性子集（canary/multiedit/turn_diff/net_policy）
 | M6d | grep / read | 69% / 68% | 参数守卫双形态/子路径 include |
 | M6e | transcript | 93% | 4 活全等价 |
 | M6f | engine.py | **100%** | w0 真服务器 45 测试=完美窄集 |
-| M6f | claude_runner | ~48%* | **自噬防护对**（serve 探测双形态/TURN_ID 防误杀）+_Sink result 门；*其余 spawn 生命周期管线真覆盖在 test_e2e（47s/轮），e2e 入映射重扫需 ~98 分钟安静窗口，记 backlog |
+| M6f | claude_runner | 76%* | **自噬防护对**（serve 探测双形态/TURN_ID 防误杀）+_Sink result 门；*66 存活经 e2e 显式索引复扫（78 目标 11 块）：36 杀，42 真等价（TTL 常量/deadline 位/无 bwrap 环境不可达的审计位——生产可区分，白名单单列） |
 
 **基建**：外部杀手实证（scripts/mutate.py 执行态被定向 SIGTERM 六起，
 /tmp 驱动+文本写回恢复+间隔全程存活）；分块扫描（≤9 分钟/块）与映射

@@ -1,0 +1,271 @@
+{
+ "file": "loadn_webui/claude_runner.py",
+ "total": 64,
+ "killed": 20,
+ "survived": [
+  {
+   "line": 48,
+   "kind": "const:int+1",
+   "orig": "1024",
+   "new": "1025"
+  },
+  {
+   "line": 75,
+   "kind": "bool:BoolOp",
+   "orig": "(\"loadn\" in cmd or \"loadn_webui\" in cmd) and \"serve\" in cmd",
+   "new": "('loadn' in cmd or 'loadn_webui' in cmd) or 'serve' in cmd"
+  },
+  {
+   "line": 152,
+   "kind": "const:bool",
+   "orig": "False",
+   "new": "True"
+  },
+  {
+   "line": 155,
+   "kind": "const:int+1",
+   "orig": "3600",
+   "new": "3601"
+  },
+  {
+   "line": 156,
+   "kind": "const:int+1",
+   "orig": "1800",
+   "new": "1801"
+  },
+  {
+   "line": 183,
+   "kind": "const:bool",
+   "orig": "False",
+   "new": "True"
+  },
+  {
+   "line": 381,
+   "kind": "bool:BoolOp",
+   "orig": "_proxy is not None and call.sid",
+   "new": "_proxy is not None or call.sid"
+  },
+  {
+   "line": 386,
+   "kind": "cmp:NotEq",
+   "orig": "sbx_mode != \"direct\"",
+   "new": "sbx_mode == 'direct'"
+  },
+  {
+   "line": 394,
+   "kind": "const:bool",
+   "orig": "False",
+   "new": "True"
+  },
+  {
+   "line": 500,
+   "kind": "bool:BoolOp",
+   "orig": "rc == 0 and not err_msg_final",
+   "new": "rc == 0 or not err_msg_final"
+  },
+  {
+   "line": 523,
+   "kind": "const:int+1",
+   "orig": "3600",
+   "new": "3601"
+  },
+  {
+   "line": 524,
+   "kind": "const:int+1",
+   "orig": "1800",
+   "new": "1801"
+  },
+  {
+   "line": 48,
+   "kind": "const:int+1",
+   "orig": "64",
+   "new": "65"
+  },
+  {
+   "line": 48,
+   "kind": "const:int+1",
+   "orig": "1024",
+   "new": "1025"
+  },
+  {
+   "line": 75,
+   "kind": "bool:BoolOp",
+   "orig": "\"loadn\" in cmd or \"loadn_webui\" in cmd",
+   "new": "'loadn' in cmd and 'loadn_webui' in cmd"
+  },
+  {
+   "line": 75,
+   "kind": "cmp:In",
+   "orig": "\"serve\" in cmd",
+   "new": "'serve' not in cmd"
+  },
+  {
+   "line": 84,
+   "kind": "cmp:Eq",
+   "orig": "stat.rsplit(\")\", 1)[1].split()[0] == \"Z\"",
+   "new": "stat.rsplit(')', 1)[1].split()[0] != 'Z'"
+  },
+  {
+   "line": 96,
+   "kind": "cmp:In",
+   "orig": "f\"LOADN_TURN_ID={tid}\\0\".encode() in env",
+   "new": "f'LOADN_TURN_ID={tid}\\x00'.encode() not in env"
+  },
+  {
+   "line": 97,
+   "kind": "cmp:In",
+   "orig": "f\"WORKDADDY_TURN_ID={tid}\\0\".encode() in env",
+   "new": "f'WORKDADDY_TURN_ID={tid}\\x00'.encode() not in env"
+  },
+  {
+   "line": 119,
+   "kind": "cmp:In",
+   "orig": "pid in skip",
+   "new": "pid not in skip"
+  },
+  {
+   "line": 132,
+   "kind": "bool:BoolOp",
+   "orig": "ppid > 0 and _parent_is_server(ppid)",
+   "new": "ppid > 0 or _parent_is_server(ppid)"
+  },
+  {
+   "line": 142,
+   "kind": "const:int+1",
+   "orig": "1",
+   "new": "2"
+  },
+  {
+   "line": 192,
+   "kind": "const:bool",
+   "orig": "False",
+   "new": "True"
+  },
+  {
+   "line": 195,
+   "kind": "const:bool",
+   "orig": "True",
+   "new": "False"
+  },
+  {
+   "line": 210,
+   "kind": "cmp:Lt",
+   "orig": "time.time() < deadline",
+   "new": "time.time() >= deadline"
+  },
+  {
+   "line": 246,
+   "kind": "cmp:In",
+   "orig": "b\"\\n\" in self._buf",
+   "new": "b'\\n' not in self._buf"
+  },
+  {
+   "line": 280,
+   "kind": "cmp:Eq",
+   "orig": "nev.get(\"type\") == \"result\"",
+   "new": "nev.get('type') != 'result'"
+  },
+  {
+   "line": 290,
+   "kind": "cmp:IsNot",
+   "orig": "self.on_event is not None",
+   "new": "self.on_event is None"
+  },
+  {
+   "line": 349,
+   "kind": "cmp:In",
+   "orig": "spec.name in (\"loadn\", \"hahaness\", \"claude\")",
+   "new": "spec.name not in ('loadn', 'hahaness', 'claude')"
+  },
+  {
+   "line": 363,
+   "kind": "bool:BoolOp",
+   "orig": "_proxy is not None and call.sid",
+   "new": "_proxy is not None or call.sid"
+  },
+  {
+   "line": 381,
+   "kind": "cmp:IsNot",
+   "orig": "_proxy is not None",
+   "new": "_proxy is None"
+  },
+  {
+   "line": 416,
+   "kind": "cmp:IsNot",
+   "orig": "call.on_spawned is not None",
+   "new": "call.on_spawned is None"
+  },
+  {
+   "line": 426,
+   "kind": "const:bool",
+   "orig": "False",
+   "new": "True"
+  },
+  {
+   "line": 427,
+   "kind": "cmp:Is",
+   "orig": "proc.returncode is None",
+   "new": "proc.returncode is not None"
+  },
+  {
+   "line": 452,
+   "kind": "bool:BoolOp",
+   "orig": "err_msg is not None and proc.returncode is None",
+   "new": "err_msg is not None or proc.returncode is None"
+  },
+  {
+   "line": 480,
+   "kind": "cmp:IsNot",
+   "orig": "tail is not None",
+   "new": "tail is None"
+  },
+  {
+   "line": 492,
+   "kind": "cmp:NotEq",
+   "orig": "rc != 0",
+   "new": "rc == 0"
+  },
+  {
+   "line": 500,
+   "kind": "cmp:Eq",
+   "orig": "rc == 0",
+   "new": "rc != 0"
+  },
+  {
+   "line": 544,
+   "kind": "const:bool",
+   "orig": "True",
+   "new": "False"
+  },
+  {
+   "line": 554,
+   "kind": "cmp:IsNot",
+   "orig": "call.on_replayed is not None",
+   "new": "call.on_replayed is None"
+  },
+  {
+   "line": 563,
+   "kind": "const:bool",
+   "orig": "False",
+   "new": "True"
+  },
+  {
+   "line": 624,
+   "kind": "bool:BoolOp",
+   "orig": "err_msg is None and not err_tail",
+   "new": "err_msg is None or not err_tail"
+  },
+  {
+   "line": 74,
+   "kind": "const:bool",
+   "orig": "False",
+   "new": "True"
+  },
+  {
+   "line": 75,
+   "kind": "cmp:In",
+   "orig": "\"loadn\" in cmd",
+   "new": "'loadn' not in cmd"
+  }
+ ]
+}

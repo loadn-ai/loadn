@@ -1,0 +1,11 @@
+{
+ "total": 7,
+ "killed": 6,
+ "survived": [
+  {
+   "line": 624,
+   "kind": "bool:BoolOp",
+   "orig": "err_msg is None and not err_tail"
+  }
+ ]
+}

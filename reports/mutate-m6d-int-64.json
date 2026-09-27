@@ -1,0 +1,19 @@
+{
+ "file": "loadn_webui/claude_runner.py",
+ "total": 2,
+ "killed": 0,
+ "survived": [
+  {
+   "line": 551,
+   "kind": "cmp:GtE",
+   "orig": "n >= 500",
+   "new": "n < 500"
+  },
+  {
+   "line": 577,
+   "kind": "bool:BoolOp",
+   "orig": "call.timeout_s and elapsed > call.timeout_s",
+   "new": "call.timeout_s or elapsed > call.timeout_s"
+  }
+ ]
+}

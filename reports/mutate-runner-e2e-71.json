@@ -1,0 +1,41 @@
+{
+ "total": 7,
+ "killed": 0,
+ "survived": [
+  {
+   "line": 612,
+   "kind": "const:bool",
+   "orig": "True"
+  },
+  {
+   "line": 616,
+   "kind": "cmp:Is",
+   "orig": "err_msg is None"
+  },
+  {
+   "line": 618,
+   "kind": "bool:BoolOp",
+   "orig": "sink.meta.get(\"session_id\") or call.session_id"
+  },
+  {
+   "line": 648,
+   "kind": "const:bool",
+   "orig": "True"
+  },
+  {
+   "line": 649,
+   "kind": "const:bool",
+   "orig": "True"
+  },
+  {
+   "line": 129,
+   "kind": "const:int+1",
+   "orig": "1"
+  },
+  {
+   "line": 129,
+   "kind": "const:int+1",
+   "orig": "1"
+  }
+ ]
+}
