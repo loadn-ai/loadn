@@ -165,3 +165,17 @@ def test_egress_grant_ttl_config(monkeypatch):
         eg._GRANTS.pop("s-ttl", None)
         eg._GRANTS.pop("s-ttl2", None)
         eg._GRANTS.pop("s-ttl3", None)
+
+
+async def test_asset_missing_404_not_html_fallback(client):
+    """缓存投毒断根：/assets/ 缺文件必须 404+no-store，绝不回 index.html
+    （HTML 当 css/js 被代理缓存 → 浏览器拒载 = 全站裸样式，实证修复）。"""
+    r = await client.get("/assets/index-nonexistent-deadbeef.css")
+    assert r.status_code == 404
+    assert "no-store" in r.headers.get("cache-control", "")
+    assert b"<html" not in r.content          # 不是 SPA fallback
+    r2 = await client.get("/assets/nonexistent.js")
+    assert r2.status_code == 404 and b"<html" not in r2.content
+    # 存在的资源：不可变长缓存（哈希名）
+    r3 = await client.get("/")
+    assert "no-store" in r3.headers.get("cache-control", "")

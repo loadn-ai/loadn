@@ -303,7 +303,19 @@ async def spa_fallback(full_path: str):
         except ValueError:
             return JSONResponse({"error": "forbidden"}, status_code=403)
         if p.is_file():
-            return FileResponse(p, headers={"Cache-Control": "no-store"})
+            # 构建产物带内容哈希（index-<hash>.js/css）→ 不可变缓存一年：
+            # 代理/浏览器缓存正确响应是安全且想要的。升级窗口期 dist 半切换
+            # 时的缺文件见下方 assets 门——绝不能落进 index.html fallback
+            return FileResponse(p, headers={
+                "Cache-Control": "public, max-age=31536000, immutable"})
+        if full_path.startswith("assets/"):
+            # **缓存投毒断根（v0.6.9 实证修复）**：/assets/ 下缺文件若回
+            # index.html（200 text/html），代理会把这个响应当 css/js 缓存
+            # ——浏览器拒载（MIME 严格检查）= 全站裸样式，且缓存毒性持续
+            # 到过期。哈希名缺失只可能是升级半切换瞬态 → 干净 404 + no-store
+            return JSONResponse({"error": "asset not found"},
+                                status_code=404,
+                                headers={"Cache-Control": "no-store"})
     idx = _DIST / "index.html"
     if idx.exists():
         return FileResponse(idx, headers={"Cache-Control": "no-store"})
