@@ -11,7 +11,7 @@
 |---|---|---|
 | `engines` | 可插拔执行引擎 | `default`（claude/hahaness/opencode）、`no_compact` |
 | `claude` | claude 引擎参数 | `effort`/`model`/`claude_bin` |
-| `run` | 并发与事件 | `max_concurrent_turns`、`event_buffer_per_session` |
+| `run` | 并发与事件 | `max_concurrent_turns`、`replay_max_events`、`events_retain_days` |
 | `server` | 监听与认证 | `host`/`port`/`token`（非 127.0.0.1 强制 token） |
 | `mcp` | 全局 MCP servers | `servers`（.mcp.json 的 mcpServers 格式） |
 | `resources` | 外部资源接入 | OCR/沙箱/CDP/代理/搜索/邮箱等端点与密钥 |
