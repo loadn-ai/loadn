@@ -204,6 +204,13 @@ TARGET_TESTS: dict[str, list[str]] = {
     "loadn/tools/interactive.py": [
         "tests/test_tools_interactive.py",
     ],
+    "loadn_webui/engine.py": [
+        "tests/test_w0_security.py",
+        "tests/test_engine_switch.py",
+    ],
+    "loadn_webui/claude_runner.py": [
+        "tests/test_w0_security.py",
+    ],
     "loadn/core/loop.py": [
         "tests/test_loop.py",
         "tests/contract/test_protocol_v2.py",
