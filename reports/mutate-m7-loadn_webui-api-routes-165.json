@@ -1,0 +1,37 @@
+{
+ "file": "loadn_webui/api/routes.py",
+ "total": 55,
+ "killed": 49,
+ "survived": [
+  {
+   "line": 1690,
+   "kind": "cmp:In",
+   "orig": "suffix in (\".html\", \".htm\")"
+  },
+  {
+   "line": 1693,
+   "kind": "cmp:Eq",
+   "orig": "suffix == \".pdf\""
+  },
+  {
+   "line": 1701,
+   "kind": "const:int+1",
+   "orig": "50"
+  },
+  {
+   "line": 1701,
+   "kind": "const:int+1",
+   "orig": "1024"
+  },
+  {
+   "line": 1707,
+   "kind": "const:int+1",
+   "orig": "1024"
+  },
+  {
+   "line": 1726,
+   "kind": "const:int+1",
+   "orig": "1"
+  }
+ ]
+}

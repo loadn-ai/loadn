@@ -1,0 +1,132 @@
+{
+ "file": "loadn_webui/api/routes.py",
+ "total": 55,
+ "killed": 30,
+ "survived": [
+  {
+   "line": 701,
+   "kind": "const:int+1",
+   "orig": "400"
+  },
+  {
+   "line": 712,
+   "kind": "const:int+1",
+   "orig": "1"
+  },
+  {
+   "line": 714,
+   "kind": "const:int+1",
+   "orig": "1"
+  },
+  {
+   "line": 743,
+   "kind": "bool:BoolOp",
+   "orig": "body.get(\"mcp\") or {}"
+  },
+  {
+   "line": 744,
+   "kind": "bool:BoolOp",
+   "orig": "body.get(\"mcp\") or {}"
+  },
+  {
+   "line": 754,
+   "kind": "cmp:NotIn",
+   "orig": "name not in engines_mod.ENGINES"
+  },
+  {
+   "line": 776,
+   "kind": "cmp:In",
+   "orig": "\"title\" in updates"
+  },
+  {
+   "line": 787,
+   "kind": "const:bool",
+   "orig": "True"
+  },
+  {
+   "line": 853,
+   "kind": "const:int+1",
+   "orig": "400"
+  },
+  {
+   "line": 867,
+   "kind": "const:int+1",
+   "orig": "400"
+  },
+  {
+   "line": 891,
+   "kind": "const:int+1",
+   "orig": "400"
+  },
+  {
+   "line": 896,
+   "kind": "cmp:IsNot",
+   "orig": "v is not None"
+  },
+  {
+   "line": 899,
+   "kind": "const:int+1",
+   "orig": "400"
+  },
+  {
+   "line": 908,
+   "kind": "const:int+1",
+   "orig": "400"
+  },
+  {
+   "line": 923,
+   "kind": "const:int+1",
+   "orig": "1"
+  },
+  {
+   "line": 980,
+   "kind": "const:int+1",
+   "orig": "404"
+  },
+  {
+   "line": 995,
+   "kind": "const:int+1",
+   "orig": "400"
+  },
+  {
+   "line": 1002,
+   "kind": "cmp:Gt",
+   "orig": "len(v) > 500"
+  },
+  {
+   "line": 1006,
+   "kind": "const:int+1",
+   "orig": "400"
+  },
+  {
+   "line": 1023,
+   "kind": "const:int+1",
+   "orig": "404"
+  },
+  {
+   "line": 1032,
+   "kind": "const:int+1",
+   "orig": "1"
+  },
+  {
+   "line": 1104,
+   "kind": "const:int+1",
+   "orig": "404"
+  },
+  {
+   "line": 1122,
+   "kind": "bool:BoolOp",
+   "orig": "body.get(\"point\") or \"\""
+  },
+  {
+   "line": 1163,
+   "kind": "const:int+1",
+   "orig": "1"
+  },
+  {
+   "line": 1181,
+   "kind": "const:bool",
+   "orig": "True"
+  }
+ ]
+}

@@ -1,0 +1,22 @@
+{
+ "file": "loadn_webui/api/routes.py",
+ "total": 55,
+ "killed": 52,
+ "survived": [
+  {
+   "line": 1489,
+   "kind": "cmp:Eq",
+   "orig": "job[\"status\"] == \"done\""
+  },
+  {
+   "line": 1491,
+   "kind": "bool:BoolOp",
+   "orig": "status == \"active\" and job[\"status\"] != \"active\""
+  },
+  {
+   "line": 1535,
+   "kind": "bool:BoolOp",
+   "orig": "sess[\"skills_json\"] or \"[]\""
+  }
+ ]
+}

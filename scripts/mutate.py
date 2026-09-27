@@ -218,6 +218,7 @@ TARGET_TESTS: dict[str, list[str]] = {
         "tests/test_admin.py",
         "tests/test_archive.py",
         "tests/test_attachments.py",
+        "tests/test_m7b_units.py",
     ],
     "loadn_webui/params.py": [
         "tests/test_params.py",
