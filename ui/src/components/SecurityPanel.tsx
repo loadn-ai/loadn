@@ -10,6 +10,7 @@ interface Posture {
   sandbox: { mode: string; requested?: string; effective?: string; reason?: string;
     bwrap: number; direct: number; window: number };
   policy: { approval_enforce: string };
+  ops?: OpsConfig;
   egress: { mode: string; on_deny?: string; ask_wait_s?: number; allow_count: number };
   canary: { locked_sessions: { sid: string; reason: string }[]; kill_all: boolean };
   vault: { platforms: number };
@@ -31,6 +32,17 @@ const REASON_ZH: Record<string, string> = {
   'appcontainer-not-implemented': 'AppContainer 档尚未实现（长期可选）',
   'remote-not-implemented': '远程执行器档尚未实现',
 };
+
+/** 安全运维面可写键（PUT /api/admin/security/ops）——与后端七键对齐 */
+interface OpsConfig {
+  codemode_enabled: boolean;
+  lsp_enabled: boolean;
+  shared_readonly: string[];
+  resource_bridges: { path: string; mode: string }[];
+  approval_ttl_s: number;
+  egress_proxy_port: number;
+  egress_grant_ttl_s: number;
+}
 
 interface AuditEvent {
   id: number; ts: string; type: string;
@@ -238,14 +250,14 @@ export default function SecurityPanel({ onClose }: { onClose: () => void }) {
     {
       key: 'sandbox', name: '沙箱隔离', ok: sandboxOk, warn: sandboxWarn, icon: '📦',
       top: sandboxTop,
-      sub: 'AI 执行的命令被关在隔离环境里，碰不到系统其它文件与真实网络。',
+      sub: 'AI 执行的命令被关在隔离环境里，碰不到系统其它文件与真实网络。档位在明细里可切（重启生效）。',
       hint: sandboxHint,
     },
     {
       key: 'approvals', name: '敏感操作审批', ok: policyOk, warn: policyWarn, icon: '🔐',
       top: policyOk ? '强制（高危操作须输确认码）' : policyWarn ? '仅告警（不拦截）' : posture.policy.approval_enforce,
-      sub: '发邮件、动账号、付款类操作执行前需要你输确认码放行，AI 无法自行通过。',
-      hint: policyOk ? undefined : '当前不拦截：在 config.yaml security.approval_enforce 设为 enforce。',
+      sub: '发邮件、动账号、付款类操作执行前需要你输确认码放行，AI 无法自行通过。TTL 可在明细里调。',
+      hint: policyOk ? undefined : '当前不拦截：在下方明细把 approval_enforce 切为 enforce。',
     },
     {
       key: 'egress', name: '网络出口管控', ok: egressOk, warn: egressWarn, icon: '🌐',
@@ -320,7 +332,9 @@ export default function SecurityPanel({ onClose }: { onClose: () => void }) {
       {open && (
         <div style={{ ...card, marginBottom: 14, background: 'rgba(127,127,127,.04)' }}>
           {open === 'sandbox' && <SandboxDetail events={events} jump={jump} tier={posture.sandbox} />}
+          {open === 'sandbox' && posture.ops && <OpsDetail ops={posture.ops} reload={load} />}
           {open === 'approvals' && <ApprovalsDetail events={events} jump={jump} />}
+          {open === 'approvals' && posture.ops && <OpsDetail ops={posture.ops} reload={load} />}
           {open === 'egress' && <EgressDetail />}
           {open === 'vault' && <VaultDetail />}
           {open === 'canary' && <CanaryDetail locked={posture.canary.locked_sessions} reload={load} jump={jump} />}
@@ -410,6 +424,145 @@ function DetailHead({ title, note }: { title: string; note?: string }) {
     <div style={{ display: 'flex', alignItems: 'baseline', gap: 10, marginBottom: 8 }}>
       <b style={{ fontSize: 13 }}>{title}</b>
       {note && <span className="muted" style={{ fontSize: 12 }}>{note}</span>}
+    </div>
+  );
+}
+
+/** 安全运维面编辑器（PUT /api/admin/security/ops）：七键局部写。
+ *  简单键即改即存；沙箱档位标注重启生效；授权面列表行编辑。
+ *  红线键（审计链/确认码门/信任门）不在此面——宪法不可配。 */
+function OpsDetail({ ops, reload }: { ops: OpsConfig; reload: () => void }) {
+  const [busy, setBusy] = useState('');
+  const [err, setErr] = useState('');
+  const [sandbox, setSandbox] = useState<string>('');
+  const [ttl, setTtl] = useState('');
+  const [grantTtl, setGrantTtl] = useState('');
+  const [proxyPort, setProxyPort] = useState('');
+  const [shared, setShared] = useState(ops.shared_readonly.join('\n'));
+  const [bridges, setBridges] = useState(
+    ops.resource_bridges.map(b => `${b.mode} ${b.path}`).join('\n'));
+  useEffect(() => {   // 父层重载 posture 后同步本地编辑态
+    setShared(ops.shared_readonly.join('\n'));
+    setBridges(ops.resource_bridges.map(b => `${b.mode} ${b.path}`).join('\n'));
+  }, [ops]);
+
+  const put = (patch: Record<string, unknown>) => {
+    setBusy('saving'); setErr('');
+    void api('/api/admin/security/ops', {
+      method: 'PUT', body: JSON.stringify(patch),
+    }).then(() => { setBusy(''); reload(); })
+      .catch((e: unknown) => { setBusy(''); setErr(String(e)); reload(); });
+  };
+  const toggle = (k: 'codemode_enabled' | 'lsp_enabled', v: boolean) => put({ [k]: v });
+  const saveSandbox = () =>
+    sandbox && put({ sandbox });
+  const saveTtl = () => {
+    const n = parseInt(ttl, 10);
+    if (!Number.isNaN(n)) put({ approval_ttl_s: n });
+  };
+  const saveGrantTtl = () => {
+    const n = parseInt(grantTtl, 10);
+    if (!Number.isNaN(n)) put({ egress_grant_ttl_s: n });
+  };
+  const saveProxyPort = () => {
+    const n = parseInt(proxyPort, 10);
+    if (!Number.isNaN(n)) put({ egress_proxy_port: n });
+  };
+  const saveLists = () => {
+    const sr = shared.split('\n').map(s => s.trim()).filter(Boolean);
+    const rb: { path: string; mode: string }[] = [];
+    for (const ln of bridges.split('\n')) {
+      const m = ln.trim().match(/^(ro|rw|dev)\s+(.+)$/);
+      if (m) rb.push({ mode: m[1], path: m[2] });
+    }
+    put({ shared_readonly: sr, resource_bridges: rb });
+  };
+  const row: React.CSSProperties = {
+    display: 'flex', alignItems: 'center', gap: 10,
+    padding: '8px 0', borderBottom: '1px solid var(--border,#333)',
+  };
+  return (
+    <div style={{ marginTop: 14 }}>
+      <DetailHead title="安全运维面（v0.6.5 显式配置化的 WebUI 入口）"
+        note="yaml round-trip 持久化 · 沙箱档位重启生效，其余热生效" />
+      {err && <div style={{ color: 'var(--accent,#e5484d)', fontSize: 12, margin: '6px 0' }}>写入被拒：{err}</div>}
+      <div style={row}>
+        <span style={{ width: 130 }}>沙箱档位</span>
+        <select value={sandbox} onChange={e => setSandbox(e.target.value)} defaultValue=''
+          style={{ flex: 1, maxWidth: 220 }}>
+          <option value='' disabled>选择档位…</option>
+          {Object.entries(TIER_ZH).map(([v, label]) =>
+            <option key={v} value={v}>{v} — {label}</option>)}
+        </select>
+        <button className="mini-btn" disabled={!sandbox || busy === 'saving'}
+          onClick={saveSandbox}>切换（重启生效）</button>
+      </div>
+      <div style={row}>
+        <span style={{ width: 130 }}>codemode 受限执行域</span>
+        <label style={{ cursor: 'pointer' }}>
+          <input type="checkbox" checked={ops.codemode_enabled}
+            onChange={e => toggle('codemode_enabled', e.target.checked)} />
+          <span className="muted" style={{ marginLeft: 6, fontSize: 12 }}>
+            {ops.codemode_enabled ? '已开（Python AST 白名单域）' : '关（默认）'}
+          </span>
+        </label>
+      </div>
+      <div style={row}>
+        <span style={{ width: 130 }}>LSP 诊断回注</span>
+        <label style={{ cursor: 'pointer' }}>
+          <input type="checkbox" checked={ops.lsp_enabled}
+            onChange={e => toggle('lsp_enabled', e.target.checked)} />
+          <span className="muted" style={{ marginLeft: 6, fontSize: 12 }}>
+            {ops.lsp_enabled ? '已开（编辑后查询诊断）' : '关（默认）'}
+          </span>
+        </label>
+      </div>
+      <div style={row}>
+        <span style={{ width: 130 }}>审批卡 TTL（秒）</span>
+        <input type="number" placeholder={String(ops.approval_ttl_s)}
+          value={ttl} onChange={e => setTtl(e.target.value)}
+          style={{ width: 100 }} />
+        <span className="muted" style={{ fontSize: 12 }}>60-86400</span>
+        <button className="mini-btn" disabled={!ttl || busy === 'saving'}
+          onClick={saveTtl}>保存</button>
+      </div>
+      <div style={row}>
+        <span style={{ width: 130 }}>临时放行默认 TTL（秒）</span>
+        <input type="number" placeholder={String(ops.egress_grant_ttl_s)}
+          value={grantTtl} onChange={e => setGrantTtl(e.target.value)}
+          style={{ width: 100 }} />
+        <span className="muted" style={{ fontSize: 12 }}>300-86400</span>
+        <button className="mini-btn" disabled={!grantTtl || busy === 'saving'}
+          onClick={saveGrantTtl}>保存</button>
+      </div>
+      <div style={row}>
+        <span style={{ width: 130 }}>egress 代理端口</span>
+        <input type="number" placeholder={String(ops.egress_proxy_port)}
+          value={proxyPort} onChange={e => setProxyPort(e.target.value)}
+          style={{ width: 100 }} />
+        <span className="muted" style={{ fontSize: 12 }}>0=随机（生产可固定）</span>
+        <button className="mini-btn" disabled={proxyPort === '' || busy === 'saving'}
+          onClick={saveProxyPort}>保存</button>
+      </div>
+      <div style={{ ...row, alignItems: 'flex-start', flexDirection: 'column' as const }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 10, width: '100%' }}>
+          <span style={{ width: 130 }}>授权面（列表）</span>
+          <span className="muted" style={{ fontSize: 12, flex: 1 }}>
+            shared_readonly：每行一个绝对路径（ro）；resource_bridges：ro|rw|dev 加空格加路径
+          </span>
+          <button className="mini-btn" disabled={busy === 'saving'}
+            onClick={saveLists}>保存列表</button>
+        </div>
+        <textarea value={shared} onChange={e => setShared(e.target.value)}
+          placeholder="跨项目只读共享根（每行一个绝对路径）"
+          style={{ width: '100%', marginTop: 6, minHeight: 44, fontSize: 12,
+                   fontVariantNumeric: 'tabular-nums' }} />
+        <textarea value={bridges} onChange={e => setBridges(e.target.value)}
+          placeholder={'ro /data/pub\nrw /data/scratch\ndev /dev/dri'}
+          style={{ width: '100%', marginTop: 6, minHeight: 60, fontSize: 12,
+                   fontVariantNumeric: 'tabular-nums' }} />
+      </div>
+      {busy === 'saving' && <div className="muted" style={{ fontSize: 12 }}>写入中…</div>}
     </div>
   );
 }
