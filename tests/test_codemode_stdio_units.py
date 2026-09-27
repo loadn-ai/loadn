@@ -14,8 +14,8 @@ from pathlib import Path
 
 import pytest
 
-from loadn_webui import codemode_mcp as cm
 from loadn_webui.config import CONFIG
+from loadn_webui.integrations import codemode_mcp as cm
 
 
 def _mcp_session(calls: list[dict], tmp_path: Path):
@@ -24,7 +24,7 @@ def _mcp_session(calls: list[dict], tmp_path: Path):
     env = {**os.environ, "LOADN_WEBUI_HOME": str(tmp_path)}
     lines = "\n".join(json.dumps(c) for c in calls) + "\n"
     p = subprocess.run(
-        [sys.executable, "-m", "loadn_webui.codemode_mcp"],
+        [sys.executable, "-m", "loadn_webui.integrations.codemode_mcp"],
         input=lines, capture_output=True, text=True, timeout=30, env=env)
     evs = [json.loads(ln) for ln in p.stdout.splitlines()
            if ln.startswith("{")]
@@ -63,7 +63,7 @@ def test_stdio_gate_off(tmp_path):
     (tmp_path / "config.yaml").write_text("", encoding="utf-8")
     env = {**os.environ, "LOADN_WEBUI_HOME": str(tmp_path)}
     p = subprocess.run(
-        [sys.executable, "-m", "loadn_webui.codemode_mcp"],
+        [sys.executable, "-m", "loadn_webui.integrations.codemode_mcp"],
         input=json.dumps({"jsonrpc": "2.0", "id": 1, "method": "tools/call",
                           "params": {"name": "codemode.run",
                                      "arguments": {"code": "print(1)"}}}) + "\n",

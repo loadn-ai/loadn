@@ -15,8 +15,8 @@ import json
 
 import pytest
 
-from loadn_webui import codemode_mcp as cm
 from loadn_webui.config import CONFIG
+from loadn_webui.integrations import codemode_mcp as cm
 
 pytestmark = [pytest.mark.coverage("engine.codemode")]
 
@@ -75,7 +75,7 @@ def test_private_attr_denied(tmp_path):
 
 def test_denial_audited_as_anomaly(tmp_path, monkeypatch):
     monkeypatch.setattr(CONFIG.security, "codemode_enabled", True)
-    from loadn_webui import audit as audit_mod
+    from loadn_webui.security import audit as audit_mod
     out = cm.tool_run({"code": "import os"}, sid="s-audit")
     assert "拒绝" in out
     rows = audit_mod.tail(20, "anomaly")
@@ -87,7 +87,7 @@ def test_timeout_kills_loops(tmp_path):
     with pytest.raises(cm.CodemodeError, match="超时"):
         cm.run("while True:\n    pass", sid="s5", cwd=tmp_path,
                timeout_s=0.3)
-    from loadn_webui import audit as audit_mod
+    from loadn_webui.security import audit as audit_mod
     assert any("codemode_timeout" in r["detail_json"]
                for r in audit_mod.tail(3, "anomaly"))
 

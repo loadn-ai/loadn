@@ -50,7 +50,7 @@ async def test_online_verify(reg_session, monkeypatch):
         assert url.startswith("https://")
         text = "Badge awarded to Woldy G-123" if "1" in url else "Page Not Found"
         return {"text": text, "title": "x", "chars": len(text)}
-    from loadn_webui import resources
+    from loadn_webui.integrations import resources
     monkeypatch.setattr(resources, "fetch_page", fake_fetch)
     res = await verify_mod.run(sid, online=True)
     rows = {r["id"]: r for r in res["rows"]}

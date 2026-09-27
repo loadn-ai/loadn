@@ -574,7 +574,7 @@ NUMERIC_USAGE_KEYS = ("input_tokens", "output_tokens",
 
 
 def usage_totals(c: sqlite3.Connection, sid: str | None = None) -> dict:
-    from . import pricing as pricing_mod  # 延迟 import 防环
+    from .integrations import pricing as pricing_mod  # 延迟 import 防环
     q = "SELECT usage_json, models_json, cost_usd FROM turns"
     args: tuple = ()
     if sid:

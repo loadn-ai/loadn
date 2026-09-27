@@ -54,24 +54,24 @@ _L0_TEXT = [
 
 def _l0_text():
     """内置红线 ∪ security.hard_blocklist_l0（追加语义——配置清不掉内置表）。"""
-    from .config import CONFIG
+    from ..config import CONFIG
     extra = [(p, "hard_blocklist_l0 自定义红线")
              for p in (CONFIG.security.hard_blocklist_l0 or [])]
     return _L0_TEXT + extra
 
 
 def _l0_cmd_names() -> set[str]:
-    from .config import CONFIG
+    from ..config import CONFIG
     return _L0_CMD_NAMES | set(CONFIG.security.l0_extra_cmd_names or ())
 
 
 def _net_cmds() -> set[str]:
-    from .config import CONFIG
+    from ..config import CONFIG
     return set(CONFIG.security.net_cmds) or {"curl", "wget"}
 
 
 def _warn_globs() -> list[str]:
-    from .config import CONFIG
+    from ..config import CONFIG
     return [*_WARN_GLOBS, *(CONFIG.security.glob_warn_patterns or [])]
 
 
@@ -121,7 +121,7 @@ def _egress_policy(cwd) -> tuple[str, list[str]]:
     """
     import json as _json
 
-    from .config import CONFIG
+    from ..config import CONFIG
     from .net_policy import normalized_allow
     snap = Path(cwd) / ".loadn" / "egress.json"
     try:
@@ -214,8 +214,8 @@ def check_command(cmd: str, *, source: str = "cli") -> Decision:
     # 1.5) canary 外渗检测（W5.5；security.canary_enabled 可关——关=失去
     # 检测面，物理层仍在 egress enforce）：内容命中蜜罐值 → block
     try:
+        from ..config import CONFIG as _cfg
         from . import canary as _canary
-        from .config import CONFIG as _cfg
         tok = _canary.hit(cmd) if _cfg.security.canary_enabled else None
         if tok:
             d = Decision(ACTION_BLOCK, f"外发内容含 canary 蜜罐值（{tok[:10]}…）"
@@ -284,13 +284,13 @@ _SENSITIVE_ABS = ("/proc/self/environ",)
 
 def _sensitive_patterns() -> list[str]:
     """内置敏感路径 ∪ security.sensitive_path_patterns（追加语义）。"""
-    from .config import CONFIG
+    from ..config import CONFIG
     return [*_SENSITIVE_PATH_PATTERNS,
             *(CONFIG.security.sensitive_path_patterns or [])]
 
 
 def _sensitive_abs() -> set[str]:
-    from .config import CONFIG
+    from ..config import CONFIG
     return set(_SENSITIVE_ABS) | set(
         CONFIG.security.sensitive_abs_paths or ())
 
@@ -413,7 +413,7 @@ def cli_gateway(argv_words: list[str], subcommand: str) -> Decision:
     - 直连（Bash curl/wget）由 check_command 的 L1 段守，语义不变。
     irreversible 子命令（mail/sms/pay/...）的确认码门在 W1-2（approvals）。
     """
-    from .config import CONFIG
+    from ..config import CONFIG
     sig = " ".join(argv_words)
     d = check_command(sig, source="cli-gateway")
     if not d.ok:

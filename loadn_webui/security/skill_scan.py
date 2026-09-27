@@ -62,7 +62,7 @@ def scan_skill(root: Path) -> dict:
         findings.append({"rule": rule, "level": level,
                          "file": file, "detail": detail[:160]})
 
-    from .config import CONFIG
+    from ..config import CONFIG
     allow = {h.lower() for h in CONFIG.security.egress_allow}
 
     for f in _iter_texts(root):

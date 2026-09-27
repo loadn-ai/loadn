@@ -6,8 +6,8 @@ import json
 
 import pytest
 
-from loadn_webui import sandbox as sandbox_mod
 from loadn_webui.config import CONFIG, SANDBOX_TIERS
+from loadn_webui.security import sandbox as sandbox_mod
 
 
 @pytest.fixture(autouse=True)
@@ -113,7 +113,7 @@ def test_wrap_engine_vm_bwrap_routes_to_bwrap(monkeypatch, tmp_path):
 # ---------------- 审计 + API 面 ----------------
 
 def test_resolve_and_audit_writes_event(monkeypatch):
-    from loadn_webui import audit as audit_mod
+    from loadn_webui.security import audit as audit_mod
     monkeypatch.setattr(CONFIG.security, "sandbox", "seatbelt")
     st = sandbox_mod.resolve_and_audit()
     assert st == {"requested": "seatbelt", "effective": "off",

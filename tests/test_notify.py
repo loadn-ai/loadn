@@ -2,8 +2,8 @@
 
 import pytest
 
-from loadn_webui import notify as notify_mod
 from loadn_webui.config import CONFIG
+from loadn_webui.integrations import notify as notify_mod
 
 
 @pytest.fixture()
@@ -21,7 +21,7 @@ def calls(monkeypatch):
                 return {"code": 0}
         return R()
 
-    import loadn_webui.resources as res
+    import loadn_webui.integrations.resources as res
     monkeypatch.setattr(res, "_post", fake_post)
     return got
 

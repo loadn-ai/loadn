@@ -4,8 +4,8 @@ from __future__ import annotations
 from fastapi import APIRouter, File, HTTPException, UploadFile
 
 from ... import profile as profile_mod
-from ... import skill_zh, skillhub
 from ... import skills as skills_mod
+from ...integrations import skill_zh, skillhub
 
 router = APIRouter(prefix="/api")
 

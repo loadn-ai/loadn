@@ -324,8 +324,8 @@ async def _approval_gate(args, action_type: str, params: dict,
     import json as json_mod
     import time as time_mod
 
-    from .audit import audit as audit_mod
     from .config import CONFIG
+    from .security.audit import audit as audit_mod
 
     sid = _session_sid()
     confirm = getattr(args, "confirm", "")
@@ -390,8 +390,8 @@ async def _approval_gate(args, action_type: str, params: dict,
 async def _run_r(args) -> int:
     import json as json_mod
 
-    from . import policy as policy_mod
-    from . import resources
+    from .integrations import resources
+    from .security import policy as policy_mod
 
     # W1-a 执行点 B：资源 CLI 统一网关（L0 红线 + 网络类目标域；策略在模型之外）
     gw = policy_mod.cli_gateway([str(a) for a in sys.argv[1:]], args.rcmd)
@@ -435,7 +435,7 @@ async def _run_r(args) -> int:
         from .config import CONFIG
         via = args.via
         if via == "auto":
-            from .vault import get_res_secret as _grs
+            from .security.vault import get_res_secret as _grs
             via = "zhipu" if _grs("zhipu_key") else "bocha"
         if via == "zhipu":
             hits = await resources.zhipu_search(
@@ -486,7 +486,7 @@ async def _run_r(args) -> int:
         import asyncio as aio
         import time as time_mod
 
-        from .egress_grants import valid_host
+        from .security.egress_grants import valid_host
         host = valid_host(args.host)
         if not host:
             print(f"✗ host 非法：{args.host!r}（需形如 api.example.com）",
@@ -583,7 +583,7 @@ async def _run_r(args) -> int:
         return 0
 
     if args.rcmd == "notify":
-        from . import notify
+        from .integrations import notify
         ok = await notify.send(args.title, args.body)
         print("已推送" if ok else "未推送（未配置 provider 或事件关闭；看 config notify 段）")
         return 0 if ok else 1
@@ -640,7 +640,7 @@ async def _run_r(args) -> int:
         return 0
 
     if args.rcmd == "account":
-        from . import vault
+        from .security import vault
         if args.list or not args.platform:
             rows = vault.list_platforms()
             if not rows:
@@ -690,15 +690,15 @@ def main(argv: list[str] | None = None) -> int:
     raw = list(sys.argv[1:] if argv is None else argv)
     # P3-4：codemode 受限执行域 MCP server
     if raw and raw[0] == "_codemode-mcp":
-        from .codemode_mcp import main as codemode_main
+        from .integrations.codemode_mcp import main as codemode_main
         return codemode_main()
     # P2-5：浏览器 CUA MCP server（stdio 子进程形态）
     if raw and raw[0] == "_browser-mcp":
-        from .browser_mcp import main as browser_main
+        from .integrations.browser_mcp import main as browser_main
         return browser_main()
     # P3-3：LSP 诊断回注 MCP server（stdio 子进程形态）
     if raw and raw[0] == "_lsp-mcp":
-        from .lsp_host import main as lsp_main
+        from .integrations.lsp_host import main as lsp_main
         return lsp_main()
     ap = argparse.ArgumentParser(prog="loadn-web")
     sub = ap.add_subparsers(dest="cmd")
@@ -815,7 +815,7 @@ def main(argv: list[str] | None = None) -> int:
             print("重启服务生效：sudo systemctl restart loadn")
         return 0
     if args.cmd == "vault":
-        from . import vault as vault_mod
+        from .security import vault as vault_mod
         if args.action == "verify":
             print(vault_mod.verify())
             return 0 if vault_mod.verify()["ok"] else 1
@@ -892,12 +892,12 @@ def main(argv: list[str] | None = None) -> int:
         if args.bkcmd == "restore":
             return backup_mod.cmd_backup_restore(args.date)
     if args.cmd == "policy-check":
-        from .policy import policy_check_hook
+        from .security.policy import policy_check_hook
         return policy_check_hook(sys.stdin.read())
     if args.cmd == "audit":
         import pathlib as pathlib_mod
 
-        from . import audit as audit_mod
+        from .security import audit as audit_mod
         if args.action == "tail":
             for row in audit_mod.tail(args.n, args.type or None):
                 print(f"{row['id']:>5} {row['ts']} {row['type']:20s} "
@@ -955,7 +955,7 @@ def main(argv: list[str] | None = None) -> int:
         ok = True
         print(f"root:      {PATHS['root']}")
         print(f"db:        {PATHS['db']}")
-        from . import sandbox as sandbox_mod
+        from .security import sandbox as sandbox_mod
         # W2 档位解析：requested → effective（探测失败/未实现档 fail-closed 降 off）
         tier = sandbox_mod.tier_status()
         tier_note = (f"security.sandbox={tier['requested']} → 生效 {tier['effective']}"
@@ -990,7 +990,7 @@ def main(argv: list[str] | None = None) -> int:
         # 外部资源只作提示，不翻 PASS/FAIL（都是可选服务）
         print("— 外部资源（可选，不影响判定）—")
         try:
-            from . import resources
+            from .integrations import resources
             for name, r in asyncio.run(resources.ping_all()).items():
                 ms = f" {r.get('ms')}ms" if "ms" in r else ""
                 print(f"  {name:13s} {'ok ' if r['ok'] else 'FAIL'}{ms} {r.get('msg', '')}")

@@ -112,7 +112,7 @@ def test_put_pricing(sa, monkeypatch):
     # 把全局 config.CONFIG 也指到本测试实例，回退路径才算真被验证
     import loadn_webui.config as config_mod
     monkeypatch.setattr(config_mod, "CONFIG", cfg)
-    from loadn_webui import pricing
+    from loadn_webui.integrations import pricing
     mod.put_pricing({"api": {}})
     api, _, _ = pricing._tables()
     assert api == pricing.API_PRICING
@@ -148,7 +148,7 @@ def test_get_settings_no_secret_leak(sa):
 # ---------------- resources 扩展（textr：明文 yaml / 密钥 vault） ----------------
 
 def test_put_resources_textr(sa, monkeypatch):
-    import loadn_webui.vault as vault
+    import loadn_webui.security.vault as vault
     mod, cfg, tmp = sa
     monkeypatch.setattr(vault, "PATHS", {"root": tmp, "var": tmp / "var"})
     out = mod.put_resources({"textr_email": "u@example.com",

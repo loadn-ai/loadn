@@ -20,8 +20,8 @@ import sqlite3
 from datetime import datetime, timezone
 from pathlib import Path
 
-from .config import PATHS
-from .util import get_logger
+from ..config import PATHS
+from ..util import get_logger
 
 log = get_logger(__name__)
 

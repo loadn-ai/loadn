@@ -21,7 +21,7 @@ def get_artifacts(sid: str):
 def post_share(sid: str, body: dict):
     """铸造产物分享链接（幂等）：{path: artifacts/xxx} → {url, token}。"""
     _get_session_or_404(sid)
-    from ... import share as share_mod
+    from ...integrations import share as share_mod
     try:
         return share_mod.mint(sid, str(body.get("path") or ""))
     except ValueError as e:

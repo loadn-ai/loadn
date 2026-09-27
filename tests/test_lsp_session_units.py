@@ -11,7 +11,7 @@ from pathlib import Path
 
 import pytest
 
-from loadn_webui import lsp_host as lh
+from loadn_webui.integrations import lsp_host as lh
 
 _ECHO_LSP = r'''
 import json, sys

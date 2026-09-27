@@ -18,9 +18,9 @@ from pathlib import Path
 
 import pytest
 
-from loadn_webui import audit as audit_mod
-from loadn_webui import policy
-from loadn_webui.policy import ACTION_ALLOW, ACTION_BLOCK, ACTION_WARN
+from loadn_webui.security import audit as audit_mod
+from loadn_webui.security import policy
+from loadn_webui.security.policy import ACTION_ALLOW, ACTION_BLOCK, ACTION_WARN
 
 # ---------------------------------------------------------------- L0 红线
 

@@ -10,8 +10,8 @@ import asyncio
 import hashlib
 import re
 
-from .config import CONFIG
-from .util import get_logger
+from ..config import CONFIG
+from ..util import get_logger
 
 log = get_logger(__name__)
 
@@ -55,7 +55,7 @@ async def translate_one(name: str, description: str) -> str | None:
 
 async def translate_batch(items: list[dict]) -> list[dict]:
     """[{name, description}] → [{name, zh}]：kv 缓存命中秒回，缺失并发补译并落缓存。"""
-    from . import db as db_mod
+    from .. import db as db_mod
     items = [x for x in items if isinstance(x, dict)][:_MAX_ITEMS]
     out: dict[int, str | None] = {}
     todo: list[tuple[int, str, str]] = []

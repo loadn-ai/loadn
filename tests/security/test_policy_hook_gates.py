@@ -17,8 +17,8 @@ import json
 
 import pytest
 
-from loadn_webui import policy
 from loadn_webui.config import CONFIG
+from loadn_webui.security import policy
 
 
 @pytest.fixture(autouse=True)
@@ -99,6 +99,6 @@ def test_first_literal_no_attrs_returns_empty():
     """parts 缺失/None 的节点优雅空串（or 回退位——None 迭代=TypeError）。"""
     from types import SimpleNamespace
 
-    from loadn_webui.policy import _first_literal
+    from loadn_webui.security.policy import _first_literal
     assert _first_literal(SimpleNamespace()) == ""
     assert _first_literal(SimpleNamespace(parts=None)) == ""

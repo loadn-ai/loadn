@@ -108,7 +108,7 @@ def write_mcp_json(ws: Path, session_mcp: dict | None) -> None:
             if name in old and old[name] != h:
                 log.warning("[B3] MCP server %s 的 command/args 变更（rug pull"
                             " 风险）：%s → %s——须人工确认", name, old[name], h)
-                from .audit import audit as _audit
+                from .security.audit import audit as _audit
                 _audit("policy_change",
                        {"what": "mcp_command_changed", "server": name,
                         "old": old[name], "new": h})
@@ -129,7 +129,7 @@ def write_egress_snapshot(ws: Path, mode: str | None = None) -> None:
     真门）。
     """
     from .config import CONFIG
-    from .net_policy import normalized_allow
+    from .security.net_policy import normalized_allow
     merged = mode if mode in ("off", "warn", "enforce") else None
     payload = {"mode": merged or str(CONFIG.security.egress_mode),
                "allow": normalized_allow(CONFIG.security.egress_allow),
@@ -322,7 +322,7 @@ def _plant_canary(ws: Path, sid: str) -> None:
     try:
         if not CONFIG.security.canary_enabled:
             return
-        from . import canary as _canary
+        from .security import canary as _canary
         if not (ws / "notes" / ".canary_tokens.md").exists():
             _canary.plant(sid, ws=ws)
             _canary.invalidate_cache()

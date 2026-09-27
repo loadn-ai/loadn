@@ -18,10 +18,10 @@ from urllib.parse import quote
 from fastapi import APIRouter
 from fastapi.responses import FileResponse, JSONResponse, Response
 
-from . import artifacts as art
-from . import db as db_mod
-from . import workspace as ws_mod
-from .config import CONFIG
+from .. import artifacts as art
+from .. import db as db_mod
+from .. import workspace as ws_mod
+from ..config import CONFIG
 
 TOKEN_LEN = 20          # hex 字符数（80 bit）
 
@@ -65,7 +65,7 @@ def _serve(token: str) -> Response:
     headers = {**COMMON_HEADERS, "Content-Disposition": disp}
     kind = art.kind_of(p)
     if kind == "md":
-        from .exporter import md_to_html
+        from ..exporter import md_to_html
         html = md_to_html.convert(p.read_text(errors="replace"), title=p.stem)
         return Response(content=html, media_type="text/html; charset=utf-8",
                         headers={**headers, "Content-Security-Policy": "sandbox"})

@@ -18,8 +18,8 @@ import sys
 from pathlib import Path
 
 from loadn.tools.base import Tool
-from loadn_webui import lsp_host as lh
 from loadn_webui.config import CONFIG
+from loadn_webui.integrations import lsp_host as lh
 
 # ---------------------------------------------------------------- fake LSP
 _FAKE_LSP = r'''
@@ -194,7 +194,7 @@ def test_mcp_stdio_server(tmp_path):
          "params": {"name": "lsp.nothing", "arguments": {}}},
     ]
     p = subprocess.run(
-        [sys.executable, "-m", "loadn_webui.lsp_host"],
+        [sys.executable, "-m", "loadn_webui.integrations.lsp_host"],
         input="\n".join(json.dumps(c) for c in calls) + "\n",
         capture_output=True, text=True, timeout=90, env=env)
     evs = [json.loads(ln) for ln in p.stdout.splitlines()

@@ -36,7 +36,7 @@ CLI_OPUS_FALLBACK = {"input": 5.0, "cache_read": 0.5, "output": 25.0}
 
 def _tables() -> tuple[dict, dict, float]:
     """内置价目 + config 覆盖（api/plan_credits 整表替换，usd_cny>0 才生效）。"""
-    from .config import CONFIG  # 延迟 import：config 不依赖本模块，避免环
+    from ..config import CONFIG  # 延迟 import：config 不依赖本模块，避免环
     pc = getattr(CONFIG, "pricing", None)
     api = getattr(pc, "api", None) or API_PRICING
     plan = getattr(pc, "plan_credits", None) or PLAN_CREDITS

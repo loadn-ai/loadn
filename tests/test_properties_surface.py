@@ -11,7 +11,7 @@ import json
 
 
 async def test_session_egress_endpoint(client):
-    from loadn_webui import egress_grants, egress_proxy
+    from loadn_webui.security import egress_grants, egress_proxy
     r = await client.post("/api/sessions", json={"title": "外联视图"})
     sid = r.json()["session"]["id"]
 
@@ -31,7 +31,7 @@ async def test_session_egress_endpoint(client):
         egress_grants.revoke("other-sess", "not-mine.example.com")
 
     # 事件归属：带 sid 的行进本会话视图，无 sid 的不进
-    from loadn_webui import audit as audit_mod
+    from loadn_webui.security import audit as audit_mod
     egress_proxy._record("mine.example.com", "deny", "enforce", sid=sid)
     egress_proxy._record("stray.example.com", "allow", "enforce")
     d = (await client.get(f"/api/sessions/{sid}/egress?n=50")).json()
@@ -46,9 +46,9 @@ async def test_session_egress_endpoint(client):
 
 
 async def test_mcp_session_disable_sentinel(client, monkeypatch, tmp_path):
-    from loadn_webui import mcp_admin
     from loadn_webui import workspace as ws_mod
     from loadn_webui.config import CONFIG
+    from loadn_webui.integrations import mcp_admin
     real_servers = CONFIG.mcp.servers
     monkeypatch.setattr(CONFIG.mcp, "servers", {
         "global-a": {"command": "echo", "args": ["a"]},

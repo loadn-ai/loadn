@@ -11,7 +11,7 @@ import json
 
 import pytest
 
-from loadn_webui import canary
+from loadn_webui.security import canary
 
 pytestmark = [pytest.mark.coverage("sec.c1")]
 

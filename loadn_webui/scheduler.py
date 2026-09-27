@@ -229,7 +229,7 @@ class Scheduler:
                                  "fires": fires, "steered": steered,
                                  "new_session": bool(new_sid)})
         try:    # 运维通知：调度唤醒用户应被告知（配置可关）
-            from . import notify
+            from .integrations import notify
             how = ("插话注入运行中任务" if steered
                    else "新建会话投递" if new_sid else "投递排队")
             target = new_sid or sid

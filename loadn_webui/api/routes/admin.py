@@ -6,9 +6,10 @@ import json
 from fastapi import APIRouter, HTTPException
 
 from ... import db as db_mod
-from ... import mcp_admin, settings_admin
+from ... import settings_admin
 from ...config import CONFIG, PATHS
 from ...engine import ENGINE
+from ...integrations import mcp_admin
 
 router = APIRouter(prefix="/api")
 
@@ -21,7 +22,7 @@ def resources_overview():
 
     密钥值永不出现在响应——只有「已加密保存」与否。
     """
-    from ... import vault as vault_mod
+    from ...security import vault as vault_mod
     r = CONFIG.resources
     states = vault_mod.res_secret_states()
     services = [
@@ -50,7 +51,7 @@ def resources_set_service(body: dict):
 @router.post("/admin/resources/secret")
 def resources_set_secret(body: dict):
     """写资源密钥 → vault（AES-GCM）。值不回显、不落 yaml。"""
-    from ... import vault as vault_mod
+    from ...security import vault as vault_mod
     key = str(body.get("key") or "")
     val = str(body.get("value") or "").strip()
     if not val:
@@ -63,7 +64,7 @@ def resources_set_secret(body: dict):
 @router.post("/admin/resources/test")
 async def resources_test(body: dict):
     """探测服务连通（ping 子集）。"""
-    from ... import resources
+    from ...integrations import resources
     only = body.get("only") or None
     if isinstance(only, list):
         only = [t for t in only if isinstance(t, str)][:20]
@@ -71,7 +72,7 @@ async def resources_test(body: dict):
 @router.post("/admin/vault/entry")
 def vault_put_entry(body: dict):
     """凭证库写条目（新增/更新）。密码/恢复码只写不回。"""
-    from ... import vault as vault_mod
+    from ...security import vault as vault_mod
     platform = str(body.get("platform") or "").strip()
     if not platform or platform == vault_mod.RES_ENTRY:
         raise HTTPException(400, "platform 非法")
@@ -87,7 +88,7 @@ def vault_put_entry(body: dict):
     return {"ok": True, "platform": platform}
 @router.delete("/admin/vault/entry/{platform}")
 def vault_delete_entry(platform: str):
-    from ... import vault as vault_mod
+    from ...security import vault as vault_mod
     if platform == vault_mod.RES_ENTRY:
         raise HTTPException(400, "保留条目不可删")
     return {"ok": vault_mod.delete(platform)}
@@ -97,9 +98,9 @@ def security_posture():
 
     只回计数/模式/键名——vault 值、canary token 一律不出现在响应里。
     """
-    from ... import audit as audit_mod
-    from ... import canary as canary_mod
-    from ... import vault as vault_mod
+    from ...security import audit as audit_mod
+    from ...security import canary as canary_mod
+    from ...security import vault as vault_mod
     snaps = audit_mod.tail(100, "snapshot")
     bwrap_n = sum(1 for r in snaps
                   if json.loads(r["detail_json"]).get("mode") == "bwrap")
@@ -111,7 +112,7 @@ def security_posture():
             if reason:
                 locked.append({"sid": r["id"], "reason": reason})
     rows = audit_mod.tail(1)
-    from ... import sandbox as sandbox_mod
+    from ...security import sandbox as sandbox_mod
     tier = sandbox_mod.tier_status()
     return {
         "sandbox": {"mode": CONFIG.security.sandbox,
@@ -142,7 +143,7 @@ def security_posture():
 @router.get("/admin/approvals")
 def approvals_overview():
     """全平台待审清单（安全中心「审批」卡明细）。管理面读。"""
-    from ... import approve as approve_mod
+    from ...security import approve as approve_mod
     return {"pending": approve_mod.list_pending()}
 @router.get("/admin/vault")
 def vault_overview():
@@ -150,13 +151,13 @@ def vault_overview():
 
     list_platforms 本就不含 password/recovery 明文——明文永不走 HTTP。
     """
-    from ... import vault as vault_mod
+    from ...security import vault as vault_mod
     return {"platforms": vault_mod.list_platforms(),
             "verify": vault_mod.verify()}
 @router.get("/admin/vault/{platform}")
 def vault_entry(platform: str):
     """单条目掩码视图（编辑器回填用）：密钥字段只回「已设置/位数」。"""
-    from ... import vault as vault_mod
+    from ...security import vault as vault_mod
     d = vault_mod.view(platform)
     if d is None:
         raise HTTPException(404, f"无 {platform} 条目")
@@ -168,8 +169,8 @@ def vault_put(platform: str, body: dict):
     语义：merge——只改给出的键；密码类字段留空=不改、空串=清除。
     明文只在本次请求体里出现，不回传、不落日志（审计只记字段名）。
     """
-    from ... import vault as vault_mod
-    from ...audit import audit
+    from ...security import vault as vault_mod
+    from ...security.audit import audit
     fields = body.get("fields")
     if not isinstance(fields, dict):
         raise HTTPException(400, "body 需为 {fields: {...}}")
@@ -195,8 +196,8 @@ def vault_put(platform: str, body: dict):
 @router.delete("/admin/vault/{platform}")
 def vault_delete(platform: str):
     """删除条目（确认在 UI 侧；审计留痕）。"""
-    from ... import vault as vault_mod
-    from ...audit import audit
+    from ...security import vault as vault_mod
+    from ...security.audit import audit
     if not vault_mod.delete(platform):
         raise HTTPException(404, f"无 {platform} 条目")
     audit("vault", {"action": "admin_delete", "platform": platform})
@@ -204,19 +205,19 @@ def vault_delete(platform: str):
 @router.get("/admin/audit")
 def audit_feed(n: int = 50, type: str | None = None):
     """审计事件流（管理面读；type 过滤同 audit tail）。"""
-    from ... import audit as audit_mod
+    from ...security import audit as audit_mod
     rows = audit_mod.tail(max(1, min(n, 200)), type)
     return {"events": [dict(r) for r in rows]}
 @router.post("/admin/audit/verify")
 def audit_verify():
     """账本哈希链全量校验（管理面写语义——昂贵操作走双头防滥用）。"""
-    from ... import audit as audit_mod
+    from ...security import audit as audit_mod
     return {"problems": audit_mod.verify()}
 @router.get("/admin/egress")
 def egress_recent(n: int = 50):
     """最近外联（面板数据源：audit egress_request 尾窗）+ 活跃临时授权。管理面。"""
-    from ... import audit as audit_mod
-    from ... import egress_grants
+    from ...security import audit as audit_mod
+    from ...security import egress_grants
     rows = audit_mod.tail(n, "egress_request")
     out = []
     for r in rows:
@@ -268,7 +269,7 @@ def egress_remove_host(host: str = ""):
 @router.post("/admin/egress/grant/revoke")
 def egress_revoke_grant(body: dict):
     """手动收回一条临时授权（会话级，提前于到期）。管理面写。"""
-    from ... import egress_grants
+    from ...security import egress_grants
     host = egress_grants.valid_host(str(body.get("host") or "")) or ""
     sid = str(body.get("sid") or "")
     if not host or not sid or not egress_grants.revoke(sid, host):
@@ -277,9 +278,9 @@ def egress_revoke_grant(body: dict):
 @router.post("/admin/kill-all")
 async def kill_all():
     """全局熔断：停全部活跃 turn + 调度器暂停（KILL_ALL 标记）+ 拒绝新任务。"""
-    from ... import canary as canary_mod
     from ... import db as db_mod
     from ...config import PATHS
+    from ...security import canary as canary_mod
     stopped = 0
     with db_mod.conn() as c:
         rows = c.execute("SELECT id, session_id FROM turns WHERE"
@@ -298,8 +299,8 @@ def kill_all_clear():
 
     金丝雀命中的锁（reason 不含 kill）不解——那是真实警报，须人工核。
     """
-    from ... import canary as canary_mod
     from ...config import PATHS
+    from ...security import canary as canary_mod
     marker = PATHS["run"] / "KILL_ALL"
     existed = marker.exists()
     marker.unlink(missing_ok=True)
@@ -315,7 +316,7 @@ def kill_all_clear():
                 unlocked.append(r["id"])
             else:
                 kept.append({"sid": r["id"], "reason": reason})
-    from ... import audit as audit_mod
+    from ...security import audit as audit_mod
     audit_mod.audit("kill_switch", {"action": "clear", "cleared": existed,
                                     "unlocked": unlocked})
     return {"ok": True, "cleared": existed, "unlocked": unlocked,

@@ -16,7 +16,7 @@ from loadn_webui.config import CONFIG
 
 # ================================================================ titlegen
 def test_sanitize_forms():
-    from loadn_webui.titlegen import _sanitize
+    from loadn_webui.integrations.titlegen import _sanitize
     assert _sanitize('"标题"') == "标题"               # 剥引号
     assert _sanitize("《书名》") == "书名"
     assert _sanitize("  句号结尾。 ") == "句号结尾"
@@ -27,7 +27,7 @@ def test_sanitize_forms():
 
 
 async def test_generate_title_gates(monkeypatch):
-    from loadn_webui import titlegen as tg
+    from loadn_webui.integrations import titlegen as tg
     monkeypatch.setattr(CONFIG.titlegen, "api_key", "k")
     monkeypatch.setattr(CONFIG.titlegen, "enabled", False)
     assert await tg.generate_title("任务") is None      # 未启用
@@ -39,7 +39,7 @@ async def test_generate_title_gates(monkeypatch):
 
 
 async def test_generate_title_failure_and_success(monkeypatch):
-    from loadn_webui import titlegen as tg
+    from loadn_webui.integrations import titlegen as tg
     monkeypatch.setattr(CONFIG.titlegen, "enabled", True)
     monkeypatch.setattr(CONFIG.titlegen, "api_key", "k")
 
@@ -59,7 +59,7 @@ async def test_generate_title_failure_and_success(monkeypatch):
 async def test_maybe_auto_title_flag_semantics(client, monkeypatch):
     """无标记不写；有标记→写标题+清标记+发 session_meta。"""
     from loadn_webui import db as db_mod
-    from loadn_webui import titlegen as tg
+    from loadn_webui.integrations import titlegen as tg
     monkeypatch.setattr(CONFIG.titlegen, "enabled", True)
     monkeypatch.setattr(CONFIG.titlegen, "api_key", "k")
 
@@ -97,24 +97,24 @@ async def test_maybe_auto_title_flag_semantics(client, monkeypatch):
 
 # ================================================================ skillhub
 def _stub_http(monkeypatch, payload):
-    from loadn_webui import skillhub as sh
+    from loadn_webui.integrations import skillhub as sh
     monkeypatch.setattr(sh, "_http_get", lambda url, timeout=10: payload)
 
 
 def test_search_empty_query(monkeypatch):
-    from loadn_webui import skillhub as sh
+    from loadn_webui.integrations import skillhub as sh
     assert sh.search("") == {"skills": []}              # 空查询不打网
 
 
 def test_search_unreachable(monkeypatch):
-    from loadn_webui import skillhub as sh
+    from loadn_webui.integrations import skillhub as sh
     _stub_http(monkeypatch, None)
     out = sh.search("py")
     assert out.get("error") and out["skills"] == []
 
 
 def test_search_normalization(monkeypatch):
-    from loadn_webui import skillhub as sh
+    from loadn_webui.integrations import skillhub as sh
     _stub_http(monkeypatch, {"skills": [
         {"name": "a", "description": "d", "repo_url":
          "https://github.com/x/y/tree/main/skills/a", "stars": 5},
@@ -130,7 +130,7 @@ def test_search_normalization(monkeypatch):
 
 
 def test_search_limit(monkeypatch):
-    from loadn_webui import skillhub as sh
+    from loadn_webui.integrations import skillhub as sh
     _stub_http(monkeypatch, {"skills": [
         {"name": f"s{i}", "repo_url": "https://github.com/x/y"}
         for i in range(50)]})
@@ -139,7 +139,7 @@ def test_search_limit(monkeypatch):
 
 def test_catalog_parses_flat(monkeypatch):
     """jsdelivr flat 结构 → skills 目录下的 SKILL.md 路径集合。"""
-    from loadn_webui import skillhub as sh
+    from loadn_webui.integrations import skillhub as sh
     _stub_http(monkeypatch, {"files": [
         {"name": "/README.md"},
         {"name": "/skills/pdf/SKILL.md"},
@@ -152,14 +152,14 @@ def test_catalog_parses_flat(monkeypatch):
 
 
 def test_catalog_unreachable(monkeypatch):
-    from loadn_webui import skillhub as sh
+    from loadn_webui.integrations import skillhub as sh
     _stub_http(monkeypatch, None)
     assert sh.catalog().get("error")
 
 
 def test_http_get_degrades(monkeypatch):
     """真 _http_get：不可达 URL → None（不炸——市场不可达是常态）。"""
-    from loadn_webui.skillhub import _http_get
+    from loadn_webui.integrations.skillhub import _http_get
     assert _http_get("http://127.0.0.1:1/nope", timeout=1) is None
 
 

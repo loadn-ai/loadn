@@ -348,7 +348,7 @@ async def run_turn(call: TurnCall, stop: StopHandle | None = None) -> TurnProcRe
     from .config import CONFIG as _CFG
     if _CFG.security.egress_proxy_port \
             and spec.name in ("loadn", "hahaness", "claude"):  # hahaness=alias
-        from .egress_proxy import GW_HOST
+        from .security.egress_proxy import GW_HOST
         env["ANTHROPIC_BASE_URL"] = f"http://{GW_HOST}"
         env.setdefault("ANTHROPIC_AUTH_TOKEN", "dummy-controlled-by-egress-gw")
 
@@ -357,7 +357,7 @@ async def run_turn(call: TurnCall, stop: StopHandle | None = None) -> TurnProcRe
     # 会话级回环 TCP 端口=每连接的 sid 归属（direct 引擎；bwrap 形态
     # 沙箱内 socat 桥读同一端口号转 UDS，不受影响）
     from .config import CONFIG as _C
-    from .egress_proxy import get_proxy as _get_egress_proxy
+    from .security.egress_proxy import get_proxy as _get_egress_proxy
     _proxy = _get_egress_proxy()
     if _C.security.egress_proxy_port:
         proxy_port = _C.security.egress_proxy_port
@@ -373,9 +373,9 @@ async def run_turn(call: TurnCall, stop: StopHandle | None = None) -> TurnProcRe
         env["no_proxy"] = env["NO_PROXY"] = "127.0.0.1,localhost"
 
     # W2-a 执行沙箱（security.sandbox=bwrap 时包裹；同路径 bind 保协议通道）
-    from . import sandbox as sandbox_mod
     from . import workspace as _ws_mod
-    from .audit import audit as _audit
+    from .security import sandbox as sandbox_mod
+    from .security.audit import audit as _audit
 
     # 会话级 egress socket：审批式临时授权/弹卡确认按任务生效（loadn 引擎
     # 沙箱 unshare-net 形态）。幂等；失败静默回落共享 socket（fail-closed）。

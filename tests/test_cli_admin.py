@@ -25,7 +25,7 @@ def test_vault_verify_cli(capsys):
 
 
 def test_audit_tail_and_verify(capsys):
-    from loadn_webui import audit
+    from loadn_webui.security import audit
     audit.audit("anomaly", {"k": 1})
     assert cli.main(["audit", "tail", "-n", "3"]) == 0
     assert "anomaly" in capsys.readouterr().out

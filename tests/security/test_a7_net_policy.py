@@ -18,8 +18,8 @@ pytestmark = [pytest.mark.coverage("sec.a7")]
 
 import pytest
 
-from loadn_webui import net_policy as np
 from loadn_webui.config import CONFIG
+from loadn_webui.security import net_policy as np
 
 
 # ---------------------------------------------------------------- A7-1
@@ -53,7 +53,7 @@ def test_a7_1b_non_url_passthrough():
 
 # ---------------------------------------------------------------- A7-2
 def test_a7_2_audit_never_stores_plaintext():
-    from loadn_webui import audit as audit_mod
+    from loadn_webui.security import audit as audit_mod
     audit_mod.audit(
         "egress_request",
         {"host": "x", "url": "https://u:pw@evil.example/a?token=LEAKED&ok=1#f",
@@ -96,8 +96,8 @@ def _fresh(monkeypatch, ips):
 
 
 async def test_a7_4_rebind_rejected_and_audited(monkeypatch):
-    from loadn_webui import audit as audit_mod
-    from loadn_webui import egress_proxy
+    from loadn_webui.security import audit as audit_mod
+    from loadn_webui.security import egress_proxy
     monkeypatch.setattr(CONFIG.security, "egress_mode", "enforce")
     monkeypatch.setattr(CONFIG.security, "egress_allow", ["rebind.example"])
     monkeypatch.setattr(CONFIG.security, "egress_on_deny", "deny")
@@ -111,7 +111,7 @@ async def test_a7_4_rebind_rejected_and_audited(monkeypatch):
 
 
 async def test_a7_4b_public_and_unresolvable_pass(monkeypatch):
-    from loadn_webui import egress_proxy
+    from loadn_webui.security import egress_proxy
     monkeypatch.setattr(CONFIG.security, "egress_mode", "enforce")
     monkeypatch.setattr(CONFIG.security, "egress_allow", ["ok.example"])
     px = egress_proxy.EgressProxy(port=0)

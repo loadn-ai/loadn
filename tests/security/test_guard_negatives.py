@@ -25,7 +25,7 @@ def _home(tmp_path, monkeypatch):
     home = tmp_path / "home"
     home.mkdir()
     monkeypatch.setenv("LOADN_WEBUI_HOME", str(home))
-    import loadn_webui.approve as ap
+    import loadn_webui.security.approve as ap
     ap._ensured = False
     return home
 
@@ -41,14 +41,14 @@ def _mk_approved(ap, sid="s-gate", params=None):
 
 def test_consume_wrong_code_rejected(tmp_path, _home):
     """错码 → 拒（不可逆动作不执行——MUTANT-2 对赌）。"""
-    from loadn_webui import approve as ap
+    from loadn_webui.security import approve as ap
     aid, params, code = _mk_approved(ap)
     out = ap.consume("s-gate", "mail_send", params, confirm_code="000000")
     assert not out["ok"] and "确认码不符" in out["error"]
 
 
 def test_consume_empty_code_rejected(tmp_path, _home):
-    from loadn_webui import approve as ap
+    from loadn_webui.security import approve as ap
     aid, params, code = _mk_approved(ap)
     out = ap.consume("s-gate", "mail_send", params, confirm_code="")
     assert not out["ok"]
@@ -56,7 +56,7 @@ def test_consume_empty_code_rejected(tmp_path, _home):
 
 def test_consume_right_code_executes_then_single_use(tmp_path, _home):
     """对码 → 放行；同码二次消费 → 拒（single-use）。"""
-    from loadn_webui import approve as ap
+    from loadn_webui.security import approve as ap
     aid, params, code = _mk_approved(ap)
     ok1 = ap.consume("s-gate", "mail_send", params, confirm_code=code)
     assert ok1["ok"]
@@ -66,7 +66,7 @@ def test_consume_right_code_executes_then_single_use(tmp_path, _home):
 
 def test_consume_params_mismatch_rejected(tmp_path, _home):
     """批准 A 不能执行 B（params_hash 绑定——换收件人即拒）。"""
-    from loadn_webui import approve as ap
+    from loadn_webui.security import approve as ap
     aid, params, code = _mk_approved(
         ap, params={"to": "a@b.c", "subject": "原目标"})
     swapped = {"to": "evil@x.y", "subject": "原目标"}   # 篡改收件人
@@ -76,7 +76,7 @@ def test_consume_params_mismatch_rejected(tmp_path, _home):
 
 def test_consume_unapproved_rejected(tmp_path, _home):
     """未批准直接 consume → 拒（无码可验）。"""
-    from loadn_webui import approve as ap
+    from loadn_webui.security import approve as ap
     ap.create("s-gate", "mail_send", {"to": "a@b.c"})
     out = ap.consume("s-gate", "mail_send", {"to": "a@b.c"}, confirm_code="1")
     assert not out["ok"]
@@ -84,7 +84,7 @@ def test_consume_unapproved_rejected(tmp_path, _home):
 
 def test_consume_expired_rejected(tmp_path, _home, monkeypatch):
     """批准超 TTL → expired 拒（fail-closed）。"""
-    from loadn_webui import approve as ap
+    from loadn_webui.security import approve as ap
     aid, params, code = _mk_approved(ap)
     # 把 created_at 拨回 2 小时前（TTL 默认 600s）
     with ap._conn() as c:
@@ -152,26 +152,26 @@ async def test_write_rejects_stale_read(tmp_path):
 ])
 def test_render_summary_per_action(action, params, must_contain):
     """每类动作的摘要必须含关键目标（反注入面——L60-86 分支对赌）。"""
-    from loadn_webui import approve as ap
+    from loadn_webui.security import approve as ap
     s = ap._render_summary(action, params)
     for needle in must_contain:
         assert needle in s, (action, needle, s)
 
 
 def test_render_summary_account_write_excludes_platform_key():
-    from loadn_webui import approve as ap
+    from loadn_webui.security import approve as ap
     s = ap._render_summary("account_write", {"platform": "p", "password": "x"})
     assert "password" in s and "platform" not in s.split("（")[1]
 
 
 def test_render_summary_bash_allow_none_prefix():
     """prefix=None 走 or [] 回退不崩（prefix or [] 对赌）。"""
-    from loadn_webui import approve as ap
+    from loadn_webui.security import approve as ap
     s = ap._render_summary("bash_allow", {"prefix": None})
     assert "?" in s or "放行命令规则" in s
 
 
 def test_render_summary_egress_default_ttl():
-    from loadn_webui import approve as ap
+    from loadn_webui.security import approve as ap
     s = ap._render_summary("egress", {"host": "h.example"})   # 无 ttl_s
     assert "2h" in s                                        # 默认 7200=2h00m

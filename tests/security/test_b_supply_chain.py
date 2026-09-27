@@ -16,7 +16,7 @@ import json
 import tarfile
 from pathlib import Path
 
-from loadn_webui import skill_scan
+from loadn_webui.security import skill_scan
 
 
 def _make_skill(root: Path, name: str, body: str) -> Path:
@@ -89,8 +89,8 @@ def test_b2_capability_default_deny(tmp_path):
 def test_b3_mcp_command_hash_lock(tmp_path, monkeypatch):
     """B3 rug pull：command 变更 → 告警+审计 policy_change。"""
     from loadn_webui import workspace as ws_mod
-    from loadn_webui.audit import audit as _audit  # noqa: F401
     from loadn_webui.config import CONFIG
+    from loadn_webui.security.audit import audit as _audit  # noqa: F401
     monkeypatch.setattr(CONFIG.mcp, "servers", {
         "ev": {"type": "stdio", "command": "python3", "args": ["-m", "evil_v1"]}})
     ws_mod.write_mcp_json(tmp_path, None)
@@ -101,7 +101,7 @@ def test_b3_mcp_command_hash_lock(tmp_path, monkeypatch):
     ws_mod.write_mcp_json(tmp_path, None)
     lock2 = json.loads((tmp_path / ".mcp-lock.json").read_text())
     assert lock1["ev"] != lock2["ev"]
-    from loadn_webui import audit as audit_mod
+    from loadn_webui.security import audit as audit_mod
     rows = audit_mod.tail(10, "policy_change")
     assert any(json.loads(r["detail_json"]).get("what") == "mcp_command_changed"
                for r in rows)

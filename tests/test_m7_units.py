@@ -7,9 +7,9 @@ import json
 
 import pytest
 
-from loadn_webui import skill_scan as ss
 from loadn_webui import workspace as ws_mod
 from loadn_webui.config import CONFIG
+from loadn_webui.security import skill_scan as ss
 from loadn_webui.settings_admin import put_run, put_titlegen
 
 
@@ -153,7 +153,7 @@ async def test_security_ops_put(client, monkeypatch):
 
 def test_egress_grant_ttl_config(monkeypatch):
     """临时放行默认 TTL 走 CONFIG（新键 egress_grant_ttl_s，钳制域内热取）。"""
-    from loadn_webui import egress_grants as eg
+    from loadn_webui.security import egress_grants as eg
     monkeypatch.setattr(CONFIG.security, "egress_grant_ttl_s", 3600)
     out = eg.grant("s-ttl", "ttl.example.com")           # 不传 ttl → 配置默认
     try:
@@ -203,8 +203,8 @@ def test_params_validate_and_effective_sandbox():
 
 def test_wrap_engine_session_tier_override(monkeypatch, tmp_path):
     """requested_tier 覆盖链：会话 off → direct（全局 bwrap 不吃）；None=全局。"""
-    from loadn_webui import sandbox as sb
     from loadn_webui.config import CONFIG
+    from loadn_webui.security import sandbox as sb
     monkeypatch.setattr(CONFIG.security, "sandbox", "bwrap")
     monkeypatch.setattr(sb, "bwrap_available", lambda: True)
     monkeypatch.setattr(sb, "resolve_tier", lambda req=None:

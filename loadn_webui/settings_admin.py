@@ -11,7 +11,7 @@ from __future__ import annotations
 from pathlib import Path
 
 from .config import CONFIG, PATHS
-from .mcp_admin import _dump_yaml_conf, _load_yaml_conf
+from .integrations.mcp_admin import _dump_yaml_conf, _load_yaml_conf
 from .util import get_logger
 
 log = get_logger(__name__)
@@ -35,7 +35,7 @@ def get_settings() -> dict:
     tg = CONFIG.titlegen
     r = CONFIG.resources
     res: dict = {k: getattr(r, k) for k in _RES_PLAIN}
-    from . import vault as vault_mod
+    from .security import vault as vault_mod
     states = vault_mod.res_secret_states()
     for k in _RES_SECRETS:
         res[f"{k}_set"] = states.get(k, False)
@@ -415,7 +415,7 @@ def put_resources(body: dict) -> dict:
         if k == "adb_addr" and v and ":" not in v:
             raise ValueError("adb_addr 需要 host:port 形式")
         updates[k] = v
-    from . import vault as vault_mod
+    from .security import vault as vault_mod
     for k in _RES_SECRETS:
         v = str(body.get(k) or "").strip()
         if v:                                      # 密钥进 vault（AES-GCM），不落 yaml
@@ -437,7 +437,7 @@ def put_egress_allow(action: str, host: str) -> dict:
     yaml round-trip 持久化 + 内存 CONFIG 原地更新——proxy._allowed 实时读
     CONFIG，写完即热生效（免重启，不再为加一个域杀掉在跑的 turn）。
     """
-    from .egress_grants import valid_host
+    from .security.egress_grants import valid_host
     h = valid_host(host or "")
     if not h:
         raise ValueError(f"域名非法: {host!r}（需形如 api.example.com，无 scheme/路径）")
@@ -461,7 +461,7 @@ def put_egress_allow(action: str, host: str) -> dict:
     _dump_yaml_conf(_conf_path(), data)
     CONFIG.security.egress_allow = allow
     _refresh_session_snapshots()      # hook 门（会话快照）与 proxy 门同步放行
-    from .audit import audit
+    from .security.audit import audit
     audit("egress_policy", {"action": f"allowlist-{action}", "host": h,
                             "allow": allow})
     log.info("egress 白名单 %s: %s（共 %d 域）", action, h, len(allow))
@@ -472,7 +472,7 @@ def _refresh_session_snapshots() -> None:
     """egress 面（白名单/档位）变更后刷新活跃会话快照（失败不阻断——
     快照缺席时 hook 回退 CONFIG，语义仍正确只是沙箱内看不到新值）。"""
     try:
-        from .mcp_admin import rematerialize_sessions
+        from .integrations.mcp_admin import rematerialize_sessions
         rematerialize_sessions()
     except Exception as e:  # noqa: BLE001
         log.warning("egress 会话快照刷新失败（hook 将回退 CONFIG）：%r", e)
@@ -508,7 +508,7 @@ def put_security_egress(body: dict) -> dict:
     for k, v in updates.items():
         setattr(CONFIG.security, k, v)
     _refresh_session_snapshots()      # 档位变更同步进会话快照（hook 门）
-    from .audit import audit
+    from .security.audit import audit
     audit("egress_policy", {"action": "policy-put", **updates})
     log.info("egress 策略更新：%s（热生效）", updates)
     return {"ok": True, **updates}
@@ -516,20 +516,20 @@ def put_security_egress(body: dict) -> dict:
 
 async def test_resources(only: list[str] | None = None) -> dict:
     """探测外部资源连通性（vlm 只查配置；真实链路用 CLI `wd r vlm` 验证）。"""
-    from . import resources
+    from .integrations import resources
     return await resources.ping_all(only)
 
 
 async def test_titlegen() -> dict:
     """真实调用一次，验证 key/模型/网络连通。"""
-    from .titlegen import _chat
+    from .integrations.titlegen import _chat
     reply = await _chat("你是一个连通性测试器。", "只回复两个字：正常", max_tokens=16)
     return {"ok": True, "reply": reply.strip()[:50]}
 
 
 async def test_notify() -> dict:
     """真实推一条测试通知（发给用户自己；provider 未配置时 ok=False）。"""
-    from .notify import ping
+    from .integrations.notify import ping
     return await ping()
 
 
@@ -584,7 +584,7 @@ def put_security_ops(body: dict) -> dict:
     _dump_yaml_conf(_conf_path(), data)
     for k, v in updates.items():
         setattr(CONFIG.security, k, v)
-    from .audit import audit
+    from .security.audit import audit
     audit("policy_change", {"action": "security-ops-put", **updates})
     log.info("安全运维面更新：%s（sandbox 档位重启生效，其余热生效）",
              {k: v for k, v in updates.items()})

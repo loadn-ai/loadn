@@ -23,8 +23,8 @@ import json
 import os
 import sys
 
-from .audit import audit
-from .config import CONFIG
+from ..config import CONFIG
+from ..security.audit import audit
 
 
 # ---------------------------------------------------------------- 域策略
@@ -47,11 +47,11 @@ def _host_allowed(url: str) -> tuple[bool, str]:
             return True, "local"
     except ValueError:
         pass
-    from .net_policy import is_non_public_ip
+    from ..security.net_policy import is_non_public_ip
     if is_non_public_ip(host):
         return True, "local"
     # 公网域：出口白名单（egress_proxy._allowed 同源）
-    from .egress_proxy import _allowed
+    from ..security.egress_proxy import _allowed
     if _allowed(host):
         return True, "allowlisted"
     return False, "not-allowlisted"
@@ -59,7 +59,7 @@ def _host_allowed(url: str) -> tuple[bool, str]:
 
 async def _require_approval(host: str, sid: str) -> bool:
     """公网域首次打开 → 审批卡（approve.py 消费侧——平台进程内直调）。"""
-    from . import approve
+    from ..security import approve
     try:
         approve.create(sid, "browser_open", {"host": host},
                        note="browser.open 公网域")

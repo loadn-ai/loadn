@@ -23,7 +23,7 @@ def restore_titlegen_cfg():
 @pytest.fixture()
 def fake_model(monkeypatch):
     """把外部模型调用换成确定返回，并计数。"""
-    from loadn_webui import titlegen
+    from loadn_webui.integrations import titlegen
     calls = []
 
     async def fake(text: str) -> str | None:

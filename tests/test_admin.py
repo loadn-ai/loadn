@@ -196,7 +196,7 @@ async def test_install_zip(client):
 
 # ---------------------------------------------------------------- skillhub
 async def test_skillhub_search(client, monkeypatch):
-    from loadn_webui import skillhub
+    from loadn_webui.integrations import skillhub
     monkeypatch.setattr(skillhub, "_http_get", lambda url, timeout=10.0: {"skills": [
         {"name": "excel", "slug": "x-excel", "description": "Excel 操作", "category": "development",
          "author": "openclaw", "github_stars": 123, "repo_url": "https://github.com/o/r#skills~excel"},
@@ -329,7 +329,7 @@ async def _convergence_body(client, _yaml, profile_mod, reg_path):
 
 async def test_skills_translate(client, monkeypatch):
     """中文简介端点：已是中文不送译；英文送译并落 kv 缓存（第二次不再调模型）。"""
-    from loadn_webui import skill_zh
+    from loadn_webui.integrations import skill_zh
     # 中文描述 → zh=null，不触发模型
     r = await client.post("/api/skills/translate", json={"items": [
         {"name": "file-parse", "description": "把文档解析成文本"}]})

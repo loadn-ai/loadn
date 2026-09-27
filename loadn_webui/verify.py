@@ -71,7 +71,7 @@ def check_expiry(entry: dict, today: date, warn_days: int) -> str:
 
 async def verify_entry(entry: dict, *, proxy: bool = False) -> tuple[bool, str]:
     """回访验证 URL：可达 + 页面含持有人名或证书号 → 通过。"""
-    from . import resources
+    from .integrations import resources
     url = str(entry.get("verify_url") or "")
     holder = str(entry.get("holder") or "").strip()
     cert_id = str(entry.get("cert_id") or "").strip()

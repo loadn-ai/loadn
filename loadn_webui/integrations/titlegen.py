@@ -10,8 +10,8 @@ from __future__ import annotations
 
 import re
 
-from .config import CONFIG
-from .util import get_logger
+from ..config import CONFIG
+from ..util import get_logger
 
 log = get_logger(__name__)
 
@@ -64,8 +64,8 @@ async def generate_title(text: str) -> str | None:
 
 async def maybe_auto_title(sid: str, text: str) -> None:
     """标记仍在（未被手动改名/尚未成功过）才会写标题；成功后清标记。"""
-    from . import db as db_mod
-    from .engine import ENGINE
+    from .. import db as db_mod
+    from ..engine import ENGINE
 
     title = await generate_title(text)
     if not title:

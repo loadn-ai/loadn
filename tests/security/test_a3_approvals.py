@@ -18,7 +18,7 @@ import time as time_mod
 
 import pytest_asyncio
 
-from loadn_webui import approve
+from loadn_webui.security import approve
 
 
 @pytest_asyncio.fixture()
@@ -139,7 +139,7 @@ async def test_a3_gate_warn_mode_audits_and_passes(client, sid, monkeypatch):
 async def test_a3_cli_confirm_with_wrong_code_rejected(client, sid, server_url,
                                                        monkeypatch):
     """A3 CLI 码通道：--confirm 码错 → exit 2（真子进程，走 API）。"""
-    from loadn_webui import approve as approve_mod
+    from loadn_webui.security import approve as approve_mod
     _cli_env(server_url, sid, monkeypatch)
     a = approve_mod.create(sid, "mail_send", {"to": "x@y.z", "subject": "s"})
     approve_mod.decide(a["id"], True)

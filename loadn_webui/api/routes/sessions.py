@@ -108,9 +108,9 @@ def session_egress(sid: str, n: int = 50):
     """
     _get_session_or_404(sid)
     n = max(1, min(200, n))
-    from ... import audit as audit_mod
-    from ... import egress_grants
     from ... import params as params_mod
+    from ...security import audit as audit_mod
+    from ...security import egress_grants
     events = []
     for r in audit_mod.tail(n, "egress_request", sid=sid):
         d = json.loads(r["detail_json"])
@@ -263,22 +263,22 @@ def delete_session(sid: str, purge: bool = False):
 @router.get("/sessions/{sid}/snapshots")
 def get_snapshots(sid: str):
     from ... import workspace as ws_mod
-    from ...policy import list_snapshots
+    from ...security.policy import list_snapshots
     _get_session_or_404(sid)
     return {"snapshots": list_snapshots(ws_mod.ws_of(sid))}
 @router.post("/sessions/{sid}/rollback")
 def post_rollback(sid: str, body: dict):
     from ... import workspace as ws_mod
-    from ...policy import rollback
+    from ...security.policy import rollback
     _get_session_or_404(sid)
     return rollback(ws_mod.ws_of(sid), str(body.get("point") or ""))
 @router.post("/sessions/{sid}/kill")
 def kill_session(sid: str):
     """会话级 kill：停活跃 turn + 熔断（新消息拒绝）。管理面（admin 头）。"""
     _get_session_or_404(sid)
-    from ... import canary as canary_mod
     from ... import db as db_mod
     from ...engine import ENGINE
+    from ...security import canary as canary_mod
     stopped = []
     with db_mod.conn() as c:
         rows = c.execute("SELECT id FROM turns WHERE session_id=? AND"
@@ -290,12 +290,12 @@ def kill_session(sid: str):
     return {"ok": True, "stopped_turns": stopped, "locked": True}
 @router.post("/sessions/{sid}/unlock")
 def unlock_session(sid: str):
-    from ... import canary as canary_mod
+    from ...security import canary as canary_mod
     return {"ok": canary_mod.unlock_session(sid)}
 @router.get("/sessions/{sid}/approvals")
 def list_approvals(sid: str):
     _get_session_or_404(sid)
-    from ... import approve as approve_mod
+    from ...security import approve as approve_mod
     return {"approvals": approve_mod.list_pending(sid)}
 @router.get("/sessions/{sid}/timeline")
 def session_timeline(sid: str):
@@ -337,8 +337,8 @@ def session_timeline(sid: str):
 def create_approval(sid: str, body: dict):
     """agent CLI 发起（token 面）：{action_type, params, note} → {id, summary}。"""
     _get_session_or_404(sid)
-    from ... import approve as approve_mod
     from ...engine import ENGINE
+    from ...security import approve as approve_mod
     try:
         out = approve_mod.create(sid, str(body.get("action_type") or ""),
                                  dict(body.get("params") or {}),

@@ -99,7 +99,7 @@ def test_a6_3_amend_idempotent_concurrent_migration(tmp_path: Path):
 # ---------------------------------------------------------------- A6-4
 async def test_a6_4_platform_approval_roundtrip(tmp_path: Path, home: Path,
                                                 monkeypatch):
-    from loadn_webui import approve
+    from loadn_webui.security import approve
     from loadn_webui.workspace import ws_of
     sid = "20260924_0000-a6test01"
     ws = ws_of(sid)                       # 会话工作区（sid → PATHS 推导）

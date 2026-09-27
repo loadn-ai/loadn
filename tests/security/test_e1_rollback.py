@@ -8,7 +8,7 @@ from __future__ import annotations
 import json
 from pathlib import Path
 
-from loadn_webui import policy
+from loadn_webui.security import policy
 
 
 def test_e1_snapshot_and_rollback_cycle(tmp_path, monkeypatch):
@@ -76,7 +76,7 @@ async def test_e1_api_flow(client, ws_root):
                           json={"point": pts[-1]["point"]})
     assert r.json()["ok"]
     assert (ws / "notes" / "draft.md").read_text() == "正文 v1"
-    from loadn_webui import audit as audit_mod
+    from loadn_webui.security import audit as audit_mod
     assert audit_mod.tail(5, "rollback")
 
 

@@ -5,7 +5,7 @@ import json
 
 import pytest
 
-from loadn_webui import policy
+from loadn_webui.security import policy
 
 pytestmark = [pytest.mark.coverage("sec.e3")]
 
@@ -13,8 +13,8 @@ pytestmark = [pytest.mark.coverage("sec.e3")]
 
 def test_e3_falsified_artifact_claim(ws_root, monkeypatch):
     """agent 自称已交付 artifacts/x.md 但未写盘 → audit(anomaly)。"""
-    from loadn_webui import audit as audit_mod
     from loadn_webui import engine as engine_mod
+    from loadn_webui.security import audit as audit_mod
     sid = "20260922-e3test"
     ws = ws_root / sid
     ws.mkdir(parents=True, exist_ok=True)
@@ -30,8 +30,8 @@ def test_e3_falsified_artifact_claim(ws_root, monkeypatch):
 
 
 def test_e3_real_artifact_no_flag(ws_root):
-    from loadn_webui import audit as audit_mod
     from loadn_webui import engine as engine_mod
+    from loadn_webui.security import audit as audit_mod
     sid = "20260922-e3ok"
     ws = ws_root / sid
     (ws / "artifacts").mkdir(parents=True, exist_ok=True)
@@ -49,8 +49,8 @@ def test_e3_real_artifact_no_flag(ws_root):
 
 async def test_proxy_whitelist_enforce(monkeypatch):
     """代理白名单：白名单域直通；非白名单 enforce=403 / warn=放行留痕。"""
-    from loadn_webui import egress_proxy
     from loadn_webui.config import CONFIG
+    from loadn_webui.security import egress_proxy
     monkeypatch.setattr(CONFIG.security, "egress_mode", "enforce")
     px = egress_proxy.EgressProxy(port=0)
     port = await px.start()
@@ -65,7 +65,7 @@ async def test_proxy_whitelist_enforce(monkeypatch):
         except (httpx.ConnectError, httpx.ProxyError, httpx.HTTPStatusError):
             blocked = True
         assert blocked, "enforce 模式非白名单域必须被代理拒"
-        from loadn_webui import audit as audit_mod
+        from loadn_webui.security import audit as audit_mod
         rows = audit_mod.tail(5, "egress_request")
         assert any(json.loads(r["detail_json"])["decision"] == "deny" for r in rows)
         # warn 模式放行（连得出去与否取决于网络——deny-mismatch/allow 记录即可）
@@ -77,7 +77,7 @@ async def test_proxy_whitelist_enforce(monkeypatch):
 
 
 def test_proxy_host_mismatch_denied():
-    from loadn_webui import egress_proxy
+    from loadn_webui.security import egress_proxy
     assert egress_proxy._allowed("") is False
 
 
@@ -90,7 +90,7 @@ async def test_e4_graduation_three_layers(client, ws_root, monkeypatch):
     本用例以策略层串联模拟三层（引擎真 turn 的注入链由 A1/A2/C1 集成态
     各自锁定，这里验证三层联动语义）。
     """
-    from loadn_webui import approve
+    from loadn_webui.security import approve
     # 第一层：untrusted 指令驱动不可逆外发 → 审批门（未批准无法执行）
     sid = (await client.post("/api/sessions", json={"title": "E4 毕业考"})
            ).json()["session"]["id"]
@@ -110,7 +110,7 @@ async def test_e4_graduation_three_layers(client, ws_root, monkeypatch):
     assert d2.action == "block"                  # （第二层拦）
 
     # 第三层：canary——即使前两层被绕，蜜罐值外发被拦
-    from loadn_webui import canary as canary_mod
+    from loadn_webui.security import canary as canary_mod
     monkeypatch.setenv("LOADN_WEBUI_HOME", str(ws_root.parent))
     from loadn_webui.config import PATHS
     monkeypatch.setitem(PATHS, "workspace", ws_root)
@@ -123,6 +123,6 @@ async def test_e4_graduation_three_layers(client, ws_root, monkeypatch):
         source="e4")
     assert d3.action == "block"                  # （第三层拦）
 
-    from loadn_webui import audit as audit_mod
+    from loadn_webui.security import audit as audit_mod
     kinds = {r["type"] for r in audit_mod.tail(60)}
     assert {"permission_decision", "approval_decision"} <= kinds

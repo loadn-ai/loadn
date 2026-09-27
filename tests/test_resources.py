@@ -36,7 +36,7 @@ def restore_res_cfg():
 @pytest.fixture()
 def http_log(monkeypatch):
     """按 URL 分发的假 HTTP；records 记录 (method,url,kwargs)。"""
-    from loadn_webui import resources
+    from loadn_webui.integrations import resources
     routes: dict = {}
     records: list = []
 
@@ -63,7 +63,7 @@ def http_log(monkeypatch):
 @pytest.fixture(autouse=True)
 def _isolate_res_cache():
     """资源密钥缓存测试隔离（模块级 _RES_CACHE 跨用例泄漏=串味）。"""
-    from loadn_webui import vault
+    from loadn_webui.security import vault
     vault._RES_CACHE.clear()
     yield
     vault._RES_CACHE.clear()
@@ -71,7 +71,7 @@ def _isolate_res_cache():
 
 def _sec_set(monkeypatch, name: str, value: str):
     """测试注入资源密钥：改 vault 缓存（不真写盘）。"""
-    from loadn_webui import vault
+    from loadn_webui.security import vault
     monkeypatch.setitem(vault._RES_CACHE, name, value)
 
 
@@ -102,8 +102,8 @@ async def test_settings_resources_roundtrip(client):
     # 密钥入 vault（AES-GCM），config.yaml 不落明文
     import yaml as _y
 
-    from loadn_webui import vault as vault_mod
     from loadn_webui.config import PATHS
+    from loadn_webui.security import vault as vault_mod
     assert vault_mod.get_res_secret("bocha_key") == "bocha12345"
     data = _y.safe_load((PATHS["root"] / "config.yaml").read_text())
     assert not (data.get("resources") or {}).get("bocha_key")
@@ -122,7 +122,7 @@ async def test_settings_resources_roundtrip(client):
 
 # ---------------------------------------------------------------- 智谱搜索
 async def test_zhipu_search(http_log, monkeypatch):
-    from loadn_webui import resources
+    from loadn_webui.integrations import resources
     _sec_set(monkeypatch, "zhipu_key", "zp-key")
 
     captured = {}
@@ -190,7 +190,7 @@ def _page_html() -> str:
 
 
 async def test_fetch_page_direct_and_cache(http_log, monkeypatch):
-    from loadn_webui import resources
+    from loadn_webui.integrations import resources
 
     # 保险丝：本测的用例都不应触发 CDP，真触发说明直接提取链退化
     async def cdp_fail(url, *, wait, html_out):
@@ -231,7 +231,7 @@ async def test_fetch_page_direct_and_cache(http_log, monkeypatch):
 
 
 async def test_fetch_page_cdp_fallback(http_log, monkeypatch, tmp_path):
-    from loadn_webui import resources
+    from loadn_webui.integrations import resources
 
     async def fake_cdp(url, *, wait, html_out):
         html_out.write_text(_page_html(), encoding="utf-8")
@@ -266,7 +266,7 @@ IMG_HTML = """<html><body>
 
 
 def test_image_url_filter():
-    from loadn_webui.resources import _image_url_filtered
+    from loadn_webui.integrations.resources import _image_url_filtered
     assert _image_url_filtered("https://x/avatar/1.png")
     assert _image_url_filtered("https://x/i16x16con.png")
     assert _image_url_filtered("")
@@ -279,7 +279,7 @@ def test_image_likely_text():
 
     from PIL import Image
 
-    from loadn_webui.resources import _image_likely_text
+    from loadn_webui.integrations.resources import _image_likely_text
     img = Image.new("RGB", (300, 200))
     v, px = 42, []
     for _ in range(300 * 200):                  # LCG 伪随机噪点撑大文件
@@ -295,7 +295,7 @@ def test_image_likely_text():
 
 
 def test_main_image_srcs():
-    from loadn_webui.resources import _main_image_srcs
+    from loadn_webui.integrations.resources import _main_image_srcs
     para = ("主要内容段落文字的具体展开论述，" * 20)
     html = IMG_HTML.format(p1=para + "甲", p2=para + "乙")
     srcs = _main_image_srcs(html, "https://www.example.com/news/1")
@@ -306,7 +306,7 @@ def test_main_image_srcs():
 
 
 async def test_fetch_page_image_ocr(http_log, monkeypatch):
-    from loadn_webui import resources
+    from loadn_webui.integrations import resources
 
     async def fake_ocr(data, *, vlm):
         return "图里的文字内容"
@@ -340,8 +340,8 @@ async def test_fetch_page_image_ocr(http_log, monkeypatch):
 
 # ---------------------------------------------------------------- ping_all
 async def test_ping_all(http_log, monkeypatch):
-    from loadn_webui import resources
     from loadn_webui.config import CONFIG
+    from loadn_webui.integrations import resources
     _sec_set(monkeypatch, "sandbox_api_key", "test-key")
     _sec_set(monkeypatch, "sms_token", "t")
     _sec_set(monkeypatch, "twocaptcha_key", "k")
@@ -381,7 +381,7 @@ async def test_ping_all(http_log, monkeypatch):
 
 # ---------------------------------------------------------------- ocr
 async def test_ocr_parse_poll(tmp_path, http_log):
-    from loadn_webui import resources
+    from loadn_webui.integrations import resources
     f = tmp_path / "doc.png"
     f.write_bytes(b"\x89PNG fake")
     states = iter(["processing", "completed"])
@@ -420,8 +420,8 @@ async def test_ocr_parse_poll(tmp_path, http_log):
 
 # ---------------------------------------------------------------- vlm
 async def test_vlm_ask_payload(tmp_path, http_log, monkeypatch):
-    from loadn_webui import resources
     from loadn_webui.config import CONFIG
+    from loadn_webui.integrations import resources
     _sec_set(monkeypatch, "vlm_api_key", "")      # 回退 titlegen
     monkeypatch.setattr(CONFIG.titlegen, "api_key", "sk-fallback")
     img = tmp_path / "x.png"
@@ -453,8 +453,8 @@ async def test_vlm_ask_payload(tmp_path, http_log, monkeypatch):
 
 # ---------------------------------------------------------------- sms
 async def test_sms_wait(http_log, monkeypatch):
-    from loadn_webui import resources
     from loadn_webui.config import CONFIG
+    from loadn_webui.integrations import resources
     _sec_set(monkeypatch, "sms_token", "t")
     monkeypatch.setattr(CONFIG.resources, "sms_url", "https://sms.test:30443")
     old = {"ts": "2026-09-03T10:00:00+08:00", "body": "旧验证码 111"}
@@ -474,7 +474,7 @@ async def test_sms_wait(http_log, monkeypatch):
 
 # ---------------------------------------------------------------- mail（126 邮箱）
 def test_extract_codes():
-    from loadn_webui.resources import _extract_codes
+    from loadn_webui.integrations.resources import _extract_codes
     assert _extract_codes("您的验证码是 491573，10 分钟内有效") == ["491573"]
     assert _extract_codes("Your verification code: 582914. It expires soon.") == ["582914"]
     assert _extract_codes("验证码 4321，请勿泄露，重复 4321") == ["4321"]    # 去重
@@ -489,7 +489,7 @@ def test_parse_mail_html_only():
     """html-only 邮件：style 不进正文、链接取 href、实体反转义、中文头解码。"""
     from email.message import EmailMessage
 
-    from loadn_webui.resources import _parse_mail
+    from loadn_webui.integrations.resources import _parse_mail
     msg = EmailMessage()
     msg["From"] = "GitHub <noreply@github.com>"
     msg["To"] = "user@example.com"
@@ -511,7 +511,7 @@ def test_parse_mail_html_only():
 
 
 async def test_mail_wait(monkeypatch):
-    from loadn_webui import resources
+    from loadn_webui.integrations import resources
     old = {"ts": 100.0, "receive_time": "", "from": "", "subject": "旧邮件",
            "body": "", "links": [], "codes": []}
     new = {**old, "ts": 200.0, "subject": "验证码 654321", "codes": ["654321"]}
@@ -532,8 +532,9 @@ async def test_mail_wait(monkeypatch):
 
 
 async def test_mail_requires_auth_code(monkeypatch, capsys):
-    from loadn_webui import cli, resources
+    from loadn_webui import cli
     from loadn_webui.config import CONFIG
+    from loadn_webui.integrations import resources
     _sec_set(monkeypatch, "mail_auth_code", "")
     monkeypatch.setattr(CONFIG.resources, "mailboxes", [])
     with pytest.raises(RuntimeError, match="授权码"):
@@ -543,8 +544,8 @@ async def test_mail_requires_auth_code(monkeypatch, capsys):
 
 
 def test_mailbox_selection(monkeypatch):
-    from loadn_webui import resources
     from loadn_webui.config import CONFIG
+    from loadn_webui.integrations import resources
     monkeypatch.setattr(CONFIG.resources, "mail_user", "user@example.com")
     _sec_set(monkeypatch, "mail_auth_code", "c1")
     monkeypatch.setattr(CONFIG.resources, "mailboxes", [
@@ -567,7 +568,7 @@ def test_mailbox_selection(monkeypatch):
 
 # ---------------------------------------------------------------- captcha
 async def test_captcha_solve(tmp_path, http_log, monkeypatch):
-    from loadn_webui import resources
+    from loadn_webui.integrations import resources
     _sec_set(monkeypatch, "twocaptcha_key", "capkey")
     img = tmp_path / "cap.png"
     img.write_bytes(b"png")
@@ -588,7 +589,8 @@ async def test_captcha_solve(tmp_path, http_log, monkeypatch):
 async def test_cli_r(monkeypatch, capsys):
     import asyncio
 
-    from loadn_webui import cli, resources
+    from loadn_webui import cli
+    from loadn_webui.integrations import resources
 
     async def fake_ping(only=None):
         return {"ocr": {"ok": True, "msg": "ok", "ms": 3},
@@ -653,8 +655,8 @@ async def test_new_skills_default_mounted(client, ws_root):
 
 async def test_res_secrets_migrate_to_vault(tmp_path, monkeypatch):
     """config.yaml 明文密钥 → vault 一次性迁移：值入 vault、yaml 清空。"""
-    from loadn_webui import vault
     from loadn_webui.config import CONFIG, PATHS
+    from loadn_webui.security import vault
     cfg = PATHS["root"] / "config.yaml"
     cfg.write_text(yaml.safe_dump({
         "resources": {"bocha_key": "bk-123", "sms_token": "st-456",

@@ -270,7 +270,7 @@ def _install_dir(src: Path, src_root: Path, via: str, **extra) -> str:
         shutil.rmtree(dst, ignore_errors=True)
         raise PermissionError(f"{name} 解包后 {total // 1048576}MB，超过 100MB 上限")
     # W4 ②：八类静态扫描——红=拒装（净卸载），黄=装+留痕
-    from . import skill_scan
+    from .security import skill_scan
     report = skill_scan.scan_skill(dst)
     if report["level"] == "red":
         shutil.rmtree(dst, ignore_errors=True)

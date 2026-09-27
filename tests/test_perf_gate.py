@@ -84,7 +84,7 @@ def test_audit_chain_verify_budget(tmp_path, monkeypatch):
     """审计链 1000 行校验 < 400ms（基线 ~20ms×20——挡哈希链退化为
     全表重算×N；月分表后单次校验只碰当月）。"""
     monkeypatch.setenv("LOADN_WEBUI_HOME", str(tmp_path))
-    from loadn_webui import audit as audit_mod
+    from loadn_webui.security import audit as audit_mod
     for i in range(1000):
         audit_mod.audit("anomaly", {"what": "perf-probe", "i": i})
     t0 = time.perf_counter()

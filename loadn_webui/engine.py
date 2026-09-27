@@ -218,7 +218,7 @@ class Engine:
             raise ValueError("消息不能为空")
         # W6.4 熔断检查（canary 命中/kill switch 锁定的会话拒绝新消息）
         try:
-            from . import canary as _canary
+            from .security import canary as _canary
             why = _canary.is_locked(sid)
             if why:
                 raise PermissionError(f"会话已熔断（{why}）——kill switch/canary 命中")
@@ -243,7 +243,7 @@ class Engine:
                 and db_mod.kv_get(c, f"title_auto:{sid}") is not None
         self.publish(sid, "turn_queued", {"turn_id": tid, "mode": mode}, tid)
         if want_title:
-            from . import titlegen
+            from .integrations import titlegen
             asyncio.create_task(titlegen.maybe_auto_title(sid, text))
         q = self._queues.get(sid)
         if q is None:
@@ -278,8 +278,8 @@ class Engine:
         """回收沙箱内 hook 判定侧车 → 审计账本（宿主侧唯一写库点）。"""
         import json as _json
 
-        from . import audit as _audit
         from . import workspace as _ws
+        from .security import audit as _audit
         f = _ws.ws_of(sid) / ".loadn-hook-audit.jsonl"
         try:
             lines = f.read_text(encoding="utf-8").splitlines()
@@ -304,8 +304,8 @@ class Engine:
         """W6.3 谎报抽查：agent 自称的 artifacts 路径核对（存在+mtime 窗）。"""
         import re as _re
 
-        from . import audit as _audit
         from . import workspace as _ws_mod
+        from .security import audit as _audit
         text = (getattr(res, "result_text", "") or "")
         ws = _ws_mod.ws_of(sid)
         t_start = time.time() - max(2 * 3600, 3600)
@@ -812,7 +812,7 @@ class Engine:
 
         # ---- 运维通知（fire-and-forget，永不拖垮主流程）
         try:
-            from . import notify
+            from .integrations import notify
             if status == "error":
                 notify.fire(f"❌ turn 报错 · {sess['title'][:40]}",
                             f"{(res.error or '')[:200]}", event="on_error")

@@ -17,8 +17,8 @@ import sys
 
 import pytest
 
-from loadn_webui import browser_mcp
 from loadn_webui.config import CONFIG
+from loadn_webui.integrations import browser_mcp
 
 
 @pytest.fixture(autouse=True)
@@ -56,7 +56,7 @@ def _mcp_session(calls: list[dict]) -> tuple[str, str]:
     """子进程跑 server：喂 calls，收全部响应行。"""
     lines = "\n".join(json.dumps(c) for c in calls) + "\n"
     p = subprocess.run(
-        [sys.executable, "-m", "loadn_webui.browser_mcp"],
+        [sys.executable, "-m", "loadn_webui.integrations.browser_mcp"],
         input=lines, capture_output=True, text=True, timeout=30)
     return p.stdout, p.stderr
 
@@ -138,6 +138,6 @@ def test_no_injection_without_cdp(tmp_path, monkeypatch):
 
 # ---------------------------------------------------------------- 审批
 def test_browser_open_approval_summary():
-    from loadn_webui.approve import _render_summary
+    from loadn_webui.security.approve import _render_summary
     s = _render_summary("browser_open", {"host": "api.example.com"})
     assert "api.example.com" in s and "外部域" in s

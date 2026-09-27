@@ -10,8 +10,8 @@ from __future__ import annotations
 
 import asyncio
 
-from .config import CONFIG
-from .util import get_logger
+from ..config import CONFIG
+from ..util import get_logger
 
 log = get_logger(__name__)
 

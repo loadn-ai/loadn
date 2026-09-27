@@ -14,9 +14,9 @@ from pathlib import Path
 
 import yaml
 
-from . import db as db_mod
-from .config import CONFIG, PATHS
-from .util import get_logger, iso
+from .. import db as db_mod
+from ..config import CONFIG, PATHS
+from ..util import get_logger, iso
 
 log = get_logger(__name__)
 
@@ -126,8 +126,8 @@ def delete_server(name: str) -> dict:
 
 def rematerialize_sessions() -> int:
     """全局 servers/egress 变化后重写所有 active 会话的 .mcp.json + egress 快照。"""
-    from . import params as params_mod
-    from . import workspace as ws_mod
+    from .. import params as params_mod
+    from .. import workspace as ws_mod
     n = 0
     seen: set[str] = set()          # 共享工作区 dedupe：同项目子任务只写一次
     with db_mod.conn() as c:
@@ -155,7 +155,7 @@ def rematerialize_sessions() -> int:
 
 # ---------------------------------------------------------------- 内建工具开关
 def tools_overview() -> dict:
-    from . import profile as profile_mod
+    from .. import profile as profile_mod
     reg = profile_mod.load_registry()
     profiles = []
     for p in reg.values():
@@ -165,12 +165,12 @@ def tools_overview() -> dict:
 
 
 def put_profile_tools(profile_name: str, disallowed: list[str]) -> dict:
-    from . import profile as profile_mod
+    from .. import profile as profile_mod
     reg = profile_mod.load_registry()
     if profile_name not in reg:
         raise KeyError(f"未知 profile: {profile_name}")
     norm = sorted({str(t) for t in disallowed if str(t) in BUILTIN_TOOLS})
-    from .config import ROOT as _R
+    from ..config import ROOT as _R
     path = _R / "profiles" / "registry.yaml"      # 写到数据根（用户定制层）
     path.parent.mkdir(parents=True, exist_ok=True)
     _backup(path)

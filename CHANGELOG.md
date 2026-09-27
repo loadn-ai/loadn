@@ -19,6 +19,17 @@
 - evals 场景 5→10；契约 v1/v2 对赌补全（tool_use_failure 终态事件、
   平台 durable 事件转发两个真缺口修复）。
 
+## [0.6.13] - 2026-09-28
+
+- **webui 子包化**：40+ 顶层扁平模块收拢为两个域包——`security/`（sandbox/
+  egress_proxy/policy/vault/audit/approve/canary/net_policy/egress_grants/
+  skill_scan）与 `integrations/`（resources/notify/pricing/share/titlegen/
+  skillhub/skill_zh/mcp_admin/browser_mcp/codemode_mcp/lsp_host）；核心
+  运行面（api/engine/engines/db/config…）保持顶层。全仓 ~90 处引用脚本化
+  重写（绝对/相对/容器形态、函数内缩进 import、monkeypatch 字符串）。
+- **版本单一真源**：仓库版本 0.3.0↔发布 v0.6.x 长期漂移终结——版本随功能
+  提交进 git；release build 的「盖章」改为**校验门**（tag≠仓库版本即拒发）。
+
 ## [0.6.12] - 2026-09-28
 
 - **routes.py 按域拆包**（架构治理第一刀）：2147 行/108 端点单文件 →

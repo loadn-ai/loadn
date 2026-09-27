@@ -24,8 +24,8 @@ import signal
 import sys
 from pathlib import Path
 
-from .audit import audit
-from .config import CONFIG
+from ..config import CONFIG
+from ..security.audit import audit
 
 TIMEOUT_S = 2.0
 MAX_OUTPUT_CHARS = 20_000

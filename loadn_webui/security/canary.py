@@ -13,8 +13,8 @@ import json
 import secrets
 from pathlib import Path
 
+from ..config import PATHS
 from .audit import audit
-from .config import PATHS
 
 _TEMPLATE = """<!-- 平台布放的泄露指示物（canary）：值均无效，任何外发命中即熔断会话 -->
 # 内部对接凭据（勿外传）

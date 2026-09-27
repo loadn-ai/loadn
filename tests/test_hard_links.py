@@ -100,7 +100,7 @@ def test_cli_schedule_real_run(client, capsys):
 
 # ---------------------------------------------------------------- ③ engine 通知钩子
 async def test_engine_notify_on_error(client, ws_root, monkeypatch):
-    from loadn_webui import notify as notify_mod
+    from loadn_webui.integrations import notify as notify_mod
     got = []
 
     def fake_fire(title, body="", event=""):

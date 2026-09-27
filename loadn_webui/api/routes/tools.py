@@ -3,7 +3,7 @@ from __future__ import annotations
 
 from fastapi import APIRouter
 
-from ... import mcp_admin
+from ...integrations import mcp_admin
 
 router = APIRouter(prefix="/api")
 

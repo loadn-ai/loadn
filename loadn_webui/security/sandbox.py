@@ -27,8 +27,8 @@ import shutil
 import sys
 from pathlib import Path
 
-from .config import PATHS
-from .util import get_logger
+from ..config import PATHS
+from ..util import get_logger
 
 log = get_logger(__name__)
 
@@ -78,7 +78,7 @@ def resolve_tier(requested: str | None = None) -> tuple[str, str]:
     seatbelt/appcontainer/remote 是枚举占位（原生轻量档/远程执行器，长期
     可选），未实现 → 降档 off 并审计。
     """
-    from .config import CONFIG
+    from ..config import CONFIG
     req = requested if requested is not None else CONFIG.security.sandbox
     if req in _resolve_cache:
         return _resolve_cache[req]
@@ -103,7 +103,7 @@ def resolve_tier(requested: str | None = None) -> tuple[str, str]:
 
 def tier_status() -> dict:
     """当前档位三态（/api/health 与安全中心展示用）。"""
-    from .config import CONFIG
+    from ..config import CONFIG
     req = CONFIG.security.sandbox
     eff, reason = resolve_tier(req)
     return {"requested": req, "effective": eff, "reason": reason}
@@ -145,7 +145,7 @@ def _shared_binds(argv: list[str]) -> list[str]:
     - env $LOADN_SHARED_RO（ro 子集，兼容）+ $LOADN_HOST_BRIDGES（全量
       path:mode）同源指路（off 档挂载缺席 env 仍在——off 本无边界）
     """
-    from .config import CONFIG
+    from ..config import CONFIG
     # bridges 先录（同路径去重=bridge 语义优先），shared_readonly 兜底 ro
     entries: list[tuple[str, str]] = []
     for b in CONFIG.security.resource_bridges or []:
@@ -259,7 +259,7 @@ def wrap_loadn(cmd: list[str], env: dict, *, sid_session: str,
     # 不再猜过期默认）> 8793（随机端口直调场景的最后回退）
     proxy_port = env.get("https_proxy", "").rsplit(":", 1)[-1]
     if not proxy_port.isdigit():
-        from .config import CONFIG as _CFG
+        from ..config import CONFIG as _CFG
         proxy_port = str(_CFG.security.egress_proxy_port or 8793)
     boot = (f"ip link set lo up 2>/dev/null; "
             f"socat TCP-LISTEN:{proxy_port},bind=127.0.0.1,fork,reuseaddr "
@@ -340,7 +340,7 @@ def wrap_engine(cmd: list[str], env: dict, *, engine: str, sid: str,
     project_root：项目子任务的项目根（宪法 ro + 共享 inputs rw）。
     owner_sid：平台会话 id（loadn 引擎会话级 egress socket 用）。
     """
-    from .config import CONFIG
+    from ..config import CONFIG
     # 会话级档位覆盖（params.sandbox > 全局 config；None=全局）——运维/
     # 宿主接管会话可放开隔离，普通会话保持全局默认。降档审计语义不变
     effective_cfg = requested_tier if requested_tier is not None \

@@ -35,12 +35,12 @@ PY = os.environ.get("LOADN_MUT_PY", str(REPO / ".venv/bin/python"))
 # ---------------------------------------------------------------- 目标组
 GROUPS: dict[str, list[str]] = {
     "security": [
-        "loadn_webui/policy.py",
-        "loadn_webui/approve.py",
-        "loadn_webui/vault.py",
+        "loadn_webui/security/policy.py",
+        "loadn_webui/security/approve.py",
+        "loadn_webui/security/vault.py",
         "loadn/truststore.py",
-        "loadn_webui/canary.py",
-        "loadn_webui/net_policy.py",
+        "loadn_webui/security/canary.py",
+        "loadn_webui/security/net_policy.py",
         "loadn/bash_policy.py",
     ],
     "writetools": [
@@ -52,9 +52,9 @@ GROUPS: dict[str, list[str]] = {
         "loadn/core/autolint.py",
     ],
     "sandbox": [
-        "loadn_webui/sandbox.py",
-        "loadn_webui/egress_proxy.py",
-        "loadn_webui/egress_grants.py",
+        "loadn_webui/security/sandbox.py",
+        "loadn_webui/security/egress_proxy.py",
+        "loadn_webui/security/egress_grants.py",
     ],
     "session": [
         "loadn/core/session.py",
@@ -66,7 +66,7 @@ GROUPS: dict[str, list[str]] = {
 # 文件 → 窄测试集（杀死该文件变异的最小充分集；映射缺失=跑该文件
 # 同名 test_* 的启发式——本 runner 只接受显式映射，防全量慢）
 TARGET_TESTS: dict[str, list[str]] = {
-    "loadn_webui/policy.py": [
+    "loadn_webui/security/policy.py": [
         "tests/security/test_a1_blocklist.py",
         "tests/security/test_a5_bash_policy.py",
         "tests/security/test_a6_policy_amend.py",
@@ -75,22 +75,22 @@ TARGET_TESTS: dict[str, list[str]] = {
         "tests/test_security_knobs.py",
         "tests/test_egress_align.py",
     ],
-    "loadn_webui/approve.py": [
+    "loadn_webui/security/approve.py": [
         "tests/security/test_a3_approvals.py",
         "tests/security/test_guard_negatives.py",
         "tests/test_w0_security.py",
     ],
-    "loadn_webui/vault.py": [
+    "loadn_webui/security/vault.py": [
         "tests/test_vault.py",
         "tests/security/test_e2_audit_chain.py",
     ],
     "loadn/truststore.py": [
         "tests/security/test_b5_trust_gate.py",
     ],
-    "loadn_webui/canary.py": [
+    "loadn_webui/security/canary.py": [
         "tests/security/test_c1_canary.py",
     ],
-    "loadn_webui/net_policy.py": [
+    "loadn_webui/security/net_policy.py": [
         "tests/security/test_a7_net_policy.py",
         "tests/test_egress_align.py",
     ],
@@ -122,20 +122,20 @@ TARGET_TESTS: dict[str, list[str]] = {
     "loadn/core/autolint.py": [
         "tests/test_autolint.py",
     ],
-    "loadn_webui/sandbox.py": [
+    "loadn_webui/security/sandbox.py": [
         "tests/security/test_d1_sandbox.py",
         "tests/test_sandbox_units.py",
         "tests/test_egress_align.py",
         "tests/test_egress_balance.py",
     ],
-    "loadn_webui/egress_proxy.py": [
+    "loadn_webui/security/egress_proxy.py": [
         "tests/test_egress_units.py",
         "tests/test_egress_ask.py",
         "tests/test_egress_align.py",
         "tests/test_egress_balance.py",
         "tests/test_egress_gates.py",
     ],
-    "loadn_webui/egress_grants.py": [
+    "loadn_webui/security/egress_grants.py": [
         "tests/test_egress_balance.py",
         "tests/test_egress_ask.py",
         "tests/test_egress_gates.py",
@@ -218,14 +218,14 @@ TARGET_TESTS: dict[str, list[str]] = {
         "tests/test_mcp_http.py",
         "tests/test_mcp_oauth.py",
     ],
-    "loadn_webui/lsp_host.py": [
+    "loadn_webui/integrations/lsp_host.py": [
         "tests/test_lsp_host.py",
         "tests/test_lsp_session_units.py",
     ],
-    "loadn_webui/codemode_mcp.py": [
+    "loadn_webui/integrations/codemode_mcp.py": [
         "tests/test_codemode_stdio_units.py",
     ],
-    "loadn_webui/browser_mcp.py": [
+    "loadn_webui/integrations/browser_mcp.py": [
         "tests/test_browser_units.py",
         "tests/security/test_browser_cua.py",
     ],
@@ -287,7 +287,7 @@ TARGET_TESTS: dict[str, list[str]] = {
     "loadn_webui/backup.py": [
         "tests/test_backup.py",
     ],
-    "loadn_webui/skill_scan.py": [
+    "loadn_webui/security/skill_scan.py": [
         "tests/security/test_b_supply_chain.py",
         "tests/test_m7_units.py",
     ],

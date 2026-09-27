@@ -28,7 +28,7 @@ def stats_cost(days: int = 14):
     """成本分析页数据：三口径成本（CLI 假价 / z.ai API 真价 / Coding Plan 积分）
     + 按模型 / 每日 / 角色 / Top 会话 / 工具接口调用 聚合。Python 全表聚合
     （千行级 <10ms），不建物化层。"""
-    from ... import pricing as pricing_mod
+    from ...integrations import pricing as pricing_mod
 
     def _load(text: str | None) -> dict:
         try:
@@ -182,7 +182,7 @@ def health():
     except OSError:
         pass
     # claude_bin/claude_version 顶层字段保留（前端兼容）；engines 为全引擎状态
-    from ... import sandbox as sandbox_mod
+    from ...security import sandbox as sandbox_mod
     return {"release": release,"claude_bin": engines.get("claude", {}).get("bin"),
             "claude_version": engines.get("claude", {}).get("version"),
             "engines": engines, "default_engine": engines_mod.default_engine(),

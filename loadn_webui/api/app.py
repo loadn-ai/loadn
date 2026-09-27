@@ -27,7 +27,7 @@ from .. import db as db_mod
 from ..claude_runner import reap_orphans
 from ..config import CONFIG, PATHS, admin_token_value, resolve_runtime_token
 from ..engine import ENGINE
-from ..share import share_router
+from ..integrations.share import share_router
 from ..util import get_logger
 from . import routes
 from .sse import event_stream
@@ -92,12 +92,12 @@ async def lifespan(app: FastAPI):
     if _mig is not None:
         log.info("[R2.5] 旧库迁移完成 → %s", _mig)
     # 资源密钥明文 → vault（一次性；迁移后 config.yaml 密钥字段清空）
-    from .. import vault as vault_mod
+    from ..security import vault as vault_mod
     _moved = vault_mod.migrate_res_secrets()
     if _moved:
         log.info("[资源密钥] config.yaml 明文已迁 vault（AES-GCM）：%s", _moved)
     # W5.1：出口白名单代理（引擎 env 通道接管；enforce 由 security.egress_mode）
-    from ..egress_proxy import EgressProxy
+    from ..security.egress_proxy import EgressProxy
     try:
         from ..config import PATHS as _P
         _EGRESS[0] = EgressProxy(
@@ -107,7 +107,7 @@ async def lifespan(app: FastAPI):
     except OSError:
         log.exception("egress 代理绑定失败（多实例/端口占用）——本实例无代理")
     # W2：沙箱档位启动解析（探测→降档 fail-closed）+ sandbox_tier 审计留痕
-    from .. import sandbox as sandbox_mod
+    from ..security import sandbox as sandbox_mod
     sandbox_mod.resolve_and_audit()
     # 单实例闸（2026-09-17 事故）：双 serve 抢端口时，败者在 bind 失败前也会先跑
     # lifespan——孤儿清理/中断恢复会直接误伤胜者正在跑的 turn（systemd

@@ -17,7 +17,7 @@ import stat
 
 import pytest
 
-from loadn_webui import audit as audit_mod
+from loadn_webui.security import audit as audit_mod
 
 
 def _t() -> str:

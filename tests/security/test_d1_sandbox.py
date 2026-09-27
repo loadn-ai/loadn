@@ -19,7 +19,7 @@ from pathlib import Path
 
 import pytest
 
-from loadn_webui import sandbox
+from loadn_webui.security import sandbox
 
 pytestmark = pytest.mark.skipif(not sandbox.bwrap_available(),
                                 reason="bwrap 不可用（CI/受限环境）")
@@ -123,7 +123,7 @@ async def test_d1_sandboxed_real_turn(client, ws_root, monkeypatch):
     ts = Path(os.environ.get("LOADN_HOME") or Path.home() / ".loadn")
     assert (ts / "sessions" / sess["claude_session_id"] / "transcript.jsonl").exists()
     # 审计留痕 mode=bwrap
-    from loadn_webui import audit as audit_mod
+    from loadn_webui.security import audit as audit_mod
     rows = [r_ for r_ in audit_mod.tail(30, "snapshot")
             if r_["detail_json"].find('"mode": "bwrap"') >= 0]
     assert rows

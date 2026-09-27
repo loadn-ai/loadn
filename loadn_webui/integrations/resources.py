@@ -13,12 +13,12 @@ import mimetypes
 import time
 from pathlib import Path
 
-from .config import CONFIG, PATHS
+from ..config import CONFIG, PATHS
 
 
 def _sec(name: str) -> str:
     """资源密钥统一入口（vault AES-GCM，带缓存）——config 明文已退役。"""
-    from . import vault as vault_mod
+    from ..security import vault as vault_mod
     return vault_mod.get_res_secret(name)
 
 BOCHA_API_BASE = "https://api.bochaai.com"
@@ -866,7 +866,7 @@ async def fetch_page(url: str, *, force: bool = False, wait: float = 5.0,
     """
     import hashlib
 
-    from .config import PATHS
+    from ..config import PATHS
     cache_dir = PATHS["pages_cache"]
     cache_dir.mkdir(parents=True, exist_ok=True)
     path = cache_dir / f"{hashlib.sha1(url.encode()).hexdigest()[:16]}.md"

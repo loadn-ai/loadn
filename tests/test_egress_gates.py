@@ -15,8 +15,8 @@ import asyncio
 
 import yaml
 
-from loadn_webui import egress_grants, egress_proxy
 from loadn_webui.config import CONFIG, ROOT
+from loadn_webui.security import egress_grants, egress_proxy
 
 
 # ---------------------------------------------------------------- 热重载门
@@ -111,7 +111,7 @@ async def test_plain_http_matching_host_forwarded(monkeypatch):
         # 一致请求不得记 deny-mismatch（分片检测过触发=杀手）
         import json as _json
 
-        from loadn_webui import audit as audit_mod
+        from loadn_webui.security import audit as audit_mod
         bad = [row for row in audit_mod.tail(100, "egress_request")
                if (d := _json.loads(row["detail_json"])).get("host")
                == "127.0.0.1" and d.get("decision") == "deny-mismatch"]
@@ -211,7 +211,7 @@ async def test_gate_rebind_denied_both_paths(monkeypatch):
     白名单只管「去哪」，重绑定管「实际到了哪」——两路 return False
     反转成 True 即放行私网回流（安全关键，此前从未对赌）。
     """
-    from loadn_webui import net_policy
+    from loadn_webui.security import net_policy
     monkeypatch.setattr(CONFIG.security, "egress_mode", "enforce")
     monkeypatch.setattr(CONFIG.security, "egress_allow", ["rebind.example.com"])
     monkeypatch.setattr(net_policy, "rebind_check",
@@ -229,7 +229,7 @@ async def test_gate_rebind_denied_both_paths(monkeypatch):
 
 async def test_ask_create_failure_fail_closed(monkeypatch):
     """弹卡创建失败 → 回退直接拒（fail-closed），绝不放行。"""
-    from loadn_webui import approve as approve_mod
+    from loadn_webui.security import approve as approve_mod
     monkeypatch.setattr(CONFIG.security, "egress_mode", "enforce")
     monkeypatch.setattr(CONFIG.security, "egress_allow", [])
     monkeypatch.setattr(CONFIG.security, "egress_on_deny", "ask")

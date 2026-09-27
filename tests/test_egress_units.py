@@ -6,8 +6,8 @@ import asyncio
 import httpx
 import pytest
 
-from loadn_webui import egress_proxy
 from loadn_webui.config import CONFIG
+from loadn_webui.security import egress_proxy
 
 
 @pytest.fixture()

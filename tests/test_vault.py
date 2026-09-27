@@ -3,8 +3,8 @@ import json
 import os
 import stat
 
-from loadn_webui import vault
 from loadn_webui.cli import main
+from loadn_webui.security import vault
 
 
 def test_put_get_mask_delete():
@@ -77,7 +77,7 @@ def test_cli_roundtrip(capsys, monkeypatch):
 # ---------------------------------------------------------------- 管理面编辑端点
 async def test_admin_vault_editor_roundtrip(client):
     """安全中心可视化编辑：掩码视图 / merge 写（留空不改·空串清除）/ 删除。"""
-    from loadn_webui import vault as v
+    from loadn_webui.security import vault as v
     v.put("editor-test", username="old@x.com", password="S3cret!", notes="n1")
 
     d = (await client.get("/api/admin/vault/editor-test")).json()
@@ -117,7 +117,7 @@ def test_decrypt_min_frame_boundary():
     import pytest as _pytest
     from cryptography.exceptions import InvalidTag
 
-    from loadn_webui.vault import _decrypt
+    from loadn_webui.security.vault import _decrypt
     blob = b"LDV1" + b"\x00\x00" + b"\x00" * 12 + b"\x00" * 16   # =34B
     assert len(blob) == 34
     with _pytest.raises(InvalidTag):

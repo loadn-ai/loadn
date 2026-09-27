@@ -85,23 +85,25 @@ def _log(msg: str) -> None:
         pass
 
 
-def stamp_engine_version(build_dir: Path, tag: str) -> None:
-    """引擎包版本对齐发布 tag（版本平面合一）。
+def verify_engine_version(build_dir: Path, tag: str) -> None:
+    """版本单一真源门：仓库版本必须已 bump 到 tag（v0.6.12 起取代盖章）。
 
-    pyproject 的 version 是 loadn 引擎子包自己的版本号，从不随平台
-    release 走——health 面板会出现「平台 v0.6.3 + 引擎 0.3.0」的双版本
-    困惑。release build 时把 tag 盖进**构建树**（仓库不动，tag 内容不变，
-    只有分发产物携带对齐后的版本）。
+    历史设计是 release 时把 tag 盖进构建树（仓库留 0.3.0），导致仓库版本
+    与发布版本长期漂移（health 双版本困惑的根源）。现为 git 单一真源：
+    loadn/__init__.py 与 pyproject.toml 在打 tag 前随功能提交一起 bump，
+    build 时校验一致——不一致直接拒发（防「忘了 bump」静默漂移）。
     """
     import re
-    for rel, pat in (("loadn/__init__.py", r'(__version__\s*=\s*")[^"]*(")'),
-                     ("pyproject.toml", r'(^version\s*=\s*")[^"]*(")')):
+    for rel, pat in (("loadn/__init__.py", r'__version__\s*=\s*"[^"]*"'),
+                     ("pyproject.toml", r'^version\s*=\s*"[^"]*"')):
         f = build_dir / rel
-        try:
-            txt = f.read_text()
-        except OSError:
-            continue                     # 布局变化即跳过（显示层面的事，不挡发布）
-        f.write_text(re.sub(pat, rf"\g<1>{tag}\g<2>", txt, count=1, flags=re.M))
+        txt = f.read_text()              # 缺文件=布局变化，让它在下面统一抛
+        m = re.search(pat, txt, flags=re.M)
+        ver = m.group(0).split('"')[1] if m else None
+        if ver != tag.lstrip("v"):
+            raise SystemExit(
+                f"✗ 版本未对齐：{rel} 是 {ver}，tag 是 {tag}——"
+                f"先 bump 版本再打 tag（版本随功能提交进 git，单一真源）")
 
 
 @contextmanager
@@ -277,7 +279,7 @@ def cmd_release_build(tag: str, *, skip_ui: bool = False,
                     f"--output={build_dir}.tar"], cwd=repo, check=True)
     subprocess.run(["tar", "-xf", f"{build_dir}.tar", "-C", BUILD_DIR], check=True)
     (BUILD_DIR / f"{tag}.tar").unlink()
-    stamp_engine_version(build_dir, tag)
+    verify_engine_version(build_dir, tag)
     print(f"[1/5] 引擎包版本盖章 → {tag}（loadn --version 与平台 release 对齐）")
 
     # 2) 前端构建

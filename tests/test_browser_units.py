@@ -12,8 +12,8 @@ from types import SimpleNamespace
 
 import pytest
 
-from loadn_webui import browser_mcp as bm
 from loadn_webui.config import CONFIG
+from loadn_webui.integrations import browser_mcp as bm
 
 _PNG1PX = base64.b64decode(
     "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR4nGNgYGBg"
@@ -162,11 +162,11 @@ def test_session_ensure_reuse():
 # ---------------------------------------------------------------- 审批挂卡
 async def test_require_approval_creates_card(tmp_path, monkeypatch):
     """公网域首开 → 审批卡挂起且本轮拒（headless fail-closed）。"""
-    monkeypatch.setattr("loadn_webui.approve._ensured", False)
+    monkeypatch.setattr("loadn_webui.security.approve._ensured", False)
     sid = "br-appr-1"
     out = await bm._require_approval("novel.example", sid)
     assert out is False                            # 本轮拒
-    from loadn_webui import approve as ap
+    from loadn_webui.security import approve as ap
     rows = ap.list_pending(sid)
     assert rows and rows[0]["action_type"] == "browser_open"
     assert "novel.example" in rows[0]["summary"]

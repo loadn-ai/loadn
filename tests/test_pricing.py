@@ -2,7 +2,7 @@
 import pytest
 
 from loadn_webui import config as wd_config
-from loadn_webui import pricing
+from loadn_webui.integrations import pricing
 
 
 def test_normalize_model():

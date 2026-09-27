@@ -36,7 +36,7 @@ def _env(tmp_path, monkeypatch):
 
 # ---------------------------------------------------------------- 归一化
 def test_normalize_allow_entry():
-    from loadn_webui.net_policy import normalized_allow
+    from loadn_webui.security.net_policy import normalized_allow
     assert normalized_allow([
         "https://api.example.com:8443/x",   # scheme+端口+路径
         "*.cdn.example.org",                # 通配符 → 后缀语义基名
@@ -48,7 +48,7 @@ def test_normalize_allow_entry():
 
 
 def test_proxy_allowed_uses_normalized(monkeypatch):
-    from loadn_webui import egress_proxy as ep
+    from loadn_webui.security import egress_proxy as ep
     monkeypatch.setattr(CONFIG.security, "egress_allow",
                         ["https://git.example.com:443/"])
     assert ep._allowed("git.example.com") is True
@@ -58,7 +58,7 @@ def test_proxy_allowed_uses_normalized(monkeypatch):
 
 # ---------------------------------------------------------------- hook 门对齐
 def _decide(cmd: str, monkeypatch, chdir: Path | None = None):
-    from loadn_webui import policy as pol
+    from loadn_webui.security import policy as pol
     if chdir is not None:
         monkeypatch.chdir(chdir)
     return pol.check_command(cmd, source="hook")
@@ -158,7 +158,7 @@ async def test_patch_params_refreshes_snapshot(client, tmp_path):
 
 # ---------------------------------------------------------------- 共享挂载
 def test_shared_binds_argv(tmp_path, _env):
-    from loadn_webui import sandbox as sb
+    from loadn_webui.security import sandbox as sb
     shared = tmp_path / "data" / "papers"
     shared.mkdir(parents=True)
     (shared / "a.txt").write_text("x", encoding="utf-8")
@@ -179,7 +179,7 @@ def test_shared_binds_argv(tmp_path, _env):
 
 def test_wrap_loadn_includes_shared(tmp_path, _env, monkeypatch):
     """完整 wrap argv 含共享 ro-bind（不真跑 bwrap——只构造 argv）。"""
-    from loadn_webui import sandbox as sb
+    from loadn_webui.security import sandbox as sb
     shared = tmp_path / "pool"
     shared.mkdir()
     _env.setattr(CONFIG.security, "shared_readonly", [str(shared)])

@@ -16,9 +16,9 @@ from __future__ import annotations
 
 import asyncio
 
+from ..config import CONFIG
+from ..util import get_logger
 from .audit import audit
-from .config import CONFIG
-from .util import get_logger
 
 log = get_logger(__name__)
 
@@ -75,7 +75,7 @@ def _maybe_reload_policy() -> None:
     global _POLICY_MTIME
     import os as _os
 
-    from .config import PATHS as _P
+    from ..config import PATHS as _P
     p = _P["root"] / "config.yaml"
     try:
         mtime = _os.stat(p).st_mtime_ns
@@ -121,8 +121,8 @@ def _session_mode(sid: str | None) -> str:
     if not sid:
         return CONFIG.security.egress_mode
     try:
-        from . import db as _db
-        from . import params as _params
+        from .. import db as _db
+        from .. import params as _params
         with _db.conn() as c:
             sess = _db.get_session(c, sid)
         raw = sess["params_json"] if sess else None
@@ -158,7 +158,7 @@ def _record(host: str, decision: str, mode: str, port: int = 0,
     # W5.2 数据流向事件（面板轮询源：audit tail；SSE 推送后续）。
     # payload 带 sid：会话属性面板凭它只刷新本会话的外联流水
     try:
-        from .engine import ENGINE
+        from ..engine import ENGINE
         payload = {"host": host, "decision": decision}
         if sid:
             payload["sid"] = sid
@@ -367,7 +367,7 @@ class EgressProxy:
                     sid, "egress", {"host": host, "ttl_s": 7200},
                     note="平台自动发起：任务外联被白名单拦截，等待用户裁决")
                 aid = out["id"]
-                from .engine import ENGINE
+                from ..engine import ENGINE
                 ENGINE.publish(sid, "approval", {"kind": "request", **out})
             except (ValueError, OSError):
                 log.exception("egress 弹卡创建失败，回退直接拒（%s→%s）", sid, host)

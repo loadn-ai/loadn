@@ -30,7 +30,7 @@ def _reset(monkeypatch):
 
 # ---------------------------------------------------------------- 追加语义
 def test_hard_blocklist_l0_append(monkeypatch, tmp_path):
-    from loadn_webui import policy as pol
+    from loadn_webui.security import policy as pol
     monkeypatch.setattr(CONFIG.security, "hard_blocklist_l0",
                         [r"\bshutdown-evil\b"])
     monkeypatch.chdir(tmp_path)
@@ -42,7 +42,7 @@ def test_hard_blocklist_l0_append(monkeypatch, tmp_path):
 
 
 def test_l0_extra_cmd_names(monkeypatch, tmp_path):
-    from loadn_webui import policy as pol
+    from loadn_webui.security import policy as pol
     monkeypatch.setattr(CONFIG.security, "l0_extra_cmd_names", ["dangerbin"])
     monkeypatch.chdir(tmp_path)
     d = pol.check_command("dangerbin --do-it", source="hook")
@@ -50,7 +50,7 @@ def test_l0_extra_cmd_names(monkeypatch, tmp_path):
 
 
 def test_net_cmds_adjustable(monkeypatch, tmp_path):
-    from loadn_webui import policy as pol
+    from loadn_webui.security import policy as pol
     monkeypatch.chdir(tmp_path)
     # 放宽：net_cmds 收到只 curl → wget 不再走命令级门（proxy 层仍在）
     monkeypatch.setattr(CONFIG.security, "net_cmds", ["curl"])
@@ -64,7 +64,7 @@ def test_net_cmds_adjustable(monkeypatch, tmp_path):
 
 
 def test_sensitive_paths_append(monkeypatch):
-    from loadn_webui import policy as pol
+    from loadn_webui.security import policy as pol
     monkeypatch.setattr(CONFIG.security, "sensitive_path_patterns",
                         ["secrets/*"])
     assert not pol.check_path("data/secrets/key.pem").ok    # 追加生效
@@ -77,8 +77,8 @@ def test_sensitive_paths_append(monkeypatch):
 
 # ---------------------------------------------------------------- canary
 def test_canary_toggle(monkeypatch, tmp_path):
-    from loadn_webui import canary as canary_mod
-    from loadn_webui import policy as pol
+    from loadn_webui.security import canary as canary_mod
+    from loadn_webui.security import policy as pol
     monkeypatch.chdir(tmp_path)
     # 拿一枚真蜜罐值验检测门（目标域用出厂白名单域——排除 egress 门的干扰）
     vals = {"aws": "AKIAIOSFODNN7EXAMPLE", "gh": "ghp_" + "x" * 30,
@@ -100,7 +100,7 @@ def test_plant_canary_disabled(tmp_path, monkeypatch):
     from loadn_webui import workspace as ws_mod
     monkeypatch.setattr(CONFIG.security, "canary_enabled", False)
     planted = []
-    import loadn_webui.canary as c_mod
+    import loadn_webui.security.canary as c_mod
     monkeypatch.setattr(c_mod, "plant",
                         lambda sid, ws=None: planted.append(sid))
     ws_mod._plant_canary(tmp_path, "s-x")
@@ -142,7 +142,7 @@ def test_load_config_accepts_good(monkeypatch, tmp_path):
 
 
 def test_approval_ttl_wired(monkeypatch):
-    from loadn_webui import approve as ap
+    from loadn_webui.security import approve as ap
     monkeypatch.setattr(CONFIG.security, "approval_ttl_s", 1234)
     assert ap.default_ttl_s() == 1234
     monkeypatch.setattr(CONFIG.security, "approval_ttl_s", "bad")
@@ -150,14 +150,14 @@ def test_approval_ttl_wired(monkeypatch):
 
 
 def test_wechat_send_summary():
-    from loadn_webui.approve import _render_summary
+    from loadn_webui.security.approve import _render_summary
     assert "发微信" in _render_summary(
         "wechat_send", {"to": "uid1", "text": "hi"})
 
 
 # ---------------------------------------------------------------- 桥接
 def test_bridge_binds_modes(tmp_path, monkeypatch):
-    from loadn_webui import sandbox as sb
+    from loadn_webui.security import sandbox as sb
     ro = tmp_path / "data"
     ro.mkdir()
     rw = tmp_path / "scratch"
@@ -182,7 +182,7 @@ def test_bridge_binds_modes(tmp_path, monkeypatch):
 
 def test_bridge_priority_over_shared(tmp_path, monkeypatch):
     """同路径 bridge 优先（shared_readonly 兜底 ro）。"""
-    from loadn_webui import sandbox as sb
+    from loadn_webui.security import sandbox as sb
     p = tmp_path / "dual"
     p.mkdir()
     monkeypatch.setattr(CONFIG.security, "shared_readonly", [str(p)])
@@ -194,7 +194,7 @@ def test_bridge_priority_over_shared(tmp_path, monkeypatch):
 
 
 def test_wrap_loadn_bridge_rw(tmp_path, monkeypatch):
-    from loadn_webui import sandbox as sb
+    from loadn_webui.security import sandbox as sb
     p = tmp_path / "hostshare"
     p.mkdir()
     monkeypatch.setattr(CONFIG.security, "resource_bridges",

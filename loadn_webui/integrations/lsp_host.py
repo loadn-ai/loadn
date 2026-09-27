@@ -26,8 +26,8 @@ import sys
 import threading
 from pathlib import Path
 
-from .audit import audit
-from .config import CONFIG
+from ..config import CONFIG
+from ..security.audit import audit
 
 MAX_CHARS = 2_000             # 诊断文本预算（工具结果尾部拼接）
 MAX_DIAGS = 20                # 单文件诊断条数上限

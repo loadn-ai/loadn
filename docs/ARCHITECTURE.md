@@ -42,14 +42,15 @@ loadn_webui/    平台（FastAPI）
                 （skills/tools/settings/projects/sessions/turns/admin/
                 approvals/schedules/files/artifacts/stats + _common 横切件，
                 __init__ 聚合 router——加端点进对应域文件即可）
+  security/     安全平面域包：sandbox（bwrap 挂载矩阵）/egress_proxy（出口
+                代理+凭证网关）/policy（L0 红线+审批门）/vault（AES-GCM
+                凭证库）/audit（哈希链账本）/approve（确认码门）/canary
+                （蜜罐）/net_policy/egress_grants/skill_scan（供应链锁）
+  integrations/ 外部能力域包：resources（OCR/VLM/搜索等端点）/notify/
+                pricing/share/titlegen/skillhub/skill_zh/mcp_admin/
+                browser_mcp/codemode_mcp/lsp_host
   engine.py     turn 生命周期：spawn/消费/记账/中断恢复/收养
-  sandbox.py    bwrap 挂载矩阵（每引擎一份同路径 bind）
-  egress_proxy.py  出口代理 + LLM 凭证网关（虚拟域 MITM）
-  policy.py     W1 确定性策略（L0 红线 / AST 出口域 / 审批门）
-  vault.py      W3 凭证库（AES-GCM）
-  audit.py      W6 哈希链账本（月分表 + 日锚点）
-  canary.py     W5.5 蜜罐；approve.py W1-2 确认码门
-  ops.py        R7 发布系统（release/upgrade/rollback）
+  ops.py        R7 发布系统（release/upgrade/rollback；版本单一真源校验门）
   init_cmd.py   R9 安装向导（loadn init）
 desktop/        桌面产品形态（Tauri 壳 + Debian rootfs 双产物：
                 WSL2 import tar / mac VZ ext4——整 Linux VM 内跑执行域）

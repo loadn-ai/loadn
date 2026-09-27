@@ -21,9 +21,9 @@ import os
 import secrets
 from pathlib import Path
 
+from ..config import PATHS
+from ..util import get_logger, iso
 from .audit import audit
-from .config import PATHS
-from .util import get_logger, iso
 
 log = get_logger(__name__)
 
@@ -208,7 +208,7 @@ def res_secret_states() -> dict:
 def migrate_res_secrets() -> list[str]:
     """一次性迁移：CONFIG.resources 里遗留的明文密钥 → vault，随后清空
     内存与 config.yaml（明文字段覆写为空）。返回迁移的字段名。"""
-    from .config import CONFIG
+    from ..config import CONFIG
     moved = []
     data = load()
     entry = data.get(RES_ENTRY) or {}
@@ -232,7 +232,7 @@ def _wipe_config_secrets() -> None:
     """config.yaml 的密钥字段清空（原地重写；明文由文件系统层自然覆盖）。"""
     import yaml
 
-    from .config import PATHS
+    from ..config import PATHS
     p = PATHS["root"] / "config.yaml"
     try:
         data = yaml.safe_load(p.read_text()) or {}

@@ -21,9 +21,9 @@ import sqlite3
 import time
 from datetime import datetime, timezone
 
+from ..config import PATHS
+from ..util import get_logger
 from .audit import audit
-from .config import PATHS
-from .util import get_logger
 
 log = get_logger(__name__)
 
@@ -32,7 +32,7 @@ DEFAULT_TTL_S = 600
 
 def default_ttl_s() -> int:
     """审批卡默认 TTL（security.approval_ttl_s 接线；范围校验在 load_config）。"""
-    from .config import CONFIG
+    from ..config import CONFIG
     try:
         return int(CONFIG.security.approval_ttl_s or DEFAULT_TTL_S)
     except (TypeError, ValueError):
@@ -208,7 +208,7 @@ def decide(aid: int, approve: bool, by: str = "user") -> dict:
                 # 直接终态 executed（与 egress 同款「执行方=平台」语义）
                 from loadn.bash_policy import amend_policy, parse_rules
 
-                from .workspace import ws_of
+                from ..workspace import ws_of
                 params = json.loads(row["params_json"])
                 prefix = params.get("prefix")
                 try:
@@ -363,7 +363,7 @@ def _latest_turn_changes(sid: str) -> list[dict] | None:
 
     None=无 transcript/无 diffs（UI 降级「本 turn 无文件改动」）。
     """
-    from .engines.loadn import loadn_home
+    from ..engines.loadn import loadn_home
     p = loadn_home() / "sessions" / sid / "transcript.jsonl"
     try:
         lines = p.read_text(encoding="utf-8",

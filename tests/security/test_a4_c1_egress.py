@@ -13,9 +13,9 @@ pytestmark = [pytest.mark.coverage("sec.a4")]
 
 import json
 
-from loadn_webui import canary as canary_mod
-from loadn_webui import policy
 from loadn_webui.exporter.md_to_html import convert
+from loadn_webui.security import canary as canary_mod
+from loadn_webui.security import policy
 
 # ---------------------------------------------------------------- A4
 
@@ -71,7 +71,7 @@ def test_c1_canary_planted_and_hit(tmp_path, monkeypatch):
     from loadn_webui.config import PATHS
     monkeypatch.setitem(PATHS, "var", tmp_path / "var")
     monkeypatch.setitem(PATHS, "workspace", tmp_path / "ws")
-    from loadn_webui import audit as _audit_mod
+    from loadn_webui.security import audit as _audit_mod
     monkeypatch.setattr(_audit_mod, "_initialized", False)   # var 切换后重建表
     canary_mod.invalidate_cache()
     tokens = canary_mod.plant("s-c1")
@@ -101,7 +101,7 @@ async def test_c1_scaffold_and_kill_switch(client, ws_root):
     await client.post(f"/api/sessions/{sid}/unlock")
     r3 = await client.post(f"/api/sessions/{sid}/messages", json={"text": "恢复后"})
     assert r3.status_code == 200
-    from loadn_webui import audit as audit_mod
+    from loadn_webui.security import audit as audit_mod
     assert any(json.loads(x["detail_json"]).get("level") == "session"
                for x in audit_mod.tail(20, "kill_switch"))
 

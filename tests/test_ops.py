@@ -55,21 +55,25 @@ def _make_release(env: dict, version: str, schema_rev: int = 1,
 
 # ---------------------------------------------------------------- versions
 
-def test_stamp_engine_version_aligns_tag(tmp_path):
-    """构建树版本盖章：__init__ + pyproject 同步 tag；缺文件不炸。"""
+def test_verify_engine_version_gate(tmp_path):
+    """版本单一真源门：一致过；任一漂移拒（SystemExit 带先 bump 指引）。"""
     b = tmp_path
     (b / "loadn").mkdir()
     (b / "loadn" / "__init__.py").write_text(
-        '"""pkg"""\n__version__ = "0.3.0"\n')
+        '"""pkg"""\n__version__ = "0.6.13"\n')
     (b / "pyproject.toml").write_text(
-        '[project]\nname = "loadn-web"\nversion = "0.3.0"\n')
-    ops.stamp_engine_version(b, "v0.6.3")
-    assert '__version__ = "v0.6.3"' in (b / "loadn" / "__init__.py").read_text()
-    assert 'version = "v0.6.3"' in (b / "pyproject.toml").read_text()
-    # 版本行只动第一处（name 行不受影响）；文件缺失静默跳过
-    assert 'name = "loadn-web"' in (b / "pyproject.toml").read_text()
-    (b / "pyproject.toml").unlink()
-    ops.stamp_engine_version(b, "v0.6.4")     # 不抛
+        '[project]\nname = "loadn-web"\nversion = "0.6.13"\n')
+    ops.verify_engine_version(b, "v0.6.13")            # 双一致 → 过（不抛）
+    # __init__ 漂移 → 拒；pyproject 漂移 → 拒（两形对赌）
+    (b / "loadn" / "__init__.py").write_text('__version__ = "0.3.0"\n')
+    with pytest.raises(SystemExit, match="先 bump"):
+        ops.verify_engine_version(b, "v0.6.13")
+    (b / "loadn" / "__init__.py").write_text('__version__ = "0.6.13"\n')
+    (b / "pyproject.toml").write_text('version = "0.3.0"\n')
+    with pytest.raises(SystemExit, match="0.3.0"):
+        ops.verify_engine_version(b, "v0.6.13")
+    # 只读不写：漂移时原文件保持原样（不再盖章改写构建树）
+    assert 'version = "0.3.0"' in (b / "pyproject.toml").read_text()
 
 
 def test_versions_lists(fake_env):

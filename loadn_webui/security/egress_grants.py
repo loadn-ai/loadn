@@ -13,8 +13,8 @@ import re
 import time
 from datetime import datetime
 
+from ..util import get_logger
 from .audit import audit
-from .util import get_logger
 
 log = get_logger(__name__)
 
@@ -24,7 +24,7 @@ MIN_TTL_S, MAX_TTL_S = 300, 24 * 3600  # 钳制域：5 分钟 - 24 小时
 def _default_ttl_s() -> int:
     """默认 TTL 走 CONFIG.security.egress_grant_ttl_s（热更；启动校验兜底）。"""
     try:
-        from .config import CONFIG
+        from ..config import CONFIG
         v = int(CONFIG.security.egress_grant_ttl_s or 7200)
         return max(MIN_TTL_S, min(MAX_TTL_S, v))
     except Exception:                                   # noqa: BLE001

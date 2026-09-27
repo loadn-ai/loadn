@@ -17,8 +17,9 @@ import time
 
 import pytest
 
-from loadn_webui import egress_grants, egress_proxy, resources
 from loadn_webui.config import CONFIG, ROOT
+from loadn_webui.integrations import resources
+from loadn_webui.security import egress_grants, egress_proxy
 
 
 # ---------------------------------------------------------------- SSRF 单元
@@ -150,7 +151,7 @@ def test_gate_honors_session_grant(monkeypatch):
 
 # ---------------------------------------------------------------- 审批 egress
 def test_approve_egress_grants_on_decision():
-    from loadn_webui import approve
+    from loadn_webui.security import approve
     sid = "sess-approve-egress"
     with pytest.raises(ValueError):
         approve.create(sid, "egress", {"host": "not a host"})   # 创建即验
@@ -169,7 +170,7 @@ def test_approve_egress_grants_on_decision():
 
 def test_approve_egress_bad_host_at_decision(monkeypatch):
     """绕过 create 校验直插库行（坏 host）→ 裁决拒绝生效、状态不动。"""
-    from loadn_webui import approve
+    from loadn_webui.security import approve
     sid = "sess-approve-bad"
     import json as _json
     with approve._conn() as c:
@@ -249,7 +250,7 @@ def test_maybe_reload_policy(monkeypatch):
 
 # ---------------------------------------------------------------- 中介/直连分治
 def test_cli_gateway_mediated_vs_direct():
-    from loadn_webui import policy as policy_mod
+    from loadn_webui.security import policy as policy_mod
     # fetch（宿主中介 GET，SSRF 防护在内层）：任意公网域可走
     d = policy_mod.cli_gateway(
         ["r", "fetch", "https://arbitrary-site.example.com/page"], "fetch")
@@ -272,7 +273,7 @@ def test_record_sid_attribution():
     """_record 带 sid → 审计行有归属（tail sid 过滤可见）；无 sid 不进会话视图。"""
     import json as _json
 
-    from loadn_webui import audit as audit_mod
+    from loadn_webui.security import audit as audit_mod
     egress_proxy._record("sid-attr.example.com", "deny", "enforce", 443,
                          sid="sess-attr")
     rows = audit_mod.tail(5, "egress_request", sid="sess-attr")
@@ -289,7 +290,7 @@ def test_tail_sid_filter_chain_mixed():
     """新旧行混合（无 sid 旧形态 + 带 sid 新形态）：过滤只出新行，链校验全量过。"""
     import json as _json
 
-    from loadn_webui import audit as audit_mod
+    from loadn_webui.security import audit as audit_mod
     egress_proxy._record("legacy.example.com", "allow", "enforce")
     egress_proxy._record("owned.example.com", "deny", "enforce",
                          sid="sess-mix")
@@ -314,8 +315,8 @@ def test_list_active_sid_filter_keeps_gc():
 
 # ---------------------------------------------------------------- 会话级 socket
 async def test_session_uds_preferred(monkeypatch, tmp_path):
-    from loadn_webui import sandbox
     from loadn_webui.config import PATHS
+    from loadn_webui.security import sandbox
     monkeypatch.setattr(CONFIG.security, "egress_mode", "enforce")
     run = tmp_path / "run"
     run.mkdir()

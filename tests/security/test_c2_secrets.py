@@ -11,8 +11,8 @@ import pytest
 
 pytestmark = [pytest.mark.coverage("sec.c2")]
 
-from loadn_webui import vault as vault_mod
 from loadn_webui.claude_runner import _spawn_env
+from loadn_webui.security import vault as vault_mod
 
 
 def test_c2_env_whitelist_blocks_host_leaks(monkeypatch):

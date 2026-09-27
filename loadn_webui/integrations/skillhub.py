@@ -11,7 +11,7 @@ from __future__ import annotations
 
 import re
 
-from .util import get_logger
+from ..util import get_logger
 
 log = get_logger(__name__)
 

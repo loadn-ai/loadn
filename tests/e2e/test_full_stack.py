@@ -17,8 +17,8 @@ from pathlib import Path
 
 import pytest
 
-from loadn_webui import sandbox
 from loadn_webui.config import CONFIG
+from loadn_webui.security import sandbox
 
 pytestmark = [
     pytest.mark.skipif(not sandbox.bwrap_available(), reason="bwrap 不可用"),
@@ -86,7 +86,7 @@ async def test_full_stack_user_journey(full_stack, ws_root):
     assert "policy:block" in ts_file.read_text(encoding="utf-8")
 
     # ── 4. 审批确认码门全链（create→approve 拿码→consume→拒重放）──
-    from loadn_webui import approve
+    from loadn_webui.security import approve
     a = approve.create(sid, "mail_send", {"to": "a@b.c", "subject": "s"})
     d = approve.decide(a["id"], True)
     code = d["code"]
@@ -99,7 +99,7 @@ async def test_full_stack_user_journey(full_stack, ws_root):
     (ws / "notes" / "draft.md").write_text("正文 v1")
     import os
 
-    from loadn_webui import policy
+    from loadn_webui.security import policy
     old = os.getcwd(); os.chdir(ws)
     try:
         policy._snapshot_before_write(str(ws / "notes" / "draft.md"))
@@ -119,7 +119,7 @@ async def test_full_stack_user_journey(full_stack, ws_root):
     await c.post(f"/api/sessions/{sid}/unlock")
 
     # ── 7. 审计链 verify（本旅程全部事件在账且链一致）──
-    from loadn_webui import audit as audit_mod
+    from loadn_webui.security import audit as audit_mod
     assert audit_mod.verify() == []
     for kind in ("permission_decision", "approval_request",
                  "approval_decision", "rollback", "kill_switch"):
