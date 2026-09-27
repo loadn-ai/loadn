@@ -13,6 +13,7 @@ from pathlib import Path
 
 import httpx
 
+from loadn.constants import MCP_CALL_TIMEOUT_S, MCP_HTTP_TIMEOUT_S
 from loadn.tools.base import Tool, ToolContext, ToolError
 from loadn.util import get_logger
 
@@ -94,7 +95,7 @@ class StdioMCPConnection:
         self.proc.stdin.write((json.dumps(req) + "\n").encode())
         await self.proc.stdin.drain()
         try:
-            resp = await asyncio.wait_for(fut, timeout=30)
+            resp = await asyncio.wait_for(fut, timeout=MCP_CALL_TIMEOUT_S)
         except asyncio.TimeoutError:
             self._pending.pop(rid, None)
             raise TimeoutError(f"MCP {self.name}.{method} 30s 无响应") from None
@@ -142,7 +143,7 @@ class HTTPMCPConnection:
         self.url = url
         self.headers = dict(headers or {})
         self.oauth_conf = dict(oauth_conf or {})   # P1-1b：preapproved 等
-        self._client = client or httpx.AsyncClient(timeout=30.0)
+        self._client = client or httpx.AsyncClient(timeout=MCP_HTTP_TIMEOUT_S)
         self._owns_client = client is None
         self._session_id: str | None = None
         self._sleep = sleep          # 测试注入（退避计时断言）
