@@ -3,6 +3,60 @@
 本项目的全部显著变更记录于此。格式遵循 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/)，
 版本遵循 [SemVer](https://semver.org/lang/zh-CN/)。
 
+## [未发布]（Unreleased）
+
+- **测试质量战役（T + M0-M6）**：行覆盖 78.8%→**83.1%**（CI 门同步收紧）；
+  自研突变测试 runner（`scripts/mutate.py`，AST 定位 5 算子+窄测试集映射）
+  对 41 个安全与核心文件注入 **2589 个变异**，杀伤率 **76.1%**
+  （安全批 483/731=66%、功能批 1488/1858=80%）；补 ~110 例否定路径
+  对赌测试（全部注入复验）；挖出并修复产品真 bug 11 个（含 Write 工具
+  mtime 守卫缺失、repomap 类方法盲区、backup 同秒重入污染恢复源）。
+  逐文件终值与等价变异白名单见 `tests/TEST-PLAN.md` §七。
+- **CI 突变回归门**：mutation job 周跑 8 文件子集逐文件下限
+  （`tests/TEST-PLAN.md` §七）；pip-audit 供应链周扫。
+- **测试同步纪律入宪法**（`CLAUDE.md`）：新文件必进 TARGET_TESTS 映射/
+  守卫必配否定路径对赌/合入前跑该文件突变窄集/覆盖率门只升不降。
+- evals 场景 5→10；契约 v1/v2 对赌补全（tool_use_failure 终态事件、
+  平台 durable 事件转发两个真缺口修复）。
+
+## [0.6.5] - 2026-09-25
+
+- **安全机制显式配置化**：新增 10+ security 配置键（L0 命令名/网络命令/
+  敏感路径/蜜罐开关/资源桥接），内置表 ∪ 配置追加语义，非法值拒启
+  fail-closed；宪法红线（审计链/确认码门/信任门/SSRF）保持不可配。
+- **宿主机资源桥接**：`resource_bridges`（ro|rw|dev）+ `shared_readonly`
+  同路径 bind 进沙箱（v0.6.5 通用面）。
+- WebUI 配置入口补全（引擎/运维/分享/价目五卡+凭证库可视化编辑）；
+  放行策略对齐（hook 门与 proxy 门统一三态语义、跨项目只读共享）。
+
+## [0.6.3] / [0.6.4] - 2026-09-24
+
+- **egress 交互管控**：三态档位 off/warn/enforce + 拦截弹卡确认（默认
+  ask，403 带 agent 可读指引）+ 会话级 `params.egress` 任务放开 + 全引擎
+  sid 归属（direct 引擎 per-session 回环 TCP）；安全中心出口策略编辑器
+  （热生效）+ 属性面板任务外联档位。
+- 凭证库可视化编辑（merge 语义：密钥留空不改·空串清除，明文只进不出）。
+- v0.6.1/0.6.2：出厂白名单补 github/arxiv；hook 审计侧车退跟踪。
+
+## [0.6.0] - 2026-09-23
+
+- **断线回放与任务隔离**：项目子任务独立任务目录（`tasks/<NN>-<slug>/`
+  私有进度/宪法祖先链继承；沙箱项目根 ro+inputs rw bind）。
+- 轮换 anchor（SCHEMA_REV 2：token 轮换暂存+下 turn 注入即清；尾部摘要
+  双信封注入）；中断补记账（pid 死 turn 从输出日志抢救半程入档）。
+- provider thinking 续传（anthropic signature 透传/openai reasoning 回放）；
+  修 kill-all 从未 await 的全局熔断失效。
+
+## [0.4.0] ~ [0.4.3] - 2026-09-23
+
+- **开源就绪**：去个人基础设施默认值（sms/proxy/邮箱/adb/个人域名→
+  通用默认）；引擎插件机制（entry point `loadn.webui.engines` 第三方
+  零侵入挂载）；社区文件（issue/PR 模板+ARCHITECTURE+EXTENDING+
+  CONTRIBUTING monorepo 版）；lint 债清偿（ruff 215→0）；nvm 硬编码→
+  bin 派生（可移植）。
+- 0.4.1 修沙箱 node 树符号链 bind；0.4.2 资源中心+密钥入 vault AES-GCM
+  （一次性自动迁移）；0.4.3 管理面视觉整备。
+
 ## [0.3.0] - 2026-09-23（预发布：功能完备，对外仍 0.x 待稳）
 
 > 版本线勘误：原标 1.0.0 过早——开源发布未做、API 未承诺稳定，
@@ -64,6 +118,10 @@
 ### 迁移注意
 - 生产共存期（R2.5 切换前）`~/.agent` 与 `~/.loadn` 双根并存：旧引擎用前者，
   本包用后者；切换时终同步。
+
+---
+
+## 历史版本线（引擎包 0.1→0.7.1，2026-09-22 并入平台线；仅存档）
 
 ## [0.7.1] - 2026-09-22
 
