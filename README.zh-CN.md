@@ -223,9 +223,10 @@ The fake provider (`LOADN_PROVIDER=fake`) replays control files from
 - [ ] TUI (textual)
 - [ ] MCP server mode (loadn as an MCP server)
 
-See [CHANGELOG.md](CHANGELOG.md). Contributions welcome —
-[CONTRIBUTING.md](CONTRIBUTING.md) describes the layout and how to add a tool
-or provider in one file.
+变更与方向见 [CHANGELOG.md](CHANGELOG.md) 与 [ROADMAP.md](ROADMAP.md)。
+欢迎贡献——[CONTRIBUTING.md](CONTRIBUTING.md) 说明仓库结构、一文件加
+工具/provider 的路径，以及断言强度纪律（新守卫配否定路径测试；改动
+文件跑突变窄集）。
 
 ## License
 

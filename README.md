@@ -223,9 +223,11 @@ mutation TARGET_TESTS map).
 - [ ] Terminal-Bench baseline numbers
 - [ ] Ollama provider, DeepSeek native; TUI (textual)
 
-See [CHANGELOG.md](CHANGELOG.md). Contributions welcome —
-[CONTRIBUTING.md](CONTRIBUTING.md) describes the layout and how to add a tool
-or provider in one file.
+See [CHANGELOG.md](CHANGELOG.md) and [ROADMAP.md](ROADMAP.md).
+Contributions welcome — [CONTRIBUTING.md](CONTRIBUTING.md) describes the
+layout, how to add a tool or provider in one file, and the assertion-strength
+rules (negative-path tests for new guards; mutation narrow-set for touched
+files).
 
 ## License
 

@@ -18,7 +18,8 @@ cd ui && npm install && npm run build   # 改前端必跑（dist 随 release 发
 ```
 
 CI（.github/workflows/ci.yml）跑同样内容：ruff + 3.10-3.12 矩阵 +
-gitleaks + webui 覆盖率门禁（78%）+ 前端构建。本地全绿 ≈ CI 全绿。
+gitleaks + 覆盖率门禁（83%，只升不降）+ 前端构建 + evals 场景门（nightly）+
+突变杀伤率门（weekly，8 文件子集）。本地全绿 ≈ CI 全绿。
 
 ## 仓库结构与扩展点
 
@@ -51,6 +52,24 @@ gitleaks + webui 覆盖率门禁（78%）+ 前端构建。本地全绿 ≈ CI �
 - 改安全面（W0-W6）须过 `tests/security/` 并同步 docs/ATTACK_SURFACE.md
 - 沙箱×hook 之类组合路径只有 e2e 能抓——动了 sandbox/egress 请跑
   `tests/e2e/`
+
+### 断言强度（比覆盖更严的一层）
+
+本项目用突变测试验证「断言真能杀死 bug」而非只跑到代码（全量 41 文件
+2589 变异 76% 杀伤，见 tests/TEST-PLAN.md §七）。贡献时的三条实用纪律：
+
+1. **新守卫必配否定路径对赌**：加了 if 门/白名单/fail-closed 判断，至少
+   一个「不该通过」的用例断言拒绝形态——2589 变异实证正向路径测得再全，
+   守卫反转照样全存活
+2. **新模块登记突变映射**：`scripts/mutate.py` 的 `TARGET_TESTS` 加一行
+   （文件→窄测试集），否则突变验证永远够不着它
+3. **功能性改动收尾跑窄集突变**（可选但推荐）：
+   `.venv/bin/python scripts/mutate.py --files <你改的文件>` ——杀伤率
+   <50% 说明测试是摆设，先补断言再提 PR；存活先对照 TEST-PLAN §七
+   等价白名单分类
+
+断言写法两条教训：`in str(e)` 子串断言会被整帧原文骗过（须排除回显
+噪声）；守卫 `or→and` 类缺陷只有「真值非串」等区分形态能杀死。
 
 ## 提交流程
 
