@@ -120,15 +120,6 @@ def resolve_and_audit() -> dict:
     return st
 
 
-def _resolve_in(ws: Path, p: Path) -> bool:
-    """symlink 出界校验：resolve 后必须仍在 ws 内。"""
-    try:
-        (ws / p).resolve().relative_to(ws.resolve())
-        return True
-    except (ValueError, OSError):
-        return False
-
-
 def _project_binds(argv: list[str], project_root: Path | None) -> list[str]:
     """项目子任务的项目根挂载：宪法等 ro（祖先链可读到项目 CLAUDE.md）+
     共享 inputs/ rw。必须在任务目录 bind 之前插入——后挂的父目录会遮住
@@ -278,13 +269,6 @@ def _egress_uds(sid: str = "") -> Path | None:
     的判定边界；没有则回落共享 socket（仅全局白名单，无任务级放行面）。
     三态档位都走代理（off=直通+审计），故不再按 mode 关闭。
     """
-    if sid:
-        tag = hashlib.sha1(sid.encode()).hexdigest()[:12]
-        per = PATHS["run"] / f"egress-{tag}.sock"
-        if per.exists():
-            return per
-    uds = PATHS["run"] / "egress.sock"
-    return uds if uds.exists() else None
     if sid:
         tag = hashlib.sha1(sid.encode()).hexdigest()[:12]
         per = PATHS["run"] / f"egress-{tag}.sock"

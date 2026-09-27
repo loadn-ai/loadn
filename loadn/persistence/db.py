@@ -59,8 +59,8 @@ def set_title(c: sqlite3.Connection, sid: str, title: str) -> None:
               (title[:80], time.time(), sid))
 
 
-def add_usage(c: sqlite3.Connection, sid: str, usage: dict, model_usage: dict | None,
-              model: str) -> None:
+def add_usage(c: sqlite3.Connection, sid: str, usage: dict,
+              model_usage: dict | None) -> None:
     """turn 级 usage 累加进会话行（usage 四键 snake + per-model camel）。"""
     row = c.execute("SELECT usage_json, models_json FROM sessions WHERE id=?",
                     (sid,)).fetchone()

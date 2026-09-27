@@ -87,8 +87,7 @@ class SessionManager:
         if tokens_cropped:
             payload["tokens_cropped"] = int(tokens_cropped)  # P3-7 时间线标记
         self.transcript.append("compact", payload, fsync=True)
-        self.state.compact_points.append(self.transcript.last_uuid() or "")
-        self._replay_state()
+        self._replay_state()      # compact_points 由重放重建（append 会被覆盖）
 
     def record_usage(self, summary) -> None:
         """turn 记账进 session.db（索引库，真相在 transcript result 事件）。"""
@@ -96,8 +95,7 @@ class SessionManager:
             with db_mod.conn(self.transcript.dir.parent.parent) as c:
                 db_mod.upsert_session(c, self.session_id, cwd=str(self.cwd))
                 db_mod.add_usage(c, self.session_id, summary.usage,
-                                 summary.model_usage or None,
-                                 next(iter(summary.model_usage or {"": None}), ""))
+                                 summary.model_usage or None)
         except Exception:  # noqa: BLE001 — 索引库故障不影响主流程
             pass
 
