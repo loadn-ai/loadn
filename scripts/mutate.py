@@ -212,6 +212,24 @@ TARGET_TESTS: dict[str, list[str]] = {
         "tests/test_w0_security.py",
         "tests/test_runner_units.py",
     ],
+    # ---- M7 平台面批（2026-09-28 起）
+    "loadn_webui/params.py": [
+        "tests/test_params.py",
+        "tests/test_egress_ask.py",
+    ],
+    "loadn_webui/settings_admin.py": [
+        "tests/test_settings_admin.py",
+    ],
+    "loadn_webui/workspace.py": [
+        "tests/test_egress_align.py",
+        "tests/test_admin.py",
+    ],
+    "loadn_webui/backup.py": [
+        "tests/test_backup.py",
+    ],
+    "loadn/mcp/skill_scan.py": [
+        "tests/security/test_b_supply_chain.py",
+    ],
     "loadn/core/loop.py": [
         "tests/test_loop.py",
         "tests/contract/test_protocol_v2.py",
