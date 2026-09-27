@@ -84,9 +84,9 @@ def test_host_share_domain_allowed(w0):
     """share 反代链路回归：share.base_url 的域名必须在白名单（v1.1 §14-4）。"""
     from loadn_webui.config import CONFIG
     saved = CONFIG.share.base_url
-    CONFIG.share.base_url = "https://workdaddy.cc/share"
+    CONFIG.share.base_url = "https://your-domain.com/share"
     try:
-        r = _get(w0, "/share/whatever", headers={"Host": "workdaddy.cc"})
+        r = _get(w0, "/share/whatever", headers={"Host": "your-domain.com"})
         assert r.status_code != 403          # 过 Host 闸（404 等业务码均可）
     finally:
         CONFIG.share.base_url = saved

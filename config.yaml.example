@@ -1,6 +1,6 @@
 # 产物分享：share server 独立进程只读服务 /share/<token>（对外经反代域名）
 share:
-  base_url: ""           # 如 https://workdaddy.cc/share；空=未启用
+  base_url: ""           # 如 https://your-domain.com/share；空=未启用
 
 # 运维通知（发给用户自己；调度唤醒/turn 报错/完成 三类事件）。provider 空=未启用。
 # 与 wechat-send（发给联系人）语义不同。telegram 自动走 resources.proxy（墙内必需）。
@@ -14,7 +14,7 @@ notify:
     on_error: true
     on_scheduled: true
     on_turn_done: false
-# workdaddy 配置（可选：不存在的键用代码默认值，升级不破坏配置）
+# 引擎参数（可选：不存在的键用代码默认值，升级不破坏配置）
 claude:
   effort: high            # 无头会话推理力度
   model: null             # null=继承 CLI/订阅默认

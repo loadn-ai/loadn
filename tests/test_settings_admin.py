@@ -92,12 +92,12 @@ def test_put_claude(sa):
 
 def test_put_share(sa):
     mod, cfg, tmp = sa
-    out = mod.put_share({"base_url": "https://workdaddy.cc/share/"})
-    assert out["share"]["base_url"] == "https://workdaddy.cc/share"   # 去尾斜杠
-    assert cfg.share.base_url == "https://workdaddy.cc/share"
+    out = mod.put_share({"base_url": "https://your-domain.com/share/"})
+    assert out["share"]["base_url"] == "https://your-domain.com/share"   # 去尾斜杠
+    assert cfg.share.base_url == "https://your-domain.com/share"
     assert _yaml(tmp)["share"]["base_url"].endswith("/share")
     with pytest.raises(ValueError, match="http"):
-        mod.put_share({"base_url": "workdaddy.cc"})
+        mod.put_share({"base_url": "your-domain.com"})
     mod.put_share({"base_url": ""})          # 空 = 关闭分享
     assert cfg.share.base_url == ""
 

@@ -152,8 +152,8 @@
   出口，摘要/planner 辅助请求同过伪装层）；④ 工具面整形——隐藏
   InteractiveShell、注册 CC 名单 stub（AskUserQuestion/EnterPlanMode/
   ExitPlanMode 无害回执；BashOutput/KillShell 映射真实后台任务治理）；
-  ⑤ 行为纪律见 docs/stealth.md（校准流程 + 上线检查单 + 版本跟追）。
-  **CC_PROFILE 当前为占位值，上线前须按 docs/stealth.md 真机抓包校准。**
+  ⑤ 校准流程与版本跟追见 docs/compat.md（线格式兼容层）。
+  **CC_PROFILE 当前为占位值，上线前须按 docs/compat.md 真机抓包校准。**
 
 ## [0.5.0] - 2026-09-17
 

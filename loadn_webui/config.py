@@ -185,7 +185,7 @@ class SecurityConfig:
     # SSRF 内网敏感域（fetch_page 等宿主中介抓取的禁入后缀清单）——私网/回环/
     # 链路本地 IP 段无条件拦截，这里只补「解析得到公网 IP 但属于平台侧通道」的域
     ssrf_deny_hosts: list = field(default_factory=lambda: [
-        "llm-gw.internal", "sms.woldy.net"])
+        "llm-gw.internal"])   # 平台侧通道域追加（私网/回环段无条件拦，此处只补自有域）
     # 审批卡默认 TTL 秒（60-86400；确认码一次性+过期 fail-closed 语义不变）
     approval_ttl_s: int = 600
     # 不可逆动作确认码门（M0 关门最终形态=enforce：skill 文档已审批化）；

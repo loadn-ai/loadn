@@ -33,7 +33,7 @@ async def test_ssrf_check_blocks_private_and_sensitive():
         "http://[::1]/",
         "http://llm-gw.internal/v1/messages",    # 平台敏感域（LLM 网关）
         "http://sub.llm-gw.internal/",           # 后缀匹配
-        "https://sms.woldy.net:30443/recent",    # 平台敏感域（短信服务）
+        "https://llm-gw.internal:30443/recent",    # 平台敏感域（短信服务）
         "file:///etc/passwd",                    # 非 http(s)
         "ftp://example.com/",
     ]
