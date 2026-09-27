@@ -1,5 +1,7 @@
 # loadn（老登，读 **load-n**）
 
+简体中文 | **[English](README.md)**
+
 **A self-contained coding-agent engine in pure Python.** One `pip install`, any
 Anthropic-form or OpenAI-compatible endpoint, and you get a headless agent with
 tools, MCP, subagents, session persistence, and context compaction — speaking
@@ -84,13 +86,16 @@ drop-in subprocess engine.
   a user-level `AGENT.md`, a skills index, and long-term memory — mirroring
   Claude Code's layered memory. Skills load on demand via the `Skill` tool;
   custom subagent types come from `.claude/agents/*.md` frontmatter.
-- **Zero-token test suite.** 290+ tests drive every loop branch through a
-  scripted fake provider — CI needs no API keys.
+- **Zero-token test suite.** 1344 tests drive every loop branch through a
+  scripted fake provider — CI needs no API keys. Beyond coverage (83.1%):
+  a homegrown mutation runner injected **2589 bugs into 41 core files** with
+  a **76% kill rate** — assertions are proven to catch regressions, not just
+  execute paths (tests/TEST-PLAN.md §7).
 
 ## Install
 
 ```bash
-pip install loadn          # or: pip install git+https://github.com/<you>/loadn
+pip install loadn          # 或：pip install git+https://github.com/loadn-ai/loadn
 ```
 
 No config required — endpoint resolution order:
@@ -191,7 +196,7 @@ spawns `claude -p --output-format stream-json` can spawn `loadn` instead:
 
 ```bash
 pip install -e ".[dev]"
-pytest            # 290+ tests, zero API calls
+pytest            # 1344 tests, zero API calls
 ruff check .
 ```
 
