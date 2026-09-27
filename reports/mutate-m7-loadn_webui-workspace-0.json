@@ -1,0 +1,42 @@
+{
+ "file": "loadn_webui/workspace.py",
+ "total": 60,
+ "killed": 53,
+ "survived": [
+  {
+   "line": 37,
+   "kind": "bool:BoolOp",
+   "orig": "\"\".join(w for w in slugify(title).split(\"-\")[:4]) or \"task\""
+  },
+  {
+   "line": 75,
+   "kind": "bool:BoolOp",
+   "orig": "CONFIG.security.codemode_enabled and \"codemode\" not in merged"
+  },
+  {
+   "line": 81,
+   "kind": "bool:BoolOp",
+   "orig": "\"browser\" not in merged and CONFIG.resources.cdp_url"
+  },
+  {
+   "line": 87,
+   "kind": "bool:BoolOp",
+   "orig": "CONFIG.security.lsp_enabled and \"lsp\" not in merged"
+  },
+  {
+   "line": 217,
+   "kind": "const:bool",
+   "orig": "False"
+  },
+  {
+   "line": 240,
+   "kind": "bool:BoolOp",
+   "orig": "getattr(prof, \"tools\", None) or {}"
+  },
+  {
+   "line": 332,
+   "kind": "const:bool",
+   "orig": "False"
+  }
+ ]
+}

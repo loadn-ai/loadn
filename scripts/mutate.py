@@ -219,16 +219,19 @@ TARGET_TESTS: dict[str, list[str]] = {
     ],
     "loadn_webui/settings_admin.py": [
         "tests/test_settings_admin.py",
+        "tests/test_m7_units.py",
     ],
     "loadn_webui/workspace.py": [
         "tests/test_egress_align.py",
         "tests/test_admin.py",
+        "tests/test_m7_units.py",
     ],
     "loadn_webui/backup.py": [
         "tests/test_backup.py",
     ],
-    "loadn/mcp/skill_scan.py": [
+    "loadn_webui/skill_scan.py": [
         "tests/security/test_b_supply_chain.py",
+        "tests/test_m7_units.py",
     ],
     "loadn/core/loop.py": [
         "tests/test_loop.py",

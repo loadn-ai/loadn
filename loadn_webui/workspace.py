@@ -67,10 +67,6 @@ def write_mcp_json(ws: Path, session_mcp: dict | None) -> None:
     import hashlib
     merged = dict(CONFIG.mcp.servers or {})
     merged.update(session_mcp or {})
-    # 会话级禁用哨兵：值 False = 本会话关掉这个全局 server（属性面板三态
-    # 切换）——从合并结果剔除。真实 server 配置恒为 truthy dict，不会误伤
-    for name in [k for k, v in merged.items() if v is False]:
-        del merged[name]
     # P3-4：codemode 受限执行域（默认关；开启即注入 codemode.run）
     if CONFIG.security.codemode_enabled and "codemode" not in merged:
         merged["codemode"] = {
@@ -89,6 +85,12 @@ def write_mcp_json(ws: Path, session_mcp: dict | None) -> None:
             "command": str(Path(sys.executable).parent / "loadn-web"),
             "args": ["_lsp-mcp"],
         }
+    # 会话级禁用哨兵：值 False = 本会话关掉这个全局 server（属性面板三态
+    # 切换）——从合并结果剔除。真实 server 配置恒为 truthy dict，不会误伤。
+    # 须在注入门**之后**跑：先剔除后注入会被注入门补回（M7 突变对赌实证
+    # 的真 bug——本会话关 codemode 无效）
+    for name in [k for k, v in merged.items() if v is False]:
+        del merged[name]
     p = ws / ".mcp.json"
     if merged:
         p.write_text(json.dumps({"mcpServers": merged}, ensure_ascii=False, indent=2))
