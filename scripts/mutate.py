@@ -233,13 +233,44 @@ TARGET_TESTS: dict[str, list[str]] = {
         "tests/test_engines.py",
         "tests/test_adoption.py",
     ],
-    "loadn_webui/api/routes.py": [
+    # api/routes/ 按域拆包（v0.6.12）——各域窄集；_common/__init__ 吃全量旧集
+    "loadn_webui/api/routes/_common.py": [
         "tests/test_w0_security.py",
         "tests/test_admin.py",
         "tests/test_archive.py",
         "tests/test_attachments.py",
         "tests/test_m7b_units.py",
     ],
+    "loadn_webui/api/routes/__init__.py": [
+        "tests/test_w0_security.py",
+        "tests/test_m7b_units.py",
+    ],
+    "loadn_webui/api/routes/skills.py": ["tests/test_admin.py"],
+    "loadn_webui/api/routes/tools.py": ["tests/test_admin.py"],
+    "loadn_webui/api/routes/settings.py": ["tests/test_settings.py", "tests/test_settings_admin.py"],
+    "loadn_webui/api/routes/projects.py": ["tests/test_projects.py"],
+    "loadn_webui/api/routes/sessions.py": [
+        "tests/test_w0_security.py",
+        "tests/test_params.py",
+        "tests/test_session_eng.py",
+    ],
+    "loadn_webui/api/routes/turns.py": ["tests/test_session_eng.py", "tests/test_steer.py"],
+    "loadn_webui/api/routes/admin.py": [
+        "tests/test_admin.py",
+        "tests/test_w0_security.py",
+        "tests/test_vault.py",
+    ],
+    "loadn_webui/api/routes/approvals.py": [
+        "tests/test_w0_security.py",
+        "tests/test_p37_approval_timeline.py",
+    ],
+    "loadn_webui/api/routes/schedules.py": ["tests/test_scheduler.py"],
+    "loadn_webui/api/routes/files.py": [
+        "tests/test_archive.py",
+        "tests/test_attachments.py",
+    ],
+    "loadn_webui/api/routes/artifacts.py": ["tests/test_archive.py"],
+    "loadn_webui/api/routes/stats.py": ["tests/test_stats_cost.py", "tests/test_pricing.py"],
     "loadn_webui/params.py": [
         "tests/test_params.py",
         "tests/test_egress_ask.py",

@@ -74,7 +74,7 @@ async def test_archive_path_safety(client, ws_root):
 
 async def test_archive_size_gate(client, ws_root, monkeypatch):
     """总大小闸：上限压到 10B → 超 400（防内存 zip 被大目录打爆）。"""
-    from loadn_webui.api import routes as routes_mod
+    from loadn_webui.api.routes import _common as routes_mod
     monkeypatch.setattr(routes_mod, "_ARCHIVE_MAX_BYTES", 10)
     sid, ws = await _mk_ws(client, ws_root)
     (ws / "big.txt").write_text("x" * 100, encoding="utf-8")

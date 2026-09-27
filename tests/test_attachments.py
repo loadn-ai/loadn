@@ -37,7 +37,7 @@ async def test_upload_hardening(client, ws_root):
     assert not (ws_root / "evil.sh").exists()
 
     # 超限 → 413 且不留半截文件
-    from loadn_webui.api import routes as routes_mod
+    from loadn_webui.api.routes import files as routes_mod
     orig = routes_mod.MAX_UPLOAD_BYTES
     routes_mod.MAX_UPLOAD_BYTES = 10
     try:

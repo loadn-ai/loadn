@@ -31,6 +31,21 @@ def _fake_dir(ws_root, sid, **knobs):
     return fake
 
 
+async def _wait_adoptable(tid: int, timeout_s: float = 20) -> dict:
+    """等到 running 且 pid/log_out 已回写（spawn 完成）——cancel/收养的前置。
+
+    status=running 在 spawn 之前置位：在 pid=None 窗口 cancel 会让
+    recover 把行判成 interrupted（2026-09-28 高负载实证，根因见模块注）。"""
+    t0 = asyncio.get_event_loop().time()
+    while asyncio.get_event_loop().time() - t0 < timeout_s:
+        await asyncio.sleep(0.2)
+        with db_mod.conn() as c:
+            t = db_mod.get_turn(c, tid)
+        if t and t["status"] == "running" and t["pid"] and t["log_out"]:
+            return dict(t)
+    raise TimeoutError(f"turn {tid} 未到可收养态（running+pid）")
+
+
 async def _wait_status(tid: int, want: set[str], timeout_s: float = 20) -> dict:
     t0 = asyncio.get_event_loop().time()
     while asyncio.get_event_loop().time() - t0 < timeout_s:
@@ -212,7 +227,7 @@ async def test_adopt_stop(client, ws_root, monkeypatch):
     r = await client.post("/api/sessions", json={"title": "收养停止"})
     sid = r.json()["session"]["id"]
     tid = await _drive_turn(ws_root, sid, "长跑")
-    await _wait_status(tid, {"running"})
+    await _wait_adoptable(tid)
     await _cancel_session_workers(sid)
     out = ENGINE.recover_after_restart()
     assert tid in out["adopted"]
@@ -263,7 +278,7 @@ async def test_opencode_adopt(client, ws_root, monkeypatch):
     _fake_dir(ws_root, sid, pause="")
 
     tid = await ENGINE.submit(sid, "opencode 活")
-    await _wait_status(tid, {"running"})
+    await _wait_adoptable(tid)
     await _cancel_session_workers(sid)
     out = ENGINE.recover_after_restart()
     assert tid in out["adopted"]

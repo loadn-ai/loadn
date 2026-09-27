@@ -36,6 +36,7 @@ gitleaks + 覆盖率门禁（83%，只升不降）+ 前端构建 + evals 场景�
 | 新 skill | `skills/<name>/SKILL.md`（私有的放 `$LOADN_SKILLS_EXTRA` 目录） |
 | 角色档案 | `profiles/<name>.yaml` |
 | 工作区模板 | `prompts/` |
+| 新 API 端点 | `loadn_webui/api/routes/<域>.py`（sessions/admin/…十二域，__init__ 自动聚合）+ 快照 regen：`python tests/contract/test_api_surface.py` |
 
 ## 代码约定
 

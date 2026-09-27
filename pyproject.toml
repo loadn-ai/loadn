@@ -24,6 +24,12 @@ classifiers = [
   "Programming Language :: Python :: 3.12",
   "Topic :: Software Development :: Libraries :: Python Modules",
 ]
+[project.urls]
+Homepage = "https://github.com/loadn-ai/loadn"
+Repository = "https://github.com/loadn-ai/loadn"
+Issues = "https://github.com/loadn-ai/loadn/issues"
+Changelog = "https://github.com/loadn-ai/loadn/blob/main/CHANGELOG.md"
+
 dependencies = [
   "httpx>=0.24",
 ]

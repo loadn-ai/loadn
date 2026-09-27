@@ -19,6 +19,41 @@
 - evals 场景 5→10；契约 v1/v2 对赌补全（tool_use_failure 终态事件、
   平台 durable 事件转发两个真缺口修复）。
 
+## [0.6.12] - 2026-09-28
+
+- **routes.py 按域拆包**（架构治理第一刀）：2147 行/108 端点单文件 →
+  `api/routes/` 十二域子包（skills/tools/settings/projects/sessions/turns/
+  admin/approvals/schedules/files/artifacts/stats + `_common` 横切件），
+  `__init__` 聚合 router——app.py 零改动；路由表前后 OpenAPI 快照逐字节
+  一致。**API 面契约钉子**：`tests/contract/test_api_surface.py` 钉死全量
+  (path, methods)，端点增删显形（文件间挪动不再有天然护栏的补位）。
+- **AdminPanel.tsx 拆分**：1105 行 → 47 行页壳 + `components/admin/`
+  五文件（Skills/Tools/Settings/Egress/shared）。
+- **OSS 标准化**：pyproject 补 `[project.urls]`；CHANGELOG 追记 0.6.6-0.6.11
+  并修 placeholder 链接；CONTRIBUTING 补「新 API 端点动哪里」速查行；
+  ARCHITECTURE.md 布局同步。突变映射 TARGET_TESTS 同步新包路径（纪律 1）。
+- 已知：`test_opencode_adopt` 在干净 HEAD 亦间歇失败（worktree 复现实证），
+  与本次重构无关——待办根治。
+
+## [0.6.6] ~ [0.6.11] - 2026-09-27/28
+
+- **[0.6.11] 会话级沙箱档位**：`params.sandbox` 第八键（属性面板 chips）——
+  单任务放开隔离（off 直跑宿主，运维/宿主接管场景）或收紧（bwrap），
+  全局档位不动；`docs/CONFIG.md` 宿主接管三件套配方
+  （params.sandbox off / resource_bridges rw 精确桥 / params.egress off）。
+- **[0.6.10] 品牌迁移收口**：WORKDADDY_* 118 处审计 → LOADN_* 主名制；
+  localStorage 键活体迁移（读侧双取+迁移删旧）；兼容层（双名认证头/
+  spawn env 双注/db 迁移）保留至 v0.8.0 删除。
+- **[0.6.9] SPA 缓存投毒断根**：`/assets/` 缺文件一律 404+no-store（原
+  SPA fallback 回 index.html 会被代理当 css/js 缓存 → 浏览器 MIME 拒载
+  = 全站裸样式）；存在文件 immutable 一年（内容哈希名）。
+- **[0.6.8] 管理中心布局治理**：设置页分组导航（基础/引擎与模型/通知与
+  分享/外部资源）+ 安全运维面卡片化。
+- **[0.6.7] 安全运维面编辑器**：七键（沙箱档位/codemode/LSP/审批 TTL/
+  放行 TTL/代理端口/授权面）WebUI 控件——局部键 PUT + 全键校验拒。
+- **[0.6.6] 配置面深度核查**：六处硬编码真缺口收敛进 CONFIG（egress
+  临时放行 TTL/MCP 超时等）；刻意保持项逐条记录理由。
+
 ## [0.6.5] - 2026-09-25
 
 - **安全机制显式配置化**：新增 10+ security 配置键（L0 命令名/网络命令/
@@ -322,4 +357,4 @@ Terminal-Bench 超时死法画像驱动的四项引擎加固（31/32 临终任�
 - **测试**：150+ 用例零 token 全分支（fake provider 控制文件协议 + 内联脚本
   provider + CLI 子进程 e2e）
 
-[0.1.0]: https://github.com/placeholder/loadn/releases/tag/v0.1.0
+[0.1.0]: https://github.com/loadn-ai/loadn/releases/tag/v0.1.0

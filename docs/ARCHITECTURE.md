@@ -38,7 +38,10 @@ loadn/          引擎（可独立 pip install，单依赖 httpx）
   tools/        Bash/Read/Write/Edit/… + InteractiveShell(pty) + MCP 动态
   providers/    Anthropic 形 SSE / OpenAI 兼容 / fake（零 token 测试）
 loadn_webui/    平台（FastAPI）
-  api/          路由（routes.py 会话/turn/管理面；app.py 装配+W0 中间件）
+  api/          app.py 装配+W0 中间件；sse.py 事件流；routes/ 按域拆包
+                （skills/tools/settings/projects/sessions/turns/admin/
+                approvals/schedules/files/artifacts/stats + _common 横切件，
+                __init__ 聚合 router——加端点进对应域文件即可）
   engine.py     turn 生命周期：spawn/消费/记账/中断恢复/收养
   sandbox.py    bwrap 挂载矩阵（每引擎一份同路径 bind）
   egress_proxy.py  出口代理 + LLM 凭证网关（虚拟域 MITM）
