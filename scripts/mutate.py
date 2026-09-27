@@ -213,6 +213,12 @@ TARGET_TESTS: dict[str, list[str]] = {
         "tests/test_runner_units.py",
     ],
     # ---- M7 平台面批（2026-09-28 起）
+    "loadn_webui/api/routes.py": [
+        "tests/test_w0_security.py",
+        "tests/test_admin.py",
+        "tests/test_archive.py",
+        "tests/test_attachments.py",
+    ],
     "loadn_webui/params.py": [
         "tests/test_params.py",
         "tests/test_egress_ask.py",
