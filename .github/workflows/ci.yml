@@ -142,15 +142,22 @@ jobs:
           python scripts/mutate.py \
             --files loadn_webui/canary.py loadn/tools/multiedit.py \
                     loadn/core/turn_diff.py loadn_webui/net_policy.py \
+                    loadn/core/compactor.py loadn/core/memory.py \
+                    loadn/providers/anthropic.py \
+                    loadn/providers/cassette.py \
             --report reports/ci-mutation.json || true
       - name: 逐文件杀伤率下限门
         run: |
           python - <<'EOF'
           import json, sys
-          floors = {"loadn_webui/canary.py": 55,     # 台账终值 62%
-                    "loadn/tools/multiedit.py": 60,  # 71%
-                    "loadn/core/turn_diff.py": 65,   # 79%
-                    "loadn_webui/net_policy.py": 75} # 82%
+          floors = {"loadn_webui/canary.py": 55,        # 台账终值 62%
+                    "loadn/tools/multiedit.py": 60,     # 71%
+                    "loadn/core/turn_diff.py": 65,      # 79%
+                    "loadn_webui/net_policy.py": 75,    # 82%
+                    "loadn/core/compactor.py": 60,      # 66%
+                    "loadn/core/memory.py": 50,         # 57%
+                    "loadn/providers/anthropic.py": 72, # 79%
+                    "loadn/providers/cassette.py": 55}  # 63%
           rep = json.load(open("reports/ci-mutation.json"))["results"]
           bad = []
           for f, floor in floors.items():
