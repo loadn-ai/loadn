@@ -135,3 +135,4 @@ fail-closed（探测不到组件就降级到更严的一档并审计）。
 - docs/RELEASE.md —— 发布/升级/回滚手册（L1-L5 恢复路径）
 - docs/ATTACK_SURFACE.md —— 攻击面清单 + AI-BOM + known-gaps
 - tests/TEST-PLAN.md —— 测试结构、覆盖率收口实录、突变战役总表（§七）
+- docs/CONFIG.md —— config.yaml 全键参考（安全段/环境变量/会话级覆盖链）
