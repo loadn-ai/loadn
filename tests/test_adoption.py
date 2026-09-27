@@ -1,6 +1,6 @@
 """Docker 式 daemon 重启的收养链测试（零 token，engine 级模拟停机）。
 
-关键道具：fake 的 `pause` 旋钮——CLI init 后睡 WORKDADDY_FAKE_PAUSE_S 再写完
+关键道具：fake 的 `pause` 旋钮——CLI init 后睡 LOADN_FAKE_PAUSE_S 再写完
 结果。测试在此窗口 cancel 掉 engine 的 worker task（等价 uvicorn 退场 cancel，
 不杀子进程），再调 recover_after_restart() 走收养。
 """
@@ -20,7 +20,7 @@ from loadn_webui.engine import ENGINE
 
 @pytest.fixture(autouse=True)
 def _pause_env(monkeypatch):
-    monkeypatch.setenv("WORKDADDY_FAKE_PAUSE_S", "3")
+    monkeypatch.setenv("LOADN_FAKE_PAUSE_S", "3")
 
 
 def _fake_dir(ws_root, sid, **knobs):
@@ -166,7 +166,7 @@ async def test_dead_pid_with_result_backfills(client, ws_root):
 
 async def test_dead_pid_no_result_interrupted(client, ws_root, monkeypatch):
     """pid 死 + 无 result 行（hang 被杀等）→ interrupted（旧行为语义保留）。"""
-    monkeypatch.setenv("WORKDADDY_FAKE_HANG_S", "1")
+    monkeypatch.setenv("LOADN_FAKE_HANG_S", "1")
     r = await client.post("/api/sessions", json={"title": "无结果中断"})
     sid = r.json()["session"]["id"]
     _fake_dir(ws_root, sid, hang="")
@@ -184,7 +184,7 @@ async def test_dead_pid_no_result_interrupted(client, ws_root, monkeypatch):
 # ---------------------------------------------------------------- 串行闸
 async def test_serial_gate_blocks_new_turns(client, ws_root, monkeypatch):
     """收养期间该 session 的新 turn 被闸住，收养完成才依次执行（串行保持）。"""
-    monkeypatch.setenv("WORKDADDY_FAKE_PAUSE_S", "6")
+    monkeypatch.setenv("LOADN_FAKE_PAUSE_S", "6")
     r = await client.post("/api/sessions", json={"title": "串行闸"})
     sid = r.json()["session"]["id"]
     tid1 = await _drive_turn(ws_root, sid, "第一个")
@@ -208,7 +208,7 @@ async def test_serial_gate_blocks_new_turns(client, ws_root, monkeypatch):
 # ---------------------------------------------------------------- 收养期控制
 async def test_adopt_stop(client, ws_root, monkeypatch):
     """收养态的 stop 照常：killpg 幸存进程 → stopped 终态。"""
-    monkeypatch.setenv("WORKDADDY_FAKE_PAUSE_S", "30")
+    monkeypatch.setenv("LOADN_FAKE_PAUSE_S", "30")
     r = await client.post("/api/sessions", json={"title": "收养停止"})
     sid = r.json()["session"]["id"]
     tid = await _drive_turn(ws_root, sid, "长跑")

@@ -57,9 +57,9 @@ def test_cli_roundtrip(capsys, monkeypatch):
     from loadn_webui.config import CONFIG
     monkeypatch.setattr(CONFIG.security, "approval_enforce", "warn")
     monkeypatch.delenv("LOADN_SESSION_ID", raising=False)
-    monkeypatch.delenv("WORKDADDY_SESSION_ID", raising=False)
+    monkeypatch.delenv("LOADN_SESSION_ID", raising=False)
     monkeypatch.delenv("LOADN_PROJECT_ID", raising=False)
-    monkeypatch.delenv("WORKDADDY_PROJECT_ID", raising=False)
+    monkeypatch.delenv("LOADN_PROJECT_ID", raising=False)
     assert main(["r", "account", "--platform", "hubspot",
                  "--set", "password=Hs!2026", "--set", "username=me@x.com"]) == 0
     capsys.readouterr()

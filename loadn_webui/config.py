@@ -379,7 +379,7 @@ def load_config() -> Config:
             raise ValueError(f"security.resource_bridges 条目非法 {b!r}"
                              "（需 {path: 绝对路径, mode: ro|rw|dev}，"
                              "config.yaml）——拒绝启动")
-    env_bin = os.environ.get("WORKDADDY_CLAUDE_BIN")
+    env_bin = os.environ.get("LOADN_CLAUDE_BIN") or os.environ.get("WORKDADDY_CLAUDE_BIN")
     if env_bin:
         cfg.claude.claude_bin = env_bin
     return cfg

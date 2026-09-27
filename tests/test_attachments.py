@@ -118,17 +118,17 @@ async def test_settings_env_injection(client, ws_root, monkeypatch):
     sid = await _mk_session(client)
     p = ws_root / sid / ".claude" / "settings.json"
     env = json.loads(p.read_text())["env"]
-    cli = env.get("LOADN_CLI") or env.get("WORKDADDY_CLI")
+    cli = env.get("LOADN_CLI") or env.get("LOADN_CLI")
     assert cli and Path(cli).exists()          # console_script 绝对路径（wd/loadn-web）
-    assert env["WORKDADDY_CDP_URL"].endswith("/cdp")
-    assert env["WORKDADDY_PROXY"].startswith("http://")
+    assert env["LOADN_CDP_URL"].endswith("/cdp")
+    assert env["LOADN_PROXY"].startswith("http://")
 
     # 老会话回填：删掉 settings.json 后 scan 重建
     p.unlink()
     from loadn_webui import cli
     assert cli.main(["scan"]) == 0
     env = json.loads(p.read_text())["env"]
-    assert "WORKDADDY_CLI" in env
+    assert "LOADN_CLI" in env
 
     # 宪法里有附件约定
     md = (ws_root / sid / "CLAUDE.md").read_text()

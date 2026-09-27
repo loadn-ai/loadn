@@ -281,7 +281,9 @@ def _session_sid() -> str:
     """当前会话 id（agent 的 spawn env；终端直调为空）。"""
     import os as os_mod
     return (os_mod.environ.get("LOADN_SESSION_ID")
+            or os_mod.environ.get("LOADN_SESSION_ID")
             or os_mod.environ.get("WORKDADDY_SESSION_ID")
+            or os_mod.environ.get("LOADN_PROJECT_ID")
             or os_mod.environ.get("LOADN_PROJECT_ID")
             or os_mod.environ.get("WORKDADDY_PROJECT_ID") or "")
 
@@ -601,13 +603,15 @@ async def _run_r(args) -> int:
         from pathlib import Path as PathMod
 
         from .config import CONFIG
-        sid = args.sid or os_mod.environ.get("WORKDADDY_SESSION_ID", "")
+        sid = args.sid or os_mod.environ.get("LOADN_SESSION_ID") \
+        or os_mod.environ.get("WORKDADDY_SESSION_ID", "")
         if not sid:
             print("错误: 缺少 --sid（或设 LOADN_SESSION_ID）", file=sys.stderr)
             return 1
         api = args.api or f"http://127.0.0.1:{CONFIG.server.port}"
         # 本机直连用配置 token；容器/远程场景经 WORKDADDY_API_TOKEN 显式注入
-        tok = CONFIG.server.token or os_mod.environ.get("WORKDADDY_API_TOKEN", "")
+        tok = CONFIG.server.token or os_mod.environ.get("LOADN_API_TOKEN") \
+        or os_mod.environ.get("WORKDADDY_API_TOKEN", "")
         import httpx
         if args.fcmd == "push":
             p = PathMod(args.path)

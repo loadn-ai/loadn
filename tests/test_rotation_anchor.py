@@ -169,7 +169,7 @@ async def test_interrupted_salvages_partial_output(client, ws_root, monkeypatch)
     """pid 死 + 无 result 的中断 turn：turn 保持 interrupted，但停机前已产出
     的 assistant 内容从输出日志补进 messages（带中断前缀）。"""
     from loadn_webui.engine import ENGINE
-    monkeypatch.setenv("WORKDADDY_FAKE_HANG_S", "1")
+    monkeypatch.setenv("LOADN_FAKE_HANG_S", "1")
     r = await client.post("/api/sessions", json={"title": "中断抢救"})
     sid = r.json()["session"]["id"]
     ctrl = ws_root / sid / ".fake"

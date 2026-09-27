@@ -54,7 +54,8 @@ class OpencodeSpec(EngineSpec):
     session_id_domain = "any"     # 会话 id 形如 ses_<hex>（非 UUID，不能用 _uuid_or_new）
 
     def resolve_bin(self) -> str | list[str]:
-        override = CONFIG.engines.opencode.bin or os.environ.get("WORKDADDY_OPENCODE_BIN")
+        override = CONFIG.engines.opencode.bin or os.environ.get("LOADN_OPENCODE_BIN") \
+            or os.environ.get("WORKDADDY_OPENCODE_BIN")
         if override:
             return override
         # 未安装返回 ""：build_argv 保留空 argv[0]，create_subprocess_exec 抛

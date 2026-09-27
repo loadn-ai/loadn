@@ -1,6 +1,6 @@
 """聊天框内核切换：PATCH engine 会话级覆盖 + 跨引擎 e2e（零 token）。
 
-claude 引擎走 conftest 的假 CLI（WORKDADDY_FAKE_LOG 记 argv），hahaness 走
+claude 引擎走 conftest 的假 CLI（LOADN_FAKE_LOG 记 argv），hahaness 走
 HAHANESS_PROVIDER=fake；两引擎各有独立会话 id 域，切换经 _align_engine
 存档/取回——切回应自动续接旧引擎会话。
 """

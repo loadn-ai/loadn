@@ -3,7 +3,7 @@
 
 用法（conftest 通过 WORKDADDY_CLAUDE_BIN 指向本脚本）：
   - argv 契约：-p --verbose --output-format stream-json ... (--session-id|--resume UUID) PROMPT
-  - 每次 argv 追加一行 JSON 到 $WORKDADDY_FAKE_LOG（测试断言 --resume 用）
+  - 每次 argv 追加一行 JSON 到 $LOADN_FAKE_LOG（测试断言 --resume 用）
   - 行为由 cwd（workspace）下的 .fake/ 控制文件驱动：
       reply       自定义回复文本
       tools       工具调用场景：Bash echo + Write artifacts/report.md
@@ -35,7 +35,7 @@ def _assistant_event(blocks: list) -> dict:
 
 def main() -> int:
     argv = sys.argv[1:]
-    log = os.environ.get("WORKDADDY_FAKE_LOG")
+    log = os.environ.get("LOADN_FAKE_LOG")
     if log:
         session_flag = None
         for i, a in enumerate(argv):
@@ -78,7 +78,7 @@ def main() -> int:
         _emit({"type": "system", "subtype": "init", "session_id": session_id,
                "model": "fake", "tools": [], "mcp_servers": []})
         _emit(_assistant_event([{"type": "text", "text": "开始长任务…"}]))
-        time.sleep(float(os.environ.get("WORKDADDY_FAKE_HANG_S") or 120))
+        time.sleep(float(os.environ.get("LOADN_FAKE_HANG_S") or 120))
         return 0
 
     # ---- 正常场景
@@ -87,7 +87,7 @@ def main() -> int:
     if has("pause"):
         # 收养测试道具：init 后睡一段（daemon 在此窗口死掉），醒来继续写完
         # assistant + result——模拟「daemon 重启而 CLI 照跑」
-        time.sleep(float(os.environ.get("WORKDADDY_FAKE_PAUSE_S") or 3))
+        time.sleep(float(os.environ.get("LOADN_FAKE_PAUSE_S") or 3))
 
     if has("todos"):
         _emit(_assistant_event([{"type": "tool_use", "id": "tu_1", "name": "TaskCreate",

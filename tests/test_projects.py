@@ -202,7 +202,7 @@ async def test_promote_session_to_project(client, ws_root):
         proj = db_mod.get_project(c, sid)
     assert sess["project_id"] == sid and proj["workspace"] == old_ws   # 目录没搬
     env = j.load(open(ws_root / sid / ".claude/settings.json"))["env"]
-    assert "WORKDADDY_SESSION_ID" not in env and env["WORKDADDY_PROJECT_ID"] == sid
+    assert "LOADN_SESSION_ID" not in env and env["LOADN_PROJECT_ID"] == sid
     # 升级后 + 子任务：落项目根 tasks/ 下（v0.6 独立任务目录）
     kid = await _mk_subtask(client, sid, "新子任务")
     with db_mod.conn() as c:

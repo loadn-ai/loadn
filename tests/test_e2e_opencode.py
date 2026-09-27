@@ -1,6 +1,6 @@
 """opencode 引擎端到端（fake_opencode 驱动，真 uvicorn）：argv/事件/记账/轮换全链路。
 
-与 test_e2e.py 同方法论：.fake 控制文件驱动假 CLI，WORKDADDY_FAKE_LOG 断言
+与 test_e2e.py 同方法论：.fake 控制文件驱动假 CLI，LOADN_FAKE_LOG 断言
 argv。注入方式：monkeypatch WORKDADDY_OPENCODE_BIN + 内存态翻
 CONFIG.engines.default="opencode"（CONFIG 是 import 时载入的单子，直接改对象、
 fixture 还原）——会话经 _align_engine 切引擎（旧 uuid 存档，ses_ 域从空串起步）。

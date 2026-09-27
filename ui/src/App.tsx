@@ -59,7 +59,7 @@ export default function App() {
 
   // 刷新/重开恢复上次会话（PWA 点 Dock 直达 + 任务跑着时刷新不失联）
   useEffect(() => {
-    const last = localStorage.getItem('wd_sid');
+    const last = localStorage.getItem('loadn_sid') ?? localStorage.getItem('wd_sid');
     if (!last) return;
     void (async () => {
       const st = useStore.getState();

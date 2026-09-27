@@ -2,7 +2,7 @@
 """假 opencode CLI（零 token 测试）：遵守真 `opencode run --format json` 接口契约。
 
 与 fake_claude.py 同协议：cwd（workspace）下 .fake/ 控制文件驱动行为，
-WORKDADDY_FAKE_LOG 记每次 argv（--session 扫描 / argv[-1]=PROMPT）。差别只在
+LOADN_FAKE_LOG 记每次 argv（--session 扫描 / argv[-1]=PROMPT）。差别只在
 输出形态——这里逐行吐 opencode NDJSON 事件（session.* / message.part.*），
 完成信号是 session.status(idle)，由 OpencodeEventAdapter 归一化消费。
 
@@ -42,7 +42,7 @@ def main() -> int:
         sys.stdout.write("opencode version 1.18.0 (fake)\n")
         return 0
 
-    log = os.environ.get("WORKDADDY_FAKE_LOG")
+    log = os.environ.get("LOADN_FAKE_LOG")
     if log:
         session_flag = None
         for i, a in enumerate(argv):
@@ -96,14 +96,14 @@ def main() -> int:
     if has("hang"):
         _emit(created())
         _emit(part("prt_hang", "text", text="开始长任务…"))
-        time.sleep(float(os.environ.get("WORKDADDY_FAKE_HANG_S") or 120))  # 无 idle：等外部 stop
+        time.sleep(float(os.environ.get("LOADN_FAKE_HANG_S") or 120))  # 无 idle：等外部 stop
         return 0
 
     # ---- 正常场景
     _emit(created())
     if has("pause"):
         # 收养测试道具：created 后睡一段（daemon 在此窗口死），醒后写完全流程
-        time.sleep(float(os.environ.get("WORKDADDY_FAKE_PAUSE_S") or 3))
+        time.sleep(float(os.environ.get("LOADN_FAKE_PAUSE_S") or 3))
 
     if has("todos"):
         todos = [{"content": "检索来源", "status": "pending"},

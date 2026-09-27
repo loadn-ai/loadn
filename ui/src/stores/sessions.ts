@@ -264,7 +264,8 @@ export const useStore = create<Store>((set, get) => ({
     get().closeSession();
     set({ currentSid: sid, messages: [], turns: [], artifacts: [], live: null,
           sessionExtras: null, timeline: [] });
-    localStorage.setItem('wd_sid', sid);   // 刷新/重开恢复
+    localStorage.setItem('loadn_sid', sid);   // 刷新/重开恢复
+    localStorage.removeItem('loadn_sid'); localStorage.removeItem('wd_sid');
     const d = await api<{ messages: MessageInfo[]; turns: TurnInfo[]; artifacts: ArtifactInfo[] } & SessionExtras>(
       `/api/sessions/${encodeURIComponent(sid)}`);
     set({ messages: d.messages, turns: d.turns, artifacts: d.artifacts });
@@ -315,7 +316,7 @@ export const useStore = create<Store>((set, get) => ({
   closeSession() {
     const { es } = get();
     if (es) { es.close(); }
-    localStorage.removeItem('wd_sid');
+    localStorage.removeItem('loadn_sid'); localStorage.removeItem('wd_sid');
     set({ es: null, connected: false, currentSid: null, sessionExtras: null,
           timeline: [] });
   },

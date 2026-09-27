@@ -4,7 +4,9 @@
 // （读后写 localStorage 并从地址栏清除）。SSE 走一次性 ticket。
 const BASE = '';
 
-const TOKEN_KEY = 'wd_token';
+// 键名迁移（workdaddy→loadn）：读侧双取（旧键活体迁移），写侧只写新键
+const TOKEN_KEY = 'loadn_token';
+const TOKEN_KEY_LEGACY = 'wd_token';
 
 function bootstrapTokenFromUrl(): void {
   const t = new URLSearchParams(location.search).get('token');
@@ -17,7 +19,15 @@ function bootstrapTokenFromUrl(): void {
 
 export function token(): string {
   bootstrapTokenFromUrl();
-  return localStorage.getItem(TOKEN_KEY) ?? '';
+  const t = localStorage.getItem(TOKEN_KEY);
+  if (t) return t;
+  const legacy = localStorage.getItem(TOKEN_KEY_LEGACY);   // 旧键活体迁移
+  if (legacy) {
+    localStorage.setItem(TOKEN_KEY, legacy);
+    localStorage.removeItem(TOKEN_KEY_LEGACY);
+    return legacy;
+  }
+  return '';
 }
 
 export function setToken(t: string): void {

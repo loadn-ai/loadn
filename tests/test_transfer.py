@@ -37,7 +37,7 @@ def test_cli_file_roundtrip(server_url, client, ws_root, tmp_path, monkeypatch, 
     # 起一个真 server 的会话（client fixture 已确保 server 在跑）
     r = httpx.post(f"{server_url}/api/sessions", json={"title": "CLI 直传"})
     sid = r.json()["session"]["id"]
-    monkeypatch.setenv("WORKDADDY_SESSION_ID", sid)
+    monkeypatch.setenv("LOADN_SESSION_ID", sid)
     # CLI 默认打 127.0.0.1:<config.port>，测试 server 在随机端口——指过去
     from loadn_webui.config import CONFIG
     monkeypatch.setattr(CONFIG.server, "port", int(server_url.rsplit(":", 1)[1]))
