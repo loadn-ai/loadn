@@ -210,6 +210,7 @@ TARGET_TESTS: dict[str, list[str]] = {
     ],
     "loadn_webui/claude_runner.py": [
         "tests/test_w0_security.py",
+        "tests/test_runner_units.py",
     ],
     "loadn/core/loop.py": [
         "tests/test_loop.py",

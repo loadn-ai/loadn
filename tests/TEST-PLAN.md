@@ -158,3 +158,30 @@ canary 57/policy 59/truststore 56/approve 51（总 55.5%）——与原值差异
 workflow_dispatch，代表性子集（canary/multiedit/turn_diff/net_policy）
 逐文件杀伤率下限（55/60/65/75%，留 5-10pp 防抖动）；全套 600+ 变异
 按台账队列本地跑。
+
+### M6 功能批（2026-09-27/28，用户拍板扩展到功能/交互/逻辑面）
+
+**批总：1452/1858 变异杀死（78.2%）**，22 文件。核心发现：行覆盖高≠
+断言强在全批复现——compactor 98% 行覆盖只有 24% 杀伤、loop 89% 覆盖
+51% 起步、engine.py 是反面标杆（w0 真服务器窄集 236/236=100%）。
+
+| 卡 | 文件 | 终值 | 代表性盲区（补测全注入实证） |
+|---|---|---|---|
+| M6a | compactor | 66% | 五纯函数几乎零断言：UPDATE 真账本/流式分流/骨架头尾窗/文件账本分集 |
+| M6a | memory | 57% | **git 根域键**（反转=记忆按 cwd 割裂）/forget 空 keyword 删光/boundary 锚 |
+| M6a | context | 62% | **宪法链越界**（and=无限挂死）/记忆注入块 or→and=永不上桌 |
+| M6a | tool_repair | 88% | — |
+| M6b | loop | 64% | **LoopGuard 阈值逐位**/并行拆分 ≥2 门/grind 口头交付拦截+递进/LSP 失败写不挂诊断 |
+| M6c | anthropic | 79% | 400 取证门/SSE 超长行防御/内嵌 error 帧不可重试 |
+| M6c | openai_compat | 80% | 同构+消息取解析值非原文（`in` 断言会被整帧骗过） |
+| M6c | cassette | 63% | **record 已存在磁带拒覆盖**（真实采样工件保护） |
+| M6d | bash | **100%** | test_tools_bash 投资兑现 |
+| M6d | interactive | 89% | statusUpdate supervisor 门×3 记档 |
+| M6d | grep / read | 69% / 68% | 参数守卫双形态/子路径 include |
+| M6e | transcript | 93% | 4 活全等价 |
+| M6f | engine.py | **100%** | w0 真服务器 45 测试=完美窄集 |
+| M6f | claude_runner | ~48%* | **自噬防护对**（serve 探测双形态/TURN_ID 防误杀）+_Sink result 门；*其余 spawn 生命周期管线真覆盖在 test_e2e（47s/轮），e2e 入映射重扫需 ~98 分钟安静窗口，记 backlog |
+
+**基建**：外部杀手实证（scripts/mutate.py 执行态被定向 SIGTERM 六起，
+/tmp 驱动+文本写回恢复+间隔全程存活）；分块扫描（≤9 分钟/块）与映射
+先 commit 纪律固化。CI mutation job 子集维持 M1-M5 四文件不变。
