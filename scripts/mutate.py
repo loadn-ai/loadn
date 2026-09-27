@@ -213,6 +213,22 @@ TARGET_TESTS: dict[str, list[str]] = {
         "tests/test_runner_units.py",
     ],
     # ---- M7 平台面批（2026-09-28 起）
+    "loadn/mcp/client.py": [
+        "tests/test_mcp_stdio_units.py",
+        "tests/test_mcp_http.py",
+        "tests/test_mcp_oauth.py",
+    ],
+    "loadn_webui/lsp_host.py": [
+        "tests/test_lsp_host.py",
+        "tests/test_lsp_session_units.py",
+    ],
+    "loadn_webui/codemode_mcp.py": [
+        "tests/test_codemode_stdio_units.py",
+    ],
+    "loadn_webui/browser_mcp.py": [
+        "tests/test_browser_units.py",
+        "tests/security/test_browser_cua.py",
+    ],
     "loadn_webui/api/routes.py": [
         "tests/test_w0_security.py",
         "tests/test_admin.py",
