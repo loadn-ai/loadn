@@ -90,9 +90,9 @@ contract) · [RELEASE](docs/RELEASE.md) (deploy / upgrade / rollback) ·
   AGENTS.md ancestor chain (git-root bounded, nearest last, `@import`
   support), a skills index, long-term memory with boundary-driven background
   extraction, and a repo map — mirroring Claude Code's layered memory.
-- **Mutation-tested.** 1344 tests (zero token, fake-provider driven) at 83.1%
+- **Mutation-tested.** 1352 tests (zero token, fake-provider driven) at 83.1%
   line coverage — and beyond coverage, a homegrown mutation-testing runner
-  has injected **2589 bugs into 41 core files with a 76% kill rate**,
+  has injected **4055 bugs into 47 core files with a 78% kill rate**,
   proving the assertions actually catch regressions, not just execute code
   paths. See [tests/TEST-PLAN.md](tests/TEST-PLAN.md) §7.
 

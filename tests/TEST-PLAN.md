@@ -185,3 +185,28 @@ workflow_dispatch，代表性子集（canary/multiedit/turn_diff/net_policy）
 **基建**：外部杀手实证（scripts/mutate.py 执行态被定向 SIGTERM 六起，
 /tmp 驱动+文本写回恢复+间隔全程存活）；分块扫描（≤9 分钟/块）与映射
 先 commit 纪律固化。CI mutation job 子集维持 M1-M5 四文件不变。
+
+### M7 平台面批（2026-09-28，routes/settings_admin/workspace/params + mcp 家族 + engines）
+
+**批总：1131/1275 = 88.6%**，10 文件。发现规律延续：平台面普遍存在
+「局部 PUT/PATCH 键检测」盲区（键在=更新、键缺=保持——`in→not in`
+反转=缺键清空用户数据），settings_admin/routes/workspace 三处同款；
+scheduler PATCH 全链（局部键/new_session 型别门/触发改期矩阵/done
+终态门）首次对赌。**真 bug #12**：write_mcp_json 会话哨兵先剔除后
+注入——属性面板「本会话关闭 codemode/lsp」对自动注入 server 无效。
+
+| 文件 | 终值 | 备注 |
+|---|---|---|
+| mcp/client.py | **100%**（78/78） | T 批投资兑现 |
+| browser_mcp.py | **100%**（45/45） | 同上 |
+| engines/opencode.py | 99%（109/110） | 1 活=布尔默认位 |
+| lsp_host.py | 97%（68/70） | 2 活=timeout 常数 |
+| codemode_mcp.py | 98%（39/40） | 1 活=容量常数 |
+| params.py | **100%**（31/31） | |
+| backup.py | 98%（51/52） | 1 活=保留期常数 |
+| settings_admin.py | 95% | 补局部键×6+范围门×3 |
+| workspace.py | 95% | MCP 注入门+哨兵序修复（真 bug #12） |
+| api/routes.py | 78%（446/573） | scheduler PATCH 11 杀；余=分页常数(54)+or-回退(38) |
+
+**累计：47 文件 4055 变异，总杀伤 77.9%**（M0-M6 41 文件 2589 + M7 10 文件 1275）。
+resources.py(342) 外部端点面维持 backlog（需真端点/重桩）。

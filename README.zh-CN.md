@@ -88,8 +88,8 @@ drop-in subprocess engine.
   custom subagent types come from `.claude/agents/*.md` frontmatter.
 - **Zero-token test suite.** 1344 tests drive every loop branch through a
   scripted fake provider — CI needs no API keys. Beyond coverage (83.1%):
-  a homegrown mutation runner injected **2589 bugs into 41 core files** with
-  a **76% kill rate** — assertions are proven to catch regressions, not just
+  a homegrown mutation runner injected **4055 bugs into 47 core files** with
+  a **78% kill rate** — assertions are proven to catch regressions, not just
   execute paths (tests/TEST-PLAN.md §7).
 
 ## Install
