@@ -714,6 +714,9 @@ async def test_ping_custom_services(http_log, monkeypatch):
     http_log["routes"]["api.jina.test"] = lambda u, k: FakeResp(503)
     out = await resources.ping_all(["svc:jina-api"])
     assert out["svc:jina-api"]["ok"] is False and "503" in out["svc:jina-api"]["msg"]
+    http_log["routes"]["api.jina.test"] = lambda u, k: FakeResp(500)
+    out = await resources.ping_all(["svc:jina-api"])     # 500 整=不可达（边界）
+    assert out["svc:jina-api"]["ok"] is False
     out = await resources.ping_all(["svc:ghost"])
     assert out["svc:ghost"]["ok"] is False \
         and "未配置自定义服务" in out["svc:ghost"]["msg"]

@@ -19,6 +19,18 @@
 - evals 场景 5→10；契约 v1/v2 对赌补全（tool_use_failure 终态事件、
   平台 durable 事件转发两个真缺口修复）。
 
+## [0.6.16] - 2026-09-29
+
+- **资源页自定义服务（服务 CRUD 补全）**：原服务卡为前端写死的 13 张固定卡，
+  现支持「＋ 新增服务」——`resources.custom_services: [{name, url, note}]`：
+  - 新增/编辑端点/删除（删服务连 vault 密钥一并清）；密钥走 vault
+    `svc:<name>` 键（AES-GCM，**白名单=仅已配置服务可写**，fail-closed）
+  - 消费：任务环境注入 `LOADN_SVC_<NAME>_URL`（`-`→`_`）——密钥不注入，
+    凭证不进沙箱的既定边界不变
+  - 连通探测 `svc:<name>` 目标（GET 根路径，≥500 判不可达）；独立测试按钮
+  - config.yaml 启动 fail-closed 校验（slug/http(s)/重名）；API 面钉子登记
+    POST/DELETE `/api/admin/resources/custom`
+
 ## [0.6.15] - 2026-09-28
 
 - **设置页三卡 CRUD 化**（增量增强，沿用 setting-card/行内编辑模式）：

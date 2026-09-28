@@ -83,6 +83,7 @@ TARGET_TESTS: dict[str, list[str]] = {
     "loadn_webui/security/vault.py": [
         "tests/test_vault.py",
         "tests/security/test_e2_audit_chain.py",
+        "tests/test_settings_admin.py",   # svc: 密钥白名单/清理用例在此
     ],
     "loadn/truststore.py": [
         "tests/security/test_b5_trust_gate.py",
