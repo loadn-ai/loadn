@@ -698,3 +698,24 @@ async def test_vault_entry_crud_and_reserved(client):
     assert r.status_code == 200 and r.json()["ok"] is True
     r = await client.delete("/api/admin/vault/entry/__resources__")
     assert r.status_code == 400                     # 保留条目不可删
+
+
+# ---------------------------------------------------------------- custom svc
+async def test_ping_custom_services(http_log, monkeypatch):
+    """svc:<name> 探测目标：配置了的服务 GET 根路径（≥500 算不可达）；
+    未配置服务与未知目标各自明确失败（区分形态，非同一文案）。"""
+    from loadn_webui.config import CONFIG
+    from loadn_webui.integrations import resources
+    monkeypatch.setattr(CONFIG.resources, "custom_services", [
+        {"name": "jina-api", "url": "https://api.jina.test/v1", "note": ""}])
+    http_log["routes"]["api.jina.test"] = lambda u, k: FakeResp(200)
+    out = await resources.ping_all(["svc:jina-api"])
+    assert out["svc:jina-api"]["ok"] is True
+    http_log["routes"]["api.jina.test"] = lambda u, k: FakeResp(503)
+    out = await resources.ping_all(["svc:jina-api"])
+    assert out["svc:jina-api"]["ok"] is False and "503" in out["svc:jina-api"]["msg"]
+    out = await resources.ping_all(["svc:ghost"])
+    assert out["svc:ghost"]["ok"] is False \
+        and "未配置自定义服务" in out["svc:ghost"]["msg"]
+    out = await resources.ping_all(["bogus"])
+    assert out["bogus"]["ok"] is False and "未知资源" in out["bogus"]["msg"]

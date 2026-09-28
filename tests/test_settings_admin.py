@@ -288,6 +288,67 @@ def test_put_convergence_reset_fallback_keeps_role(sa):
         teardown()
 
 
+# ---------------- 自定义服务（资源页「＋新增服务」） ----------------
+
+def test_custom_service_crud_and_guards(sa, monkeypatch):
+    """upsert/delete 写 yaml+CONFIG；名字 slug/url http(s) 守卫；删不存在拒。"""
+    import loadn_webui.config as config_mod
+    mod, cfg, tmp = sa
+    monkeypatch.setattr(config_mod, "CONFIG", cfg)   # vault._valid_secret_key 用全局
+    with pytest.raises(ValueError, match="slug"):
+        mod.put_custom_service({"name": "Bad Name", "url": "https://x.test"})
+    with pytest.raises(ValueError, match="http"):
+        mod.put_custom_service({"name": "jina", "url": "ftp://x.test"})
+    out = mod.put_custom_service({"name": "jina-api",
+                                  "url": "https://api.jina.test/v1/", "note": "搜索"})
+    assert out["custom_services"] == [{"name": "jina-api",
+                                       "url": "https://api.jina.test/v1", "note": "搜索"}]
+    assert _yaml(tmp)["resources"]["custom_services"][0]["name"] == "jina-api"
+    mod.put_custom_service({"name": "jina-api", "url": "https://api2.jina.test"})
+    assert len(cfg.resources.custom_services) == 1          # upsert 不加行
+    assert cfg.resources.custom_services[0]["url"] == "https://api2.jina.test"
+    with pytest.raises(ValueError, match="不存在"):
+        mod.delete_custom_service("nope")
+    mod.delete_custom_service("jina-api")
+    assert cfg.resources.custom_services == []
+    assert _yaml(tmp)["resources"]["custom_services"] == []
+
+
+def test_custom_service_vault_whitelist_and_cleanup(sa, monkeypatch):
+    """>>> 守卫对赌：svc: 密钥只在服务已配置时放行（真值断言）；删服务连密钥清。"""
+    import loadn_webui.config as config_mod
+    import loadn_webui.security.vault as vault
+    mod, cfg, tmp = sa
+    monkeypatch.setattr(config_mod, "CONFIG", cfg)
+    monkeypatch.setattr(vault, "PATHS", {"root": tmp, "var": tmp / "var"})
+    with pytest.raises(ValueError, match="非资源密钥字段"):
+        vault.set_res_secret("svc:ghost", "x")              # 未配置的服务名拒写
+    mod.put_custom_service({"name": "jina-api", "url": "https://api.jina.test"})
+    vault.set_res_secret("svc:jina-api", "sk-jina")         # 配置后放行
+    assert vault.get_res_secret("svc:jina-api") == "sk-jina"
+    assert vault.res_secret_states()["svc:jina-api"] is True
+    mod.delete_custom_service("jina-api")
+    assert vault.get_res_secret("svc:jina-api") == ""       # 随服务清理
+    assert "svc:jina-api" not in vault.res_secret_states()
+    with pytest.raises(ValueError, match="非资源密钥字段"):
+        vault.set_res_secret("svc:jina-api", "again")       # 删后回未配置态 → 拒
+
+
+def test_custom_service_env_injection(sa, monkeypatch, tmp_path):
+    """session_env 注入 LOADN_SVC_<NAME>_URL（- 变 _）；密钥永不注入 env。"""
+    import loadn_webui.workspace as ws_mod
+    mod, cfg, _ = sa
+    monkeypatch.setattr(ws_mod, "CONFIG", cfg)
+    monkeypatch.setattr(ws_mod, "PATHS",
+                        {"root": tmp_path, "workspace": tmp_path / "ws"})
+    monkeypatch.setattr(ws_mod, "project_root_of", lambda sid: None)
+    cfg.resources.custom_services = [
+        {"name": "jina-api", "url": "https://api.jina.test", "note": ""}]
+    env = ws_mod.session_env(tmp_path / "ws", "s1")
+    assert env["LOADN_SVC_JINA_API_URL"] == "https://api.jina.test"
+    assert not any(k.startswith("LOADN_SVC_") and k.endswith("_KEY") for k in env)
+
+
 # ---------------- API 层接线（真 uvicorn，管理面双头由 client fixture 携带） ----------------
 
 async def test_settings_api_wiring(client):

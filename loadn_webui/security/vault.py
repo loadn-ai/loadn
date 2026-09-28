@@ -178,6 +178,20 @@ RES_SECRET_FIELDS = ("sandbox_api_key", "sms_token", "mail_auth_code",
 _RES_CACHE: dict = {}
 
 
+def _valid_secret_key(name: str) -> bool:
+    """密钥键白名单：8 个内建资源键 + svc:<name>（仅当该自定义服务
+    已在 resources.custom_services 配置——fail-closed，未配置的名字拒写）。"""
+    if name in RES_SECRET_FIELDS:
+        return True
+    if name.startswith("svc:"):
+        from ..config import CONFIG
+        svc = name[4:]
+        return any(s.get("name") == svc
+                   for s in (CONFIG.resources.custom_services or [])
+                   if isinstance(s, dict))
+    return False
+
+
 def get_res_secret(name: str) -> str:
     """资源密钥读取（内存缓存；空串=未配置）。调用链路统一走这里，
     任何地方不再直接读 CONFIG.resources 的密钥字段。"""
@@ -188,7 +202,7 @@ def get_res_secret(name: str) -> str:
 
 
 def set_res_secret(name: str, value: str) -> None:
-    if name not in RES_SECRET_FIELDS:
+    if not _valid_secret_key(name):
         raise ValueError(f"非资源密钥字段: {name}")
     data = load()
     e = data.get(RES_ENTRY) or {}
@@ -199,10 +213,29 @@ def set_res_secret(name: str, value: str) -> None:
     audit("vault", {"action": "res_secret_set", "field": name})
 
 
+def del_res_secret(name: str) -> bool:
+    """删资源密钥（自定义服务删除时随行清理）。返回是否真删了。"""
+    data = load()
+    e = data.get(RES_ENTRY) or {}
+    if name not in e:
+        return False
+    del e[name]
+    data[RES_ENTRY] = e
+    save(data)
+    _RES_CACHE.pop(name, None)
+    audit("vault", {"action": "res_secret_del", "field": name})
+    return True
+
+
 def res_secret_states() -> dict:
-    """各资源密钥是否已配置（布尔，不回值）。"""
+    """各资源密钥是否已配置（布尔，不回值）。含自定义服务 svc:<name> 键。"""
+    from ..config import CONFIG
     e = get(RES_ENTRY) or {}
-    return {k: bool(e.get(k)) for k in RES_SECRET_FIELDS}
+    out = {k: bool(e.get(k)) for k in RES_SECRET_FIELDS}
+    for s in (CONFIG.resources.custom_services or []):
+        if isinstance(s, dict) and s.get("name"):
+            out[f"svc:{s['name']}"] = bool(e.get(f"svc:{s['name']}"))
+    return out
 
 
 def migrate_res_secrets() -> list[str]:

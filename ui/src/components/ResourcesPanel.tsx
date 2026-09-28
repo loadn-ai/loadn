@@ -7,12 +7,14 @@ import { api } from '../api/client';
 
 interface ServiceItem { key: string; label: string; note: string; value: string; kind: string }
 interface SecretItem { key: string; set: boolean }
+interface CustomSvc { name: string; url: string; note: string; key_set: boolean }
 interface McpServer { name: string; spec: Record<string, any>; sessions_overriding: number; session_only?: boolean }
 interface VaultPlatform { platform: string; user?: string; email?: string; has_password: boolean; updated_at: string }
 interface VaultEdit { platform: string; username?: string; email?: string; notes?: string; password?: string }
 interface Overview {
   services: ServiceItem[];
   secrets: SecretItem[];
+  custom: CustomSvc[];
   mcp: { servers: McpServer[] };
   vault: { platforms: VaultPlatform[]; verify: { ok: boolean; entries: number; encrypted: boolean; error?: string } };
 }
@@ -105,6 +107,7 @@ export default function ResourcesPanel() {
   const [vSearch, setVSearch] = useState('');
   const [vEdit, setVEdit] = useState<VaultEdit | null>(null);
   const [mcpEdit, setMcpEdit] = useState<{ name: string; command: string; args: string } | null>(null);
+  const [svcAdd, setSvcAdd] = useState<{ name: string; url: string; note: string } | null>(null);
 
   const load = async () => {
     try { setData(await api<Overview>('/api/admin/resources')); }
@@ -140,6 +143,28 @@ export default function ResourcesPanel() {
       setPingRes(r => ({ ...r, ...d.results }));
     } catch (e) { flash(`探测失败：${String(e)}`, false); }
     finally { setPinging(null); }
+  };
+  const pingSvc = async (name: string) => {
+    setPinging(`svc:${name}`);
+    try {
+      const d = await api<{ results: Record<string, { ok: boolean; msg: string; ms?: number }> }>(
+        '/api/admin/resources/test', { method: 'POST', body: JSON.stringify({ only: [`svc:${name}`] }) });
+      setPingRes(r => ({ ...r, ...d.results }));
+    } catch (e) { flash(`探测失败：${String(e)}`, false); }
+    finally { setPinging(null); }
+  };
+  const upsertCustom = async (body: { name: string; url: string; note?: string }) => {
+    try {
+      await api('/api/admin/resources/custom', { method: 'POST', body: JSON.stringify(body) });
+      flash('✓ 已保存（下一 turn 起注入任务环境）'); setSvcAdd(null); setEditKey(null); await load();
+    } catch (e) { flash(`保存失败：${String(e)}`, false); }
+  };
+  const delCustom = async (name: string) => {
+    if (!confirm(`删除自定义服务「${name}」？（vault 中的密钥一并清除）`)) return;
+    try {
+      await api(`/api/admin/resources/custom?name=${encodeURIComponent(name)}`, { method: 'DELETE' });
+      flash('✓ 已删除'); await load();
+    } catch (e) { flash(`删除失败：${String(e)}`, false); }
   };
   const pingAll = async () => {
     const all = GROUPS.flatMap(g => g.cards).flatMap(c => c.ping ?? []);
@@ -222,12 +247,28 @@ export default function ResourcesPanel() {
               disabled={!!pinging} onClick={() => void pingAll()}>
               {pinging === '__all__' ? '探测中…' : '⚡ 全部探测'}
             </button>
+            <button className="res-btn" style={{ fontSize: 12, padding: '5px 12px' }}
+              onClick={() => setSvcAdd({ name: '', url: '', note: '' })}>＋ 新增服务</button>
             <span className="muted" style={{ fontSize: 12 }}>
               {Object.keys(pingRes).length
                 ? `${Object.values(pingRes).filter(r => r.ok).length}/${Object.keys(pingRes).length} 项在线`
                 : '点卡片上的「测试」逐项探测'}
             </span>
           </div>
+          {svcAdd && (
+            <div className="res-addbar focused">
+              <input placeholder="名称（小写，如 jina-api）" style={{ width: 150 }} value={svcAdd.name}
+                onChange={e => setSvcAdd({ ...svcAdd, name: e.target.value })} />
+              <input placeholder="端点 https://…（http(s)）" style={{ flex: 1, minWidth: 200 }} value={svcAdd.url}
+                onChange={e => setSvcAdd({ ...svcAdd, url: e.target.value })} />
+              <input placeholder="备注（可选）" style={{ width: 150 }} value={svcAdd.note}
+                onChange={e => setSvcAdd({ ...svcAdd, note: e.target.value })} />
+              <button className="res-btn"
+                disabled={!svcAdd.name.trim() || !svcAdd.url.trim()}
+                onClick={() => void upsertCustom(svcAdd)}>保存</button>
+              <button className="res-btn" onClick={() => setSvcAdd(null)}>取消</button>
+            </div>
+          )}
           {GROUPS.map(g => (
             <div key={g.title}>
               <div className="res-group-title">{g.title}</div>
@@ -302,6 +343,79 @@ export default function ResourcesPanel() {
               </div>
             </div>
           ))}
+          <div>
+            <div className="res-group-title">自定义服务</div>
+            <div className="res-grid">
+              {data.custom.length === 0 && (
+                <div className="res-card" style={{ gridColumn: '1 / -1', borderStyle: 'dashed' }}>
+                  <span className="muted" style={{ fontSize: 12 }}>
+                    （无自定义服务——上方「＋ 新增服务」添加；端点会以
+                    <code> LOADN_SVC_&lt;名称&gt;_URL </code>注入任务环境）
+                  </span>
+                </div>
+              )}
+              {data.custom.map(c => (
+                <div key={c.name} className="res-card">
+                  <div className="res-head">
+                    <span style={{ fontSize: 16 }}>🧩</span>
+                    <span className="res-name">{c.name}</span>
+                    {pingRes[`svc:${c.name}`]
+                      ? <span className={`res-status ${pingRes[`svc:${c.name}`].ok ? 'ok' : 'fail'}`}>
+                          {pingRes[`svc:${c.name}`].ok ? '✓ 正常' : `✗ ${pingRes[`svc:${c.name}`].msg?.slice(0, 24)}`}
+                        </span>
+                      : <span className="res-status">未测</span>}
+                    <button className="res-btn" style={{ marginLeft: 'auto' }}
+                      onClick={() => void delCustom(c.name)}>删</button>
+                  </div>
+                  {c.note && <div className="res-note" style={{ marginTop: -4 }}>{c.note}</div>}
+                  <div className="res-field">
+                    <span className="res-k">端点</span>
+                    {editKey === `custom:${c.name}` ? (
+                      <>
+                        <input value={editVal} autoFocus
+                          onChange={e => setEditVal(e.target.value)}
+                          onKeyDown={e => {
+                            if (e.key === 'Enter') void upsertCustom({ name: c.name, url: editVal, note: c.note });
+                            if (e.key === 'Escape') setEditKey(null);
+                          }} />
+                        <button className="res-btn"
+                          onClick={() => void upsertCustom({ name: c.name, url: editVal, note: c.note })}>存</button>
+                        <button className="res-btn" onClick={() => setEditKey(null)}>取消</button>
+                      </>
+                    ) : (
+                      <span className="res-v" title={`${c.url}（点击编辑）`}
+                        onClick={() => { setEditKey(`custom:${c.name}`); setEditVal(c.url); }}>
+                        {c.url}
+                      </span>
+                    )}
+                  </div>
+                  <div className="res-actions">
+                    {secretInput === `svc:${c.name}` ? (
+                      <span style={{ display: 'flex', gap: 4 }}>
+                        <input type="password" autoFocus value={secretVal} placeholder="输入密钥"
+                          onChange={e => setSecretVal(e.target.value)}
+                          onKeyDown={e => {
+                            if (e.key === 'Enter') void saveSecret(`svc:${c.name}`);
+                            if (e.key === 'Escape') { setSecretInput(null); setSecretVal(''); }
+                          }} />
+                        <button className="res-btn" onClick={() => void saveSecret(`svc:${c.name}`)}>存</button>
+                      </span>
+                    ) : (
+                      <span className={`res-secret-chip ${c.key_set ? '' : 'unset'}`}
+                        title={`密钥 AES-GCM 加密保管（不注入任务环境）；${c.key_set ? '已加密保存' : '未设置'}`}
+                        onClick={() => { setSecretInput(`svc:${c.name}`); setSecretVal(''); }}>
+                        🔑 密钥 {c.key_set ? '已加密' : '未设'}
+                      </span>
+                    )}
+                    <button className="res-btn" disabled={pinging === `svc:${c.name}`}
+                      onClick={() => void pingSvc(c.name)}>
+                      {pinging === `svc:${c.name}` ? '测试中…' : '测试'}
+                    </button>
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
         </>
       )}
 

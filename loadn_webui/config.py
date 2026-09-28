@@ -8,6 +8,7 @@ LOADN_WEBUI_HOME 环境变量整体迁移（测试/多实例；旧 WORKDADDY_HOM
 from __future__ import annotations
 
 import os
+import re as _re
 from dataclasses import dataclass, field, fields, is_dataclass
 from pathlib import Path
 
@@ -130,6 +131,9 @@ class TitleGenConfig:
 #   remote        远程执行器档（企业场景，未实现 → 降档 off+审计）
 # 解析/探测/降档见 sandbox.py resolve_tier()；枚举校验在 load_config()。
 SANDBOX_TIERS = ("off", "bwrap", "vm-bwrap", "seatbelt", "appcontainer", "remote")
+
+# 自定义服务的名字语法（resources.custom_services[].name / vault svc:<name>）
+_SVC_NAME_RE = _re.compile(r"[a-z0-9][a-z0-9_-]{0,31}")
 
 
 @dataclass
@@ -269,6 +273,9 @@ class ResourcesConfig:
     adb_addr: str = ""       # android 真机（如 192.168.x.x:5555）
     textr_email: str = ""                           # Textr Go 美国虚拟号码（收验证码）
     textr_password: str = ""
+    # 自定义服务（资源页「＋新增服务」）：[{name, url, note}]。密钥走 vault
+    # svc:<name> 键（不落 yaml）；消费=turn env 注入 LOADN_SVC_<NAME>_URL/_KEY
+    custom_services: list = field(default_factory=list)
 
 
 @dataclass
@@ -379,6 +386,22 @@ def load_config() -> Config:
             raise ValueError(f"security.resource_bridges 条目非法 {b!r}"
                              "（需 {path: 绝对路径, mode: ro|rw|dev}，"
                              "config.yaml）——拒绝启动")
+    cs = cfg.resources.custom_services
+    if cs is None or not isinstance(cs, list):
+        raise ValueError("resources.custom_services 需为列表"
+                         "（config.yaml）——拒绝启动")
+    _cs_seen: set[str] = set()
+    for s in cs:
+        if not isinstance(s, dict) \
+                or not _SVC_NAME_RE.fullmatch(str(s.get("name") or "")) \
+                or not str(s.get("url") or "").startswith(("http://", "https://")):
+            raise ValueError(f"resources.custom_services 条目非法 {s!r}"
+                             "（需 name=小写 slug、url=http(s)://…，config.yaml）"
+                             "——拒绝启动")
+        if s["name"] in _cs_seen:
+            raise ValueError(f"resources.custom_services 名字重复 {s['name']!r}"
+                             "（config.yaml）——拒绝启动")
+        _cs_seen.add(s["name"])
     env_bin = os.environ.get("LOADN_CLAUDE_BIN") or os.environ.get("WORKDADDY_CLAUDE_BIN")
     if env_bin:
         cfg.claude.claude_bin = env_bin

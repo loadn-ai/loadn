@@ -195,6 +195,12 @@ def session_env(ws: Path, sid: str) -> dict:
            if CONFIG.resources.cdp_url else {}),
         **({"LOADN_PROXY": CONFIG.resources.proxy, "WORKDADDY_PROXY": CONFIG.resources.proxy}
            if CONFIG.resources.proxy else {}),
+        # 自定义服务指路（资源页「＋新增服务」）：LOADN_SVC_<NAME>_URL。
+        # 密钥不注入——凭证不进沙箱/引擎 env 的既定边界（vault svc:<name>
+        # 平台侧保管；agent 走 $LOADN CLI 或平台代理，鉴权路径后续按需接）
+        **{f"LOADN_SVC_{s['name'].upper().replace('-', '_')}_URL": str(s["url"])
+           for s in (CONFIG.resources.custom_services or [])
+           if isinstance(s, dict) and s.get("name") and s.get("url")},
         # 跨项目只读数据共享指路（bwrap 档 ro-bind 同路径；off 档无挂载
         # 边界但路径本可读——env 让 agent 知道 sanctioned 的共享面在哪。
         # resolve 与 _shared_binds 挂载点同口径——symlink 路径不悬空）

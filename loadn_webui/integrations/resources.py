@@ -962,7 +962,18 @@ async def _ping_one(name: str) -> dict:
     t0 = time.monotonic()
     r = _res()
     try:
-        if name == "ocr":
+        if name.startswith("svc:"):
+            # 自定义服务（资源页配置）：GET 根路径，<500 即算可达
+            svc = name[4:]
+            url = next((str(s.get("url")) for s in
+                        (CONFIG.resources.custom_services or [])
+                        if isinstance(s, dict) and s.get("name") == svc), "")
+            if not url:
+                return {"ok": False, "msg": f"未配置自定义服务 {svc}"}
+            resp = await _get(url, timeout=8.0)
+            ok = resp.status_code < 500
+            msg = "ok" if ok else f"HTTP {resp.status_code}"
+        elif name == "ocr":
             resp = await _get(f"{r.ocr_url.rstrip('/')}/health", timeout=8.0)
             ok = resp.status_code == 200
             msg = "ok" if ok else f"HTTP {resp.status_code}"
@@ -1071,10 +1082,11 @@ PING_SERVICES = ["ocr", "sandbox", "sandbox_mcp", "proxy", "sms", "mail", "vlm",
 
 
 async def ping_all(only: list[str] | None = None) -> dict[str, dict]:
-    names = [n for n in (only or PING_SERVICES) if n in PING_SERVICES]
+    req = list(only) if only else list(PING_SERVICES)
+    names = [n for n in req if n in PING_SERVICES or n.startswith("svc:")]
     results = await asyncio.gather(*(_ping_one(n) for n in names))
     out = {n: r for n, r in zip(names, results)}
-    for n in (only or []):          # 请求了但不在名单里的，明确报出来
-        if n not in PING_SERVICES:
+    for n in req:                   # 请求了但不在名单里的，明确报出来
+        if n not in names:
             out[n] = {"ok": False, "msg": f"未知资源 {n}"}
     return out

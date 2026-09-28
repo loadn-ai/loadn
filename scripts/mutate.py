@@ -222,6 +222,9 @@ TARGET_TESTS: dict[str, list[str]] = {
         "tests/test_lsp_host.py",
         "tests/test_lsp_session_units.py",
     ],
+    "loadn_webui/integrations/resources.py": [
+        "tests/test_resources.py",
+    ],
     "loadn_webui/integrations/codemode_mcp.py": [
         "tests/test_codemode_stdio_units.py",
     ],

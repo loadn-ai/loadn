@@ -471,6 +471,64 @@ def put_resources(body: dict) -> dict:
     return get_settings()
 
 
+# ---------------- 自定义服务（资源页「＋新增服务」） ----------------
+
+def put_custom_service(body: dict) -> dict:
+    """新增/更新自定义服务（upsert by name）→ resources.custom_services。
+
+    校验：name 小写 slug（vault 键与 env 变量名都由它派生）、url http(s)。
+    密钥另走 vault svc:<name>（put 不碰）；消费=turn env 注入
+    LOADN_SVC_<NAME>_URL（密钥不注入——凭证不进沙箱的既定边界）。
+    """
+    from .config import _SVC_NAME_RE
+    name = str(body.get("name") or "").strip()
+    url = str(body.get("url") or "").strip().rstrip("/")
+    note = str(body.get("note") or "").strip()
+    if not _SVC_NAME_RE.fullmatch(name):
+        raise ValueError("name 需为小写 slug（字母/数字开头，可含 - _，≤32 位）")
+    if not url.startswith(("http://", "https://")):
+        raise ValueError("url 必须是 http(s) URL")
+    entries = [s for s in (CONFIG.resources.custom_services or [])
+               if isinstance(s, dict)]
+    entry = {"name": name, "url": url, "note": note}
+    for i, s in enumerate(entries):
+        if s.get("name") == name:
+            entries[i] = entry
+            break
+    else:
+        entries.append(entry)
+    data = _load_yaml_conf(_conf_path())
+    data.setdefault("resources", {})["custom_services"] = entries
+    _dump_yaml_conf(_conf_path(), data)
+    CONFIG.resources.custom_services = entries
+    from .security.audit import audit
+    audit("policy_change", {"action": "custom_service_upsert", "name": name})
+    log.info("自定义服务 upsert：%s → %s", name, url)
+    return {"ok": True, "custom_services": entries}
+
+
+def delete_custom_service(name: str) -> dict:
+    """删除自定义服务（yaml+CONFIG+vault svc:<name> 密钥一并清）。"""
+    from .config import _SVC_NAME_RE
+    from .security import vault as vault_mod
+    name = str(name or "").strip()
+    if not _SVC_NAME_RE.fullmatch(name):
+        raise ValueError("name 非法")
+    entries = [s for s in (CONFIG.resources.custom_services or [])
+               if isinstance(s, dict) and s.get("name") != name]
+    if len(entries) == len(CONFIG.resources.custom_services or []):
+        raise ValueError(f"自定义服务不存在: {name}")
+    data = _load_yaml_conf(_conf_path())
+    data.setdefault("resources", {})["custom_services"] = entries
+    _dump_yaml_conf(_conf_path(), data)
+    CONFIG.resources.custom_services = entries
+    vault_mod.del_res_secret(f"svc:{name}")      # 密钥随服务清理（无则 no-op）
+    from .security.audit import audit
+    audit("policy_change", {"action": "custom_service_delete", "name": name})
+    log.info("自定义服务删除：%s（vault 密钥一并清）", name)
+    return {"ok": True, "custom_services": entries}
+
+
 def put_egress_allow(action: str, host: str) -> dict:
     """出口白名单增删（数据流向页「一键放行/移除」）。
 

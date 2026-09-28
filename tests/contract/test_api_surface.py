@@ -22,6 +22,7 @@ EXPECTED = {
     ("/api/admin/kill-all", "post"),
     ("/api/admin/kill-all/clear", "post"),
     ("/api/admin/resources", "get"),
+    ("/api/admin/resources/custom", "delete,post"),
     ("/api/admin/resources/secret", "post"),
     ("/api/admin/resources/service", "post"),
     ("/api/admin/resources/test", "post"),

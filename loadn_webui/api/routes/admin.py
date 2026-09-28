@@ -33,10 +33,31 @@ def resources_overview():
         for k, lb, nt in _RES_SERVICE_FIELDS]
     secrets = [{"key": k, "set": states.get(k, False)}
                for k in vault_mod.RES_SECRET_FIELDS]
-    return {"services": services, "secrets": secrets,
+    custom = [{"name": s.get("name"), "url": str(s.get("url") or ""),
+               "note": str(s.get("note") or ""),
+               "key_set": states.get(f"svc:{s.get('name')}", False)}
+              for s in (CONFIG.resources.custom_services or [])
+              if isinstance(s, dict) and s.get("name")]
+    return {"services": services, "secrets": secrets, "custom": custom,
             "mcp": mcp_admin.list_servers(),
             "vault": {"platforms": vault_mod.list_platforms(),
                       "verify": vault_mod.verify()}}
+@router.post("/admin/resources/custom")
+def resources_upsert_custom(body: dict):
+    """新增/更新自定义服务（name/url/note；upsert by name）。"""
+    from . import settings_admin
+    try:
+        return settings_admin.put_custom_service(body)
+    except ValueError as e:
+        raise HTTPException(400, str(e)) from e
+@router.delete("/admin/resources/custom")
+def resources_delete_custom(name: str):
+    """删除自定义服务（yaml+CONFIG+vault svc:<name> 密钥一并清）。"""
+    from . import settings_admin
+    try:
+        return settings_admin.delete_custom_service(name)
+    except ValueError as e:
+        raise HTTPException(404 if "不存在" in str(e) else 400, str(e)) from e
 @router.post("/admin/resources/service")
 def resources_set_service(body: dict):
     """改服务端点/参数（明文字段——非密钥）。走 settings 网关校验。"""
