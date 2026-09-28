@@ -1,0 +1,107 @@
+[build-system]
+requires = ["setuptools>=61"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "loadn"
+version = "0.6.16"
+description = "loadn (load-n) agent engine: Claude Code-compatible stream-json CLI, pluggable providers, tools, MCP, subagents, and context compaction. Monorepo also hosts loadn webui."
+readme = "README.md"
+license = { file = "LICENSE" }
+requires-python = ">=3.10"
+authors = [{ name = "loadn-ai contributors" }]
+keywords = ["agent", "llm", "cli", "coding-agent", "anthropic", "mcp", "claude-code"]
+classifiers = [
+  "Development Status :: 4 - Beta",
+  "Environment :: Console",
+  "Intended Audience :: Developers",
+  "License :: OSI Approved :: Apache Software License",
+  "Operating System :: POSIX :: Linux",
+  "Operating System :: MacOS",
+  "Programming Language :: Python :: 3",
+  "Programming Language :: Python :: 3.10",
+  "Programming Language :: Python :: 3.11",
+  "Programming Language :: Python :: 3.12",
+  "Topic :: Software Development :: Libraries :: Python Modules",
+]
+dependencies = [
+  "httpx>=0.24",
+]
+
+[project.optional-dependencies]
+# P0-4 Bash AST 拆解（依赖红线唯一豁免：缺省回退 fnmatch+policy:degraded）
+ast = [
+  "bashlex>=0.18",
+]
+# P1-8 Repo Map 符号提取（缺省回退 def/class 正则近似 degraded 地图）
+repomap = [
+  "tree-sitter>=0.21",
+  "tree-sitter-language-pack>=0.4",
+]
+dev = [
+  "pytest>=8",
+  "pytest-asyncio>=0.23",
+  "ruff>=0.4",
+  "playwright>=1.40",
+]
+webui = [
+  "PyYAML>=5.4",
+  "python-docx>=1.1",
+  "markdown>=3.5",
+  "fastapi>=0.110",
+  "uvicorn[standard]>=0.29",
+  "httpx>=0.27",
+  "python-multipart>=0.0.9",
+  "Pillow>=10",
+  "beautifulsoup4>=4.12",
+  "bashlex>=0.18",
+  "cryptography>=42",
+]
+# desktop = [ ... M3+ pywebview ... ]
+
+[project.scripts]
+loadn = "loadn.cli.main:main"
+loadn-web = "loadn_webui.cli:main"
+wd = "loadn_webui.cli:main"          # 旧名 alias（一版后移除）
+
+[project.urls]
+Homepage = "https://github.com/loadn-ai/loadn"
+Repository = "https://github.com/loadn-ai/loadn"
+Issues = "https://github.com/loadn-ai/loadn/issues"
+Changelog = "https://github.com/loadn-ai/loadn/blob/main/CHANGELOG.md"
+
+[tool.setuptools.packages.find]
+include = ["loadn*"]
+
+[tool.setuptools.package-data]
+loadn = ["py.typed"]
+
+[tool.pytest.ini_options]
+markers = [
+    "perf: 性能回归门（宽预算，挡数量级劣化——tests/test_perf_gate.py)",
+  "coverage(id): 成熟度记分卡证据标记（P3-6 taxonomy）",
+]
+addopts = ["--strict-markers"]
+asyncio_mode = "auto"
+asyncio_default_fixture_loop_scope = "session"
+asyncio_default_test_loop_scope = "session"
+testpaths = ["tests"]
+
+[tool.ruff]
+line-length = 100
+target-version = "py310"
+
+[tool.ruff.lint]
+select = ["E", "F", "W", "I", "UP", "B"]
+ignore = [
+  "E501",  # 长注释（中文宽字符）放宽到行宽检查器处理
+  "UP045", "UP046", "UP047",  # 保持 X | None 而非 Optional —— 全仓统一风格
+  "B008",
+  "E702",  # 单行 except/赋值是本仓既定风格（紧凑守卫）
+  "E402",  # 部分模块刻意晚 import（循环依赖规避/懒加载）
+  "B904",  # raise-from 链在多层 CLI 错误包装里噪声大于价值
+  "B905",  # zip strict 是 3.10 语义，存量调用两两等长
+]
+
+[tool.ruff.lint.per-file-ignores]
+"tests/*" = ["B011", "F841", "E741"]  # 测试保留赋值可读性/短循环变量名

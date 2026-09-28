@@ -1,0 +1,7 @@
+{
+  "$schema": "../gen/schemas/desktop-schema.json",
+  "identifier": "default",
+  "description": "壳自身（splash 引导页）的最低能力。VM 内 Web UI 是外部页面，默认拿不到任何 Tauri API——这是刻意的安全边界。",
+  "windows": ["main"],
+  "permissions": ["core:default", "core:event:default"]
+}

@@ -1,0 +1,23 @@
+name: multiedit-atomic-fail
+suites: [smoke]
+description: MultiEdit 原子性——第二步 old_string 失配时第一步也不落盘
+prompt: 批量替换
+files:
+  doc.md: "alpha\nbeta\ngamma\n"
+tools_enabled: [Read, MultiEdit]
+script:
+  - - tool: Read
+      input: {file_path: doc.md}
+  - - tool: MultiEdit
+      input:
+        file_path: doc.md
+        edits:
+          - old_string: "alpha"
+            new_string: "ALPHA"
+          - old_string: "不存在的串"
+            new_string: "boom"
+final_text_text: "第二步失配，整批回滚"
+assert_files:
+  - path: doc.md
+    equals: "alpha\nbeta\ngamma\n"   # 原子：成功的第一步也不落盘
+assert_result_subtype: success

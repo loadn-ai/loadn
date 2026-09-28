@@ -1,0 +1,119 @@
+name: desktop
+
+# 桌面形态（W2-U1：VM 执行域）三段流水：
+#   1. linux ：rootfs 双平台资产（build-payload → build-rootfs → verify-local
+#              ——docker --privileged 作 VM 替身做全链验收）→ artifact
+#   2. macos ：真 VZ 环境编译壳（dmg），资产+vfkit 一起打进 resources
+#   3. win   ：编译壳（msi），资产随包；安装后 wsl --import
+# 触发：手动（可跑单段）+ tag v*（产出 release 附件）。
+on:
+  workflow_dispatch:
+  push:
+    tags: ['v*']
+
+jobs:
+  rootfs:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with: { python-version: "3.12" }
+      - uses: actions/setup-node@v4
+        with: { node-version: "20", cache: npm, cache-dependency-path: ui/package-lock.json }
+      - name: wheelhouse 依赖
+        run: pip install pip wheel setuptools
+      - name: payload（git archive + ui dist + 离线 wheelhouse）
+        run: desktop/image/build-payload.sh
+      - name: rootfs（WSL tarball + VZ ext4/vmlinuz/initrd + SHA256SUMS）
+        run: desktop/image/build-rootfs.sh
+      - name: 本机全链验证（VM 替身）
+        run: desktop/image/verify-local.sh
+      - name: vfkit（mac 侧 VM 进程，随资产分发）
+        run: |
+          cd desktop/image/dist
+          curl -fsSL -o vfkit.zip \
+            https://github.com/crc-org/vfkit/releases/latest/download/vfkit-$(uname -m).zip
+          unzip -o vfkit.zip && rm vfkit.zip
+      - uses: actions/upload-artifact@v4
+        with:
+          name: vm-assets
+          path: desktop/image/dist/
+          retention-days: 14
+
+  macos:
+    needs: rootfs
+    runs-on: macos-15   # arm64：VZ/vfkit 原生环境
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with: { name: vm-assets, path: desktop/image/dist }
+      - uses: dtolnay/rust-toolchain@stable
+        with: { targets: aarch64-apple-darwin }
+      - uses: swatinem/rust-cache@v2
+        with: { workspaces: desktop/shell }
+      - name: 资产裁剪（mac 只要 ext4/vmlinuz/initrd/vfkit）
+        run: |
+          mkdir -p desktop/image/dist-platform
+          cd desktop/image/dist
+          cp rootfs-ext4-* vmlinuz-* initrd-* SHA256SUMS-* vfkit ../dist-platform/
+      - name: 壳 + dmg（资产注入 resources）
+        working-directory: desktop/shell
+        run: |
+          npm ci
+          npx tauri build --target aarch64-apple-darwin
+        env:
+          TAURI_CONFIG: >-
+            {"bundle":{"targets":["dmg"],"resources":{"../../image/dist-platform/":"vm-assets/"}}}
+      - uses: actions/upload-artifact@v4
+        with:
+          name: loadn-macos
+          path: desktop/shell/src-tauri/target/aarch64-apple-darwin/release/bundle/dmg/*.dmg
+          retention-days: 14
+
+  windows:
+    needs: rootfs
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with: { name: vm-assets, path: desktop/image/dist }
+      - uses: dtolnay/rust-toolchain@stable
+        with: { targets: x86_64-pc-windows-msvc }
+      - uses: swatinem/rust-cache@v2
+        with: { workspaces: desktop/shell }
+      - name: 资产裁剪（win 只要 wsl tarball + 清单）
+        shell: bash
+        run: |
+          mkdir -p desktop/image/dist-platform
+          cd desktop/image/dist
+          cp rootfs-wsl-* SHA256SUMS-* ../dist-platform/
+      - name: 壳 + msi（资产注入 resources）
+        working-directory: desktop/shell
+        shell: bash
+        run: |
+          npm ci
+          npx tauri build --target x86_64-pc-windows-msvc
+        env:
+          TAURI_CONFIG: >-
+            {"bundle":{"targets":["msi"],"resources":{"../../image/dist-platform/":"vm-assets/"}}}
+      - uses: actions/upload-artifact@v4
+        with:
+          name: loadn-windows
+          path: desktop/shell/src-tauri/target/x86_64-pc-windows-msvc/release/bundle/msi/*.msi
+          retention-days: 14
+
+  release:
+    # tag 推送时把 dmg/msi 挂上 GitHub Release
+    if: startsWith(github.ref, 'refs/tags/v')
+    needs: [macos, windows]
+    runs-on: ubuntu-latest
+    permissions: { contents: write }
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: loadn-*
+          merge-multiple: true
+          path: dist
+      - uses: softprops/action-gh-release@v2
+        with:
+          files: dist/*

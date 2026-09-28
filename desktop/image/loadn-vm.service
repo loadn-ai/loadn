@@ -1,0 +1,20 @@
+[Unit]
+Description=loadn desktop 执行域（控制面 + 沙箱引擎 + 出口代理）
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=loadn
+Group=loadn
+Environment=LOADN_WEBUI_HOME=/home/loadn/.loadn-data
+Environment=PATH=/opt/loadn/current/.venv/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
+ExecStart=/usr/local/sbin/loadn-vm-start.sh
+Restart=on-failure
+RestartSec=3
+# turn 子进程独立 session 存活（KillMode=process：服务重启不杀沙箱内引擎，
+# 下次启动 recover_after_restart 收养续跑——与生产 systemd 语义一致）
+KillMode=process
+
+[Install]
+WantedBy=multi-user.target

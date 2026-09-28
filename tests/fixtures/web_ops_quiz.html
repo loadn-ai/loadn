@@ -1,0 +1,81 @@
+<!DOCTYPE html>
+<!-- web-ops 原语库 fixture：React 受控输入模拟 + 翻页 quiz + 模态 + 证书链接。
+     与 tests/test_web_ops.py 配套（真 chrome headless 起本地 CDP 跑）。 -->
+<html>
+<head><meta charset="utf-8"><title>quiz fixture</title></head>
+<body>
+<h3 id="page-title">注册 + 考试 fixture</h3>
+
+<!-- React 受控输入模拟：只有走 native setter + input 事件，mirror 才会更新
+     （模拟 React state 由 input 事件驱动重渲染） -->
+<form id="reg">
+  <input id="email" name="email" />
+  <input id="name" name="name" />
+  <div id="mirror"></div>
+</form>
+<script>
+  // 模拟受控组件：state 更新由 input 事件触发（React 的本质行为）
+  const state = { email: "", name: "" };
+  for (const id of ["email", "name"]) {
+    document.getElementById(id).addEventListener("input", (e) => {
+      state[id] = e.target.value;
+      document.getElementById("mirror").textContent =
+        JSON.stringify(state);
+    });
+  }
+</script>
+
+<!-- quiz：3 题翻页，单选 radio（label 包 input），Next 按钮，第 3 题后禁用 -->
+<div id="quiz">
+  <div class="question" id="q"></div>
+  <div id="opts">
+    <label class="opt"><input type="radio" name="a" /> 选项甲</label>
+    <label class="opt"><input type="radio" name="a" /> 选项乙</label>
+    <label class="opt"><input type="radio" name="a" /> 选项丙</label>
+  </div>
+  <button id="next" onclick="nextQ()">Next</button>
+  <div id="modal" role="dialog" style="display:none">
+    <button id="ok-btn">Submit</button>
+  </div>
+  <a id="cert-link" href="https://example.com/certificates/download.pdf">Download certificate</a>
+  <a id="plain" href="https://example.com/about">About</a>
+
+  <!-- 防 JS click 的多选（二分路径 fixture）：合成事件（isTrusted=false）被拦，
+       真鼠标（isTrusted=true）放行转发给 checkbox——模拟证书项目"多选必须真鼠标" -->
+  <div id="guard">
+    <label class="optx" id="lx"><input type="checkbox" id="cx" /> 勾选我</label>
+    <span id="guard-log"></span>
+  </div>
+  <script>
+    document.getElementById("lx").addEventListener("click", (e) => {
+      document.getElementById("guard-log").textContent +=
+        (e.isTrusted ? "T" : "S");
+      if (!e.isTrusted) { e.preventDefault(); e.stopImmediatePropagation(); }
+    });
+  </script>
+</div>
+<script>
+  const QS = [
+    "第1题：哪个是 React 状态更新正确姿势？",
+    "第2题：多选题 JS click 失效时应改用什么？",
+    "第3题：base64 分块导出的老坑是什么？",
+  ];
+  let qi = 0;
+  const render = () => {
+    document.getElementById("q").textContent = QS[qi];
+    for (const inp of document.querySelectorAll("#opts input")) inp.checked = false;
+    const next = document.getElementById("next");
+    next.disabled = qi >= QS.length - 1;
+    if (qi >= QS.length - 1) {
+      document.getElementById("modal").style.display = "block";
+    }
+  };
+  function nextQ() { if (qi < QS.length - 1) { qi++; render(); } }
+  document.getElementById("ok-btn").onclick = () => {
+    document.getElementById("modal").style.display = "none";
+    window.__submitted = true;
+  };
+  render();
+</script>
+</body>
+</html>

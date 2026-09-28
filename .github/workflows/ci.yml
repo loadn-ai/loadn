@@ -1,0 +1,190 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+  schedule:
+    - cron: '23 4 * * 1'   # 周一 04:23 UTC（audit job）
+
+jobs:
+  lint:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - run: pip install ruff
+      - run: ruff check .
+
+  models-catalog:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - run: python scripts/check_models.py
+
+  evals:
+    runs-on: ubuntu-latest
+    if: github.event_name == 'schedule'   # nightly 发布门（P3-2；红=阻断）
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - run: pip install -e ".[dev,webui]"
+      - run: python evals/run.py --suite smoke
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: evals-report
+          path: evals/reports/
+
+  test:
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        python-version: ["3.10", "3.11", "3.12"]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python-version }}
+      - run: pip install -e ".[dev]"
+      - run: pytest -q
+        env:
+          LOADN_PROVIDER: fake
+
+  coverage:
+    # T1（tests/TEST-PLAN.md）：双包行覆盖率 + 门禁（基线 78.8%；
+    # 每张 T 卡收口时收紧 fail-under——TEST-PLAN §六目标 85%）
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - run: pip install -e ".[webui,dev]" pytest-cov
+      - run: pytest -q --cov=loadn --cov=loadn_webui --cov-report=term
+             --cov-fail-under=83
+        env:
+          LOADN_PROVIDER: fake
+
+  ui:
+    # 前端可构建（tsc + vite build），dist 不入库但随 release 发布
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: npm
+          cache-dependency-path: ui/package-lock.json
+      - run: npm ci
+        working-directory: ui
+      - run: npm run build
+        working-directory: ui
+
+  secrets:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: gitleaks/gitleaks-action@v2
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+  webui:
+    # 平台全量（loadn_webui）：webui extras + 同 venv 引擎（契约对赌需要
+    # loadn console_script）。legacy 资产依赖的测试自带 skipif。
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - run: pip install -e ".[webui,dev]" pytest-cov
+      - run: pip install playwright && playwright install chromium --with-deps || true
+      - run: pytest -q --cov=loadn_webui --cov-fail-under=83
+        env:
+          LOADN_PROVIDER: fake
+
+  audit:
+    # 供应链：依赖漏洞周扫（pip-audit 对 extras 全量解析）
+    if: github.event_name == 'schedule'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - run: pip install pip-audit && pip-audit -e ".[webui,dev]" --strict
+  perf:
+    # C-perf（tests/test_perf_gate.py）：性能回归门——周跑，宽预算
+    # （基线×4-8 余量）只挡数量级劣化，CI 波动不误报
+    if: github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - run: pip install -e ".[webui,dev]"
+      - run: pytest tests/test_perf_gate.py -q
+        env:
+          LOADN_PROVIDER: fake
+  mutation:
+    # M5（tests/TEST-PLAN.md §七）：突变杀伤率回归门——周跑代表性子集
+    # （全套 600+ 变异按台账队列本地跑；这里只守杀伤率不回退的底线）
+    if: github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - run: pip install -e ".[webui,dev]"
+      - name: 突变扫描（代表性子集）
+        run: |
+          python scripts/mutate.py \
+            --files loadn_webui/canary.py loadn/tools/multiedit.py \
+                    loadn/core/turn_diff.py loadn_webui/net_policy.py \
+                    loadn/core/compactor.py loadn/core/memory.py \
+                    loadn/providers/anthropic.py \
+                    loadn/providers/cassette.py \
+            --report reports/ci-mutation.json || true
+      - name: 逐文件杀伤率下限门
+        run: |
+          python - <<'EOF'
+          import json, sys
+          floors = {"loadn_webui/canary.py": 55,        # 台账终值 62%
+                    "loadn/tools/multiedit.py": 60,     # 71%
+                    "loadn/core/turn_diff.py": 65,      # 79%
+                    "loadn_webui/net_policy.py": 75,    # 82%
+                    "loadn/core/compactor.py": 60,      # 66%
+                    "loadn/core/memory.py": 50,         # 57%
+                    "loadn/providers/anthropic.py": 72, # 79%
+                    "loadn/providers/cassette.py": 55}  # 63%
+          rep = json.load(open("reports/ci-mutation.json"))["results"]
+          bad = []
+          for f, floor in floors.items():
+              r = rep.get(f)
+              if not r or not r["total"]:
+                  bad.append(f"{f}: 无结果"); continue
+              kill = r["killed"] / r["total"] * 100
+              print(f"{f}: {kill:.0f}% (floor {floor}%)")
+              if kill < floor:
+                  bad.append(f"{f}: {kill:.0f}% < {floor}%")
+          if bad:
+              print("\n".join(bad)); sys.exit(1)
+          EOF
+        env:
+          LOADN_PROVIDER: fake

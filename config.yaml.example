@@ -1,0 +1,100 @@
+# 产物分享：share server 独立进程只读服务 /share/<token>（对外经反代域名）
+share:
+  base_url: ""           # 如 https://your-domain.com/share；空=未启用
+
+# 运维通知（发给用户自己；调度唤醒/turn 报错/完成 三类事件）。provider 空=未启用。
+# 与 wechat-send（发给联系人）语义不同。telegram 自动走 resources.proxy（墙内必需）。
+notify:
+  provider: ""           # bark | serverchan | telegram | 空=关
+  bark_url: ""           # bark: https://api.day.app/<yourkey>
+  serverchan_key: ""     # Server酱 SendKey
+  telegram_bot_token: ""
+  telegram_chat_id: ""
+  events:                # 事件开关（on_scheduled 调度唤醒默认开，turn_done 默认关防刷屏）
+    on_error: true
+    on_scheduled: true
+    on_turn_done: false
+# 引擎参数（可选：不存在的键用代码默认值，升级不破坏配置）
+claude:
+  effort: high            # 无头会话推理力度
+  model: null             # null=继承 CLI/订阅默认
+  # claude_bin: /path/to/claude   # 测试/沙箱用（或环境变量 WORKDADDY_CLAUDE_BIN）
+
+# 可插拔执行引擎（claude=claude CLI | hahaness=自研原生引擎 | opencode）。
+# default 为全局默认，灰度切换只翻这一处；profiles/registry.yaml 每角色可用
+# engine 字段覆盖。opencode_provider 是 opencode -m <provider>/<model> 前缀。
+# no_compact 控制 hahaness 内压：null=自动（profile 设 rotate 则禁内压）。
+engines:
+  default: claude
+  opencode_provider: zai
+  no_compact: null
+  claude: {}              # {bin, model, provider, extra_args}
+  hahaness: {}            # bin 留空 = python -m hahaness（repo 内包）
+  opencode: {}
+
+run:
+  max_concurrent_turns: 3       # 同时在跑的 claude 进程上限（订阅并发保护）
+
+server:
+  host: 127.0.0.1         # 非 127.0.0.1 时强制要求 token
+  port: 8792
+  token: ""               # 空=本机回环免认证；设置后 Bearer/X-Workdaddy-Token/?token= 三通道
+
+mcp:
+  servers: {}             # 全局 MCP servers（标准 .mcp.json 的 mcpServers 格式），注入每个新会话
+  # servers:
+  #   fetch:
+  #     command: uvx
+  #     args: [mcp-server-fetch]
+
+# 外部资源接入（agent 动手能力）。端点默认即本机部署地址；密钥空=未启用，
+# 在管理中心「设置」页灌入（密钥不回传明文）。vlm 段留空则继承 titlegen 的 ark key。
+resources:
+  ocr_url: http://127.0.0.1:8686          # 多格式 OCR（图片/pdf/office）
+  sandbox_url: http://127.0.0.1:21111     # AIO 沙箱（浏览器/命令行/文件，含 MCP /mcp）
+                                          # 部署：scripts/run_sandbox.sh（火山 vefaaS
+                                          # all-in-one-sandbox 容器，21111→8080）
+  sandbox_api_key: ""
+  cdp_url: http://127.0.0.1:21111/cdp     # 沙箱内 Chrome CDP（fetch_page 兜底走这里）
+  proxy: http://127.0.0.1:7890        # clash，空=不可用
+  sms_url: https://sms.example.test:30443    # 真机短信查询
+  sms_token: ""
+  sms_phone: "+86 13800000000"
+  mail_imap: imap.126.com:993             # 平台邮箱（注册/登录收验证码）
+  mail_smtp: smtp.126.com:465
+  mail_user: you@example.com
+  mail_auth_code: ""                      # 126 授权码（非登录密码）
+  mailboxes: []                           # 追加邮箱（收验证码备用），设置页不管理：
+  # - user: someone@163.com               #   agent 用 `wd r mail --box 163` 选
+  #   imap: imap.163.com:993
+  #   smtp: smtp.163.com:465
+  #   auth_code: ""                       # 授权码（非登录密码）
+  vlm_api_base: ""                        # 空 = 继承 titlegen.api_base
+  vlm_api_key: ""                         # 空 = 继承 titlegen.api_key
+  vlm_model: doubao-seed-2-1-turbo-260628
+  twocaptcha_key: ""
+  bocha_key: ""                           # 博查中文网页搜索
+  adb_addr: 127.0.0.1:5555             # android 真机
+  textr_email: ''                              # Textr Go 美国虚拟号码（收验证码）
+  textr_password: ''
+
+# 安全平面（全部有出厂默认——不需要可整段删掉；详见 docs/ATTACK_SURFACE.md）
+security:
+  # W2 执行沙箱档位（枚举，加载期校验；解析/探测/降档见 loadn_webui/sandbox.py）：
+  #   off            降级档：直跑（诚实标注「本机文件未隔离」；W1/W3/W6 仍生效）
+  #   bwrap          Linux 原生 bwrap 档（服务器/生产形态；探测 bwrap+user namespace，
+  #                  不可用 fail-closed 降 off + sandbox_violation 审计）
+  #   vm-bwrap       桌面 VM 执行域（loadn desktop 置备时写入——平台运行于 VM 内，
+  #                  执行语义=bwrap，该值同时是「VM 执行域」的报告标记）
+  #   seatbelt / appcontainer / remote   原生轻量档/远程执行器（占位未实现，降 off+审计）
+  sandbox: bwrap
+  egress_mode: enforce   # enforce=白名单强制 | warn=只记录放行
+
+# 成本分析页价目（留空 = 用 workdaddy/pricing.py 内置 z.ai 官方价目，2026-09 调研）。
+# api/plan_credits 覆盖即**整表替换**（非深合并），键结构：
+#   api: {模型名: {input: $/M, cache_read: $/M, output: $/M}}
+#   plan_credits: {模型名: {input: 积分/M, cache_input: 积分/M, output: 积分/M}}
+pricing:
+  api: {}
+  plan_credits: {}
+  usd_cny: 0             # 0 = 内置 7.1

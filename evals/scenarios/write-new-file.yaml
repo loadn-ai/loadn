@@ -1,0 +1,14 @@
+name: write-new-file
+suites: [smoke]
+description: 新建文件直写 + 嵌套目录创建
+prompt: 生成配置
+tools_enabled: [Write]
+script:
+  - - tool: Write
+      input:
+        file_path: "config/app.yaml"
+        content: "name: demo\nversion: 2\n"
+final_text_text: "written"
+assert_files:
+  - path: config/app.yaml
+    contains: ["name: demo", "version: 2"]

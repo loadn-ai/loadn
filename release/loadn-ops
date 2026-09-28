@@ -1,0 +1,17 @@
+#!/bin/bash
+# loadn-ops：ops 命令 wrapper——优先 current venv，坏则回落 previous（L3 自救）
+set -eu
+DEPLOY=/opt/loadn
+PY="$DEPLOY/current/.venv/bin/python"
+if [ ! -x "$PY" ]; then
+    PREV=$(python3 -c "
+import json; d=json.load(open('$DEPLOY/state/deploy.json'))
+print(d.get('previous',''))" 2>/dev/null || echo "")
+    if [ -n "$PREV" ] && [ -x "$DEPLOY/releases/$PREV/.venv/bin/python" ]; then
+        PY="$DEPLOY/releases/$PREV/.venv/bin/python"
+        echo "⚠️  current venv 不可用，回落 previous=$PREV" >&2
+    else
+        echo "✗ 无可用 venv（L4：repair-venv 或手动恢复）" >&2; exit 4
+    fi
+fi
+exec "$PY" -m loadn_webui "$@"
