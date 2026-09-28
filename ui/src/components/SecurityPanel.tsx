@@ -126,6 +126,22 @@ function Dot({ ok, warn }: { ok: boolean; warn?: boolean }) {
   return <span style={{ display: 'inline-block', width: 8, height: 8, borderRadius: '50%', background: color, marginRight: 6, flexShrink: 0 }} />;
 }
 
+/** sid → 会话名链接：审计行只存 sid，而 sid 的 slug 冻结在创建瞬间
+ *  （默认「新任务」——titlegen 事后命名不回填），直接展示全是「新任务xxxx」。
+ *  从 store 解析当前标题；未命中（归档/已删）回落原始 sid。 */
+function SessionLink({ sid, jump, truncate = false }: {
+  sid: string | null; jump: (s: string | null) => void; truncate?: boolean;
+}) {
+  const title = useStore(s => s.sessions.find(x => x.id === sid)?.title);
+  if (!sid) return <>—</>;
+  const label = title || sid;
+  return (
+    <a onClick={() => jump(sid)} style={{ cursor: 'pointer' }} title={sid}>
+      {truncate && label.length > 20 ? `${label.slice(0, 20)}…` : label}
+    </a>
+  );
+}
+
 const card = { border: '1px solid var(--border,#333)', borderRadius: 8, padding: '10px 12px' };
 type CardKey = 'sandbox' | 'approvals' | 'egress' | 'vault' | 'audit' | 'canary';
 
@@ -226,8 +242,8 @@ export default function SecurityPanel({ onClose }: { onClose: () => void }) {
   const sandboxHint = sandboxOk
     ? sbxEff === 'vm-bwrap' ? '执行域整个运行在桌面 Linux 虚拟机内，与服务器安全语义逐字节一致。' : undefined
     : sandboxWarn
-      ? `原因：${REASON_ZH[sbxReason] ?? sbxReason}。可在 config.yaml 的 security.sandbox 改为可用档位后重启。`
-      : '引擎在本机直跑。审批/出口管控/审计/蜜罐仍然生效，但文件不隔离：在 config.yaml 的 security.sandbox 设为 bwrap 后重启可开启。';
+      ? `原因：${REASON_ZH[sbxReason] ?? sbxReason}。可在下方安全运维面切换可用档位（下一任务起生效）。`
+      : '引擎在本机直跑。审批/出口管控/审计/蜜罐仍然生效，但文件不隔离：在下方安全运维面切为 bwrap 即可开启（下一任务起生效）。';
   const policyOk = posture.policy.approval_enforce === 'enforce';
   const policyWarn = posture.policy.approval_enforce === 'warn';
   const egressOk = posture.egress.mode === 'enforce';
@@ -250,7 +266,7 @@ export default function SecurityPanel({ onClose }: { onClose: () => void }) {
     {
       key: 'sandbox', name: '沙箱隔离', ok: sandboxOk, warn: sandboxWarn, icon: '📦',
       top: sandboxTop,
-      sub: 'AI 执行的命令被关在隔离环境里，碰不到系统其它文件与真实网络。档位在明细里可切（重启生效）。',
+      sub: 'AI 执行的命令被关在隔离环境里，碰不到系统其它文件与真实网络。档位在明细里可切（下一任务起生效）。',
       hint: sandboxHint,
     },
     {
@@ -400,12 +416,7 @@ export default function SecurityPanel({ onClose }: { onClose: () => void }) {
               <tr key={r.id} style={isLlm ? { opacity: 0.6 } : undefined}>
                 <td style={{ fontVariantNumeric: 'tabular-nums' }}>{(r.ts || '').slice(5, 19).replace('T', ' ')}</td>
                 <td>{isLlm ? '模型调用' : (TYPE_ZH[r.type] ?? r.type)}</td>
-                <td>
-                  {r.sid ? (
-                    <a onClick={() => jump(r.sid)} style={{ cursor: 'pointer' }}
-                      title="打开该会话">{r.sid.slice(0, 18)}…</a>
-                  ) : '—'}
-                </td>
+                <td><SessionLink sid={r.sid} jump={jump} truncate /></td>
                 <td>{r.count ? humanize(r) + ` × ${r.count}` : humanize(r)}</td>
               </tr>
             );
@@ -428,7 +439,7 @@ function DetailHead({ title, note }: { title: string; note?: string }) {
 }
 
 /** 安全运维面编辑器（PUT /api/admin/security/ops）：七键局部写。
- *  简单键即改即存；沙箱档位标注重启生效；授权面列表行编辑。
+ *  简单键即改即存；沙箱档位下一任务起生效（spawn 期消费）；授权面列表行编辑。
  *  红线键（审计链/确认码门/信任门）不在此面——宪法不可配。 */
 function OpsDetail({ ops, reload }: { ops: OpsConfig; reload: () => void }) {
   const [busy, setBusy] = useState('');
@@ -478,7 +489,7 @@ function OpsDetail({ ops, reload }: { ops: OpsConfig; reload: () => void }) {
   };
   return (
     <div className="setting-card" style={{ marginTop: 14 }}>
-      <h4>安全运维面 <span className="muted">（yaml round-trip 持久化 · 沙箱档位重启生效，其余热生效）</span></h4>
+      <h4>安全运维面 <span className="muted">（yaml round-trip 持久化 · 全部热生效：沙箱档位自下一任务起，其余立即）</span></h4>
       {err && <div style={{ color: 'var(--accent,#e5484d)', fontSize: 12, margin: '6px 0' }}>写入被拒：{err}</div>}
       <div className="setting-row">
         <span className="setting-k">沙箱档位</span>
@@ -489,7 +500,7 @@ function OpsDetail({ ops, reload }: { ops: OpsConfig; reload: () => void }) {
             <option key={v} value={v}>{v} — {label}</option>)}
         </select>
         <button className="mini-btn" disabled={!sandbox || busy === 'saving'}
-          onClick={saveSandbox}>切换（重启生效）</button>
+          onClick={saveSandbox}>切换（下一任务起生效）</button>
       </div>
       <div className="setting-row">
         <span className="setting-k">codemode</span>
@@ -576,7 +587,8 @@ function SandboxDetail({ events, jump, tier }: {
         当前档位：<b>{TIER_ZH[eff] ?? eff}</b>
         {req !== eff && `（请求 ${TIER_ZH[req] ?? req}${reason ? ` · ${REASON_ZH[reason] ?? reason}，已降档` : ''}）`}
         。档位在 config.yaml 的 security.sandbox 配置（枚举：off / bwrap /
-        vm-bwrap / seatbelt / appcontainer / remote），重启生效。
+        vm-bwrap / seatbelt / appcontainer / remote），设置面切换后自下一
+        任务起生效（在跑任务的沙箱形态已定型，不受影响）。
       </div>
       <table className="kv-table" style={{ width: '100%' }}>
         <thead><tr><th style={{ width: 96 }}>时间</th><th style={{ width: 80 }}>引擎</th><th style={{ width: 110 }}>隔离</th><th>会话</th></tr></thead>
@@ -590,7 +602,7 @@ function SandboxDetail({ events, jump, tier }: {
                 <td style={{ fontVariantNumeric: 'tabular-nums' }}>{(s.ts || '').slice(5, 19).replace('T', ' ')}</td>
                 <td>{d.engine ?? '?'}</td>
                 <td style={{ color: ok ? '#3aa675' : 'var(--accent,#e5484d)' }}>{ok ? '沙箱内' : '⚠ 直跑'}</td>
-                <td>{s.sid ? <a onClick={() => jump(s.sid)} style={{ cursor: 'pointer' }}>{s.sid}</a> : '—'}</td>
+                <td><SessionLink sid={s.sid} jump={jump} /></td>
               </tr>
             );
           })}
@@ -622,7 +634,7 @@ function ApprovalsDetail({ events, jump }: { events: AuditEvent[]; jump: (s: str
               <td>{p.id}</td>
               <td style={{ fontVariantNumeric: 'tabular-nums' }}>{(p.created_at || '').slice(5, 19).replace('T', ' ')}</td>
               <td>{p.summary}</td>
-              <td>{p.sid ? <a onClick={() => jump(p.sid)} style={{ cursor: 'pointer' }}>{p.sid.slice(0, 18)}…</a> : '—'}</td>
+              <td><SessionLink sid={p.sid} jump={jump} truncate /></td>
             </tr>
           ))}
         </tbody>
@@ -946,7 +958,7 @@ function CanaryDetail({ locked, reload, jump }: {
           {locked.map(l => (
             <tr key={l.sid}>
               <td>
-                <a onClick={() => jump(l.sid)} style={{ cursor: 'pointer' }}>{l.sid}</a>
+                <SessionLink sid={l.sid} jump={jump} />
                 <span className="muted" style={{ marginLeft: 10, fontSize: 12 }}>{l.reason}</span>
                 <button style={{ marginLeft: 12 }} disabled={busy === l.sid}
                   onClick={() => void unlock(l.sid)}>{busy === l.sid ? '解锁中…' : '解锁'}</button>

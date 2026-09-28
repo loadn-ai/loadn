@@ -54,8 +54,8 @@ def bwrap_available() -> bool:
 
 # ---- W2 档位解析（A/B/C 三方案归一的枚举层） ----
 # 探测/解析进程内缓存：bwrap_available() 真跑一次子进程（10s 超时），不能
-# 每 spawn 都探测；sandbox 是重启语义配置（egress 白名单才热更），进程内
-# 不会变值 → 按 requested 值缓存解析结果即可。
+# 每 spawn 都探测；档位可经设置面 setattr 进程内变值（手改 yaml 才需重启），
+# 缓存按 requested 值键控——换值自然重解析，探测结果按进程缓存即可。
 _probe_cache: bool | None = None
 _resolve_cache: dict[str, tuple[str, str]] = {}
 _warned: set[str] = set()

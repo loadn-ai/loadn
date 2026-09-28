@@ -539,7 +539,8 @@ def put_security_ops(body: dict) -> dict:
     授权面 / approval TTL 与终态 / egress 代理端口。键可省略（只改给的）。
 
     红线键（审计链/确认码门本体/信任门/SSRF 段）不在此面——宪法不可配。
-    sandbox 档位变更重启语义（spawn 期生效），与 egress 热更不同。
+    sandbox 档位变更在下一任务 spawn 生效（wrap_engine 惰性读 CONFIG；
+    在跑任务沙箱已定型）——手改 yaml 才需重启，此写路径带 setattr 即热。
     """
     from .config import SANDBOX_TIERS
     updates: dict = {}
@@ -586,6 +587,6 @@ def put_security_ops(body: dict) -> dict:
         setattr(CONFIG.security, k, v)
     from .security.audit import audit
     audit("policy_change", {"action": "security-ops-put", **updates})
-    log.info("安全运维面更新：%s（sandbox 档位重启生效，其余热生效）",
+    log.info("安全运维面更新：%s（sandbox 档位下一任务生效，其余热生效）",
              {k: v for k, v in updates.items()})
     return {"ok": True, **updates}
