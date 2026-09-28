@@ -10,8 +10,10 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from .config import CONFIG, PATHS
+from .config import CONFIG, PATHS, PerEngineConfig
 from .integrations.mcp_admin import _dump_yaml_conf, _load_yaml_conf
+from .integrations.pricing import API_PRICING, PLAN_CREDITS
+from .profile import PROFILE_DEFAULTS
 from .util import get_logger
 
 log = get_logger(__name__)
@@ -45,12 +47,17 @@ def get_settings() -> dict:
     nf = CONFIG.notify
     from .engines import ALIASES, ENGINES
     eng = CONFIG.engines
+    # 覆盖真源=config.yaml 原始节（写路径同源）：CONFIG 值是「覆盖+默认」合并
+    # 结果，分不出「用户配过」与「自动探测」，前端禁用态据此判断
+    raw_eng = _load_yaml_conf(_conf_path()).get("engines") or {}
     per: dict = {}
     for name in ("claude", "loadn", "opencode", "hahaness"):
         p = getattr(eng, name)
         per[name] = {"bin": p.bin or "", "model": p.model or "",
                      "provider": p.provider or "", "enabled": bool(p.enabled),
-                     "extra_args": list(p.extra_args or [])}
+                     "extra_args": list(p.extra_args or []),
+                     "override": isinstance(raw_eng.get(name), dict)
+                     and bool(raw_eng[name])}
     return {
         "titlegen": {
             "enabled": bool(tg.enabled),
@@ -77,8 +84,14 @@ def get_settings() -> dict:
         "share": {"base_url": CONFIG.share.base_url},
         "pricing": {"usd_cny": CONFIG.pricing.usd_cny,
                     "api": CONFIG.pricing.api,
-                    "plan_credits": CONFIG.pricing.plan_credits},
+                    "plan_credits": CONFIG.pricing.plan_credits,
+                    # 内置表参考（只读透出）：覆盖缺席态的展示 + 「从内置复制」起点
+                    "builtin": {"api": dict(API_PRICING),
+                                "plan_credits": dict(PLAN_CREDITS)}},
         "convergence": convergence_snapshot(),
+        # 收敛三键 registry 缺省（profile.PROFILE_DEFAULTS 单一真源）：
+        # 「恢复默认」确认文案与占位符用
+        "convergence_defaults": dict(PROFILE_DEFAULTS),
         "resources": res,
         "notify": {
             "provider": nf.provider,
@@ -107,17 +120,34 @@ def convergence_snapshot() -> list[dict]:
 
 
 def put_convergence(body: dict) -> dict:
-    """批量写角色收敛度 → registry.yaml（round-trip + 备份），下一 turn 生效。"""
+    """批量写角色收敛度 → registry.yaml（round-trip + 备份），下一 turn 生效。
+
+    body 键：profiles={name:{三键}} 写值；reset=[name…] 恢复默认（pop 三键，
+    条目弹空保留空 dict——数据根 registry 遮蔽仓库层，删条目=删角色，红线）。
+    两键可并存，reset 先应用。
+    """
     from . import profile as profile_mod
     reg = profile_mod.load_registry()
     updates = body.get("profiles") or {}
-    if not updates:
+    resets = body.get("reset") or []
+    if not updates and not resets:
         raise ValueError("没有可更新的角色")
+    if not isinstance(resets, list) or not all(isinstance(x, str) for x in resets):
+        raise ValueError("reset 需为角色名数组")
     from .config import ROOT as _R
     path = _R / "profiles" / "registry.yaml"      # 写到数据根（用户定制层）
     path.parent.mkdir(parents=True, exist_ok=True)
     data = _load_yaml_conf(path)
     raw = data.setdefault("profiles", {})
+    for name in resets:
+        if name not in reg:
+            raise ValueError(f"未知 profile: {name}")
+        entry = raw.get(name)
+        if entry is None:            # 数据根无该条（纯默认）→ 占位空条目即可
+            raw[name] = {}
+            continue
+        for k in ("timeout_s", "stall_timeout_s", "max_turns"):
+            entry.pop(k, None)       # 弹空保留 entry 本体（防删角色）
     for name, spec in updates.items():
         if name not in reg:
             raise ValueError(f"未知 profile: {name}")
@@ -146,7 +176,7 @@ def put_convergence(body: dict) -> dict:
                 entry["max_turns"] = n
     _dump_yaml_conf(path, data)
     profile_mod.reset_cache()
-    log.info("设置更新收敛度: %s", {k: v for k, v in updates.items()})
+    log.info("设置更新收敛度: %s reset=%s", {k: v for k, v in updates.items()}, resets)
     return {"ok": True, "profiles": convergence_snapshot()}
 
 
@@ -220,7 +250,7 @@ def put_engines(body: dict) -> dict:
     """engines 节写入（默认引擎/opencode 前缀/内压开关/每引擎覆盖）。
 
     消费点（engines.resolve、各 spec.build_argv）每会话惰性读 CONFIG，
-    setattr 即热生效（下一 turn 起）。
+    setattr 即热生效（下一 turn 起）。per[name]=null 为整段删除=清除覆盖。
     """
     from .engines import ENGINES
     updates: dict = {}
@@ -242,10 +272,13 @@ def put_engines(body: dict) -> dict:
     per = body.get("engines") or {}
     if not isinstance(per, dict):
         raise ValueError("engines 需为对象 {claude|loadn|opencode|hahaness: {...}}")
-    eng_updates: dict[str, dict] = {}
+    eng_updates: dict[str, dict | None] = {}
     for name, spec in per.items():
         if name not in _ENGINE_KEYS:
             raise ValueError(f"未知引擎段: {name!r}（可用 {'|'.join(_ENGINE_KEYS)}）")
+        if spec is None:            # null=整段删除（清除覆盖，回自动探测/继承）
+            eng_updates[name] = None
+            continue
         if not isinstance(spec, dict):
             raise ValueError(f"engines.{name} 需为对象")
         entry: dict = {}
@@ -274,6 +307,9 @@ def put_engines(body: dict) -> dict:
     for k, v in updates.items():
         sec[k] = v
     for name, entry in eng_updates.items():    # 嵌套段与 yaml 现值合并
+        if entry is None:                      # 删段（null）不残留空键
+            sec.pop(name, None)
+            continue
         cur = sec.get(name)
         base = dict(cur) if isinstance(cur, dict) else {}
         base.update(entry)
@@ -282,11 +318,15 @@ def put_engines(body: dict) -> dict:
     for k, v in updates.items():
         setattr(CONFIG.engines, k, v)
     for name, entry in eng_updates.items():
+        if entry is None:                      # CONFIG 同步重置（比逐键 setattr
+            setattr(CONFIG.engines, name, PerEngineConfig())  # 干净——无残留）
+            continue
         obj = getattr(CONFIG.engines, name)
         for k, v in entry.items():
             setattr(obj, k, v)
     log.info("设置更新 engines: %s %s", updates,
-             {k: sorted(v) for k, v in eng_updates.items()})
+             {k: "(删段)" if v is None else sorted(v)
+              for k, v in eng_updates.items()})
     return get_settings()
 
 

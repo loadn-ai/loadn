@@ -48,6 +48,10 @@ class Profile:
 
 _REGISTRY: dict[str, Profile] | None = None
 
+# 收敛三键的 registry 缺省值（单一真源）：条目缺键/被「恢复默认」弹掉后，
+# load_registry 按这里回落。设置面 get_settings 原样透出给前端做占位/确认文案。
+PROFILE_DEFAULTS = {"timeout_s": 3600, "stall_timeout_s": 1800, "max_turns": None}
+
 
 def load_registry() -> dict[str, Profile]:
     global _REGISTRY
@@ -78,8 +82,9 @@ def load_registry() -> dict[str, Profile]:
             skills=[str(s) for s in spec.get("skills") or []],
             effort=spec.get("effort", "high"),
             model=spec.get("model"),
-            timeout_s=int(spec.get("timeout_s", 3600)),
-            stall_timeout_s=int(spec.get("stall_timeout_s", 1800)),
+            timeout_s=int(spec.get("timeout_s", PROFILE_DEFAULTS["timeout_s"])),
+            stall_timeout_s=int(spec.get("stall_timeout_s",
+                                         PROFILE_DEFAULTS["stall_timeout_s"])),
             max_turns=(int(spec["max_turns"]) if spec.get("max_turns") else None),
             rotate_input_tokens=(int(rotate["input_tokens"])
                                  if isinstance(rotate, dict) and rotate.get("input_tokens")

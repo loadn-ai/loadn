@@ -9,7 +9,7 @@ interface TitleGenCfg {
   enabled: boolean; api_base: string; model: string;
   api_key_set: boolean; api_key_hint: string;
 }
-interface PerEngineCfg { bin: string; model: string; provider: string; enabled: boolean; extra_args: string[] }
+interface PerEngineCfg { bin: string; model: string; provider: string; enabled: boolean; extra_args: string[]; override?: boolean }
 interface EnginesCfg {
   default: string; available: string[]; opencode_provider: string;
   no_compact: boolean | null; per: Record<string, PerEngineCfg>;
@@ -24,6 +24,8 @@ interface ShareCfg { base_url: string }
 interface PricingCfg {
   usd_cny: number; api: Record<string, Record<string, number>>;
   plan_credits: Record<string, Record<string, number>>;
+  builtin: { api: Record<string, Record<string, number>>;
+             plan_credits: Record<string, Record<string, number>> };
 }
 interface ServerCfg {
   host: string; port: number; token_set: boolean;
@@ -58,6 +60,17 @@ const RES_SECRET_FIELDS: [key: string, label: string][] = [
 interface ConvRow {
   name: string; timeout_s: number; stall_timeout_s: number; max_turns: number | null;
 }
+interface ConvDefaults { timeout_s: number; stall_timeout_s: number; max_turns: number | null }
+
+/** 价目表结构化行（字符串态供输入编辑；err=行级校验文案，保存时填充） */
+interface PriceRow { model: string; input: string; cache: string; output: string; err?: string }
+
+const rowsFromTable = (t: Record<string, Record<string, number>> | undefined,
+                       cacheKey: string): PriceRow[] =>
+  Object.entries(t ?? {}).map(([m, p]) => ({
+    model: m, input: String(p.input ?? ''), cache: String(p[cacheKey] ?? ''),
+    output: String(p.output ?? ''),
+  }));
 
 
 export default function SettingsTab() {
@@ -66,6 +79,8 @@ export default function SettingsTab() {
   const [run, setRun] = useState<{ max_concurrent_turns: number; replay_max_events: number;
                                    events_retain_days: number } | null>(null);
   const [conv, setConv] = useState<ConvRow[] | null>(null);
+  const [convDef, setConvDef] = useState<ConvDefaults>(
+    { timeout_s: 3600, stall_timeout_s: 1800, max_turns: null });
   const [convMsg, setConvMsg] = useState('');
   const [eng, setEng] = useState<EnginesCfg | null>(null);
   const [cl, setCl] = useState<ClaudeCfg | null>(null);
@@ -77,7 +92,8 @@ export default function SettingsTab() {
   const [share, setShare] = useState<ShareCfg | null>(null);
   const [shareMsg, setShareMsg] = useState('');
   const [pricing, setPricing] = useState<PricingCfg | null>(null);
-  const [priceJson, setPriceJson] = useState('');
+  const [apiRows, setApiRows] = useState<PriceRow[]>([]);
+  const [planRows, setPlanRows] = useState<PriceRow[]>([]);
   const [priceMsg, setPriceMsg] = useState('');
   const [srv, setSrv] = useState<ServerCfg | null>(null);
   const [res, setRes] = useState<ResCfg | null>(null);
@@ -91,13 +107,16 @@ export default function SettingsTab() {
   useEffect(() => { void reload(); }, []);
   async function reload() {
     const d = await api<{ titlegen: TitleGenCfg; run: NonNullable<typeof run>;
-                          convergence: ConvRow[]; resources: ResCfg;
+                          convergence: ConvRow[]; convergence_defaults: ConvDefaults;
+                          resources: ResCfg;
                           engines: EnginesCfg; claude: ClaudeCfg; notify: NotifyCfg;
                           share: ShareCfg; pricing: PricingCfg; server: ServerCfg }>('/api/settings');
     setTg(d.titlegen); setRun(d.run); setConv(d.convergence); setRes(d.resources); setKeyInput(''); setResKeys({});
+    setConvDef(d.convergence_defaults ?? { timeout_s: 3600, stall_timeout_s: 1800, max_turns: null });
     setEng(d.engines); setCl(d.claude); setNf(d.notify); setNfKeys({});
     setShare(d.share); setPricing(d.pricing);
-    setPriceJson(JSON.stringify({ api: d.pricing.api ?? {}, plan_credits: d.pricing.plan_credits ?? {} }, null, 2));
+    setApiRows(rowsFromTable(d.pricing.api, 'cache_read'));
+    setPlanRows(rowsFromTable(d.pricing.plan_credits, 'cache_input'));
     setSrv(d.server);
   }
 
@@ -166,6 +185,17 @@ export default function SettingsTab() {
     setEng(e => e ? { ...e, per: { ...e.per, [name]: { ...e.per[name], ...patch } } } : e);
   }
 
+  /** 清除覆盖=整段删（yaml 段+内存回自动探测/继承），区别于逐字段清空 */
+  async function clearEngineOverride(name: string) {
+    if (!confirm(`清除 ${name} 的引擎覆盖？（yaml 段整删，bin/模型/参数回自动探测与继承链）`)) return;
+    try {
+      const d = await api<{ engines: EnginesCfg }>('/api/settings/engines', {
+        method: 'PUT', body: JSON.stringify({ engines: { [name]: null } }) });
+      setEng(d.engines);
+      setEngMsg(`✓ 已清除 ${name} 覆盖（下一 turn 起按自动探测）`);
+    } catch (e) { setEngMsg(`清除失败：${String(e)}`); }
+  }
+
   async function saveNotify() {
     await saveNotifyQuiet(true);
   }
@@ -206,21 +236,85 @@ export default function SettingsTab() {
     } catch (e) { setShareMsg(`保存失败：${String(e)}`); }
   }
 
+  /** 行校验（红框标记+行级文案，就地写回 rows）；全过才允许发请求 */
+  function collectTable(rows: PriceRow[], cacheKey: string):
+      { rows: PriceRow[]; table: Record<string, Record<string, number>> | null } {
+    const seen = new Set<string>();
+    const marked = rows.map(r => {
+      let err = '';
+      if (!r.model.trim()) err = '模型名不能为空';
+      else if (seen.has(r.model.trim())) err = `模型名重复：${r.model.trim()}`;
+      else if ([r.input, r.cache, r.output].some(v => v === '' || Number.isNaN(Number(v)) || Number(v) < 0))
+        err = '三个数值都需为 ≥0 的数';
+      if (r.model.trim()) seen.add(r.model.trim());
+      const { err: _drop, ...rest } = r;
+      return err ? { ...rest, err } : rest;
+    });
+    const bad = marked.some(r => (r as PriceRow).err);
+    if (bad) return { rows: marked, table: null };
+    const table = Object.fromEntries(marked.map(r => [r.model.trim(), {
+      input: Number(r.input), [cacheKey]: Number(r.cache), output: Number(r.output) }]));
+    return { rows: marked, table };
+  }
+
   async function savePricing() {
     if (!pricing) return;
+    const a = collectTable(apiRows, 'cache_read');
+    const p = collectTable(planRows, 'cache_input');
+    setApiRows(a.rows); setPlanRows(p.rows);
+    if (a.table === null || p.table === null) {
+      setPriceMsg('有校验未过的行（红底行）——修正后再保存');
+      return;
+    }
     try {
-      const parsed = JSON.parse(priceJson || '{}');
       const d = await api<{ pricing: PricingCfg }>('/api/settings/pricing', {
         method: 'PUT', body: JSON.stringify({ usd_cny: pricing.usd_cny,
-          api: parsed.api ?? {}, plan_credits: parsed.plan_credits ?? {} }) });
+          api: a.table, plan_credits: p.table }) });
       setPricing(d.pricing);
-      setPriceJson(JSON.stringify({ api: d.pricing.api ?? {}, plan_credits: d.pricing.plan_credits ?? {} }, null, 2));
+      setApiRows(rowsFromTable(d.pricing.api, 'cache_read'));
+      setPlanRows(rowsFromTable(d.pricing.plan_credits, 'cache_input'));
       setPriceMsg('✓ 已保存（即时生效）');
     } catch (e) { setPriceMsg(`保存失败：${String(e)}`); }
   }
 
+  async function restoreBuiltinPricing() {
+    if (!pricing) return;
+    const n = Object.keys(pricing.builtin?.api ?? {}).length;
+    if (!confirm(`恢复内置官方价目？当前覆盖表（api ${apiRows.length} 行 / plan ${planRows.length} 行）将清空，回到 ${n} 个内置模型。`)) return;
+    try {
+      const d = await api<{ pricing: PricingCfg }>('/api/settings/pricing', {
+        method: 'PUT', body: JSON.stringify({ usd_cny: pricing.usd_cny, api: {}, plan_credits: {} }) });
+      setPricing(d.pricing);
+      setApiRows([]); setPlanRows([]);
+      setPriceMsg('✓ 已恢复内置价目');
+    } catch (e) { setPriceMsg(`恢复失败：${String(e)}`); }
+  }
+
+  async function copyPricingJson() {
+    const a = collectTable(apiRows, 'cache_read');
+    const p = collectTable(planRows, 'cache_input');
+    const text = JSON.stringify({ api: a.table ?? {}, plan_credits: p.table ?? {} }, null, 2);
+    try {
+      await navigator.clipboard.writeText(text);
+      setPriceMsg('✓ 当前覆盖表 JSON 已复制到剪贴板');
+    } catch { setPriceMsg(text); }                       // 剪贴板不可用时直接展示
+  }
+
   function updConv(name: string, patch: Partial<ConvRow>) {
     setConv(rs => rs?.map(r => r.name === name ? { ...r, ...patch } : r) ?? null);
+  }
+
+  /** 恢复默认=弹掉该角色的收敛三键（registry 条目保留，回 PROFILE_DEFAULTS） */
+  async function resetConv(name: string) {
+    const { timeout_s, stall_timeout_s, max_turns } = convDef;
+    const t = `${Math.round(timeout_s / 60)} 分 / ${Math.round(stall_timeout_s / 60)} 分 / ${max_turns ?? '不限'}`;
+    if (!confirm(`恢复 ${name} 的收敛度默认？（硬超时/静默判死/轮次上限 → ${t}）`)) return;
+    try {
+      const d = await api<{ profiles: ConvRow[] }>('/api/settings/convergence', {
+        method: 'PUT', body: JSON.stringify({ reset: [name] }) });
+      setConv(d.profiles);
+      setConvMsg(`✓ ${name} 已恢复默认（下一 turn 生效）`);
+    } catch (e) { setConvMsg(`恢复失败：${String(e)}`); }
   }
 
   async function saveConv() {    if (!conv) return;
@@ -384,7 +478,7 @@ export default function SettingsTab() {
             placeholder="zai" style={{ maxWidth: 120 }} />
         </div>
         <div className="tbl-wrap"><table className="mcp-table">
-          <thead><tr><th>引擎</th><th>启用</th><th>bin</th><th>模型</th><th>provider</th><th>追加参数（每行一个）</th></tr></thead>
+          <thead><tr><th>引擎</th><th>启用</th><th>bin</th><th>模型</th><th>provider</th><th>追加参数（每行一个）</th><th>操作</th></tr></thead>
           <tbody>{Object.entries(eng.per).map(([name, p]) => (
             <tr key={name}>
               <td>{name}{name === 'hahaness' && <span className="muted">（旧名）</span>}</td>
@@ -398,6 +492,9 @@ export default function SettingsTab() {
                 onChange={e => updEngine(name, { provider: e.target.value })} /></td>
               <td><textarea className="mono" rows={2} value={p.extra_args.join('\n')}
                 onChange={e => updEngine(name, { extra_args: e.target.value.split('\n') })} /></td>
+              <td><button className="mini-btn" disabled={!p.override}
+                title={p.override ? '删除 yaml 覆盖段，回自动探测/继承' : '该引擎无覆盖（全靠自动探测）'}
+                onClick={() => void clearEngineOverride(name)}>清除覆盖</button></td>
             </tr>
           ))}</tbody>
         </table></div>
@@ -472,7 +569,7 @@ export default function SettingsTab() {
       {conv && <div className="setting-card">
         <h4>收敛度 <span className="muted">（防跑飞三闸，按角色：硬超时 / 静默判死 / 工具轮次上限）</span></h4>
         <div className="tbl-wrap"><table className="mcp-table">
-          <thead><tr><th>角色</th><th>硬超时（分）</th><th>静默判死（分）</th><th>工具轮次上限</th></tr></thead>
+          <thead><tr><th>角色</th><th>硬超时（分）</th><th>静默判死（分）</th><th>工具轮次上限</th><th>操作</th></tr></thead>
           <tbody>{conv.map(r => (
             <tr key={r.name}>
               <td>{r.name}</td>
@@ -487,6 +584,9 @@ export default function SettingsTab() {
                 placeholder="不限"
                 onChange={e => updConv(r.name, {
                   max_turns: e.target.value === '' ? null : Number(e.target.value) })} /></td>
+              <td><button className="mini-btn"
+                title={`弹掉该角色的收敛三键，回默认（${Math.round(convDef.timeout_s / 60)} 分 / ${Math.round(convDef.stall_timeout_s / 60)} 分 / ${convDef.max_turns ?? '不限'}）`}
+                onClick={() => void resetConv(r.name)}>恢复默认</button></td>
             </tr>
           ))}</tbody>
         </table></div>
@@ -622,7 +722,7 @@ export default function SettingsTab() {
       </div>}
 
       {pricing && <div className="setting-card">
-        <h4>成本价目 <span className="muted">（成本分析页价目；覆盖即整表替换，留空 {'{}'} = 恢复内置 z.ai 官方价目）</span></h4>
+        <h4>成本价目 <span className="muted">（成本分析页价目；覆盖即整表替换，留空 = 恢复内置 z.ai 官方价目）</span></h4>
         <div className="setting-row">
           <span className="setting-k">USD/CNY</span>
           <input type="number" min={0} max={100} step={0.01} value={pricing.usd_cny}
@@ -630,18 +730,23 @@ export default function SettingsTab() {
             style={{ maxWidth: 110 }} />
           <span className="muted">0 = 内置 7.1</span>
         </div>
-        <div className="setting-row">
-          <span className="setting-k">价目表（JSON）</span>
-          <textarea className="mono" rows={8} value={priceJson} style={{ flex: 1, minWidth: 320 }}
-            onChange={e => setPriceJson(e.target.value)}
-            placeholder={'{"api": {"glm-5.3": {"input": 0.5, "output": 1.9}}, "plan_credits": {}}'} />
-        </div>
+        <PriceTable label="按量价 api" unit="单位 $/M tokens（input / cache_read / output）"
+          cacheKey="cache_read" rows={apiRows} setRows={setApiRows}
+          builtin={pricing.builtin?.api ?? {}} />
+        <PriceTable label="订阅积分 plan_credits" unit="单位 积分/M tokens（input / cache_input / output）"
+          cacheKey="cache_input" rows={planRows} setRows={setPlanRows}
+          builtin={pricing.builtin?.plan_credits ?? {}} />
         <div className="setting-row">
           <button className="btn primary sm" onClick={() => void savePricing()}>保存</button>
+          <button className="mini-btn" disabled={apiRows.length === 0 && planRows.length === 0}
+            title="清空两张覆盖表，回官方内置价目"
+            onClick={() => void restoreBuiltinPricing()}>恢复内置</button>
+          <button className="mini-btn" title="当前覆盖表 JSON 复制到剪贴板（备份/手改）"
+            onClick={() => void copyPricingJson()}>复制 JSON</button>
           {priceMsg && <span className="admin-msg">{priceMsg}</span>}
         </div>
-        <div className="setting-note muted">api 单位 $/M tokens（input/cache_read/output），plan_credits 单位积分/M；
-          整表替换语义——只调一个模型也要把整表粘全（要微调建议先复制现表再改）。</div>
+        <div className="setting-note muted">覆盖即整表替换：两张表都留空=内置官方价目兜底。
+          只调一两个模型的推荐路径是「从内置复制」后在行内改；删行=该模型回兜底表价。</div>
       </div>}
 
       {srv && <div className="setting-card">
@@ -661,6 +766,66 @@ export default function SettingsTab() {
   );
 }
 
+
+/* ================= 价目表结构化编辑（api / plan_credits 通用） ================= */
+/** 行 CRUD + 从内置复制 + 空态兜底提示；行级校验文案由保存路径写入 rows[i].err */
+function PriceTable({ label, unit, cacheKey, rows, setRows, builtin }: {
+  label: string; unit: string; cacheKey: string;
+  rows: PriceRow[]; setRows: (r: PriceRow[]) => void;
+  builtin: Record<string, Record<string, number>>;
+}) {
+  const upd = (i: number, patch: Partial<PriceRow>) =>
+    setRows(rows.map((r, j) => j === i ? { ...r, ...patch, err: undefined } : r));
+  const fromBuiltin = () => {
+    if (rows.length > 0
+        && !confirm(`用内置价目覆盖当前 ${label} 编辑区（现有 ${rows.length} 行未保存改动将丢弃）？`)) return;
+    setRows(rowsFromTable(builtin, cacheKey));
+  };
+  return (
+    <div className="setting-row" style={{ alignItems: 'flex-start', flexDirection: 'column' as const }}>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 8, width: '100%', flexWrap: 'wrap' }}>
+        <span className="setting-k">{label}</span>
+        {rows.length === 0
+          ? <span className="muted" style={{ fontSize: 12, flex: 1 }}>
+              未覆盖——内置官方价目兜底（{Object.keys(builtin).length} 个模型）
+            </span>
+          : <span className="muted" style={{ fontSize: 12, flex: 1 }}>{unit}</span>}
+        <button className="mini-btn" onClick={() => setRows(
+          [...rows, { model: '', input: '', cache: '', output: '' }])}>+ 模型</button>
+        <button className="mini-btn" onClick={fromBuiltin}
+          disabled={Object.keys(builtin).length === 0}>从内置复制</button>
+      </div>
+      {rows.length > 0 && (
+        <div className="tbl-wrap" style={{ width: '100%', marginTop: 6 }}>
+          <table className="mcp-table">
+            <thead><tr><th>模型</th><th>input</th><th>{cacheKey}</th><th>output</th><th /></tr></thead>
+            <tbody>
+              {rows.map((r, i) => (
+                <tr key={i} style={r.err ? { background: 'rgba(229,72,77,.08)' } : undefined}>
+                  <td><input value={r.model} placeholder="glm-…" style={{ minWidth: 140 }}
+                    onChange={e => upd(i, { model: e.target.value })} /></td>
+                  <td><input type="number" min={0} step="0.01" value={r.input} style={{ minWidth: 90 }}
+                    onChange={e => upd(i, { input: e.target.value })} /></td>
+                  <td><input type="number" min={0} step="0.01" value={r.cache} style={{ minWidth: 90 }}
+                    onChange={e => upd(i, { cache: e.target.value })} /></td>
+                  <td><input type="number" min={0} step="0.01" value={r.output} style={{ minWidth: 90 }}
+                    onChange={e => upd(i, { output: e.target.value })} /></td>
+                  <td><a className="danger-link" title="删除该模型行（回兜底表价）"
+                    onClick={() => setRows(rows.filter((_, j) => j !== i))}>×</a></td>
+                </tr>
+              ))}
+              {rows.some(r => r.err) && (
+                <tr><td colSpan={5} style={{ color: 'var(--accent,#e5484d)', fontSize: 12 }}>
+                  {rows.filter(r => r.err).map(r => `${r.model || '(空名)'}：${r.err}`).join('；')}
+                </td></tr>
+              )}
+            </tbody>
+          </table>
+        </div>
+      )}
+    </div>
+  );
+}
 
 /* ================= 外观（原侧栏「暗色」按钮并入） ================= */
 /** 外观：亮/暗主题（原侧栏「暗色」按钮并入管理页后的落点） */

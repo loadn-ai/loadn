@@ -162,6 +162,132 @@ def test_put_resources_textr(sa, monkeypatch):
     assert vault.get_res_secret("textr_password") == "secret-textr"  # 进 vault
 
 
+# ---------------- engines 覆盖删除（null=整段删） + override 标记 ----------------
+
+def test_put_engines_null_deletes_section(sa):
+    """null=清除覆盖：yaml 段删除不残留、CONFIG 重置回默认；白名单不被 null 绕过。"""
+    mod, cfg, tmp = sa
+    mod.put_engines({"engines": {"claude": {"model": "glm-5.3", "extra_args": ["--x"]}}})
+    assert _yaml(tmp)["engines"]["claude"]["model"] == "glm-5.3"
+    out = mod.put_engines({"engines": {"claude": None, "loadn": {"model": "glm-5.3-flash"}}})
+    y = _yaml(tmp)["engines"]
+    assert "claude" not in y                          # 整段删除（非 null 键残留）
+    assert y["loadn"]["model"] == "glm-5.3-flash"     # 同请求混用：删与写并存
+    assert cfg.engines.claude.model is None           # CONFIG 重置（干净实例非逐键）
+    assert cfg.engines.claude.extra_args == []
+    assert cfg.engines.loadn.model == "glm-5.3-flash"
+    with pytest.raises(ValueError, match="未知引擎段"):
+        mod.put_engines({"engines": {"gemini": None}})   # null 不绕白名单
+
+
+def test_get_settings_engine_override_flag(sa):
+    """>>> 守卫对赌：override 标记以 yaml 原始节为真源（真值断言，非 truthy 串）。"""
+    mod, _, tmp = sa
+    s = mod.get_settings()
+    assert all(s["engines"]["per"][n]["override"] is False
+               for n in ("claude", "loadn", "opencode", "hahaness"))  # 无段=假
+    mod.put_engines({"engines": {"claude": {"model": "glm-5.3"}}})
+    per = mod.get_settings()["engines"]["per"]
+    assert per["claude"]["override"] is True          # 有段=真（CONFIG 值无法区分，靠 yaml）
+    assert per["loadn"]["override"] is False
+    mod.put_engines({"engines": {"claude": None}})
+    assert mod.get_settings()["engines"]["per"]["claude"]["override"] is False
+
+
+def test_get_settings_new_sections(sa):
+    """additive 新键：convergence_defaults（profile 真源）与 pricing.builtin 内置表。"""
+    mod, _, _ = sa
+    s = mod.get_settings()
+    assert s["convergence_defaults"] == {"timeout_s": 3600,
+                                         "stall_timeout_s": 1800, "max_turns": None}
+    assert "glm-5.3" in s["pricing"]["builtin"]["api"]
+    assert "cache_input" in s["pricing"]["builtin"]["plan_credits"]["glm-5.3"]
+    assert s["pricing"]["api"] == {}                  # 默认覆盖缺席（内置兜底态）
+
+
+# ---------------- convergence 恢复默认（reset=pop 三键，条目必须保留） ----------------
+
+def _setup_registry(tmp, body: str):
+    import loadn_webui.config as config_mod
+    import loadn_webui.profile as profile_mod
+    # ROOT 双消费点（put_convergence 写路径 + behavior_file 读路径）都指 tmp；
+    # registry 缓存清空防跨用例污染
+    orig = config_mod.ROOT
+    config_mod.ROOT = tmp
+    d = tmp / "profiles"
+    d.mkdir(exist_ok=True)
+    (d / "registry.yaml").write_text(body)
+    (d / "researcher.md").write_text("# 正文\n")
+    profile_mod.reset_cache()
+    return profile_mod, lambda: (setattr(config_mod, "ROOT", orig),
+                                 profile_mod.reset_cache())
+
+
+def test_put_convergence_reset(sa):
+    """reset 弹三键回 profile 默认；条目本体与兄弟键保留（删条目=删角色，红线）。"""
+    mod, _, tmp = sa
+    profile_mod, teardown = _setup_registry(tmp, (
+        "profiles:\n"
+        "  researcher:\n"
+        "    description: 研究员\n"
+        "    timeout_s: 1200\n"
+        "    stall_timeout_s: 900\n"
+        "    max_turns: 50\n"
+    ))
+    try:
+        out = mod.put_convergence({"reset": ["researcher"]})
+        import yaml as _y
+        raw = _y.safe_load((tmp / "profiles" / "registry.yaml").read_text())
+        entry = raw["profiles"]["researcher"]
+        assert entry == {"description": "研究员"}     # 红线：角色条目还在，只弹收敛三键
+        snap = {p["name"]: p for p in out["profiles"]}
+        assert snap["researcher"]["timeout_s"] == 3600    # 回 PROFILE_DEFAULTS
+        assert snap["researcher"]["stall_timeout_s"] == 1800
+        assert snap["researcher"]["max_turns"] is None
+    finally:
+        teardown()
+
+
+def test_put_convergence_reset_coexist_and_guards(sa):
+    """reset 与 profiles 同请求并存（reset 先应用）；未知角色/非数组/空 body 拒绝。"""
+    mod, _, tmp = sa
+    profile_mod, teardown = _setup_registry(tmp, (
+        "profiles:\n"
+        "  researcher:\n"
+        "    timeout_s: 1200\n"
+        "  coder:\n"
+        "    timeout_s: 600\n"
+    ))
+    try:
+        out = mod.put_convergence({"reset": ["researcher"],
+                                   "profiles": {"coder": {"timeout_s": 300}}})
+        snap = {p["name"]: p for p in out["profiles"]}
+        assert snap["researcher"]["timeout_s"] == 3600  # reset 生效
+        assert snap["coder"]["timeout_s"] == 300        # 同请求写值也生效
+        with pytest.raises(ValueError, match="未知 profile"):
+            mod.put_convergence({"reset": ["nope"]})
+        with pytest.raises(ValueError, match="reset 需为角色名数组"):
+            mod.put_convergence({"reset": "researcher"})
+        with pytest.raises(ValueError, match="没有可更新的角色"):
+            mod.put_convergence({})
+    finally:
+        teardown()
+
+
+def test_put_convergence_reset_fallback_keeps_role(sa):
+    """registry 空表兜底态（仅 builtin assistant）reset：写空条目占位，角色不消失。"""
+    mod, _, tmp = sa
+    profile_mod, teardown = _setup_registry(tmp, "profiles: {}\n")
+    try:
+        out = mod.put_convergence({"reset": ["assistant"]})
+        import yaml as _y
+        raw = _y.safe_load((tmp / "profiles" / "registry.yaml").read_text())
+        assert raw["profiles"]["assistant"] == {}       # 空条目=纯默认，角色保留
+        assert [p["name"] for p in out["profiles"]] == ["assistant"]
+    finally:
+        teardown()
+
+
 # ---------------- API 层接线（真 uvicorn，管理面双头由 client fixture 携带） ----------------
 
 async def test_settings_api_wiring(client):
