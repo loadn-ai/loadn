@@ -1,6 +1,6 @@
 """REST API 面（/api 前缀）——按域拆分的路由聚合。
 
-认证（承袭 papergo webapp 语义）：默认 127.0.0.1 免认证；token 非空时
+认证（承袭前身 webapp 语义）：默认 127.0.0.1 免认证；token 非空时
 强制 Bearer / X-Loadn-Token / ?token=（query 专为 EventSource 无法设头保留）。
 各域路由在同名子模块；本 __init__ 只做聚合与兼容面 re-export。
 """

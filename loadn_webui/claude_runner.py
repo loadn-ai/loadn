@@ -1,6 +1,6 @@
 """无头 agent 引擎调用封装（async stream-json 版）——loadn webui 的执行 runner。
 
-承袭 papergo/claude_runner.py（同源 kaggo）的进程治理骨架，把「--output-format
+承袭 前身实现的进程治理骨架，把「--output-format
 json + 尾行记账」改造成「stream-json 逐行增量消费 + result 事件记账」：
 
   1. cwd 即上下文：cwd 是 workspace/<sid>/，自动读会话宪法 CLAUDE.md；
@@ -20,7 +20,7 @@ json + 尾行记账」改造成「stream-json 逐行增量消费 + result 事件
 
 测试用 LOADN_CLAUDE_BIN 指向假实现（tests/fake_claude.py）。
 
-引擎方言（argv/事件归一化/能力位）拆到 loadn_webui/engines/（承袭 papergo
+引擎方言（argv/事件归一化/能力位）拆到 loadn_webui/engines/（承袭前身
 providers.py 范式）：claude（默认，行为恒等）| loadn | opencode。本文件
 只保留引擎无关的 runner 骨架。
 """
@@ -641,7 +641,7 @@ async def supervise_adopted(call: AdoptCall, stop: StopHandle) -> TurnProcResult
 
 
 def forensic_snapshot(tag: str, extra: str = "") -> None:
-    """外部击杀取证（承袭 kaggo _forensic_snapshot）：进程树现场落盘。"""
+    """外部击杀取证（承袭前身 _forensic_snapshot）：进程树现场落盘。"""
     import subprocess as sp
     d = PATHS["logs"] / "kill_forensics"
     d.mkdir(parents=True, exist_ok=True)

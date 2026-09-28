@@ -15,7 +15,7 @@ from .workspace import ws_of
 
 log = get_logger(__name__)
 
-# 文件分类（承袭 papergo webapp.py 的扩展名口径）
+# 文件分类（承袭前身 webapp.py 的扩展名口径）
 TEXT_EXTS = {".md", ".txt", ".json", ".yaml", ".yml", ".toml", ".csv", ".tsv",
              ".py", ".js", ".ts", ".sh", ".html", ".css", ".xml", ".log", ".bib", ".rst"}
 IMG_EXTS = {".png", ".jpg", ".jpeg", ".gif", ".svg", ".webp"}
@@ -34,7 +34,7 @@ def kind_of(path: Path) -> str:
 
 
 def safe_resolve(ws: Path, rel: str) -> Path | None:
-    """防路径穿越（承袭 papergo webapp._safe_file）：resolve 后必须在 ws 内。"""
+    """防路径穿越（承袭前身 webapp._safe_file）：resolve 后必须在 ws 内。"""
     try:
         p = (ws / rel).resolve()
         p.relative_to(ws.resolve())

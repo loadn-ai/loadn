@@ -1,6 +1,6 @@
 """可插拔无头引擎层基座：EngineSpec（argv 组装 + 能力位）+ EventAdapter。
 
-范式承袭 papergo/providers.py 的 ProviderSpec / build_call / supports_transcript
+范式承袭前身/providers.py 的 ProviderSpec / build_call / supports_transcript
 三件套，推广为三个正交面：
 
   · build_argv(call) -> (cmd, env_extra)   引擎方言的 argv 与注入环境

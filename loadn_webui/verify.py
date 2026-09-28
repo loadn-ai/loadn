@@ -10,7 +10,7 @@ artifacts/credentials.json，`wd verify` 巡检三件事：验证页可达且含
 注册表 schema（artifacts/credentials.json，数组）：
   [{"id": 1, "platform": "google", "title": "GA 基础", "cert_id": "G-123",
     "verify_url": "https://...", "issued": "2026-09-13", "expires": "2027-09-13",
-    "account": "google", "holder": "Woldy"}]
+    "account": "google", "holder": "Alex"}]
 account 指向保险库条目（vault），到期日空 = 永久有效。
 """
 from __future__ import annotations

@@ -1,6 +1,6 @@
 """配置：dataclass 默认值 + 仓库根 config.yaml 覆盖 + PATHS 集中管理。
 
-设计承袭 papergo/config.py：默认值全在代码里，config.yaml 可选、按
+设计承袭前身/config.py：默认值全在代码里，config.yaml 可选、按
 dataclass 名分节覆盖，不存在的键忽略——升级不破坏用户配置。
 LOADN_WEBUI_HOME 环境变量整体迁移（测试/多实例；旧 WORKDADDY_HOME 兼容一版）。
 注意与引擎数据根 LOADN_HOME（=~/.loadn）语义不同：这是 webui 平台自身的根。

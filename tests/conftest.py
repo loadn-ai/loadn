@@ -1,4 +1,4 @@
-"""测试隔离（承袭 papergo/workdaddy conftest 方法论，monorepo 合并版）。
+"""测试隔离（承袭前身/workdaddy conftest 方法论，monorepo 合并版）。
 
 - 引擎：LOADN_HOME=临时目录（loadn 测试树）
 - 平台：LOADN_WEBUI_HOME=临时目录 + symlink 资产（profiles/prompts 真实内容、

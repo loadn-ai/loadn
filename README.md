@@ -8,6 +8,11 @@ tools, MCP, subagents, session persistence, and context compaction — speaking
 the Claude Code `stream-json` dialect, so existing harnesses can drive it as a
 drop-in subprocess engine.
 
+> 🚧 **Early access (preview)** — this repository publishes `v0.6.16` as an
+> early-access snapshot. The official release is scheduled **before
+> 2026-10-10**; until then APIs, config keys, and docs may still change.
+> Bug reports and issue feedback are welcome.
+
 > Naming: loadn is the engine package of the loadn-ai platform (org:
 > **loadn-ai**). Product forms: `loadn` engine / `loadn-web` platform /
 > `loadn desktop`.

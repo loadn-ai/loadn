@@ -56,7 +56,7 @@ def _attachment_block(atts: list[dict], inputs_dir: Path | None = None) -> str:
     lines.append("不要凭文件名猜测附件内容。")
     return "\n".join(lines)
 
-# 工具卡片摘要的候选字段（承袭 papergo webapp._transcript_tail 的提取法）
+# 工具卡片摘要的候选字段（承袭前身 webapp._transcript_tail 的提取法）
 _BRIEF_KEYS = ("query", "command", "file_path", "path", "pattern", "url",
                "description", "prompt", "skill")
 _FILE_TOOLS = {"Write", "Edit", "NotebookEdit", "Bash"}

@@ -1,4 +1,4 @@
-"""agent 角色注册表（承袭 papergo/profile.py 的 registry.yaml + md 两级注入）。
+"""agent 角色注册表（承袭前身/profile.py 的 registry.yaml + md 两级注入）。
 
 接入一个新角色 = profiles/registry.yaml 一条 + profiles/<name>.md 一份，零代码。
 角色正文渲染进会话工作区 CLAUDE.md（rotate 后仍生效），不用
@@ -115,7 +115,7 @@ def get(name: str) -> Profile:
 
 
 def auto_match(text: str) -> Profile:
-    """关键词命中数选角色，全零落 assistant（承袭 papergo auto_match 语义）。"""
+    """关键词命中数选角色，全零落 assistant（承袭前身 auto_match 语义）。"""
     reg = load_registry()
     best, best_hits = None, 0
     for p in reg.values():

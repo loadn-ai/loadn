@@ -8,6 +8,10 @@ tools, MCP, subagents, session persistence, and context compaction — speaking
 the Claude Code `stream-json` dialect, so existing harnesses can drive it as a
 drop-in subprocess engine.
 
+> 🚧 **抢先版（预发布）**——本仓库当前公开的是 `v0.6.16` 抢先版快照。
+> **正式版承诺于 2026-10-10 前发布**；在此之前 API、配置键与文档仍可能
+> 调整。欢迎提 issue 反馈。
+
 > 命名：loadn 是 loadn-ai 平台的引擎包（org: **loadn-ai**）。吉祥物「老登」，
 > 昵称老 bike，仅作文案。平台产品形态：loadn webui / loadn desktop。
 

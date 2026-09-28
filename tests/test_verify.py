@@ -13,10 +13,10 @@ async def reg_session(client, ws_root):
     sid = r.json()["session"]["id"]
     entries = [
         {"id": 1, "platform": "google", "title": "GA 基础", "cert_id": "G-123",
-         "verify_url": "https://credly.com/badges/1", "holder": "Woldy",
+         "verify_url": "https://credly.com/badges/1", "holder": "Alex",
          "issued": "2026-09-13", "expires": "2027-09-13", "account": "google"},
         {"id": 2, "platform": "saylor", "title": "CS101", "cert_id": "S-9",
-         "verify_url": "https://saylor.org/verify/9", "holder": "Woldy"},
+         "verify_url": "https://saylor.org/verify/9", "holder": "Alex"},
         {"id": 3, "platform": "broken", "title": "无证书号", "verify_url": ""},
     ]
     d = ws_root / sid / "artifacts"
@@ -48,7 +48,7 @@ async def test_online_verify(reg_session, monkeypatch):
 
     async def fake_fetch(url, **kw):
         assert url.startswith("https://")
-        text = "Badge awarded to Woldy G-123" if "1" in url else "Page Not Found"
+        text = "Badge awarded to Alex G-123" if "1" in url else "Page Not Found"
         return {"text": text, "title": "x", "chars": len(text)}
     from loadn_webui.integrations import resources
     monkeypatch.setattr(resources, "fetch_page", fake_fetch)

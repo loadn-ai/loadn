@@ -821,7 +821,7 @@ def _extract_main(html: str, url: str = "") -> tuple[str, str]:
 
 
 async def _fetch_via_cdp(url: str, *, wait: float, html_out: Path) -> str:
-    """CDP 真浏览器渲染（scripts/fetch_page.py，playwright 在 kaggo venv）→ 渲染后 HTML。
+    """CDP 真浏览器渲染（scripts/fetch_page.py，playwright 在独立 venv）→ 渲染后 HTML。
 
     html_out 落盘渲染 HTML；返回 page title。失败抛 RuntimeError（带 reason）。
     """

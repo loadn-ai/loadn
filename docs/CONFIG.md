@@ -106,7 +106,7 @@ github.com / arxiv.org / 2captcha.com / opencode.ai / llm-gw.internal 等
    只是去掉文件隔离。普通会话保持全局档位不受影响。
 2. **`resource_bridges`**（全局，安全运维面可加）——比 off 更克制的
    选择：保持 bwrap 隔离，只把指定宿主路径同路径 bind 进沙箱：
-   `{path: /data/code/papergo, mode: rw}`（rw=可写）、ro=只读、
+   `{path: /data/code/other-project, mode: rw}`（rw=可写）、ro=只读、
    dev=设备节点。读写面精确到路径。
 3. **`params.egress: off` + 白名单**——运维要访问本机服务/内网时放开
    本会话外联（代理仍在路径上：直通+审计+凭证网关不变）。

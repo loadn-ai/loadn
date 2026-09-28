@@ -1,0 +1,30 @@
+# 软件引用卡（GitHub「Cite this repository」据此生成 BibTeX）。
+# 抢先版阶段：version 与 date-released 随每次发布同步更新。
+cff-version: 1.2.0
+message: >-
+  If you use loadn in your research, please cite it using the
+  metadata from this file.
+title: loadn
+type: software
+authors:
+  - name: loadn-ai contributors
+    website: 'https://github.com/loadn-ai'
+identifier: loadn
+repository-code: 'https://github.com/loadn-ai/loadn'
+url: 'https://github.com/loadn-ai/loadn'
+abstract: >-
+  A self-contained coding-agent engine in pure Python (single runtime
+  dependency: httpx), speaking the Claude Code stream-json dialect so
+  existing harnesses can drive it as a drop-in subprocess engine. Ships
+  with a FastAPI multi-agent platform (loadn-web) featuring sandboxed
+  execution, egress control, approval gates, and a tamper-evident audit
+  ledger.
+keywords:
+  - agent
+  - llm
+  - coding-agent
+  - claude-code
+  - mcp
+license: Apache-2.0
+version: 0.6.16
+date-released: '2026-09-29'

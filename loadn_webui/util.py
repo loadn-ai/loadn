@@ -33,7 +33,7 @@ def get_logger(name: str) -> logging.Logger:
 
 
 def slugify(text: str, max_len: int = 48) -> str:
-    """保留中文的 slug（承袭 papergo/workspace.py）。"""
+    """保留中文的 slug（承袭前身/workspace.py）。"""
     s = re.sub(r"[^\w一-鿿-]+", "-", text.strip()).strip("-").lower()
     return s[:max_len].rstrip("-") or "task"
 

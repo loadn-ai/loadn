@@ -1,6 +1,7 @@
 """健壮性测试：重启恢复 / token 认证 / 统计 / fetch_page 兜底脚本契约。"""
 import json
 import subprocess
+import sys
 from pathlib import Path
 
 from tests.conftest import REPO, wait_turn
@@ -101,13 +102,13 @@ def test_fetch_page_contract():
         cache.mkdir(parents=True, exist_ok=True)
         (cache / f"{key}.md").write_text("# cached page\n" + "x" * 600)
         out = subprocess.run(
-            ["/data/code/kaggo/.venv/bin/python", str(script), url],
+            [sys.executable, str(script), url],   # 缓存命中路径无需 playwright
             capture_output=True, text=True, timeout=30)
         if out.returncode == 0:
             d = json.loads(out.stdout.strip())
             assert d["ok"] is True and d.get("cached") is True
         else:
-            # 无 kaggo venv 的环境：接受明确的失败 JSON（不硬编）
+            # 无 playwright 的环境：接受明确的失败 JSON（不硬编）
             try:
                 d = json.loads(out.stdout.strip())
                 assert d["ok"] is False and "reason" in d

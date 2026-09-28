@@ -1,6 +1,6 @@
 """claude CLI transcript（~/.claude/projects/*/<uuid>.jsonl）解析。
 
-承袭 papergo/webapp.py 的 _transcript_tail / _latest_todos / _recent_ws_files
+承袭前身/webapp.py 的 _transcript_tail / _latest_todos / _recent_ws_files
 三件套：服务重启后 session_events 可能缺失时的兜底重建（resync）。
 """
 from __future__ import annotations

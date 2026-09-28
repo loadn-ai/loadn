@@ -1,6 +1,6 @@
 """SQLite 状态库（WAL）：sessions / messages / turns / artifacts / session_events / kv。
 
-铁律承袭 papergo/kaggo：无头 claude 会话不直接碰这个库——台账走
+铁律承袭 前身项目：无头 claude 会话不直接碰这个库——台账走
 workspace 的 state.json 与 PROGRESS.md（agent 按宪法 §2 自维护，DB 不
 做同步；轮换/唤醒 anchor 引导 agent 读盘续作）。
 
