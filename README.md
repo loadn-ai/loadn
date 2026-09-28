@@ -17,6 +17,30 @@ drop-in subprocess engine.
 > **loadn-ai**). Product forms: `loadn` engine / `loadn-web` platform /
 > `loadn desktop`.
 
+## Companion research
+
+loadn is the deployed reference system for a family of preprints (2026, to
+appear). Each paper's claims are anchored to this codebase:
+
+- **Defense-in-Depth for Agentic Execution: A Reference Architecture
+  Evaluated by Deterministic Replay of an Online Codebase** — evaluates a
+  frozen snapshot of this repo's platform: a framework-native seven-layer
+  execution-security stack, pre-registered 96-scenario injection suite ×
+  16-configuration ablation, 56 white-box evasion transforms. loadn is the
+  deployed architecture under test; the snapshot manifest ships with the
+  official release.
+- **The Standing Layer: Agent = Model + Harness + Standing** — position
+  paper: the third term of the agent formula is externally adjudicated
+  standing (accounts, reputation, egress, funds, channels, budgets). The
+  platform's resource console is the standing layer in deployed form, and
+  its audit ledger is the paper's field-evidence source.
+- **Toolbelt Richness: A Concept and Measurement Framework for Agent
+  Environments** — defines toolbelt richness (introspectable API surface +
+  version-matched docs + runnable examples; supply quality, not tool count)
+  and measures three supply arms (skills+MCP vs pinned local toolbelt vs
+  hybrid). loadn's local-first tool supply is the rich arm's design
+  philosophy.
+
 ```
 ┌────────────────────────────────────────────────────────────┐
 │  CLI:  loadn -p / REPL / python -m loadn                   │
@@ -47,7 +71,7 @@ agent platform**:
 | Component | What it is | Start |
 |---|---|---|
 | `loadn/` | The engine (main subject of this README) | `pip install loadn` |
-| `loadn_webui/` | Web platform: session management / scheduling / cost / sharing, with a built-in security stack (bwrap sandbox · physical network isolation · credential vault · hash-chained audit log · approval gates) | `pip install -e ".[webui]"` → `loadn-web init` → `loadn-web serve` |
+| `loadn_webui/` | Web platform: session management / scheduling / cost / sharing, with a framework-native **seven-layer execution-security stack** (credential vault · bash-AST policy · egress allowlist proxy · bwrap sandbox · irreversible-action approval gate · canary+audit chain · supply-chain trust gate) | `pip install -e ".[webui]"` → `loadn-web init` → `loadn-web serve` |
 | `desktop/` | Desktop form (Tauri shell + Debian rootfs: the whole execution domain runs inside a Linux VM on mac/win) | `desktop/image/` build pipeline |
 | `ui/` | React frontend (admin center with security / traffic / cost panels) | `cd ui && npm run build` |
 
@@ -57,6 +81,40 @@ test system) · [CONFIG](docs/CONFIG.md) (every config key) ·
 skills / MCP / hooks) · [PROTOCOL](docs/PROTOCOL.md) (engine dialect
 contract) · [RELEASE](docs/RELEASE.md) (deploy / upgrade / rollback) ·
 [ATTACK_SURFACE](docs/ATTACK_SURFACE.md) (attack surface + AI-BOM).
+
+## Three ideas this deployment embodies
+
+**1 · Defense-in-depth along an irreversibility boundary.** The platform
+ships a framework-native execution-security stack — seven layers, **no LLM
+on the enforcement path**, fail-closed by default, tiered by action
+reversibility (reversible work is fenced into the sandbox; irreversible
+actions stop at the approval gate — the sandbox is the load-bearing wall):
+
+| # | Layer | Mechanism | Source |
+|---|---|---|---|
+| L1 | Credential vault | AES-GCM; plaintext never enters the agent env | `loadn_webui/security/vault.py` |
+| L2 | Bash AST policy | L0 red lines + token-coverage rules, out-of-process PreToolUse | `loadn_webui/security/policy.py` |
+| L3 | Egress allowlist proxy | CONNECT allowlist, DNS-rebinding & private-net rejection | `loadn_webui/security/egress_proxy.py` |
+| L4 | Filesystem sandbox | bwrap same-path binds; netns with proxy socket as sole egress | `loadn_webui/security/sandbox.py` |
+| L5 | Irreversible-action approval gate | one-time codes bound to parameter hashes | `loadn_webui/security/approve.py` |
+| L6 | Canary trip + audit chain | planted decoy credentials; hash-chained ledger with daily anchors | `loadn_webui/security/canary.py` · `audit.py` |
+| L7 | Supply-chain trust gate | skill sha256 locks, eight-class static scans, untrusted degradation | `loadn_webui/security/skill_scan.py` |
+
+**2 · The standing layer: agent = model + harness + standing.** Beyond
+compute, task completion is conditioned on what the world will admit —
+accounts, egress, funds, channels, rate budgets. The platform's resource
+console manages exactly this admission sub-plane: credentials in the vault,
+domain-level egress policy with session-scoped grants, approval-gated
+irreversible actions, per-role convergence budgets, and custom services
+injected as `LOADN_SVC_<NAME>_URL` endpoints. The operator holds the
+resource-landlord role, and every adjudication lands in the audit ledger.
+
+**3 · Local-first toolbelt over skill/MCP-heavy stacks.** The engine's tools
+are plain Python you can introspect (`dir()` / `help()` / read the source);
+the platform mounts pinned local runtimes and read-only data roots (resource
+bridges) instead of wrapping every capability in prompt packages or RPC
+interfaces. Skills and MCP are supported — as thin wrappers and dynamic
+extensions, not the primary supply channel.
 
 ## Why another agent engine
 
@@ -95,7 +153,7 @@ contract) · [RELEASE](docs/RELEASE.md) (deploy / upgrade / rollback) ·
   AGENTS.md ancestor chain (git-root bounded, nearest last, `@import`
   support), a skills index, long-term memory with boundary-driven background
   extraction, and a repo map — mirroring Claude Code's layered memory.
-- **Mutation-tested.** 1352 tests (zero token, fake-provider driven) at 83.1%
+- **Mutation-tested.** 1373 tests (zero token, fake-provider driven) at 83.1%
   line coverage — and beyond coverage, a homegrown mutation-testing runner
   has injected **4055 bugs into 47 core files with a 78% kill rate**,
   proving the assertions actually catch regressions, not just execute code
@@ -199,7 +257,7 @@ spawns `claude -p --output-format stream-json` can spawn `loadn` instead:
 
 ```bash
 pip install -e ".[dev]"
-pytest            # 1344 tests, zero API calls
+pytest            # 1373 tests, zero API calls
 ruff check .
 ```
 

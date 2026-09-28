@@ -15,6 +15,26 @@ drop-in subprocess engine.
 > 命名：loadn 是 loadn-ai 平台的引擎包（org: **loadn-ai**）。吉祥物「老登」，
 > 昵称老 bike，仅作文案。平台产品形态：loadn webui / loadn desktop。
 
+## 配套研究（Companion research）
+
+loadn 是一组预印本（2026，即将公开）的**部署态参考系统**，三篇论文的
+主张均锚定到本代码库：
+
+- **Defense-in-Depth for Agentic Execution: A Reference Architecture
+  Evaluated by Deterministic Replay of an Online Codebase**——以本仓库
+  平台的冻结快照为被测对象：框架原生七层执行安全栈 × 预注册 96 场景
+  注入套件 × 16 配置消融 × 56 种白盒逃逸变换。loadn 即论文评估的
+  部署态架构；快照清单随正式版一并发布。
+- **The Standing Layer: Agent = Model + Harness + Standing**——立场
+  文章：agent 公式的第三项是外部裁决的 standing（账号/信誉/出网/资金/
+  通道/预算）。平台的资源控制台即 standing 层的部署形态，其审计账本
+  是论文的实证数据源。
+- **Toolbelt Richness: A Concept and Measurement Framework for Agent
+  Environments**——定义 toolbelt richness（可内省 API 面+版本匹配文档+
+  可跑样例；供给侧质量而非工具数量），并测量三种供给臂（skills+MCP /
+  本地 pinned toolbelt / 混合）。loadn 的本地优先工具供给即富供给臂的
+  设计哲学。
+
 ```
 ┌────────────────────────────────────────────────────────────┐
 │  CLI:  loadn -p / REPL / python -m loadn             │
@@ -44,7 +64,7 @@ drop-in subprocess engine.
 | 组件 | 是什么 | 起步 |
 |---|---|---|
 | `loadn/` | 引擎（本 README 主体） | `pip install loadn` |
-| `loadn_webui/` | Web 平台：会话管理/调度/成本/分享，内置安全栈（bwrap 沙箱·物理断网·凭证库·审计账本·审批门） | `pip install -e ".[webui]"` → `loadn-web init` → `loadn-web serve` |
+| `loadn_webui/` | Web 平台：会话管理/调度/成本/分享，内置框架原生**七层执行安全栈**（凭证保险库·bash AST 策略·出口白名单代理·bwrap 沙箱·不可逆动作审批门·蜜罐+审计链·供应链信任门） | `pip install -e ".[webui]"` → `loadn-web init` → `loadn-web serve` |
 | `ui/` | React 前端（管理中心含安全中心/流量/成本面板） | `cd ui && npm run build` |
 
 文档索引：[ARCHITECTURE](docs/ARCHITECTURE.md)（三平面/数据布局）·
@@ -52,6 +72,35 @@ drop-in subprocess engine.
 [PROTOCOL](docs/PROTOCOL.md)（引擎方言契约）·
 [RELEASE](docs/RELEASE.md)（发布/升级/回滚）·
 [ATTACK_SURFACE](docs/ATTACK_SURFACE.md)（攻击面+AI-BOM）。
+
+## 本部署承载的三个概念
+
+**1 · 沿不可逆边界的纵深防御。** 平台内置框架原生的执行安全栈——
+七层、**enforcement path 上无 LLM**、默认 fail-closed，按动作可逆性
+分层（可逆工作圈进沙箱，不可逆动作停在审批门——承重墙是沙箱）：
+
+| # | 层 | 机制 | 源码 |
+|---|---|---|---|
+| L1 | 凭证保险库 | AES-GCM；明文永不进 agent 环境 | `loadn_webui/security/vault.py` |
+| L2 | bash AST 策略 | L0 红线+令牌覆盖规则，进程外 PreToolUse | `loadn_webui/security/policy.py` |
+| L3 | 出口白名单代理 | CONNECT 白名单、DNS 重绑定与私网拒绝 | `loadn_webui/security/egress_proxy.py` |
+| L4 | 文件系统沙箱 | bwrap 同路径挂载；网络命名空间内唯一出口=代理 socket | `loadn_webui/security/sandbox.py` |
+| L5 | 不可逆动作审批门 | 一次性确认码绑定参数哈希 | `loadn_webui/security/approve.py` |
+| L6 | 蜜罐熔断+审计链 | 会话内埋诱饵凭证；哈希链账本+每日锚点 | `loadn_webui/security/canary.py` · `audit.py` |
+| L7 | 供应链信任门 | skill sha256 锁+八类静态扫描+未信任降级 | `loadn_webui/security/skill_scan.py` |
+
+**2 · Standing 层：agent = model + harness + standing。** 算力之外，
+任务完成度还取决于世界肯放行什么——账号、出网、资金、通道、速率
+预算。平台的资源控制台管理的正是这个准入子面：凭证入保险库、
+域名级出口策略+会话级临时授权、不可逆动作过审批门、按角色收敛度
+预算、自定义服务以 `LOADN_SVC_<NAME>_URL` 端点注入。运营者扮演
+resource landlord 角色，每次裁决都落审计账本。
+
+**3 · 本地优先 toolbelt，而非 skill/MCP 重栈。** 引擎的工具就是可
+内省的纯 Python（`dir()`/`help()`/直接读源码）；平台通过挂载 pinned
+本地运行时与只读数据根（resource bridges）供给能力，而不是把一切
+包成提示词包或 RPC 接口。skills 与 MCP 都支持——作为薄包装与动态
+扩展，而非主供给通道。
 
 ## Why another agent engine
 
@@ -90,7 +139,7 @@ drop-in subprocess engine.
   a user-level `AGENT.md`, a skills index, and long-term memory — mirroring
   Claude Code's layered memory. Skills load on demand via the `Skill` tool;
   custom subagent types come from `.claude/agents/*.md` frontmatter.
-- **Zero-token test suite.** 1344 tests drive every loop branch through a
+- **Zero-token test suite.** 1373 tests drive every loop branch through a
   scripted fake provider — CI needs no API keys. Beyond coverage (83.1%):
   a homegrown mutation runner injected **4055 bugs into 47 core files** with
   a **78% kill rate** — assertions are proven to catch regressions, not just
@@ -200,7 +249,7 @@ spawns `claude -p --output-format stream-json` can spawn `loadn` instead:
 
 ```bash
 pip install -e ".[dev]"
-pytest            # 1344 tests, zero API calls
+pytest            # 1373 tests, zero API calls
 ruff check .
 ```
 

@@ -16,9 +16,14 @@ abstract: >-
   A self-contained coding-agent engine in pure Python (single runtime
   dependency: httpx), speaking the Claude Code stream-json dialect so
   existing harnesses can drive it as a drop-in subprocess engine. Ships
-  with a FastAPI multi-agent platform (loadn-web) featuring sandboxed
-  execution, egress control, approval gates, and a tamper-evident audit
-  ledger.
+  with a FastAPI multi-agent platform (loadn-web) implementing a
+  framework-native seven-layer defense-in-depth execution-security stack
+  (credential vault, bash-AST policy, egress allowlist proxy, filesystem
+  sandbox, irreversible-action approval gate, canary + audit chain,
+  supply-chain trust gate), a standing-layer resource console (accounts,
+  egress, budgets, channels), and a local-first toolbelt design. Companion
+  reference system for three preprints on agent execution security, the
+  standing layer, and toolbelt richness (2026, to appear).
 keywords:
   - agent
   - llm
