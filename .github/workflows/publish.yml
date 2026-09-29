@@ -1,0 +1,25 @@
+# PyPI 发布（Trusted Publishing / OIDC——免 token）。
+# 触发：GitHub Release 发布（pre-release 不含资产照常触发，workflow_dispatch 手动）。
+# 生效前提（一次性）：pypi.org → 项目 loadn → Settings → Publishing →
+# Add publisher：owner=loadn-ai, repository=loadn, workflow=publish.yml。
+name: publish
+on:
+  release:
+    types: [published]
+  workflow_dispatch: {}
+permissions:
+  id-token: write     # PyPI OIDC 断言
+jobs:
+  build-and-publish:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Build sdist + wheel
+        run: |
+          pip install build
+          python -m build
+      - name: Publish to PyPI
+        uses: pypa/gh-action-pypi-publish@release/v1
