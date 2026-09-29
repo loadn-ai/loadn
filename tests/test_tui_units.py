@@ -40,6 +40,63 @@ def test_usage_line_missing_and_present():
 
 # ---------------- App pilot（fake provider 全链） ----------------
 
+async def test_tui_slash_battery_and_guards(tmp_path, monkeypatch):
+    """>>> 守卫对赌：指令分发逐个走通/未知拒绝/无 sid 的 /resume 不崩/
+    中断只对在跑轮生效/失败轮渲染错误行（杀 cmd==/中断守卫/失败分支变异）。"""
+    ws = tmp_path / "ws"
+    (ws / ".fake").mkdir(parents=True)
+    (ws / ".fake" / "reply").write_text("ok")
+    monkeypatch.setenv("LOADN_HOME", str(tmp_path / "home"))
+    monkeypatch.setenv("LOADN_FAKE_DIR", str(ws / ".fake"))
+    from loadn.core.build import build_agent
+    from loadn.tui import LoadnTUI
+
+    bundle = await build_agent(ws, cfg={"provider": "fake"})
+
+    class _Req:
+        requested = False
+
+    app = LoadnTUI(bundle, _Req())
+    recorded: list[str] = []
+    async with app.run_test(size=(100, 40)) as pilot:
+        log = app.query_one("#log")
+        orig = log.write
+
+        def rec(x, **kw):
+            recorded.append(str(x))
+            orig(x, **kw)
+
+        log.write = rec  # type: ignore[method-assign]
+        await app._slash("/help")
+        assert any("/resume" in r for r in recorded)          # /help 真分发
+        await app._slash("/todos")                             # 空 todos 不崩
+        recorded.clear()
+        await app._slash("/resume")                            # 无 sid：守卫不崩
+        await app._slash("/nope")
+        assert any("未知指令" in r for r in recorded)          # 未知拒绝有回显
+        # 中断守卫：在跑 → requested 置位；无轮 → 不置位
+        busy = asyncio.create_task(asyncio.sleep(60))
+        app._turn = busy
+        app.action_interrupt()
+        assert app.stop.requested is True
+        busy.cancel()
+        app._turn = None
+        app.stop.requested = False
+        app.action_interrupt()
+        assert app.stop.requested is False                     # 无轮不误置
+        # 失败轮渲染：fail 控制文件 → summary 非 success → 错误行入流水
+        (ws / ".fake" / "fail").write_text("injected-fail")
+        recorded.clear()
+        await app._run_turn("触发失败")
+        await pilot.pause(0.2)
+        for _ in range(100):
+            if app._turn is not None and app._turn.done():
+                break
+            await pilot.pause(0.05)
+        assert app._turn.done()
+        assert any("（" in r for r in recorded)                # 错误形态行渲染
+        assert "（轮异常" not in "".join(recorded)              # 是失败不是崩溃
+
 async def test_tui_turn_roundtrip(tmp_path, monkeypatch):
     """mount → 提交一条消息 → run_turn 全链（fake reply）→ 状态条累计。
     渲染面经 _render_event 录制断言（RichLog 条带内容不可移植）。"""
