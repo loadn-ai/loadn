@@ -70,6 +70,22 @@ export default function App() {
     })();
   }, []);
 
+  // 前台恢复即拉新：iOS PWA 后台冻结定时器与 SSE 重连退避，回前台不等
+  // 5s 轮询周期——立即 resync（列表 + 当前会话 + SSE 死线重建），否则
+  // 界面停在后台前的最后一帧（"一直运行中"假象）
+  useEffect(() => {
+    const wake = () => {
+      if (document.visibilityState !== 'visible') return;
+      void useStore.getState().resync();
+    };
+    document.addEventListener('visibilitychange', wake);
+    window.addEventListener('focus', wake);
+    return () => {
+      document.removeEventListener('visibilitychange', wake);
+      window.removeEventListener('focus', wake);
+    };
+  }, []);
+
   // 版本巡检：正在跑的 bundle hash vs 线上 index.html 引用的 hash——
   // 部署后还开着的旧标签页继续跑旧代码（看着像"修复没生效"），30s 对比一次，
   // 变了就挂出刷新横幅

@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "loadn"
-version = "0.6.16"
+version = "0.6.17"
 description = "loadn (load-n) agent engine: Claude Code-compatible stream-json CLI, pluggable providers, tools, MCP, subagents, and context compaction. Monorepo also hosts loadn webui."
 readme = "README.md"
 license = { file = "LICENSE" }
