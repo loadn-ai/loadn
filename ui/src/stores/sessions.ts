@@ -325,8 +325,13 @@ export const useStore = create<Store>((set, get) => ({
   /** 前台恢复拉新（visibilitychange/focus 调用）。iOS PWA 后台冻结定时器与
    *  SSE 重连 setTimeout——回前台不等 5s 轮询周期与退避计时器：立即拉会话
    *  列表 + 当前会话全量；SSE 断线即刻重建（后台期间事件已丢，靠精准回放
-   *  补齐活跃 turn 尾部）。 */
+   *  补齐活跃 turn 尾部）。
+   *  不变量：重连路径必须空 items 重播种（回放是 items 的单一来源——保留
+   *  旧 items 再叠回放=流水翻倍，v0.6.18 实测「重复返回」根因）。 */
   resync() {
+    const now = Date.now();
+    if (now - _lastResyncAt < 5000) return;   // focus/visibility 成对触发去重
+    _lastResyncAt = now;
     void get().loadSessions();
     const sid = get().currentSid;
     if (!sid) return;
@@ -337,32 +342,37 @@ export const useStore = create<Store>((set, get) => ({
           `/api/sessions/${encodeURIComponent(sid)}`);
         if (get().currentSid !== sid) return;
         set({ messages: d.messages, turns: d.turns, artifacts: d.artifacts });
+        const wasConnected = get().connected;
         const act = d.turns.find(t => t.status === 'running')
                  ?? d.turns.find(t => t.status === 'queued');
-        const cur = get().live;
         if (!act) {
-          if (cur) set({ live: null });          // 无活跃 turn：残留 live 即陈旧状态
-        } else if (!cur || cur.turnId !== act.id) {
+          if (get().live) set({ live: null }); // 无活跃 turn：残留 live 即陈旧状态
+        } else if (!wasConnected || !get().live
+                   || get().live!.turnId !== act.id) {
+          // 断线重连/turn 更替：空种子（回放会重铺本 turn 尾部 items）；
+          // 连接健康且 turn 未变时保留已积累流水，不触发回放不重置
           set({ live: { turnId: act.id, status: act.status as LiveTurn['status'],
                         items: [], todos: [],
                         startedAt: act.started_at
                           ? new Date(act.started_at).getTime() : Date.now() } });
         }
+        if (!wasConnected) {                    // SSE 死了：立即重建（不等退避）
+          const { es } = get();
+          if (es) es.close();
+          set({ es: null, connected: false });
+          void connectSse(
+            sid,
+            (type, data) => handleEvent(set, get, sid, type, data),
+            () => set({ connected: true }),
+            () => set({ connected: false }),
+            () => get().currentSid === sid,
+          ).then((es2) => {
+            if (get().currentSid === sid) set({ es: es2 }); else es2.close();
+          });
+        }
         void get().loadTimeline();
       } catch { /* 网络抖动忽略——轮询兜底 */ }
     })();
-    if (!get().connected) {                       // SSE 死了：立即重建（不等退避）
-      const { es } = get();
-      if (es) es.close();
-      set({ es: null, connected: false });
-      void connectSse(
-        sid,
-        (type, data) => handleEvent(set, get, sid, type, data),
-        () => set({ connected: true }),
-        () => set({ connected: false }),
-        () => get().currentSid === sid,
-      ).then((es2) => { if (get().currentSid === sid) set({ es: es2 }); else es2.close(); });
-    }
   },
 
   async createSession(body) {
@@ -699,6 +709,9 @@ function appendText(items: StreamItem[], kind: 'text' | 'thinking',
   }
   return [...items, { kind, text } as StreamItem];
 }
+
+/** resync 冷却（module 级）：focus 与 visibilitychange 常成对触发，5s 内去重 */
+let _lastResyncAt = 0;
 
 function handleEvent(
   set: (fn: (s: Store) => Partial<Store>) => void,
