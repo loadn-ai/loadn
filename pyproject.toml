@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "loadn"
-version = "0.6.18"
+version = "0.6.19"
 description = "loadn (load-n) agent engine: Claude Code-compatible stream-json CLI, pluggable providers, tools, MCP, subagents, and context compaction. Monorepo also hosts loadn webui."
 readme = "README.md"
 license = { file = "LICENSE" }
@@ -37,6 +37,10 @@ ast = [
 repomap = [
   "tree-sitter>=0.21",
   "tree-sitter-language-pack>=0.4",
+]
+# 全屏 TUI（缺省回落基础 REPL——引擎核心仍 httpx 单依赖）
+tui = [
+  "textual>=1.0",
 ]
 dev = [
   "pytest>=8",

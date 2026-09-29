@@ -226,6 +226,9 @@ TARGET_TESTS: dict[str, list[str]] = {
     "loadn_webui/integrations/resources.py": [
         "tests/test_resources.py",
     ],
+    "loadn/tui.py": [
+        "tests/test_tui_units.py",
+    ],
     "loadn_webui/integrations/codemode_mcp.py": [
         "tests/test_codemode_stdio_units.py",
     ],
