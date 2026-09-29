@@ -19,6 +19,18 @@
 - evals 场景 5→10；契约 v1/v2 对赌补全（tool_use_failure 终态事件、
   平台 durable 事件转发两个真缺口修复）。
 
+## [0.6.19] - 2026-09-29
+
+- **全屏 TUI（Claude Code 风格，textual）**：裸 `loadn` 自动进入——滚动流水
+  （assistant 文本 / `⏺ Tool(...)` 调用行 / `⠿`·`✗` 结果摘录 / todos 勾选）+
+  状态条（模型·会话·本轮 in/out/cache·累计 tokens）+ 单行输入 + Footer 快捷键；
+  Ctrl-C 中断当前轮（StopHandle，工具步完成后停）、Ctrl-L 清屏、Ctrl-D 退出；
+  斜杠指令集与 REPL 同源（/resume /fork /compact /todos /undo /clear）。
+- 依赖红线：textual 走可选 extra `loadn[tui]`；缺席回落基础 REPL（带安装
+  提示），`LOADN_NO_TUI=1` 强制 REPL。引擎零改动（复用 run_turn emit/stop）。
+- 测试：渲染助手纯函数 3 组 + textual pilot 全链 2 例（fake provider 零 token：
+  mount→提交→run_turn→emit 路由→累计；忙时拒新轮守卫对赌）。
+
 ## [0.6.18] - 2026-09-29
 
 - **resync 重复返回修复**：v0.6.17 的前台恢复在「live 已有同 turn 流水」时

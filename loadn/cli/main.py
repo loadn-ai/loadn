@@ -204,6 +204,15 @@ async def _run(args, prompt: str | None, cwd: Path, cfg: dict, mode: str) -> int
             emitter.send_init(sess.session_id)
 
         if not args.print_mode:
+            # 裸 loadn：TUI 优先（textual 可选 extra）；缺席回落 REPL，
+            # LOADN_NO_TUI=1 强制 REPL（逃生门）
+            if not os.environ.get("LOADN_NO_TUI"):
+                try:
+                    from loadn.tui import run_tui
+                    return run_tui(bundle, stop)
+                except ImportError:
+                    print("（textual 未安装——回落基础 REPL；"
+                          "pip install 'loadn[tui]' 启用全屏 TUI）")
             from loadn.cli.repl import run_repl
             return await run_repl(bundle, emitter, fmt, stop)
 
