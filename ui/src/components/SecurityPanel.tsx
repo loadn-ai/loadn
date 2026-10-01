@@ -348,7 +348,9 @@ export default function SecurityPanel({ onClose }: { onClose: () => void }) {
       {open && (
         <div style={{ ...card, marginBottom: 14, background: 'rgba(127,127,127,.04)' }}>
           {open === 'sandbox' && <SandboxDetail events={events} jump={jump} tier={posture.sandbox} />}
-          {open === 'sandbox' && posture.ops && <OpsDetail ops={posture.ops} reload={load} />}
+          {open === 'sandbox' && posture.ops && (
+            <OpsDetail ops={posture.ops} reload={load}
+              approvalEnforce={posture.policy.approval_enforce} />)}
           {open === 'approvals' && <ApprovalsDetail events={events} jump={jump} />}
           {open === 'egress' && <EgressDetail />}
           {open === 'vault' && <VaultDetail />}
@@ -441,7 +443,9 @@ function DetailHead({ title, note }: { title: string; note?: string }) {
 /** 安全运维面编辑器（PUT /api/admin/security/ops）：七键局部写。
  *  简单键即改即存；沙箱档位下一任务起生效（spawn 期消费）；授权面列表行编辑。
  *  红线键（审计链/确认码门/信任门）不在此面——宪法不可配。 */
-function OpsDetail({ ops, reload }: { ops: OpsConfig; reload: () => void }) {
+function OpsDetail({ ops, reload, approvalEnforce }: {
+  ops: OpsConfig; reload: () => void; approvalEnforce: string;
+}) {
   const [busy, setBusy] = useState('');
   const [err, setErr] = useState('');
   const [sandbox, setSandbox] = useState<string>('');
@@ -501,6 +505,18 @@ function OpsDetail({ ops, reload }: { ops: OpsConfig; reload: () => void }) {
         </select>
         <button className="mini-btn" disabled={!sandbox || busy === 'saving'}
           onClick={saveSandbox}>切换（下一任务起生效）</button>
+      </div>
+      <div className="setting-row">
+        <span className="setting-k">审批策略</span>
+        {([['enforce', '强制（确认码拦截）'], ['warn', '仅告警（放行+留痕）']] as [string, string][]).map(
+          ([v, label]) => (
+            <button key={v} className={`chip${approvalEnforce === v ? '' : ' off'}`}
+              disabled={busy === 'saving'} onClick={() => put({ approval_enforce: v })}
+              title={v === 'warn'
+                ? '高危操作放行但逐条告警入账本（灰度期用；确认码通道保留）'
+                : '高危操作执行前须输确认码，AI 无法自行通过'}>{label}</button>
+          ))}
+        <span className="muted" style={{ fontSize: 12 }}>热生效</span>
       </div>
       <div className="setting-row">
         <span className="setting-k">codemode</span>
