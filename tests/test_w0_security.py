@@ -375,3 +375,19 @@ def test_admin_approvals_and_vault_readonly(w0):
     d = r.json()
     assert "platforms" in d and "verify" in d
     assert "password" not in str(d.get("platforms"))
+
+
+def test_noauth_mode_admin_plane_open(w0):
+    """>>> 无认证模式语义钉死：server.token 置空 = 整站免认证（含管理面写）——
+    外层守卫 if token and protected 直接跳过。部署者自负外层防护；本测试
+    防的是未来有人把管理面单独 fail-closed 导致空 token 模式自锁。"""
+    from loadn_webui.config import CONFIG
+    CONFIG.server.token = ""
+    CONFIG.server.admin_token = ""
+    # 管理面写操作（settings PUT）：无任何凭证头 → 不再 403/401
+    r = httpx.put(w0["url"] + "/api/settings/claude",
+                  json={"effort": "high"}, timeout=10)
+    assert r.status_code not in (401, 403), r.text
+    # 普通面读同样放行
+    r2 = httpx.get(w0["url"] + "/api/sessions", timeout=10)
+    assert r2.status_code == 200
