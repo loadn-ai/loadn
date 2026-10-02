@@ -89,6 +89,7 @@ CREATE TABLE IF NOT EXISTS artifacts (
   path TEXT,                        -- 工作区相对路径（artifacts/ 下）
   kind TEXT,                        -- md|html|docx|code|data|image|other
   title TEXT,
+  summary TEXT,                     -- 一行中文摘要（titlegen 回填；NULL=未回填）
   size INTEGER, mtime REAL,
   created_by TEXT DEFAULT 'agent',  -- agent|skill|user|export
   created_at TEXT, updated_at TEXT
@@ -208,6 +209,10 @@ def _migrate(c: sqlite3.Connection) -> None:
         # 执行引擎名（daemon 停机期间切引擎时，收养/_finish 用对 spec）
         c.execute("ALTER TABLE turns ADD COLUMN engine TEXT")
     jcols = {r["name"] for r in c.execute("PRAGMA table_info(scheduled_jobs)")}
+    acols = {r["name"] for r in c.execute("PRAGMA table_info(artifacts)")}
+    if "summary" not in acols:
+        # 一行中文摘要（titlegen 回填）；扫描重跑不覆盖已回填的 title/summary
+        c.execute("ALTER TABLE artifacts ADD COLUMN summary TEXT")
     if "kind" not in jcols:
         c.execute("ALTER TABLE scheduled_jobs ADD COLUMN kind TEXT DEFAULT 'message'")
     if "cron" not in jcols:

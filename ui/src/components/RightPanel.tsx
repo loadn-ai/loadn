@@ -74,8 +74,14 @@ function ArtifactsTab({ onOpenFile }: { onOpenFile: (path: string) => void }) {
           <div className="art-main">
             <span className={`kind k-${a.kind}`}>{a.kind}</span>
             <span className="art-title" title={a.path}>{a.title}</span>
+            {a.created_by === 'export'
+              ? <span className="art-src" title="由用户在界面导出">导出</span>
+              : <span className="art-src" title="任务运行中生成">任务</span>}
             <span className="art-size">{Math.max(1, Math.round(a.size / 1024))}KB</span>
           </div>
+          {a.summary && (
+            <div className="art-summary" title={a.path}>{a.summary}</div>
+          )}
           <div className="art-actions">
             <button className="link" onClick={() => onOpenFile(a.path)}>预览</button>
             <a href={withToken(`/api/artifacts/${a.id}/download`)} download>下载</a>
