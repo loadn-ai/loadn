@@ -24,12 +24,21 @@ const bucketOf = (x: { pinned?: number; starred?: number; category_id?: number |
 
 type TopRow =
   | { kind: 'session'; s: { id: string; updated_at: string;
-      pinned?: number; starred?: number; category_id?: number | null } }
+      pinned?: number; starred?: number; category_id?: number | null;
+      active_turn?: { status: string } | null } }
   | { kind: 'project'; p: ProjectInfo };
 const rowBucket = (r: TopRow): RowBucket => r.kind === 'session' ? bucketOf(r.s) : bucketOf(r.p);
 const rowTs = (r: TopRow) => r.kind === 'session'
   ? new Date(r.s.updated_at).getTime()
   : new Date(r.p.updated_at ?? 0).getTime();
+/** 排序键：在跑任务恒置顶（含跑着子任务的项目组——活跃优先于最近完成，
+ *  长跑任务期间 updated_at 不动也不被后来完成的旧任务压下去） */
+const mkRowOrder = (kidsRunning: Set<string>) => (a: TopRow, b: TopRow) => {
+  const run = (r: TopRow) => r.kind === 'session'
+    ? r.s.active_turn?.status === 'running'
+    : kidsRunning.has(r.p.id);
+  return Number(run(b)) - Number(run(a)) || rowTs(b) - rowTs(a);
+};
 
 /** 「移动到」二级面板：置顶/最近/收藏/自定义分类（含内联新建），当前分区打勾 */
 function moveEntries(cur: RowBucket, onMove: (d: MoveDest) => void,
@@ -121,10 +130,14 @@ export default function Sidebar({ onNew, onAdmin, onNav, adminActive }: {
     if (!byProject.has(s.project_id)) byProject.set(s.project_id, []);
     byProject.get(s.project_id)!.push(s);
   }
+  const kidsRunning = new Set(
+    activeSessions
+      .filter(s => s.project_id && s.active_turn?.status === 'running')
+      .map(s => s.project_id!));
   const topRows: TopRow[] = [
     ...topSessions.map(s => ({ kind: 'session', s }) as TopRow),
     ...activeProjects.map(p => ({ kind: 'project', p }) as TopRow),
-  ].sort((a, b) => rowTs(b) - rowTs(a));
+  ].sort(mkRowOrder(kidsRunning));
   const rowsIn = (rows: TopRow[], b: RowBucket) => rows.filter(r => rowBucket(r) === b);
   const pinnedRows = rowsIn(topRows, 'pinned');
   const starredRows = rowsIn(topRows, 'starred');

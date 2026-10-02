@@ -279,7 +279,11 @@ def list_sessions(c: sqlite3.Connection, include_archived: bool = True) -> list[
 
 
 def update_session(c: sqlite3.Connection, sid: str, touch: bool = True, **fields: Any) -> None:
+    # 无字段 + touch：纯触碰（排队即置顶——列表按 updated_at 排序；旧实现
+    # `if not fields: return` 让引擎排队路径的置顶触碰成了死代码）
     if not fields:
+        if touch:
+            c.execute("UPDATE sessions SET updated_at=? WHERE id=?", (iso(), sid))
         return
     sets = ", ".join(f"{k}=?" for k in fields)
     # touch=False：收藏等纯标记位不扰动 updated_at（列表按它排序，点了星不该跳顶）

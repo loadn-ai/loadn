@@ -112,3 +112,23 @@ async def test_create_in_category(client):
                               json={"title": "x", "category_id": 9999})).status_code == 404
     assert (await client.post("/api/projects",
                               json={"title": "x", "category_id": 9999})).status_code == 404
+
+
+async def test_queue_touch_and_noop_semantics(client):
+    """update_session 语义钉死：无字段+touch=纯触碰（排队置顶——旧实现死代码）；
+    无字段+touch=False=完全 no-op（守卫反转可杀）。"""
+    import time as _t
+
+    from loadn_webui import db as db_mod
+    from tests.conftest import _HOME  # noqa: F401
+    r = await client.post("/api/sessions", json={"title": "排序触碰"})
+    sid = r.json()["session"]["id"]
+    with db_mod.conn() as c:
+        t0 = db_mod.get_session(c, sid)["updated_at"]
+    _t.sleep(1.1)                       # 秒级时间戳可比
+    with db_mod.conn() as c:
+        db_mod.update_session(c, sid, touch=False)   # 无字段且不 touch：no-op
+        assert db_mod.get_session(c, sid)["updated_at"] == t0
+        db_mod.update_session(c, sid)                 # 无字段纯触碰：updated_at 前移
+        t1 = db_mod.get_session(c, sid)["updated_at"]
+    assert t1 > t0
