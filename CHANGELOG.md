@@ -19,6 +19,16 @@
 - evals 场景 5→10；契约 v1/v2 对赌补全（tool_use_failure 终态事件、
   平台 durable 事件转发两个真缺口修复）。
 
+## [0.6.22] - 2026-10-02
+
+- **最新活跃置顶（排序修复）**：两个根因——
+  - `db.update_session` 无字段调用 `if not fields: return` 提前返回，引擎排队
+    路径的置顶触碰（`update_session(c, sid)`）一直是**死代码**：发消息/调度
+    启动的任务不跳顶。修为「无字段+touch=纯触碰 updated_at」；
+  - 长跑任务期间 updated_at 不动，会被后来完成的旧任务压下去——侧栏排序改
+    「在跑任务恒置顶」（含跑着子任务的项目组拉起），其余按 updated_at。
+  - 语义钉死测试：无字段+touch=False=完全 no-op（守卫反转可杀）。
+
 ## [0.6.21] - 2026-09-29
 
 - **审批策略控件补缺**：后端 `approval_enforce`（enforce|warn）自 v0.6.5 即可
