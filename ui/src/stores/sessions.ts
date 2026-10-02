@@ -347,10 +347,9 @@ export const useStore = create<Store>((set, get) => ({
                  ?? d.turns.find(t => t.status === 'queued');
         if (!act) {
           if (get().live) set({ live: null }); // 无活跃 turn：残留 live 即陈旧状态
-        } else if (!wasConnected || !get().live
-                   || get().live!.turnId !== act.id) {
-          // 断线重连/turn 更替：空种子（回放会重铺本 turn 尾部 items）；
-          // 连接健康且 turn 未变时保留已积累流水，不触发回放不重置
+        } else if (!get().live || get().live!.turnId !== act.id) {
+          // live 缺席/turn 更替：空种子铺底座。重连不清空已有 items——
+          // SSE 断点续传（last_event_id）只补未见过的事件，清了会丢内容
           set({ live: { turnId: act.id, status: act.status as LiveTurn['status'],
                         items: [], todos: [],
                         startedAt: act.started_at

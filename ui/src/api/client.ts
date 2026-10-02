@@ -110,6 +110,11 @@ export async function connectSse(
     'todos', 'files', 'steer', 'turn_done', 'turn_error', 'turn_stopped', 'turn_deleted',
     'session_rotated', 'session_meta', 'resync', 'egress', 'ping'];
   let backoff = 1000;
+  // 断点续传游标：手动重建的 EventSource 不带浏览器内建的 Last-Event-ID
+  // 状态——不带上次见到的 eid，服务端每次重连都精准回放活跃 turn 尾部，
+  // 叠进已积累的流水=「重复输出四五次」的根因。服务端通道现成：
+  // ?last_event_id=（sse.py 读 query），事件 id 全局自增且落库跨重启稳定。
+  let lastId = 0;
 
   const open = async (): Promise<EventSource> => {
     let url = `/api/sessions/${encodeURIComponent(sid)}/events`;
@@ -120,6 +125,9 @@ export async function connectSse(
         url += `?ticket=${encodeURIComponent(d.ticket)}`;
       }
     } catch { /* 票取不到（宽限期无 token 或旧服务）：裸连兜底 */ }
+    if (lastId > 0) {
+      url += `${url.includes('?') ? '&' : '?'}last_event_id=${lastId}`;
+    }
     const es = new EventSource(url);
     es.onopen = () => { backoff = 1000; onOpen(); };
     es.onerror = () => {
@@ -131,6 +139,9 @@ export async function connectSse(
       backoff = Math.min(backoff * 2, 30000);
     };
     const handler = (ev: MessageEvent) => {
+      const eid = Number(ev.lastEventId || 0);
+      if (eid && eid <= lastId) return;      // 双保险：续传窗内的重复帧丢弃
+      if (eid > lastId) lastId = eid;
       let data: any = {};
       try { data = JSON.parse(ev.data); } catch { /* ignore */ }
       onEvent(ev.type, data);
