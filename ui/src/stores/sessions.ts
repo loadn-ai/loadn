@@ -68,6 +68,7 @@ export type MoveDest = 'pinned' | 'recent' | 'starred' | 'archive' | { cat: numb
 
 export interface ArtifactInfo {
   id: number; path: string; kind: string; title: string;
+  summary?: string | null;
   size: number; created_by: string;
 }
 

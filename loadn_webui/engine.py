@@ -827,6 +827,8 @@ class Engine:
         try:
             from . import artifacts as art
             art.scan_session(sid)
+            # 中文标题/摘要回填（后台非关键路径——失败静默，titlegen 未启用即跳过）
+            asyncio.create_task(art.ensure_summaries(sid))
         except Exception:
             log.exception("产物扫描失败 sid=%s", sid)
         await self._publish_files(sid, tid, at)

@@ -10,7 +10,7 @@ import time
 from pathlib import Path
 
 from . import db as db_mod
-from .util import get_logger
+from .util import get_logger, iso
 from .workspace import ws_of
 
 log = get_logger(__name__)
@@ -72,12 +72,19 @@ def ledger_split_check(sid: str) -> list[str]:
 
 
 def scan_session(sid: str) -> int:
-    """扫描 workspace/<sid>/artifacts/ 同步 artifacts 表。"""
+    """扫描 workspace/<sid>/artifacts/ 同步 artifacts 表。
+
+    已回填中文标题/摘要的行不被文件名标题覆盖（titlegen 结果是人工校准过的
+    呈现面；文件名仍是 path 真源）。
+    """
     ws = ws_of(sid) / "artifacts"
     if not ws.exists():
         return 0
     n = 0
     with db_mod.conn() as c:
+        done = {r["path"] for r in c.execute(
+            "SELECT path FROM artifacts WHERE session_id=? AND summary IS NOT NULL",
+            (sid,))}
         for p in sorted(ws.rglob("*")):
             if not p.is_file():
                 continue
@@ -86,12 +93,88 @@ def scan_session(sid: str) -> int:
             except OSError:
                 continue
             rel = str(p.relative_to(ws.parent))
-            title = p.stem.replace("_", " ").replace("-", " ").strip() or p.name
-            db_mod.upsert_artifact(
-                c, session_id=sid, path=rel, kind=kind_of(p), title=title,
-                size=st.st_size, mtime=st.st_mtime, created_by="agent")
+            fields: dict = {"session_id": sid, "path": rel, "kind": kind_of(p),
+                            "size": st.st_size, "mtime": st.st_mtime}
+            if rel not in done:
+                fields["title"] = p.stem.replace("_", " ").replace("-", " ").strip() \
+                    or p.name
+                fields["created_by"] = "agent"
+            db_mod.upsert_artifact(c, **fields)
             n += 1
     return n
+
+
+# ---------------- 中文标题/摘要回填（titlegen，产品语言=简体中文） ----------------
+
+_SUMMARY_INFLIGHT: set[str] = set()
+
+
+async def ensure_summaries(sid: str, limit: int = 8) -> int:
+    """缺摘要的文本类产物批量生成「中文短标题 + 一行摘要」。
+
+    - 一次 LLM 调用出全批（doubao mini 级成本）；只处理前 limit 个新/变更项
+    - titlegen 未启用/调用失败：静默降级（filename 标题兜底），不阻塞主流程
+    - 同会话并发去重（_SUMMARY_INFLIGHT）；多语言化时把 prompt 语言抽配置
+    """
+    from .config import CONFIG
+    if not (CONFIG.titlegen.enabled and CONFIG.titlegen.api_key):
+        return 0
+    if sid in _SUMMARY_INFLIGHT:
+        return 0
+    _SUMMARY_INFLIGHT.add(sid)
+    try:
+        with db_mod.conn() as c:
+            rows = c.execute(
+                "SELECT id, path, kind, title FROM artifacts "
+                "WHERE session_id=? AND summary IS NULL AND kind IN "
+                "('md','html','code','data','other') ORDER BY mtime DESC LIMIT ?",
+                (sid, limit)).fetchall()
+            rows = [dict(r) for r in rows]
+        if not rows:
+            return 0
+        ws = ws_of(sid)
+        items: list[str] = []
+        for i, r in enumerate(rows):
+            p = safe_resolve(ws, r["path"])
+            head = ""
+            if p is not None and p.stat().st_size <= MAX_FILE_BYTES \
+                    and p.suffix.lower() in TEXT_EXTS:
+                head = p.read_text(errors="replace")[:1200]
+            items.append(f"[{i}] 文件: {r['path']}\n内容头: {head[:1000] or '（无文本）'}")
+        from .integrations.titlegen import _chat
+        reply = await _chat(
+            "你是产物索引器。对每个文件给出：简体中文短标题（≤12字，概括内容而非"
+            "复述文件名）与一行摘要（≤40字，说明这是什么、给谁用）。"
+            '只输出 JSON 数组：[{"i":0,"t":"标题","s":"摘要"}]，不要任何其他文字。',
+            "\n\n".join(items), max_tokens=1400)
+        import json as _json
+        import re as _re
+        m = _re.search(r"\[.*\]", reply, _re.S)
+        if not m:
+            return 0
+        got = {int(d["i"]): d for d in _json.loads(m.group(0))
+               if isinstance(d, dict) and "i" in d}
+        n = 0
+        with db_mod.conn() as c:
+            for i, r in enumerate(rows):
+                d = got.get(i)
+                if not d:
+                    continue
+                title = str(d.get("t") or "").strip()[:24]
+                summary = str(d.get("s") or "").strip()[:80]
+                if not title and not summary:
+                    continue
+                c.execute(
+                    "UPDATE artifacts SET title=COALESCE(NULLIF(?, ''), title), "
+                    "summary=?, updated_at=? WHERE id=?",
+                    (title or None, summary or "（见标题）", iso(), r["id"]))
+                n += 1
+        return n
+    except Exception:  # noqa: BLE001 —— 索引面非关键路径
+        log.warning("产物摘要回填失败 sid=%s（静默降级）", sid, exc_info=True)
+        return 0
+    finally:
+        _SUMMARY_INFLIGHT.discard(sid)
 
 
 def list_artifacts(sid: str) -> list[dict]:
