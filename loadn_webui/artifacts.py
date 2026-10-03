@@ -151,6 +151,10 @@ async def ensure_summaries(sid: str, limit: int = 8) -> int:
         import re as _re
         m = _re.search(r"\[.*\]", reply, _re.S)
         if not m:
+            # 模型输出格式漂移（无 JSON 数组）：记警觉留痕，行保持 NULL 由
+            # 下次触发（turn 收尾/会话打开）重试——单 turn 会话不再一锤定音
+            log.warning("产物摘要回填格式不中 sid=%s 待重试（reply 头 %r）",
+                        sid, reply[:80])
             return 0
         got = {int(d["i"]): d for d in _json.loads(m.group(0))
                if isinstance(d, dict) and "i" in d}
@@ -169,6 +173,10 @@ async def ensure_summaries(sid: str, limit: int = 8) -> int:
                     "summary=?, updated_at=? WHERE id=?",
                     (title or None, summary or "（见标题）", iso(), r["id"]))
                 n += 1
+        if n:
+            log.info("产物摘要回填 sid=%s %d/%d 条", sid, n, len(rows))
+        elif rows:
+            log.warning("产物摘要回填 0 命中 sid=%s（%d 项待重试）", sid, len(rows))
         return n
     except Exception:  # noqa: BLE001 —— 索引面非关键路径
         log.warning("产物摘要回填失败 sid=%s（静默降级）", sid, exc_info=True)

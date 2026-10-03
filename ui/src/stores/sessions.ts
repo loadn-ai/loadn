@@ -146,6 +146,7 @@ interface Store {
   loadApprovals: () => Promise<void>;
   decideApproval: (id: number, approve: boolean) => Promise<string | null>;
   loadTimeline: () => Promise<void>;
+  loadArtifacts: () => Promise<void>;
   openSession: (sid: string) => Promise<void>;
   closeSession: () => void;
   resync: () => void;
@@ -244,6 +245,17 @@ export const useStore = create<Store>((set, get) => ({
       const d = await api<{ timeline: TimelineMarker[] }>(
         `/api/sessions/${encodeURIComponent(sid)}/timeline`);
       if (get().currentSid === sid) set({ timeline: d.timeline });
+    } catch { /* 拉取失败不阻塞 */ }
+  },
+
+  /** 产物面板拉新：摘要回填是收尾后数秒落地的后台任务，tab 激活时再取一次 */
+  async loadArtifacts() {
+    const sid = get().currentSid;
+    if (!sid) return;
+    try {
+      const d = await api<{ artifacts: ArtifactInfo[] }>(
+        `/api/sessions/${encodeURIComponent(sid)}`);
+      if (get().currentSid === sid) set({ artifacts: d.artifacts });
     } catch { /* 拉取失败不阻塞 */ }
   },
 

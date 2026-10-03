@@ -9,7 +9,19 @@ type Tab = 'properties' | 'artifacts' | 'files';
 export default function RightPanel({ onOpenFile }: { onOpenFile: (path: string) => void }) {
   // tab 状态在 store：侧边栏「属性」入口要能从外部切过来
   const tab = useStore(s => s.rightTab);
-  const setTab = useStore(s => s.setRightTab);
+  const setTabRaw = useStore(s => s.setRightTab);
+  const loadArtifacts = useStore(s => s.loadArtifacts);
+  // 切到产物 tab：拉新（中文标题/摘要是收尾后数秒落地的后台回填）；
+  // 若仍有缺摘要行，8s 后补拉一次（兜底触发刚好在这次 GET 里点火）
+  const setTab = (t: Tab) => {
+    setTabRaw(t);
+    if (t === 'artifacts') {
+      void loadArtifacts().then(() => {
+        if (useStore.getState().artifacts.some(a => !a.summary))
+          setTimeout(() => void useStore.getState().loadArtifacts(), 8000);
+      });
+    }
+  };
   // 字段级订阅：live turn 每个 delta 都 set 全店，无 selector 的整店订阅会让
   // 550 张产物卡每 token 重渲染一遍，面板直接卡死（"产物打不开"的根因）
   const artifacts = useStore(s => s.artifacts);

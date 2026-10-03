@@ -11,6 +11,7 @@ W0（2026-09-22，T1 零点击 RCE 链修复）：
 """
 from __future__ import annotations
 
+import asyncio
 import fcntl
 import gzip
 import hmac
@@ -86,6 +87,7 @@ async def lifespan(app: FastAPI):
     global _SERVE_LOCK_FH
     from ..config import ensure_dirs, migrate_legacy_db
     from ..scheduler import get_scheduler
+    app.state.loop = asyncio.get_running_loop()   # 同步路由线程安全投递用
     ensure_dirs()
     resolve_runtime_token()   # W0.1：token 空 → 生成 var/server_token + 14 天宽限
     _mig = migrate_legacy_db()   # R2.5：旧 var/workdaddy.db → var/loadn.db（copy）
