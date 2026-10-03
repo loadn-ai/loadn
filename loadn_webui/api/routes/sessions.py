@@ -3,7 +3,7 @@ from __future__ import annotations
 
 import json
 
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, HTTPException, Request
 
 from ... import artifacts as art
 from ... import db as db_mod
@@ -75,7 +75,7 @@ def list_sessions():
             r["next_wake"] = next_wake(r["id"])
     return {"sessions": rows}
 @router.get("/sessions/{sid}")
-def session_detail(sid: str):
+def session_detail(sid: str, request: Request):
     sess = _get_session_or_404(sid)
     with db_mod.conn() as c:
         sess["messages"] = [db_mod.to_dict(r) for r in db_mod.list_messages(c, sid)]
@@ -97,7 +97,23 @@ def session_detail(sid: str):
     sess["next_wake"] = next_wake(sid)
     with db_mod.conn() as c:
         sess["profile_auto"] = bool(db_mod.kv_get(c, f"profile_auto:{sid}"))
+    # 摘要回填兜底：单 turn 会话收尾那次若静默失败（模型格式漂移）没有下次
+    # 收尾可重试——打开会话（看产物面板）即再触发（NULL 行才做事，幂等）。
+    # 本路由是同步 def（线程池），经主循环线程安全投递
+    if any(a.get("summary") is None for a in sess["artifacts"]):
+        import asyncio
+        loop = getattr(request.app.state, "loop", None)
+        if loop is not None:
+            asyncio.run_coroutine_threadsafe(
+                _quiet_summary_backfill(sid), loop)
     return sess
+
+
+async def _quiet_summary_backfill(sid: str) -> None:
+    try:
+        await art.ensure_summaries(sid)
+    except Exception:  # noqa: BLE001 —— 兜底路径，任何失败不响应用户请求
+        pass
 @router.get("/sessions/{sid}/egress")
 def session_egress(sid: str, n: int = 50):
     """会话外联视图（属性面板「安全与外联」段）：模式/白名单/本会话临时
