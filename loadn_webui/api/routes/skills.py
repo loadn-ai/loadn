@@ -1,7 +1,7 @@
 """profiles / skills / skillhub 市场面（技能 CRUD、编辑、安装、翻译）。"""
 from __future__ import annotations
 
-from fastapi import APIRouter, File, HTTPException, UploadFile
+from fastapi import APIRouter, File, HTTPException, Response, UploadFile
 
 from ... import profile as profile_mod
 from ... import skills as skills_mod
@@ -91,6 +91,9 @@ def delete_skill_file(name: str, path: str):
 @router.post("/skills/install")
 def install_skill(body: dict):
     try:
+        if body.get("url"):
+            return skills_mod.install_from_url(
+                str(body["url"]), overwrite=bool(body.get("overwrite")))
         repo = str(body.get("repo") or "")
         subpath = str(body.get("subpath") or "")
         ref = body.get("ref") or None
@@ -114,6 +117,17 @@ async def upload_skill_zip(file: UploadFile = File(...)):
         return skills_mod.install_from_zip(data, overwrite=False)
     except Exception as e:  # noqa: BLE001
         raise _http_err(e)
+@router.get("/skills/{name}/export")
+def export_skill(name: str):
+    """导出为 agentskills.io 兼容 zip（frontmatter 规范化、剥内部元数据）。"""
+    try:
+        data = skills_mod.export_zip(name)
+    except FileNotFoundError as e:
+        raise HTTPException(404, str(e)) from None
+    except Exception as e:  # noqa: BLE001
+        raise _http_err(e)
+    return Response(content=data, media_type="application/zip",
+                    headers={"Content-Disposition": f'attachment; filename="{name}.zip"'})
 @router.get("/skillhub/search")
 def skillhub_search(q: str = ""):
     return skillhub.search(q)

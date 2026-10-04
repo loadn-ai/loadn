@@ -71,16 +71,28 @@ Anthropic 形网关（任何兼容端点）与 OpenAI 兼容端点（vLLM/LiteLL
 ## 3. 写一个 Skill（最常用的扩展）
 
 Skill = 目录 + `SKILL.md`（frontmatter `name` + `description`，正文是
-给 AI 的操作手册）。放置位置任一：
+给 AI 的操作手册；缺字段自动回落——name→目录名、description→空串，
+兼容 [agentskills.io](https://agentskills.io) 开放标准的 frontmatter
+形状，`allowed-tools`/`metadata` 等额外字段忽略不炸）。放置位置任一：
 
-- 项目内：`.claude/skills/` / `.agent/skills/`（随仓库走）
-- 用户级：`$LOADN_HOME/skills`（引擎侧全局）
+- 项目内：`.agents/skills/`（agentskills.io 标准目录，`npx skills add`
+  等工具的落点，同名优先级最高）> `.claude/skills/` > `.loadn/skills/`
+  / `.agent/skills/`（随仓库走；项目级四根都过 P0-2 信任门）
+- 用户级：`~/.claude/skills`（与 Claude CLI 共享）/ `$LOADN_HOME/skills`
+  （引擎侧全局，不受信任门）
 - 平台级：数据根 `skills/`（webui 管理中心可视化管理、可安装/上传）
 
 私有 skill 不进仓库：设 `LOADN_SKILLS_EXTRA=/path/to/dir` 即整目录
 overlay 进平台（开源部署与私有资产分离的设计）。
-安装第三方 skill 走管理中心——先过供应链扫描（W4 八类检查），能力
-声明会展示给用户。
+
+安装第三方 skill 走管理中心（三来源：GitHub repo/tree URL 或
+`owner/repo/path` 简写、任意 `https://….zip` / `.tar.gz` 归档 URL、
+zip 上传）——先过供应链扫描（W4 八类检查），能力声明会展示给用户。
+GitHub/URL 两类远程来源装完即 pin：`SKILL.md` 盖 `source` 戳并写入
+`$LOADN_HOME/skills.lock.json` 供应链锁，此后文件被 out-of-band 篡改
+→ 引擎拒索引（fail-closed）；经管理面编辑/重装则自动刷新锁。上传的
+zip 视作用户自备，不 pin。管理中心可把任一 skill 导出为 agentskills.io
+兼容 zip（frontmatter 规范化、剥内部元数据），供其他 agent 使用。
 
 ## 4. 接外部工具服务（MCP）
 

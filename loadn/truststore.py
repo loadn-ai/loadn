@@ -40,7 +40,7 @@ DIGEST_SCHEMA_VERSION = 1     # 摘要算法/受信面变更时 bump（旧条目
 MAX_DIGEST_FILES = 2000       # 资源树扫描上限（防恶意仓库撑爆哈希时间）
 MAX_DIGEST_BYTES = 8 * 1024 * 1024
 
-_MARKER_DIRS = (".loadn", ".agent", ".claude")
+_MARKER_DIRS = (".loadn", ".agent", ".claude", ".agents")
 # settings.json=hooks/permissions；policy.json=P0-4b 审批回写的 bash 规则
 # （未信任仓库不得自带回写规则自我放行）
 _MARKER_FILES = ("settings.json", "policy.json")

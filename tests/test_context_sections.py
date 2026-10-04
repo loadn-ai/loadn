@@ -19,6 +19,7 @@ from pathlib import Path
 import pytest
 
 from loadn.core.context import SECTION_SPECS, ContextAssembler
+from loadn.core.skills import discover_skills
 
 
 @pytest.fixture(autouse=True)
@@ -190,3 +191,40 @@ def test_last_sections_metadata(tmp_path):
     # 无裁剪时：join 语义可复原（chars 和 + 分隔符 = 总长）
     assert sum(m["chars"] for m in asm.last_sections) + 2 * (len(ids) - 1) \
         == len(out)
+
+
+# ---------------------------------------------------------------- P1 agentskills.io
+def _agents_skill(tmp_path: Path, name: str, frontmatter: str) -> Path:
+    sk = tmp_path / ".agents" / "skills" / name
+    sk.mkdir(parents=True, exist_ok=True)
+    md = sk / "SKILL.md"
+    md.write_text(f"---\n{frontmatter}\n---\n正文", encoding="utf-8")
+    return md
+
+
+def test_agents_dir_discovered_and_top_priority(tmp_path):
+    """P1：.agents/skills（agentskills.io 标准、`npx skills add` 落点）入发现序
+    且置顶——同名覆盖 .claude/skills（项目内标准目录优先）。"""
+    _agents_skill(tmp_path, "dup", "name: dup\ndescription: agentskills 版")
+    _skill(tmp_path, "dup")                       # .claude/skills/dup（低优先）
+    out = ContextAssembler(tmp_path).build()
+    assert "agentskills 版" in out
+    assert "dup 描述" not in out, ".claude/skills 同名未被 .agents/skills 覆盖"
+    assert discover_skills(tmp_path)["dup"].description == "agentskills 版"
+
+
+def test_agentskills_frontmatter_shapes_tolerated(tmp_path):
+    """P1：agentskills.io 常见 frontmatter 形状容错——allowed-tools 内联列表、
+    metadata 嵌套块、缺 name/缺 description 一律不报错，缺字段给默认值
+    （name→目录名，description→空串）。"""
+    _agents_skill(tmp_path, "shaped",
+                  "name: shaped\nallowed-tools: [Bash, Read]\nmetadata:\n  license: MIT")
+    _agents_skill(tmp_path, "no-name-desc", "allowed-tools: [Bash]")   # 双缺
+    out = ContextAssembler(tmp_path).build()
+    assert "shaped" in out and "no-name-desc" in out    # 都进索引不炸
+    skills = discover_skills(tmp_path)
+    assert skills["no-name-desc"].name == "no-name-desc"   # 缺 name → 目录名
+    assert skills["no-name-desc"].description == ""         # 缺 description → 空串
+    # 按需加载正文不炸（Skill 工具路径）
+    from loadn.core.skills import load_skill_body
+    assert "正文" in load_skill_body(skills["shaped"])

@@ -1,17 +1,23 @@
 """Skills 发现单一真相：ContextAssembler 索引与 SkillTool 共用。
 
-发现序（先到先得，同名去重——项目覆盖全局）：cwd/.claude/skills >
-cwd/.loadn/skills（兼容旧 .agent/skills）> $LOADN_HOME/skills。SkillInfo 带 path 供按需
+发现序（先到先得，同名去重——项目覆盖全局）：cwd/.agents/skills
+（agentskills.io 开放标准目录，Vercel `npx skills add` 等工具的落点）>
+cwd/.claude/skills > cwd/.loadn/skills（兼容旧 .agent/skills）>
+$LOADN_HOME/skills。SkillInfo 带 path 供按需
 加载正文（SkillTool），索引侧只用 name+description。
 """
 from __future__ import annotations
 
-import hashlib
-import json
 from dataclasses import dataclass
 from pathlib import Path
 
 from loadn import loadn_home
+from loadn.skilllock import (  # noqa: F401  再导出：锁存储在顶层（webui 共用），消费者导入路径不变
+    LOCK_VERSION,
+    load_locks,
+    lock_paths,
+    skill_hash,
+)
 from loadn.util import get_logger, parse_frontmatter
 
 log = get_logger(__name__)
@@ -28,11 +34,13 @@ def skill_bases(cwd: Path) -> list[Path]:
     """发现根（顺序即优先级；~/.claude/skills = Claude 用户全局 skill，
     双引擎共享同一套全局 skill）。
 
-    P0-2 信任门：项目级三个根未过信任门即剔除（clone 的仓库不得自带
-    注入指令的 SKILL.md）；用户全局两个根不受影响。
+    P0-2 信任门：项目级四个根（.agents/.claude/.loadn/.agent）未过信任门
+    即剔除（clone 的仓库不得自带注入指令的 SKILL.md——agentskills.io
+    供给不豁免）；用户全局两个根不受影响。
     """
     from loadn.core import trust
-    bases = [cwd / ".claude" / "skills",
+    bases = [cwd / ".agents" / "skills",
+             cwd / ".claude" / "skills",
              cwd / ".loadn" / "skills",
              cwd / ".agent" / "skills"]
     ok, why = trust.gate(cwd)
@@ -80,34 +88,8 @@ def discover_skills(cwd: Path, *, enforce_lock: bool = True) -> dict[str, SkillI
 
 
 # ---------------------------------------------------------------- 供应链锁（P0-3）
-LOCK_VERSION = 1
-
-
-def lock_paths() -> list[Path]:
-    """锁文件搜索序（先到先得，按 name 覆盖合并）：包内（随发布分发的
-    内置 skill 锁）< $LOADN_HOME（用户外部 skill 的可写锁，
-    `loadn skills lock` 写这里——site-packages 可能只读，不动包内文件）。"""
-    return [Path(__file__).resolve().parent.parent / "skills.lock.json",
-            loadn_home() / "skills.lock.json"]
-
-
-def load_locks() -> dict[str, dict]:
-    """合并后的锁视图：{name: {source, sourceType, skillPath, computedHash}}。"""
-    merged: dict[str, dict] = {}
-    for p in lock_paths():
-        try:
-            data = json.loads(p.read_text(encoding="utf-8"))
-        except (OSError, ValueError):
-            continue
-        skills = data.get("skills") if isinstance(data, dict) else None
-        if isinstance(skills, dict):
-            merged.update({k: v for k, v in skills.items() if isinstance(v, dict)})
-    return merged
-
-
-def skill_hash(skill_md: Path) -> str:
-    """SKILL.md 全文 sha256（zcode computedHash 同构）。"""
-    return hashlib.sha256(skill_md.read_bytes()).hexdigest()
+# 存储原语（lock_paths/load_locks/skill_hash/写入面）在顶层 loadn/skilllock.py
+# ——进程边界禁 webui 入 loadn.core，而安装/编辑面要写锁（P1 打通）。
 
 
 def _lock_ok(name: str, skill_md: Path) -> bool:

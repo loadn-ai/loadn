@@ -155,3 +155,19 @@ def test_no_resources_workspace_ungated(tmp_path: Path, home: Path):
     (plain / "main.py").write_text("print(1)\n", encoding="utf-8")
     ok, why = trust.gate(plain)
     assert ok and why == "no-resources"              # 无资源不设卡
+
+
+# ---------------------------------------------------------------- B5-8（P1）
+def test_b5_8_agents_root_under_trust_gate(tmp_path: Path, home: Path):
+    """P1：.agents/skills（agentskills.io 标准目录，`npx skills add` 落点）
+    同为项目级根——未信任即剔除，admit 后照常发现。开放标准供给不豁免
+    信任门（clone 的仓库照样能自带该目录）。"""
+    repo = tmp_path / "repo-agents"
+    (repo / ".agents" / "skills" / "std-skill").mkdir(parents=True)
+    (repo / ".agents" / "skills" / "std-skill" / "SKILL.md").write_text(
+        "---\nname: std-skill\ndescription: agentskills.io 形状\n---\nbody",
+        encoding="utf-8")
+    assert "std-skill" not in discover_skills(repo), \
+        "未信任仓库的 .agents/skills 进入了发现序"
+    trust.admit(repo)
+    assert "std-skill" in discover_skills(repo)

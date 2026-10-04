@@ -90,6 +90,7 @@ EXPECTED = {
     ("/api/skills/translate", "post"),
     ("/api/skills/upload", "post"),
     ("/api/skills/{name}", "delete,get"),
+    ("/api/skills/{name}/export", "get"),
     ("/api/skills/{name}/file", "delete,get,post,put"),
     ("/api/skills/{name}/toggle", "post"),
     ("/api/sse-ticket", "get"),

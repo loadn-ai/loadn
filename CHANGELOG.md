@@ -5,6 +5,18 @@
 
 ## [未发布]（Unreleased）
 
+- **技能目录兼容 agentskills.io（P1）**：发现根新增项目级 `.agents/skills/`
+  （开放标准目录、`npx skills add` 落点），同名优先级最高、照过 P0-2 信任门
+  ——负路径对赌实测抓出信任门资源枚举不认 `.agents` 的真缺口（只带该目录的
+  clone 仓库会被判「无资源」直接放行），已补。frontmatter 解析容错兼容
+  agentskills.io 形状（缺 name/description 回落默认值，`allowed-tools`/
+  `metadata` 等字段忽略不炸）。安装三来源：GitHub repo/tree URL、
+  `owner/repo/path` 简写、任意 https `.zip`/`.tar.gz` 归档 URL（明文与非
+  归档扩展名 fail-closed 拒绝）。**安装↔供应链锁打通**：远程来源装完即
+  盖 `source` 戳 + 写 `$LOADN_HOME/skills.lock.json`，out-of-band 篡改 →
+  引擎拒索引；经管理面编辑/重装自动刷新锁（zip 上传视作用户自备不 pin）。
+  新增导出：任一 skill 导出为 agentskills.io 兼容 zip（frontmatter 规范化
+  补必填字段、剥 `source` 戳与 `.loadn-*` 内部元数据，可原样装回）。
 - **测试质量战役（T + M0-M6）**：行覆盖 78.8%→**83.1%**（CI 门同步收紧）；
   自研突变测试 runner（`scripts/mutate.py`，AST 定位 5 算子+窄测试集映射）
   对 41 个安全与核心文件注入 **2589 个变异**，杀伤率 **76.1%**

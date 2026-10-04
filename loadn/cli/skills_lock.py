@@ -9,11 +9,16 @@
 """
 from __future__ import annotations
 
-import json
 import sys
 from pathlib import Path
 
-from loadn.core.skills import discover_skills, load_locks, lock_paths, skill_hash
+from loadn.core.skills import discover_skills
+from loadn.skilllock import (
+    load_locks,
+    lock_paths,
+    skill_hash,
+    write_user_lock,
+)
 from loadn.util import parse_frontmatter
 
 
@@ -65,9 +70,7 @@ def cmd_lock(cwd: Path, update: bool) -> int:
     payload = {"version": 1,
                "skills": {k: merged[k] for k in sorted(merged) if k in merged
                           and (update or k in current or k in existing)}}
-    user_lock.parent.mkdir(parents=True, exist_ok=True)
-    user_lock.write_text(json.dumps(payload, ensure_ascii=False, indent=2) + "\n",
-                         encoding="utf-8")
+    write_user_lock(payload["skills"])
     n_new = len(current) - len({k for k in current if k in existing})
     print(f"锁已写入 {user_lock}（外部 skill {len(current)} 个，"
           f"新增 {max(n_new, 0)}{', 更新 ' + str(len(changed)) if changed else ''}）")

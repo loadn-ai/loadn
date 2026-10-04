@@ -1,6 +1,6 @@
 // Skills 管理页（列表/上传/翻译/安装）——从 AdminPanel 拆出（v0.6.12）
 import { useEffect, useRef, useState } from 'react';
-import { api } from '../../api/client';
+import { api, withToken } from '../../api/client';
 import { fetchZhDesc } from '../../api/zh';
 import SkillEditor from '../SkillEditor';
 import InstallDialog from '../InstallDialog';
@@ -92,6 +92,9 @@ export default function SkillsTab() {
                     <span className="sk-actions">
                       <button className="link" onClick={() => void toggle(s)}>{s.disabled ? '启用' : '禁用'}</button>
                       <button className="link" onClick={() => setEditing(s.name)}>编辑</button>
+                      {/* 导出 agentskills.io 兼容 zip：frontmatter 规范化、剥内部元数据 */}
+                      <a className="link" download={`${s.name}.zip`}
+                        href={withToken(`/api/skills/${encodeURIComponent(s.name)}/export`)}>导出</a>
                       <button className="link danger-link" onClick={() => void del(s)}>删除</button>
                     </span>
                   </div>

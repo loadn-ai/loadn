@@ -172,6 +172,13 @@ def test_parse_repo_url():
     assert u["subpath"] == "skills/a/b"
     u = parse_repo_url("https://github.com/anthropics/skills/tree/main/skills/docx")
     assert u == {"repo": "anthropics/skills", "subpath": "skills/docx", "ref": "main"}
+    # P1 owner/repo[/path] 简写（agentskills.io 生态常用形态）
+    u = parse_repo_url("anthropics/skills/skills/docx")
+    assert u == {"repo": "anthropics/skills", "subpath": "skills/docx", "ref": ""}
+    u = parse_repo_url("acme/x-skill")
+    assert u == {"repo": "acme/x-skill", "subpath": "", "ref": ""}
+    with pytest.raises(ValueError):
+        parse_repo_url("single-word")           # 单段不是仓库
     with pytest.raises(ValueError):
         parse_repo_url("https://clawhub.ai/skills/excel-pro")
 
@@ -186,12 +193,107 @@ async def test_install_zip(client):
     assert r.json()["installed"] == ["zip-skill"]
     from loadn_webui.config import PATHS
     assert (PATHS["skills"] / "zip-skill" / "scripts" / "a.sh").exists()
+    # P1：上传=用户自备——不盖 source 戳、不进供应链锁（对照远程来源）
+    assert "source:" not in (PATHS["skills"] / "zip-skill" / "SKILL.md").read_text()
     # 恶意 zip（路径穿越）拒绝
     bad = io.BytesIO()
     with zipfile.ZipFile(bad, "w") as zf:
         zf.writestr("../evil/SKILL.md", "x")
     r = await client.post("/api/skills/upload", files={"file": ("b.zip", bad.getvalue(), "application/zip")})
     assert r.status_code == 400
+
+
+# ---------------------------------------------------------------- P1：URL 直装 / 简写 / 导出
+def _url_tar(name: str) -> bytes:
+    """单 skill tarball（顶层 x-main 目录包裹，GitHub tarball 形状）。"""
+    buf = io.BytesIO()
+    with tarfile.open(fileobj=buf, mode="w:gz") as tf:
+        b = f"---\nname: {name}\ndescription: url tar 装的\n---\n# {name}\n".encode()
+        ti = tarfile.TarInfo(f"x-main/skills/{name}/SKILL.md")
+        ti.size = len(b)
+        tf.addfile(ti, io.BytesIO(b))
+    return buf.getvalue()
+
+
+async def test_install_from_url_sources(client, monkeypatch, tmp_path):
+    """P1 第三来源：任意 https 归档 URL（tar/zip 按扩展名分派）+ owner/repo
+    简写。远程来源装完即 pin：source 戳 + $LOADN_HOME 锁（LOADN_HOME 隔离
+    到 tmp，不写进引擎测试 home）。"""
+    import hashlib
+
+    from loadn_webui import skills as skills_mod
+    from loadn_webui.config import PATHS
+    lock_home = tmp_path / "lockhome"
+    lock_home.mkdir()
+    monkeypatch.setenv("LOADN_HOME", str(lock_home))
+    monkeypatch.setattr(skills_mod, "_download_url",
+                        lambda u: _url_tar("url-tar-skill"))
+    r = await client.post("/api/skills/install",
+                          json={"url": "https://example.com/pkg.tar.gz"})
+    assert r.status_code == 200, r.text
+    assert r.json()["installed"] == ["url-tar-skill"]
+    md = PATHS["skills"] / "url-tar-skill" / "SKILL.md"
+    assert "source: url:https://example.com/pkg.tar.gz" in md.read_text()
+    entry = json.loads(
+        (lock_home / "skills.lock.json").read_text())["skills"]["url-tar-skill"]
+    assert entry["sourceType"] == "url"
+    assert entry["computedHash"] == hashlib.sha256(md.read_bytes()).hexdigest()
+    # 导出剥 source 戳 + 剥 .loadn-* 内部元数据（agentskills.io 形状）
+    r = await client.get("/api/skills/url-tar-skill/export")
+    assert r.status_code == 200
+    zf = zipfile.ZipFile(io.BytesIO(r.content))
+    exported = zf.read("url-tar-skill/SKILL.md").decode()
+    assert "source:" not in exported and "name: url-tar-skill" in exported
+    assert not any(".loadn" in n for n in zf.namelist())
+    # zip 归档 URL 同链
+    buf = io.BytesIO()
+    with zipfile.ZipFile(buf, "w") as z:
+        z.writestr("url-zip-skill/SKILL.md",
+                   "---\nname: url-zip-skill\ndescription: url zip 装的\n---\n# z\n")
+    monkeypatch.setattr(skills_mod, "_download_url", lambda u: buf.getvalue())
+    r = await client.post("/api/skills/install",
+                          json={"url": "https://example.com/z.zip"})
+    assert r.status_code == 200 and r.json()["installed"] == ["url-zip-skill"]
+    # owner/repo 简写经 repo_url（无协议头 → GitHub 解析）
+    monkeypatch.setattr(skills_mod, "_download_tarball",
+                        lambda o, n, b: _url_tar("short-skill"))
+    r = await client.post("/api/skills/install", json={"repo_url": "fake/repo"})
+    assert r.status_code == 200 and r.json()["installed"] == ["short-skill"]
+    # 负路径（fail-closed）：明文协议、非归档扩展名
+    assert (await client.post("/api/skills/install",
+                              json={"url": "http://x/y.zip"})).status_code == 400
+    assert (await client.post("/api/skills/install",
+                              json={"url": "https://x/y.exe"})).status_code == 400
+
+
+async def test_export_skill(client):
+    """P1 导出：本地 skill → agentskills.io 兼容 zip（必填字段补全、可再装回）。"""
+    r = await client.post("/api/skills",
+                          json={"name": "exp-skill", "description": "导出测试"})
+    assert r.status_code == 200
+    r = await client.get("/api/skills/exp-skill/export")
+    assert r.status_code == 200
+    assert r.headers["content-type"].startswith("application/zip")
+    assert "attachment" in r.headers.get("content-disposition", "")
+    zf = zipfile.ZipFile(io.BytesIO(r.content))
+    assert "exp-skill/SKILL.md" in zf.namelist()
+    exported = zf.read("exp-skill/SKILL.md").decode()
+    assert "name: exp-skill" in exported and "description:" in exported
+    # 缺 description 的 skill → 导出补默认（agentskills.io 标准必填）
+    r = await client.post("/api/skills/exp-skill/file",
+                          json={"path": "SKILL.md",
+                                "content": "---\nname: exp-skill\n---\n正文"})
+    assert r.status_code == 200
+    r = await client.get("/api/skills/exp-skill/export")
+    exported = zipfile.ZipFile(io.BytesIO(r.content)).read("exp-skill/SKILL.md").decode()
+    assert "description: exp-skill" in exported
+    # 导出的 zip 可原样装回（upload 链路闭环：先删再装）
+    assert (await client.delete("/api/skills/exp-skill?force=true")).status_code == 200
+    r2 = await client.post("/api/skills/upload",
+                           files={"file": ("re.zip", r.content, "application/zip")})
+    assert r2.status_code == 200 and r2.json()["installed"] == ["exp-skill"]
+    # 未知 skill 404
+    assert (await client.get("/api/skills/no-such/export")).status_code == 404
 
 
 # ---------------------------------------------------------------- skillhub

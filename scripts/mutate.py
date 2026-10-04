@@ -170,6 +170,14 @@ TARGET_TESTS: dict[str, list[str]] = {
         "tests/test_tool_repair.py",
         "tests/test_m6a_units.py",
     ],
+    "loadn/core/skills.py": [
+        "tests/security/test_b6_skills_lock.py",
+        "tests/test_context_sections.py",
+    ],
+    "loadn/skilllock.py": [
+        "tests/security/test_b6_skills_lock.py",
+        "tests/test_admin.py",
+    ],
     "loadn/core/context.py": [
         "tests/test_context_sections.py",
         "tests/test_permissions_context.py",
@@ -257,6 +265,10 @@ TARGET_TESTS: dict[str, list[str]] = {
         "tests/test_m7b_units.py",
     ],
     "loadn_webui/api/routes/skills.py": ["tests/test_admin.py"],
+    "loadn_webui/skills.py": [
+        "tests/test_admin.py",
+        "tests/security/test_b6_skills_lock.py",
+    ],
     "loadn_webui/api/routes/tools.py": ["tests/test_admin.py"],
     "loadn_webui/api/routes/settings.py": ["tests/test_settings.py", "tests/test_settings_admin.py"],
     "loadn_webui/api/routes/projects.py": ["tests/test_projects.py"],

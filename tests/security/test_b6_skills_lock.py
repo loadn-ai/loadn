@@ -5,6 +5,9 @@ B6-2  锁内且哈希一致 → 索引；改一字节 → 拒索引 + verify 退
 B6-3  `skills lock` 幂等（两次产出字节级相同）；变更已锁条目不加
       --update → 退出 1 + rug-pull 文案；--update → 覆盖并恢复放行
 B6-4  与 P0-2 顺序：未信任工作区的外部 skill 连锁都不看（信任门先行）
+B6-5  P1 打通：webui 安装远程 skill 即盖 source 戳+写锁；out-of-band
+      篡改 → 引擎拒索引；删 skill 连锁条目一起清
+B6-6  P1 打通：管理面编辑 SKILL.md = 有意变更 → 锁随存刷新（不误报 rug-pull）
 """
 
 from __future__ import annotations
@@ -13,7 +16,10 @@ import pytest
 
 pytestmark = [pytest.mark.coverage("sec.b6")]
 
+import hashlib
+import io
 import json
+import tarfile
 from pathlib import Path
 
 import pytest
@@ -148,3 +154,88 @@ def test_layering_skill_content_vs_dirs(tmp_path: Path, home: Path, monkeypatch)
     _local_skill(repo, "brand-new")                # 新目录 → 结构变化
     ok, why = trust.gate(repo)
     assert not ok and "摘要不匹配" in why
+
+
+# ---------------------------------------------------------------- B6-5（P1）
+def _pin_tarball() -> bytes:
+    """单 skill 的 GitHub tarball 形状（顶层 repo 目录包裹）。"""
+    buf = io.BytesIO()
+    with tarfile.open(fileobj=buf, mode="w:gz") as tf:
+        for fname, data in [
+            ("x-main/skills/pinned-skill/SKILL.md",
+             "---\nname: pinned-skill\ndescription: 外部 pin\n---\n# pinned\n"),
+            ("x-main/skills/pinned-skill/run.sh", "echo ok\n"),
+        ]:
+            b = data.encode()
+            ti = tarfile.TarInfo(fname)
+            ti.size = len(b)
+            tf.addfile(ti, io.BytesIO(b))
+    return buf.getvalue()
+
+
+def test_b6_5_install_pins_lock_and_tamper_rejects(tmp_path: Path, home: Path,
+                                                    monkeypatch):
+    """webui 安装远程 skill → source 戳 + 引擎锁一体落地；此后 SKILL.md 被
+    out-of-band 篡改（不经管理面）→ discover 拒索引。删 skill 连锁条目清。"""
+    from loadn_webui import skills as wskills
+    root = tmp_path / "webskills"
+    root.mkdir()
+    monkeypatch.setattr(wskills, "skills_dirs", lambda: [root])
+    monkeypatch.setattr(wskills, "_download_tarball",
+                        lambda o, n, b: _pin_tarball())
+    assert wskills.install_from_github("acme/x-skill", "skills/pinned-skill") \
+        == {"ok": True, "installed": ["pinned-skill"]}
+    dst = root / "pinned-skill"
+    md_text = (dst / "SKILL.md").read_text(encoding="utf-8")
+    assert "source: github:acme/x-skill@main" in md_text
+    assert (dst / "run.sh").exists()
+    lock = json.loads((home / "skills.lock.json").read_text(encoding="utf-8"))
+    entry = lock["skills"]["pinned-skill"]
+    assert entry["sourceType"] == "github"
+    assert entry["computedHash"] == hashlib.sha256(
+        (dst / "SKILL.md").read_bytes()).hexdigest()
+
+    # 引擎侧：挂进已信任工作区 → 过锁放行；篡改一字节 → 拒索引
+    ws = tmp_path / "ws"
+    (ws / ".claude" / "skills").mkdir(parents=True)
+    (ws / ".claude" / "skills" / "pinned-skill").symlink_to(
+        dst, target_is_directory=True)
+    trust.admit(ws)
+    assert "pinned-skill" in discover_skills(ws)
+    (dst / "SKILL.md").write_text(md_text + "恶意追加", encoding="utf-8")
+    assert "pinned-skill" not in discover_skills(ws), \
+        "篡改已 pin 的 skill 仍被索引（rug-pull 失守）"
+
+    # 删除（管理面）→ 锁条目同清，不留幽灵
+    wskills.delete("pinned-skill")
+    assert "pinned-skill" not in json.loads(
+        (home / "skills.lock.json").read_text(encoding="utf-8"))["skills"]
+
+
+# ---------------------------------------------------------------- B6-6（P1）
+def test_b6_6_webui_edit_refreshes_lock(tmp_path: Path, home: Path, monkeypatch):
+    """管理面编辑 SKILL.md（有意变更）→ 保存即刷新锁哈希：不误报 rug-pull、
+    下一轮发现照常放行（编辑面与篡改面分离的信任语义）。"""
+    from loadn_webui import skills as wskills
+    root = tmp_path / "webskills"
+    root.mkdir()
+    monkeypatch.setattr(wskills, "skills_dirs", lambda: [root])
+    monkeypatch.setattr(wskills, "_download_tarball",
+                        lambda o, n, b: _pin_tarball())
+    wskills.install_from_github("acme/x-skill", "skills/pinned-skill")
+    dst = root / "pinned-skill"
+
+    ws = tmp_path / "ws"
+    (ws / ".claude" / "skills").mkdir(parents=True)
+    (ws / ".claude" / "skills" / "pinned-skill").symlink_to(
+        dst, target_is_directory=True)
+    trust.admit(ws)
+
+    # 经管理面编辑（保留 source 戳）→ 锁刷新 → 照常索引
+    edited = (dst / "SKILL.md").read_text(encoding="utf-8") + "\n新增一段有意修改"
+    wskills.write_file("pinned-skill", "SKILL.md", edited)
+    entry = json.loads((home / "skills.lock.json").read_text(encoding="utf-8")
+                       )["skills"]["pinned-skill"]
+    assert entry["computedHash"] == hashlib.sha256(
+        (dst / "SKILL.md").read_bytes()).hexdigest()
+    assert "pinned-skill" in discover_skills(ws)
