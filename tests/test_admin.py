@@ -180,6 +180,8 @@ def test_parse_repo_url():
     with pytest.raises(ValueError):
         parse_repo_url("single-word")           # 单段不是仓库
     with pytest.raises(ValueError):
+        parse_repo_url("owner/")                # 尾斜杠：过滤后只剩一段
+    with pytest.raises(ValueError):
         parse_repo_url("https://clawhub.ai/skills/excel-pro")
 
 
@@ -259,11 +261,83 @@ async def test_install_from_url_sources(client, monkeypatch, tmp_path):
                         lambda o, n, b: _url_tar("short-skill"))
     r = await client.post("/api/skills/install", json={"repo_url": "fake/repo"})
     assert r.status_code == 200 and r.json()["installed"] == ["short-skill"]
+    # overwrite=True 重装链：删旧装新 + 锁哈希随新内容刷新
+    rebuf = io.BytesIO()
+    with zipfile.ZipFile(rebuf, "w") as z:
+        z.writestr("short-skill/SKILL.md",
+                   "---\nname: short-skill\ndescription: 重装的\n---\n# s\n")
+    monkeypatch.setattr(skills_mod, "_download_url", lambda u: rebuf.getvalue())
+    r = await client.post("/api/skills/install",
+                          json={"url": "https://example.com/s.zip", "overwrite": True})
+    assert r.status_code == 200 and r.json()["installed"] == ["short-skill"]
+    md = Path(skills_mod.skill_dir("short-skill")) / "SKILL.md"
+    entry = json.loads(
+        (lock_home / "skills.lock.json").read_text())["skills"]["short-skill"]
+    assert entry["computedHash"] == hashlib.sha256(md.read_bytes()).hexdigest()
     # 负路径（fail-closed）：明文协议、非归档扩展名
     assert (await client.post("/api/skills/install",
                               json={"url": "http://x/y.zip"})).status_code == 400
     assert (await client.post("/api/skills/install",
                               json={"url": "https://x/y.exe"})).status_code == 400
+
+
+class _StubResp:
+    """httpx 流式响应桩（下载器真身直测用）。"""
+
+    def __init__(self, status: int, chunks: list[bytes]):
+        self.status_code, self._chunks = status, chunks
+
+    def __enter__(self):
+        return self
+
+    def __exit__(self, *a):
+        return False
+
+    def iter_bytes(self, n):
+        yield from self._chunks
+
+
+def test_downloaders_error_and_size_cap(monkeypatch):
+    """P1：生产下载器真身三门——404→RuntimeError、非200→RuntimeError、
+    体积上限→PermissionError。此前测试整体 fake 掉下载函数，这三门突变
+    全活（44% 的一大块盲区）。stub httpx.Client 直测。"""
+    import httpx
+
+    from loadn_webui import skills as skills_mod
+    state = {"resp": None}
+
+    class _StubClient:
+        def __init__(self, *a, **k):
+            pass
+
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *a):
+            return False
+
+        def stream(self, method, url):
+            return state["resp"]
+
+    monkeypatch.setattr(httpx, "Client", _StubClient)
+    state["resp"] = _StubResp(404, [])
+    with pytest.raises(RuntimeError, match="404"):
+        skills_mod._download_url("https://x/y.zip")
+    with pytest.raises(RuntimeError, match="404"):
+        skills_mod._download_tarball("o", "r", "main")
+    state["resp"] = _StubResp(500, [])
+    with pytest.raises(RuntimeError, match="500"):
+        skills_mod._download_url("https://x/y.zip")
+    with pytest.raises(RuntimeError, match="500"):
+        skills_mod._download_tarball("o", "r", "main")
+    state["resp"] = _StubResp(200, [b"a", b"b"])
+    assert skills_mod._download_url("https://x/y.zip") == b"ab"
+    monkeypatch.setattr(skills_mod, "MAX_TARBALL_BYTES", 8)
+    state["resp"] = _StubResp(200, [b"x" * 16])
+    with pytest.raises(PermissionError):
+        skills_mod._download_url("https://x/y.zip")
+    with pytest.raises(PermissionError):
+        skills_mod._download_tarball("o", "r", "main")
 
 
 async def test_export_skill(client):
@@ -292,6 +366,19 @@ async def test_export_skill(client):
     r2 = await client.post("/api/skills/upload",
                            files={"file": ("re.zip", r.content, "application/zip")})
     assert r2.status_code == 200 and r2.json()["installed"] == ["exp-skill"]
+    # 顶层非 SKILL 文件照入包；frontmatter name 与目录名不一致时以 frontmatter 为准
+    assert (await client.post("/api/skills/exp-skill/file",
+                              json={"path": "README.md", "content": "# 说明\n"})).status_code == 200
+    r3 = await client.get("/api/skills/exp-skill/file", params={"path": "SKILL.md"})
+    md_text = r3.json()["content"].replace("name: exp-skill", "name: renamed-exp")
+    assert (await client.put("/api/skills/exp-skill/file",
+                             json={"path": "SKILL.md", "content": md_text})).status_code == 200
+    r4 = await client.get("/api/skills/exp-skill/export")
+    zf4 = zipfile.ZipFile(io.BytesIO(r4.content))
+    names = zf4.namelist()
+    assert "exp-skill/README.md" in names
+    assert names.count("exp-skill/SKILL.md") == 1, "顶层文件误走 SKILL.md 规范化分支"
+    assert "name: renamed-exp" in zf4.read("exp-skill/SKILL.md").decode()
     # 未知 skill 404
     assert (await client.get("/api/skills/no-such/export")).status_code == 404
 

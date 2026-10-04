@@ -239,3 +239,43 @@ def test_b6_6_webui_edit_refreshes_lock(tmp_path: Path, home: Path, monkeypatch)
     assert entry["computedHash"] == hashlib.sha256(
         (dst / "SKILL.md").read_bytes()).hexdigest()
     assert "pinned-skill" in discover_skills(ws)
+
+
+# ---------------------------------------------------------------- skilllock 单元（P1 补测）
+def test_update_lock_entry_merge_and_shapes(tmp_path: Path, home: Path):
+    """锁写入单元：①裸 source（无冒号）→ sourceType=local、source=原串；
+    ②多次 upsert 合并不丢已有条目（读源写目标各为用户层）；③version=1。"""
+    from loadn.skilllock import update_lock_entry
+    md1 = tmp_path / "a" / "SKILL.md"
+    md1.parent.mkdir()
+    md1.write_text("---\nname: a\n---\nx", encoding="utf-8")
+    md2 = tmp_path / "b" / "SKILL.md"
+    md2.parent.mkdir()
+    md2.write_text("---\nname: b\n---\ny", encoding="utf-8")
+    update_lock_entry("a", md1, "someref")            # 裸串（无类型前缀）
+    update_lock_entry("b", md2, "github:acme/x")
+    data = json.loads((home / "skills.lock.json").read_text(encoding="utf-8"))
+    assert data["version"] == 1
+    assert data["skills"]["a"]["source"] == "someref"
+    assert data["skills"]["a"]["sourceType"] == "local"
+    assert data["skills"]["b"]["sourceType"] == "github"
+    # 再写一条：已有条目必须还在（合并语义——读旧写新同层）
+    update_lock_entry("b", md2, "url:https://x/y.zip")
+    data = json.loads((home / "skills.lock.json").read_text(encoding="utf-8"))
+    assert set(data["skills"]) == {"a", "b"}
+    assert data["skills"]["b"]["source"] == "https://x/y.zip"
+
+
+def test_remove_lock_entry_missing_silent(tmp_path: Path, home: Path):
+    """删不存在条目：静默返回（不抛 KeyError）、锁文件字节不变。"""
+    from loadn.skilllock import remove_lock_entry, update_lock_entry
+    md = tmp_path / "a" / "SKILL.md"
+    md.parent.mkdir()
+    md.write_text("---\nname: a\n---\nx", encoding="utf-8")
+    update_lock_entry("a", md, "github:o/r")
+    before = (home / "skills.lock.json").read_text(encoding="utf-8")
+    remove_lock_entry("not-there")                     # 守卫负路径：不在锁里
+    assert (home / "skills.lock.json").read_text(encoding="utf-8") == before
+    remove_lock_entry("a")
+    after = json.loads((home / "skills.lock.json").read_text(encoding="utf-8"))
+    assert "a" not in after["skills"]

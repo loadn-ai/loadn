@@ -1,4 +1,17 @@
 {
   "version": 1,
-  "skills": {}
+  "skills": {
+    "ext-a": {
+      "source": "acme/ext-a-skills/skills/ext-a",
+      "sourceType": "github",
+      "skillPath": "/tmp/pytest-of-woldy/pytest-8612/test_b6_2_hash_mismatch_reject0/repo2/.claude/skills/ext-a/SKILL.md",
+      "computedHash": "b50bf66a34e9f5d3e5cffe721aedc47dce19ded1101c1a9adcd69cf39e4fb636"
+    },
+    "ext-b": {
+      "source": "acme/ext-b-skills/skills/ext-b",
+      "sourceType": "github",
+      "skillPath": "/tmp/pytest-of-woldy/pytest-8612/test_b6_3_lock_idempotent_and_0/repo3/.claude/skills/ext-b/SKILL.md",
+      "computedHash": "050adb6fc2cc28ac4ed3457a3cfae308c329f826f6da20b29b906eec56f511b6"
+    }
+  }
 }
