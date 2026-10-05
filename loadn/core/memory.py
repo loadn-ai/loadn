@@ -23,8 +23,10 @@ import hashlib
 import json
 import os
 import re
+import subprocess
 import time
 import uuid
+from contextlib import contextmanager
 from pathlib import Path
 
 from loadn import loadn_home
@@ -97,7 +99,6 @@ _SECRET_RE = re.compile(r"password\s*[:=]\s*\S|api[_-]?key\s*[:=]\s*\S{8,}"
 
 def project_key(cwd: Path) -> str:
     """记忆域键：git 根优先（git rev-parse --show-toplevel），否则 cwd。"""
-    import subprocess
     root = str(cwd)
     try:
         out = subprocess.run(["git", "-C", str(cwd), "rev-parse",
@@ -135,6 +136,111 @@ def _save_manifest(dir_: Path, m: dict) -> None:
     os.replace(tmp, dir_ / "manifest.json")
 
 
+# ---------------------------------------------------------------- P5 git 版本化
+# MemFS 语义：一次 commit = 「记住」的边界——历史可回溯、LRU/忘掉可恢复。
+# 本地仓（init 后永不触网络：只用 add/commit/show/log）；git 缺席/失败静默
+# 降级为无版本记忆（写入不受影响）；跨进程锁 flock（用户域是全局目录，
+# 多会话进程并发写是常态）。
+_GIT_DISABLED = False               # git 二进制缺席时置位（进程内短路）
+_LOCK_TIMEOUT_S = 5.0               # 锁超时：放弃本次 commit，文件照写下趟补
+
+
+def _git(dir_: Path, *args: str, timeout: float = 15.0):
+    """本地 git 调用（永不触网络）。失败返回 None（调用方自决降级）。"""
+    global _GIT_DISABLED
+    if _GIT_DISABLED:
+        return None
+    try:
+        return subprocess.run(["git", "-C", str(dir_), *args],
+                              capture_output=True, text=True, timeout=timeout)
+    except FileNotFoundError:
+        _GIT_DISABLED = True
+        log.warning("git 不可用——记忆 git 版本化降级关闭（读写不受影响）")
+        return None
+    except (OSError, subprocess.SubprocessError) as e:
+        log.warning("git %s 失败（跳过版本化）：%s", args[0], e)
+        return None
+
+
+def _ensure_repo(dir_: Path) -> bool:
+    """域目录首次使用时 git init（本地身份注入，禁 GPG；锁文件进 exclude）。"""
+    if (dir_ / ".git").exists():
+        return True
+    r = _git(dir_, "init", "-q", "--initial-branch=main")
+    if r is None or r.returncode != 0:
+        return False
+    _git(dir_, "config", "user.name", "loadn-memory")
+    _git(dir_, "config", "user.email", "memory@loadn.invalid")
+    _git(dir_, "config", "commit.gpgsign", "false")
+    info = dir_ / ".git" / "info"
+    info.mkdir(parents=True, exist_ok=True)
+    try:
+        (info / "exclude").write_text(".loadn-memory.lock\n", encoding="utf-8")
+    except OSError:
+        pass
+    return True
+
+
+@contextmanager
+def _domain_lock(dir_: Path):
+    """跨进程域锁（flock 重试至超时；超时 yield False=放弃本次 commit）。"""
+    import fcntl
+    dir_.mkdir(parents=True, exist_ok=True)   # reject 路径先于写入建目录进锁
+    lock = dir_ / ".loadn-memory.lock"
+    deadline = time.monotonic() + _LOCK_TIMEOUT_S
+    fd = None
+    try:
+        lock.touch(exist_ok=True)
+        fd = open(lock)
+        while True:
+            try:
+                fcntl.flock(fd, fcntl.LOCK_EX | fcntl.LOCK_NB)
+                break
+            except OSError:
+                if time.monotonic() >= deadline:
+                    yield False            # 超时：文件已写，commit 让下趟补
+                    return
+                time.sleep(0.05)
+        yield True
+    finally:
+        if fd is not None:
+            try:
+                fcntl.flock(fd, fcntl.LOCK_UN)
+            except OSError:
+                pass
+            fd.close()
+
+
+def _commit_locked(dir_: Path, message: str, *, allow_empty: bool = False) -> bool:
+    """add -A + commit（**调用方须已持域锁**；含上趟锁超时漏提的补提交）。
+    消息单行化（换行不进 message）。init 也入锁——防并发双 init。"""
+    if not _ensure_repo(dir_):
+        return False
+    message = " ".join((message or "").split())[:200]
+    r = _git(dir_, "add", "-A")
+    if r is None or r.returncode != 0:
+        return False
+    args = ["commit", "-m", message]
+    if allow_empty:
+        args.append("--allow-empty")
+    r = _git(dir_, *args)
+    if r is not None and r.returncode != 0 \
+            and "nothing to commit" not in (r.stderr or ""):
+        return False
+    return True
+
+
+def commit_domain(dir_: Path, message: str, *, allow_empty: bool = False) -> bool:
+    """对域提交一次变更（取锁→ensure→add -A→commit）。锁超时放弃本次
+    commit（调用方文件已写，下趟 add -A 补提交）。"""
+    with _domain_lock(dir_) as ok:
+        if not ok:
+            log.warning("记忆域锁超时——本次 commit 放弃（文件已写，下趟补）：%s",
+                        " ".join(message.split())[:60])
+            return False
+        return _commit_locked(dir_, message, allow_empty=allow_empty)
+
+
 def canary_hit(text: str) -> bool:
     """蜜罐/凭证形态命中（护栏第 1 道：熔断不存）。"""
     return bool(_CANARY_RE.search(text or "") or _SECRET_RE.search(text or ""))
@@ -165,20 +271,22 @@ def forget(cwd: Path, keyword: str, *, session=None,
     if domain == USER_DOMAIN and not user_enabled():
         return 0                         # off：用户域零读写
     dir_ = memory_dir(cwd, domain)
-    m = _manifest(dir_)
-    keep, removed = [], []
-    # 词级匹配：指令剥词后语序常与库内相反（「忘掉 pytest 偏好」vs 摘要
-    # 「偏好 pytest」）——按 token 全命中判定，比整串子串稳
-    tokens = [t for t in re.split(r"[\s，。,]+", keyword) if t]
+    with _domain_lock(dir_) as locked:
+        m = _manifest(dir_)
+        keep, removed = [], []
+        # 词级匹配：指令剥词后语序常与库内相反（「忘掉 pytest 偏好」vs 摘要
+        # 「偏好 pytest」）——按 token 全命中判定，比整串子串稳
+        tokens = [t for t in re.split(r"[\s，。,]+", keyword) if t]
 
-    def _hit(e: dict) -> bool:
-        hay = (e.get("summary") or "") + " " + (e.get("content") or "")
-        if not tokens:
-            return False
-        return all(t in hay for t in tokens)
-    for e in m.get("entries") or []:
-        (removed if _hit(e) else keep).append(e)
-    if removed:
+        def _hit(e: dict) -> bool:
+            hay = (e.get("summary") or "") + " " + (e.get("content") or "")
+            if not tokens:
+                return False
+            return all(t in hay for t in tokens)
+        for e in m.get("entries") or []:
+            (removed if _hit(e) else keep).append(e)
+        if not removed:
+            return 0
         for e in removed:
             try:
                 (dir_ / e["file"]).unlink(missing_ok=True)
@@ -186,9 +294,12 @@ def forget(cwd: Path, keyword: str, *, session=None,
                 pass
         m["entries"] = keep
         _save_manifest(dir_, m)
+        if locked:      # 锁超时：删除已落盘，commit 让下趟补
+            _commit_locked(dir_, f"memory: 忘掉 {keyword[:30]}"
+                                 f"（{len(removed)} 条）")
         _trace(session, "memory_forgotten",
                {"keyword": keyword, "removed": [e["id"] for e in removed]})
-    return len(removed)
+        return len(removed)
 
 
 def remember(cwd: Path, summary: str, content: str, *, origin_session: str,
@@ -197,6 +308,10 @@ def remember(cwd: Path, summary: str, content: str, *, origin_session: str,
     if domain == USER_DOMAIN and not user_enabled():
         return None                      # off：用户域零读写（显式面也拒）
     if canary_hit(summary + "\n" + content):
+        # P5：拒绝也是事件——空提交留审计痕（不落被拒内容本体）
+        commit_domain(memory_dir(cwd, domain),
+                      f"memory: reject 护栏拦截 [session:{origin_session}]",
+                      allow_empty=True)
         _trace(session, "memory_blocked", {"summary": summary[:80]})
         return None
     dir_ = memory_dir(cwd, domain)
@@ -208,22 +323,31 @@ def remember(cwd: Path, summary: str, content: str, *, origin_session: str,
         f"---\nid: {eid}\nsummary: {summary}\norigin_session: {origin_session}\n"
         f"created_at: {time.strftime('%Y-%m-%dT%H:%M:%S')}\n---\n\n{content}\n",
         encoding="utf-8")
-    m.setdefault("entries", []).append(
-        {"id": eid, "file": fname, "summary": summary,
-         "content": content[:2000], "origin_session": origin_session,
-         "created_at": time.strftime("%Y-%m-%dT%H:%M:%S")})
-    # LRU 上限：最旧淘汰
-    if len(m["entries"]) > MAX_ENTRIES:
-        for old in m["entries"][:len(m["entries"]) - MAX_ENTRIES]:
-            try:
-                (dir_ / old["file"]).unlink(missing_ok=True)
-            except OSError:
-                pass
-        m["entries"] = m["entries"][-MAX_ENTRIES:]
-    _save_manifest(dir_, m)
-    _trace(session, "memory_written",
-           {"id": eid, "summary": summary[:80], "origin": origin_session})
-    return m["entries"][-1]
+    # P5 并发安全：manifest 读改写+LRU 淘汰+commit 全段在域锁内（用户域是
+    # 全局目录，多会话进程/线程并发写是常态——20 并发实测互抢 tmp 曾致
+    # 丢更新）。锁超时：文件已写、manifest 照更（回落旧的窄竞态），仅放弃
+    # 本次 commit（下趟 add -A 补提交）
+    with _domain_lock(dir_) as locked:
+        m = _manifest(dir_)
+        m.setdefault("entries", []).append(
+            {"id": eid, "file": fname, "summary": summary,
+             "content": content[:2000], "origin_session": origin_session,
+             "created_at": time.strftime("%Y-%m-%dT%H:%M:%S")})
+        # LRU 上限：最旧淘汰
+        if len(m["entries"]) > MAX_ENTRIES:
+            for old in m["entries"][:len(m["entries"]) - MAX_ENTRIES]:
+                try:
+                    (dir_ / old["file"]).unlink(missing_ok=True)
+                except OSError:
+                    pass
+            m["entries"] = m["entries"][-MAX_ENTRIES:]
+        _save_manifest(dir_, m)
+        if locked:
+            # 一次写入=一次 commit（LRU 淘汰的删除同 commit 入史可找回）
+            _commit_locked(dir_, f"memory: {summary} [session:{origin_session}]")
+        _trace(session, "memory_written",
+               {"id": eid, "summary": summary[:80], "origin": origin_session})
+        return m["entries"][-1]
 
 
 def _render_domain(cwd: Path, limit: int, domain: str, title: str,
@@ -285,6 +409,7 @@ def promote(cwd: Path, eid: str, *, session=None) -> dict | None:
     if e is None:
         return None
     _save_manifest(dir_, m)
+    commit_domain(dir_, f"memory: 提升 {eid} 至用户域")
     out = remember(cwd, e.get("summary") or eid, e.get("content") or "",
                    origin_session=e.get("origin_session") or "?",
                    session=session, domain=USER_DOMAIN)

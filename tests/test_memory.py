@@ -310,3 +310,106 @@ def test_p4_word_file_malformed_lines(tmp_path):
     f.write_text("\n\n# 注释行\n\n有效词\n\n", encoding="utf-8")
     assert mem.classify_domain("中性描述一句话") == mem.PROJECT_DOMAIN
     assert mem.classify_domain("有效词出现了") == mem.USER_DOMAIN
+
+
+# ---------------------------------------------------------------- P5 git 版本化
+def _git_out(cwd, domain, *args) -> str:
+    r = mem._git(mem.memory_dir(cwd, domain), *args)
+    assert r is not None and r.returncode == 0, r.stderr if r else "git None"
+    return r.stdout
+
+
+def test_p5_commit_message_has_session(tmp_path):
+    """验收①：写入=一次 commit，message 含一句话摘要与 session id。"""
+    mem.remember(tmp_path, "git 化条目", "版本化内容", origin_session="sess-p5")
+    log = _git_out(tmp_path, "project", "log", "--oneline")
+    assert "memory: git 化条目 [session:sess-p5]" in log
+    # 双域各自成仓
+    mem.remember(tmp_path, "用户域条目", "我喜欢简洁", origin_session="sess-u",
+                 domain="user")
+    assert len(_git_out(tmp_path, "user", "log",
+                       "--oneline").strip().splitlines()) == 1
+
+
+def test_p5_lru_and_forget_recoverable(tmp_path, monkeypatch):
+    """验收②：LRU 淘汰与忘掉都可通过历史找回（父提交仍在）。"""
+    monkeypatch.setattr(mem, "MAX_ENTRIES", 2)
+    e1 = mem.remember(tmp_path, "淘汰候选", "被 LRU 淘汰的内容 X", origin_session="s")
+    mem.remember(tmp_path, "留下甲", "内容甲", origin_session="s")
+    mem.remember(tmp_path, "留下乙", "内容乙", origin_session="s")   # 触发淘汰 e1
+    assert all(e1["id"] != x["id"] for x in mem.load_entries(tmp_path))
+    # 已删文件用「新增它的提交」找回（工作区已无此路径）
+    add_hash = _git_out(tmp_path, "project", "log", "--diff-filter=A",
+                        "--format=%H", "-1", "--", f"{e1['id']}.md").strip()
+    assert "被 LRU 淘汰的内容 X" in _git_out(tmp_path, "project", "show",
+                                             f"{add_hash}:{e1['id']}.md")
+    # 忘掉的条目同样可从历史找回
+    e2 = mem.remember(tmp_path, "忘掉候选", "将被忘掉的内容 Y", origin_session="s")
+    mem.forget(tmp_path, "忘掉候选")
+    add2 = _git_out(tmp_path, "project", "log", "--diff-filter=A",
+                    "--format=%H", "-1", "--", f"{e2['id']}.md").strip()
+    assert "将被忘掉的内容 Y" in _git_out(tmp_path, "project", "show",
+                                           f"{add2}:{e2['id']}.md")
+
+
+def test_p5_concurrent_20_no_corruption(tmp_path):
+    """验收③：20 并发写入——条目不丢、仓不损坏。flock 域锁 + add -A 补提交。"""
+    import concurrent.futures
+
+    def _w(i: int):
+        return mem.remember(tmp_path, f"并发条目{i}", f"并发内容{i}",
+                            origin_session="s-cc") is not None
+
+    with concurrent.futures.ThreadPoolExecutor(max_workers=20) as ex:
+        assert all(ex.map(_w, range(20)))
+    entries = mem.load_entries(tmp_path)
+    assert len(entries) == 20, f"并发丢更新：{len(entries)}/20"
+    log = _git_out(tmp_path, "project", "log", "--oneline")
+    assert len(log.strip().splitlines()) >= 20
+    assert _git_out(tmp_path, "project", "fsck", "--no-progress") == ""
+
+
+def test_p5_reject_leaves_empty_commit(tmp_path):
+    """验收④：护栏拒绝留 --allow-empty 的 reject 提交（不落被拒内容）。"""
+    mem.remember(tmp_path, "正常", "先建仓", origin_session="s")
+    n0 = len(_git_out(tmp_path, "project", "log", "--oneline").strip().splitlines())
+    assert mem.remember(tmp_path, "坏内容", "canary token 是 sk-abcdef0123456789",
+                        origin_session="s-bad") is None
+    log = _git_out(tmp_path, "project", "log", "--oneline")
+    assert "memory: reject 护栏拦截 [session:s-bad]" in log
+    assert "sk-abcdef" not in _git_out(tmp_path, "project", "show", "--stat",
+                                       "HEAD")   # 被拒内容不入树
+    assert len(log.strip().splitlines()) == n0 + 1
+
+
+def test_p5_git_absent_degrades(tmp_path, monkeypatch):
+    """git 不可用：写入不受影响（降级为无版本记忆），开关短路。"""
+    monkeypatch.setattr(mem, "_GIT_DISABLED", True)
+    e = mem.remember(tmp_path, "无 git", "仍然能写", origin_session="s")
+    assert e is not None
+    assert mem.load_entries(tmp_path)
+    assert not (mem.memory_dir(tmp_path) / ".git").exists()
+
+
+def test_p5_cli_log_and_restore(tmp_path, monkeypatch, capsys):
+    """CLI 面：log 列史；restore 恢复单条（禁整仓 reset——历史原样追加）。"""
+    from loadn.cli.memory_cli import main
+    monkeypatch.chdir(tmp_path)
+    e = mem.remember(tmp_path, "可恢复条目", "恢复内容 Z", origin_session="s9")
+    assert main(["log"]) == 0
+    assert "memory: 可恢复条目 [session:s9]" in capsys.readouterr().out
+    mem.forget(tmp_path, "可恢复条目")
+    assert not mem.load_entries(tmp_path)
+    # 写入提交是 log 第二行（第一行是忘掉提交）
+    lines = _git_out(tmp_path, "project", "log", "--oneline").strip().splitlines()
+    write_hash = lines[1].split()[0]
+    assert main(["restore", write_hash]) == 0
+    entries = mem.load_entries(tmp_path)
+    assert any("可恢复条目" in x["summary"] for x in entries)
+    # 历史只增不减（无 reset）：三提交=写入+忘掉+恢复
+    n = len(_git_out(tmp_path, "project", "log", "--oneline").strip().splitlines())
+    assert n == 3
+    # 用户域 log 分仓
+    mem.remember(tmp_path, "用户域", "我喜欢 Z", origin_session="su", domain="user")
+    assert main(["log", "--domain", "user"]) == 0
+    assert "用户域" in capsys.readouterr().out

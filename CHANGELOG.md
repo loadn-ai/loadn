@@ -5,6 +5,15 @@
 
 ## [未发布]（Unreleased）
 
+- **记忆 git 版本化（P5，MemFS 语义）**：一次 commit=一次「记住」——域目录
+  首写 git init（本地仓，永不触网络，GPG 关），写入=add -A+commit
+  （`memory: <摘要> [session:<id>]`，LRU 淘汰的删除同 commit 入史可找回）、
+  忘掉/提升各有独立提交、护栏拒绝留 `--allow-empty` reject 提交（被拒内容
+  不入树）。**并发安全**：manifest 读改写+淘汰+提交全段入跨进程 flock 域锁
+  （用户域全局目录多会话并发是常态——20 并发实测曾互抢 tmp 丢更新，已修）；
+  锁超时=文件照写、commit 让下趟补。CLI 扩展 `loadn memory log
+  [--domain]` 与 `restore <commit>`（恢复单条重新入库，禁整仓 reset）。
+  git 缺席静默降级为无版本记忆（读写不受影响）。
 - **用户级跨项目记忆域（P4）**：域键抽象 project/user——新增
   `$LOADN_HOME/memory/_user/` 全局域（换项目不再失忆）。归属判定为确定性
   启发式（禁模型猜）：第一人称偏好词表 ∧ 无路径/文件/包管理指称 → user，
