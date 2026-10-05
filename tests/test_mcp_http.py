@@ -159,8 +159,9 @@ async def test_discover_http_config(tmp_path, monkeypatch):
 
     monkeypatch.setattr(mc, "HTTPMCPConnection", factory)
     # broken 仍需走失败路径：恢复真 start 的 patched 版对 factory 产物生效
-    tools, conns = await discover(tmp_path)
+    tools, deferred, conns = await discover(tmp_path)
     assert "mcp__remote__echo" in tools
+    assert deferred == {}                       # 小 server 不懒加载
     assert len(conns) == 1
     for c in conns:
         await c.stop()
@@ -170,5 +171,5 @@ async def test_discover_unknown_type_skipped(tmp_path, monkeypatch, caplog):
     monkeypatch.chdir(tmp_path)
     (tmp_path / ".mcp.json").write_text(json.dumps(
         {"mcpServers": {"weird": {"type": "grpc"}}}), encoding="utf-8")
-    tools, conns = await discover(tmp_path)
-    assert tools == {} and conns == []
+    tools, deferred, conns = await discover(tmp_path)
+    assert tools == {} and deferred == {} and conns == []

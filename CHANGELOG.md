@@ -5,6 +5,19 @@
 
 ## [未发布]（Unreleased）
 
+- **MCP 工具懒加载 ToolSearch（P2）**：单 server 工具数超阈值（默认 15，
+  env `LOADN_MCP_LAZY_TOOL_THRESHOLD` 覆盖，0=关）时不全量注入工具面
+  （大 server 单家可吃 12.6 万 token）——只注册 `ToolSearch`：参数 enum 即
+  索引（name+description 首句+来源 server），点名即物化并返回完整
+  inputSchema（一轮完成，禁止两跳猜参数）；复查补强：直接调用索引内工具
+  由 loop 当场物化执行（不吃「未知工具」错误）、disallow 的延迟名在 build
+  侧预过滤出索引（enum 不可见，fail-closed）。暗礁处理：引擎内部直用的
+  `mcp__lsp__diagnostics` 永不延迟（防 LSP 诊断回注静默失效）、
+  tool-call-repair 已知工具集含延迟名、延迟连接与会话同寿命（会话内
+  schema 缓存）。验收：50 工具 fake server 载荷降 >60%、≤15 逐字节回归
+  一致、loop 级一轮两调用链路绿。result 事件加可选 `mcp_deferred`
+  观测字段（transcript 侧，同 diffs 语义）；`init.tools` 保持 spawn 快照
+  语义（PROTOCOL.md 注记，无契约变更）。
 - **技能目录兼容 agentskills.io（P1）**：发现根新增项目级 `.agents/skills/`
   （开放标准目录、`npx skills add` 落点），同名优先级最高、照过 P0-2 信任门
   ——负路径对赌实测抓出信任门资源枚举不认 `.agents` 的真缺口（只带该目录的

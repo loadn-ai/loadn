@@ -227,10 +227,12 @@ class AgentCore:
                  permissions: PermissionEngine | None = None,
                  hooks: HookRunner | None = None, compactor=None,
                  ctx: ToolContext | None = None, subagents=None,
-                 planner=None) -> None:
+                 planner=None, mcp_deferred: dict | None = None) -> None:
         from loadn.core.context import ContextAssembler
         self.provider = provider
         self.tools = tools
+        self.mcp_deferred = mcp_deferred or {}   # P2 懒加载索引（名→MCPTool；
+        #   会话内 schema 缓存，物化经 ToolSearchTool 原地插入 self.tools）
         self.session = session            # SessionManager（transcript/state 落盘）
         self.cwd = Path(cwd)
         self.settings = settings or LoopSettings()
@@ -669,7 +671,16 @@ class AgentCore:
                 "duration_ms": int(summary.duration_s * 1000),
                 **({"diffs": [{"path": d["path"], "hash": d["hash"],
                                "lines": summary_line(d["diff"])}
-                              for d in diffs]} if diffs else {})},
+                              for d in diffs]} if diffs else {}),
+                # P2：MCP 懒加载规模（可选字段——实际节省已自动计入
+                # usage.input_tokens；此处仅记延迟面体量便于观测）
+                **({"mcp_deferred": {
+                        "tools": len(md),
+                        "est_tokens_deferred": int(sum(
+                            len(t.description)
+                            + len(json.dumps(t.input_schema))
+                            for t in md.values()) / 4)}}
+                   if (md := self.mcp_deferred) else {})},
                 fsync=True)
             self.session.record_usage(summary)
             # P3-10：auto-commit 影子分支（off 默认零副作用）
@@ -802,6 +813,13 @@ class AgentCore:
         self._tool_execs += 1
         name = tu.name
         tool = self.tools.get(name)
+        if tool is None:
+            # P2：延迟索引内的工具被直接调用——当场物化并执行（模型从
+            # ToolSearch 索引知道名字，直接点名不该吃一次「未知工具」错误；
+            # 索引在 build 侧已过 disallow 预过滤，这里无需再判）
+            t = self.mcp_deferred.get(name)
+            if t is not None:
+                self.tools[name] = tool = t
         content: str | list = ""
         is_error = False
 
@@ -987,7 +1005,8 @@ class AgentCore:
         from loadn.types import ToolUseBlock as TUB
         texts = [getattr(b, "text", "") for b in blocks]
         merged = "\n".join(t for t in texts if t)
-        calls = tr.try_repair(merged, set(self.tools.keys()))
+        calls = tr.try_repair(merged, set(self.tools.keys())
+                              | set(self.mcp_deferred))
         if not calls:
             return blocks
         try:

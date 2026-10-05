@@ -226,6 +226,14 @@ TARGET_TESTS: dict[str, list[str]] = {
         "tests/test_mcp_stdio_units.py",
         "tests/test_mcp_http.py",
         "tests/test_mcp_oauth.py",
+        "tests/test_mcp_lazy.py",
+    ],
+    "loadn/tools/tool_search.py": [
+        "tests/test_mcp_lazy.py",
+    ],
+    "loadn/core/build.py": [
+        "tests/test_mcp_lazy.py",
+        "tests/test_ext.py",
     ],
     "loadn_webui/integrations/lsp_host.py": [
         "tests/test_lsp_host.py",
@@ -316,6 +324,7 @@ TARGET_TESTS: dict[str, list[str]] = {
     ],
     "loadn/core/loop.py": [
         "tests/test_loop.py",
+        "tests/test_mcp_lazy.py",
         "tests/contract/test_protocol_v2.py",
         "tests/test_ext.py",
         "tests/test_loop_grind.py",

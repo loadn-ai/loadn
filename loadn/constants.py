@@ -6,6 +6,11 @@ BASH_OUTPUT_MAX = 30_000          # Bash 输出超限截中间保首尾（字符
 BASH_TIMEOUT_DEFAULT_S = 120      # Bash 默认超时（工具级可覆盖）
 MCP_CALL_TIMEOUT_S = 30           # MCP 工具调用总超时（慢 server 部署可调）
 MCP_HTTP_TIMEOUT_S = 30.0         # streamable-HTTP 客户端超时
+MCP_LAZY_TOOL_THRESHOLD = 15      # P2：单 server 工具数超此值即懒加载（env
+                                  # LOADN_MCP_LAZY_TOOL_THRESHOLD 覆盖；0=关）
+MCP_LAZY_INTERNAL_KEEP = ("mcp__lsp__diagnostics",)   # 引擎内部直用的 MCP
+                                  # 工具（loop LSP 诊断回注）所属 server 超阈
+                                  # 值也照常注入——防内部依赖静默失效
 WEBSEARCH_TIMEOUT_S = 20.0        # 搜索 API 超时
 WEBFETCH_TIMEOUT_S = 30.0         # 网页抓取超时
 BASH_AUTO_BG_S = 60               # 前台超此线自动转后台（Terminal-Bench 死法①）

@@ -13,7 +13,12 @@ from pathlib import Path
 
 import httpx
 
-from loadn.constants import MCP_CALL_TIMEOUT_S, MCP_HTTP_TIMEOUT_S
+from loadn.constants import (
+    MCP_CALL_TIMEOUT_S,
+    MCP_HTTP_TIMEOUT_S,
+    MCP_LAZY_INTERNAL_KEEP,
+    MCP_LAZY_TOOL_THRESHOLD,
+)
 from loadn.tools.base import Tool, ToolContext, ToolError
 from loadn.util import get_logger
 
@@ -280,14 +285,22 @@ def _text_of(res: dict) -> str:
     return "\n".join(p for p in parts if p)
 
 
-async def discover(cwd: Path) -> tuple[dict[str, Tool], list]:
+async def discover(cwd: Path) -> tuple[dict[str, Tool], dict[str, MCPTool], list]:
     """启动 .mcp.json 里全部 server 并列工具。单个失败降级警告，不炸会话。
+
+    P2 懒加载：单 server 工具数 > 阈值（MCP_LAZY_TOOL_THRESHOLD，env
+    LOADN_MCP_LAZY_TOOL_THRESHOLD 覆盖）时该 server 不全量注入——工具留
+    在 deferred 索引（连接不关 = 会话内 schema 缓存，物化零重取），由
+    build 侧注册的 ToolSearch 按需物化；MCP_LAZY_INTERNAL_KEEP 名单
+    （引擎内部直用，如 mcp__lsp__diagnostics）超阈值也照常注入。
 
     transport（P1-1a 起）：stdio（command/args/env）与 http
     （{"type":"http","url":…,"headers":…}，oauth 段会话 2 接入）。
     """
     tools: dict[str, Tool] = {}
+    deferred: dict[str, MCPTool] = {}
     conns: list = []
+    threshold = lazy_threshold()
     for name, conf in load_mcp_config(cwd).items():
         if not isinstance(conf, dict):
             continue
@@ -310,12 +323,36 @@ async def discover(cwd: Path) -> tuple[dict[str, Tool], list]:
             continue
         try:
             await conn.start()
-            for spec in await conn.list_tools():
-                t = MCPTool(conn, spec)
+            srv_tools = [MCPTool(conn, spec)
+                         for spec in await conn.list_tools()]
+            if threshold > 0 and len(srv_tools) > threshold:
+                keep = [t for t in srv_tools
+                        if t.name in MCP_LAZY_INTERNAL_KEEP]
+                n_deferred = len(srv_tools) - len(keep)
+                for t in srv_tools:
+                    if t not in keep:
+                        deferred[t.name] = t
+                log.info("MCP %s 懒加载：%d 工具延迟（阈值 %d，保留 %d）——"
+                         "经 ToolSearch 按需物化", name, n_deferred,
+                         threshold, len(keep))
+            else:
+                keep = srv_tools
+            for t in keep:
                 tools[t.name] = t
-            conns.append(conn)
-            log.info("MCP %s 就绪（%d 工具）", name, len(tools))
+            conns.append(conn)          # 延迟工具的连接同寿命（schema 缓存）
+            log.info("MCP %s 就绪（%d 工具注入%s）", name, len(keep),
+                     f"，{len(srv_tools) - len(keep)} 延迟"
+                     if len(srv_tools) > len(keep) else "")
         except Exception as e:  # noqa: BLE001 — 初始化失败降级
             log.warning("MCP %s 初始化失败（跳过）：%s", name, e)
             await conn.stop()
-    return tools, conns
+    return tools, deferred, conns
+
+
+def lazy_threshold() -> int:
+    """单 server 工具数阈值：≤ 全量注入（旧行为），> 懒加载。env 覆盖。"""
+    try:
+        return int(os.environ.get("LOADN_MCP_LAZY_TOOL_THRESHOLD",
+                                  MCP_LAZY_TOOL_THRESHOLD))
+    except ValueError:
+        return MCP_LAZY_TOOL_THRESHOLD

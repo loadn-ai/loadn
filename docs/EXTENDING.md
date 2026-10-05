@@ -101,6 +101,16 @@ zip 视作用户自备，不 pin。管理中心可把任一 skill 导出为 agen
 （OCR/浏览器沙箱/短信/邮箱…）在 config.yaml `resources:` 配端点与密钥
 ——密钥只进 config.yaml，永不入库。
 
+**工具懒加载（P2）**：单 server 工具数超过阈值（`MCP_LAZY_TOOL_THRESHOLD`
+=15，env `LOADN_MCP_LAZY_TOOL_THRESHOLD` 覆盖，0=关）时不全量注入工具面
+——大 server 单家可吃十几万 token。改为只注册 `ToolSearch` 工具：其参数
+enum 即索引（name + description 首句 + 来源 server），模型点名后当场物化
+并返回完整 inputSchema（一次往返），同轮即可正确构造调用；直接调用索引
+内的工具也会被 loop 当场物化执行。延迟索引持有全量 spec（连接与会话同
+寿命 = 会话内 schema 缓存）；transcript 的 result 事件带可选
+`mcp_deferred` 字段（延迟工具数与估算 token）供观测。引擎内部直用的
+工具（如 `mcp__lsp__diagnostics`）永不延迟。
+
 ## 5. Hooks：拦截与审计工具调用
 
 项目 `.agent/settings.json` 的 `hooks` 段挂外部命令：stdin 收

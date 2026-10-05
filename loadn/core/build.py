@@ -86,17 +86,30 @@ async def build_agent(cwd: Path, *, session_id: str | None = None,
         from loadn.tools.skill import SkillTool
         tools["Skill"] = SkillTool(skills)
 
-    # MCP 动态工具（单个失败降级警告，不阻断会话）
+    # MCP 动态工具（单个失败降级警告，不阻断会话）。P2 懒加载：超阈值
+    # server 的工具不进工具面，经 ToolSearch 按需物化（一次往返拿全 schema）
     mcp_conns: list = []
+    mcp_deferred: dict = {}
     if enable_mcp:
         try:
             from loadn.mcp.client import discover
-            mcp_tools, mcp_conns = await discover(cwd)
+            mcp_tools, mcp_raw_deferred, mcp_conns = await discover(cwd)
             for name, t in mcp_tools.items():
                 if name not in disallow:
                     tools[name] = t
+            # disallow 预过滤：被禁工具不进延迟索引——enum 不可见、直接
+            # 调用当场物化路径（loop）也到不了它，fail-closed 而非调用时报错
+            mcp_deferred = {n: t for n, t in mcp_raw_deferred.items()
+                            if n not in disallow}
         except Exception as e:  # noqa: BLE001
             log.warning("MCP 发现失败（跳过）：%s", e)
+            mcp_deferred = {}
+    if mcp_deferred and "ToolSearch" not in disallow:
+        from loadn.tools.tool_search import ToolSearchTool
+        tools["ToolSearch"] = ToolSearchTool(mcp_deferred, tools,
+                                             disallow=set(disallow))
+        log.info("ToolSearch 就绪（%d 个 MCP 工具延迟可物化）",
+                 len(mcp_deferred))
 
     session = (SessionManager.resume(session_id, cwd) if session_id
                else SessionManager.create(cwd))
@@ -129,6 +142,7 @@ async def build_agent(cwd: Path, *, session_id: str | None = None,
                                         if budget_minutes else None),
                               context_window=window),
         subagents=mgr,
+        mcp_deferred=mcp_deferred,
         planner=(TaskPlanner(_planner_provider(cfg))
                  if (mgr is not None and not no_plan) else None),
         ctx=ToolContext(cwd=cwd, workspace=cwd, supervisor=supervisor))

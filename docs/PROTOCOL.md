@@ -31,7 +31,7 @@ loadn -p --verbose --output-format stream-json \
 
 | 事件 | 硬/软 | 契约 |
 |---|---|---|
-| `system` (subtype=init/heartbeat) | 软 | init 携 session_id/model/tools |
+| `system` (subtype=init/heartbeat) | 软 | init 携 session_id/model/tools（tools=**spawn 时点快照**：MCP 懒加载（§8 env）运行中物化的工具不补录进该列表） |
 | `assistant` | 软 | message.content blocks：text / tool_use / thinking |
 | `user` | 软 | tool_result 回填 |
 | `stream_event` | 软 | 仅 `--verbose` 下逐 delta |
@@ -111,6 +111,7 @@ loadn 引擎 SessionStart/SessionEnd hooks **无触发点**（声明不支持直
 | `LOADN_PROVIDER` | provider 覆盖（fake/anthropic/…） | — | `HAHANESS_PROVIDER` |
 | `LOADN_STEALTH` | GLM 通道 CC 伪装 | — | `HAHANESS_STEALTH` |
 | `LOADN_WEBUI_HOME` | **平台**数据根（DB/workspace/config） | monorepo 根 | `WORKDADDY_HOME` |
+| `LOADN_MCP_LAZY_TOOL_THRESHOLD` | MCP 工具懒加载阈值：单 server 工具数超此值只注入 ToolSearch 索引（enum=name+首句@server），经其按需物化；`0`=关 | `15` | — |
 
 两类 HOME 语义不同（引擎 vs 平台），spawn 传递时互不污染。
 
