@@ -333,7 +333,8 @@ def test_p5_commit_message_has_session(tmp_path):
 
 def test_p5_lru_and_forget_recoverable(tmp_path, monkeypatch):
     """验收②：LRU 淘汰与忘掉都可通过历史找回（父提交仍在）。"""
-    monkeypatch.setattr(mem, "MAX_ENTRIES", 2)
+    import loadn.memorystore as mstore
+    monkeypatch.setattr(mstore, "MAX_ENTRIES", 2)
     e1 = mem.remember(tmp_path, "淘汰候选", "被 LRU 淘汰的内容 X", origin_session="s")
     mem.remember(tmp_path, "留下甲", "内容甲", origin_session="s")
     mem.remember(tmp_path, "留下乙", "内容乙", origin_session="s")   # 触发淘汰 e1
@@ -384,7 +385,8 @@ def test_p5_reject_leaves_empty_commit(tmp_path):
 
 def test_p5_git_absent_degrades(tmp_path, monkeypatch):
     """git 不可用：写入不受影响（降级为无版本记忆），开关短路。"""
-    monkeypatch.setattr(mem, "_GIT_DISABLED", True)
+    import loadn.memorystore as mstore
+    monkeypatch.setattr(mstore, "_GIT_DISABLED", True)
     e = mem.remember(tmp_path, "无 git", "仍然能写", origin_session="s")
     assert e is not None
     assert mem.load_entries(tmp_path)

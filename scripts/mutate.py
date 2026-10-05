@@ -166,6 +166,13 @@ TARGET_TESTS: dict[str, list[str]] = {
         "tests/test_memory.py",
         "tests/test_m6a_units.py",
     ],
+    "loadn/memorystore.py": [
+        "tests/test_memory.py",
+        "tests/test_memory_ui.py",
+    ],
+    "loadn_webui/api/routes/memory.py": [
+        "tests/test_memory_ui.py",
+    ],
     "loadn/cli/memory_cli.py": [
         "tests/test_memory.py",
     ],

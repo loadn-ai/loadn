@@ -14,6 +14,7 @@ from . import (
     artifacts,
     files,
     hooks,
+    memory,
     projects,
     schedules,
     sessions,
@@ -26,7 +27,7 @@ from . import (
 
 router = APIRouter()
 for _m in (skills, tools, settings, projects, sessions, turns, admin,
-           approvals, schedules, files, artifacts, stats, hooks):
+           approvals, schedules, files, artifacts, stats, hooks, memory):
     router.include_router(_m.router)
 
 # 兼容面：历史 routes.py 模块级符号（测试/外部脚本仍可从本包寻址）

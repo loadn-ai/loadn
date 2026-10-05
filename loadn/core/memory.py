@@ -1,355 +1,65 @@
-"""长期记忆（P1-4a，ZCode Z3 × codex C7 同构）：边界驱动后台抽取 +
+"""长期记忆引擎层（P1-4a，Zcode Z3 × codex C7 同构）：边界驱动后台抽取 +
 跨会话注入。
 
-- 存储：$LOADN_HOME/memory/<project>/<hash>.md + manifest.json
-  {entries:[{id,file,summary,origin_session,created_at}], boundary:{message_id}}。
-  project=git 根路径的 sha1 短哈希（无 git 根=cwd 绝对路径哈希——记忆仍按
-  工作区隔离，不跨项目泄漏）。
-- 边界驱动（zcode MemoryExtractionSnapshot 同构）：manifest.boundary 记
-  上次处理到的消息 uuid，只抽新增段；跳过理由记录
-  （direct-memory-write / no-user-prose）。
-- 资格规则（codex 同构）：用户正文 <MINIMUM_USER_WORDS 词 → skip；子代理/
-  辅助请求（use_cache=False 侧道）不触发；直写通道命中当轮 → 该轮 skip。
-- **敏感护栏（先于一切）**：抽取输入先过 canary 蜜罐检测（诱饵 token/
-  假凭证出现即熔断不存）+ 凭证形态过滤（api key 长串/邮箱密码对等）；
-  记忆变更 transcript 留痕（引擎侧等价审计——进程边界无 webui audit）。
-- 上限：MAX_ENTRIES 条 LRU（最旧淘汰）；"忘掉 X" 显式删除。
-- 注入（P1-4a 接线位）：context.py 宪法块之后、既有 MEMORY.md 段之前，
-  带 [memory] 来源标注 + 溯源会话 id。
+存储/双域/git 版本化/管理面操作在顶层 loadn/memorystore.py（进程边界：
+webui 禁 import loadn.core，锁与 manifest 协议必须单实现）——本模块是引擎
+侧消费者：资格判定、直写/忘掉指令识别、边界锚点推进、small_model 抽取、
+注入块渲染；变更留痕走 transcript 事件（_trace）。
 """
 from __future__ import annotations
 
-import hashlib
-import json
-import os
 import re
-import subprocess
-import time
-import uuid
-from contextlib import contextmanager
 from pathlib import Path
 
-from loadn import loadn_home
+from loadn.memorystore import (  # noqa: F401  再导出：存储真源在顶层，消费方导入路径不变
+    MAX_ENTRIES,
+    PROJECT_DOMAIN,
+    USER_DOMAIN,
+    _git,
+    advance_boundary,
+    boundary_of,
+    canary_hit,
+    classify_domain,
+    commit_domain,
+    domain_dir_by_key,
+    entries_of,
+    forget,
+    forget_all,
+    list_domain_keys,
+    load_entries,
+    memory_dir,
+    memory_root,
+    project_key,
+    promote,
+    remember,
+    user_enabled,
+)
 from loadn.util import get_logger
 
 log = get_logger(__name__)
 
 MINIMUM_USER_WORDS = 3          # zcode 同构
-MAX_ENTRIES = 200
 MEMORY_NOTE = "（以上为平台自动抽取的项目记忆，可能过时；以最近指令为准）"
 MEMORY_NOTE_USER = "（以上为平台自动抽取的跨项目用户记忆，可能过时；以最近指令为准）"
 
-# ---------------------------------------------------------------- P4 双域
-PROJECT_DOMAIN = "project"
-USER_DOMAIN = "user"
-USER_DIR_NAME = "_user"          # $LOADN_HOME/memory/_user/（下划线前缀避让 hex 域键）
 
-
-def user_enabled() -> bool:
-    """LOADN_USER_MEMORY=off → 用户域整体关闭（默认 on；off=单域现状逐字节一致）。"""
-    return (os.environ.get("LOADN_USER_MEMORY", "on").strip().lower()
-            not in ("off", "0", "false", "no"))
-
-
-# 归属判定词表（确定性启发式，禁模型猜）：
-#   user 侧=第一人称偏好指称；project 侧=路径/文件名/import·包管理形态指称。
-#   user-domain-words.txt（$LOADN_HOME/memory/，一行一正则，# 注释）可扩 user 侧。
-_USER_MARKS_DEFAULT = (
-    "我喜欢", "我讨厌", "我偏好", "我习惯", "我总是", "我爱用", "我的",
-    "I prefer", "I like", "I hate", "I always", "I use", "my favorite",
-)
-_PROJECT_HINT_RE = re.compile(
-    r"[\w.-]+/[\w.-]+"                       # 路径形态：src/x.py、~/.zshrc、a/b
-    r"|\.(?:py|ts|tsx|js|jsx|go|rs|java|c|cpp|h|md|json|ya?ml|toml|sql|sh|cfg|ini)\b"
-    r"|(?:import\s+\w+|from\s+\w+\s+import"
-    r"|pip\s+install|npm\s+(?:i|install)|cargo\s+(?:add|install))", re.I)
-
-
-def _user_mark_re() -> re.Pattern:
-    """默认词表 + 配置文件扩充（读失败回落默认；抽取频度低，直接读不缓存）。"""
-    words = list(_USER_MARKS_DEFAULT)
+def _trace(session, type_: str, payload: dict) -> None:
+    """记忆变更留痕（transcript；引擎侧等价审计）。"""
     try:
-        for ln in (loadn_home() / "memory" / "user-domain-words.txt").read_text(
-                encoding="utf-8").splitlines():
-            ln = ln.strip()
-            if ln and not ln.startswith("#"):
-                words.append(ln)
-    except OSError:
+        if session is not None:
+            session.append_event(type_, payload)
+    except Exception:                                      # noqa: BLE001
         pass
-    return re.compile("|".join(re.escape(w) for w in words), re.I)
 
 
-def classify_domain(text: str) -> str:
-    """归属判定（确定性）：第一人称偏好指称 且 无项目指称 → user；
-    其余（含拿不准）→ project（宁保守）。开关 off → 恒 project。"""
-    if not user_enabled():
-        return PROJECT_DOMAIN
-    if _PROJECT_HINT_RE.search(text or ""):
-        return PROJECT_DOMAIN
-    return USER_DOMAIN if _user_mark_re().search(text or "") else PROJECT_DOMAIN
-
-# 蜜罐诱饵（与 webui canary 同族——引擎侧守抽取面）
-_CANARY_RE = re.compile(r"canary|诱饵|honeypot|sk-[a-z0-9]{16,}|ghp_[A-Za-z0-9]{20,}"
-                        r"|AKIA[0-9A-Z]{16}|-----BEGIN [A-Z ]*PRIVATE KEY-----",
-                        re.I)
-# 凭证/密钥形态（命中即拒存该候选）
-_SECRET_RE = re.compile(r"password\s*[:=]\s*\S|api[_-]?key\s*[:=]\s*\S{8,}"
-                        r"|bearer\s+[a-z0-9._-]{20,}", re.I)
-
-
-def project_key(cwd: Path) -> str:
-    """记忆域键：git 根优先（git rev-parse --show-toplevel），否则 cwd。"""
-    root = str(cwd)
-    try:
-        out = subprocess.run(["git", "-C", str(cwd), "rev-parse",
-                              "--show-toplevel"], capture_output=True,
-                             text=True, timeout=5)
-        if out.returncode == 0 and out.stdout.strip():
-            root = out.stdout.strip()
-    except (OSError, subprocess.SubprocessError):
-        pass
-    return hashlib.sha1(root.encode()).hexdigest()[:12]
-
-
-def memory_dir(cwd: Path, domain: str = PROJECT_DOMAIN) -> Path:
-    """域目录：user 域忽略 cwd（全局唯一 _user/）；project 域按 git 根隔离。"""
-    if domain == USER_DOMAIN:
-        return loadn_home() / "memory" / USER_DIR_NAME
-    return loadn_home() / "memory" / project_key(cwd)
-
-
-def _manifest(dir_: Path) -> dict:
-    try:
-        d = json.loads((dir_ / "manifest.json").read_text(encoding="utf-8"))
-        if isinstance(d, dict):
-            return d
-    except (OSError, ValueError):
-        pass
-    return {"entries": [], "boundary": {}}
-
-
-def _save_manifest(dir_: Path, m: dict) -> None:
-    dir_.mkdir(parents=True, exist_ok=True)
-    tmp = dir_ / "manifest.json.tmp"
-    tmp.write_text(json.dumps(m, ensure_ascii=False, indent=1),
-                   encoding="utf-8")
-    os.replace(tmp, dir_ / "manifest.json")
-
-
-# ---------------------------------------------------------------- P5 git 版本化
-# MemFS 语义：一次 commit = 「记住」的边界——历史可回溯、LRU/忘掉可恢复。
-# 本地仓（init 后永不触网络：只用 add/commit/show/log）；git 缺席/失败静默
-# 降级为无版本记忆（写入不受影响）；跨进程锁 flock（用户域是全局目录，
-# 多会话进程并发写是常态）。
-_GIT_DISABLED = False               # git 二进制缺席时置位（进程内短路）
-_LOCK_TIMEOUT_S = 5.0               # 锁超时：放弃本次 commit，文件照写下趟补
-
-
-def _git(dir_: Path, *args: str, timeout: float = 15.0):
-    """本地 git 调用（永不触网络）。失败返回 None（调用方自决降级）。"""
-    global _GIT_DISABLED
-    if _GIT_DISABLED:
+def _sink(session):
+    """memorystore 的 event_sink 适配器（None 安全）。"""
+    if session is None:
         return None
-    try:
-        return subprocess.run(["git", "-C", str(dir_), *args],
-                              capture_output=True, text=True, timeout=timeout)
-    except FileNotFoundError:
-        _GIT_DISABLED = True
-        log.warning("git 不可用——记忆 git 版本化降级关闭（读写不受影响）")
-        return None
-    except (OSError, subprocess.SubprocessError) as e:
-        log.warning("git %s 失败（跳过版本化）：%s", args[0], e)
-        return None
+    return lambda t, p: _trace(session, t, p)
 
 
-def _ensure_repo(dir_: Path) -> bool:
-    """域目录首次使用时 git init（本地身份注入，禁 GPG；锁文件进 exclude）。"""
-    if (dir_ / ".git").exists():
-        return True
-    r = _git(dir_, "init", "-q", "--initial-branch=main")
-    if r is None or r.returncode != 0:
-        return False
-    _git(dir_, "config", "user.name", "loadn-memory")
-    _git(dir_, "config", "user.email", "memory@loadn.invalid")
-    _git(dir_, "config", "commit.gpgsign", "false")
-    info = dir_ / ".git" / "info"
-    info.mkdir(parents=True, exist_ok=True)
-    try:
-        (info / "exclude").write_text(".loadn-memory.lock\n", encoding="utf-8")
-    except OSError:
-        pass
-    return True
-
-
-@contextmanager
-def _domain_lock(dir_: Path):
-    """跨进程域锁（flock 重试至超时；超时 yield False=放弃本次 commit）。"""
-    import fcntl
-    dir_.mkdir(parents=True, exist_ok=True)   # reject 路径先于写入建目录进锁
-    lock = dir_ / ".loadn-memory.lock"
-    deadline = time.monotonic() + _LOCK_TIMEOUT_S
-    fd = None
-    try:
-        lock.touch(exist_ok=True)
-        fd = open(lock)
-        while True:
-            try:
-                fcntl.flock(fd, fcntl.LOCK_EX | fcntl.LOCK_NB)
-                break
-            except OSError:
-                if time.monotonic() >= deadline:
-                    yield False            # 超时：文件已写，commit 让下趟补
-                    return
-                time.sleep(0.05)
-        yield True
-    finally:
-        if fd is not None:
-            try:
-                fcntl.flock(fd, fcntl.LOCK_UN)
-            except OSError:
-                pass
-            fd.close()
-
-
-def _commit_locked(dir_: Path, message: str, *, allow_empty: bool = False) -> bool:
-    """add -A + commit（**调用方须已持域锁**；含上趟锁超时漏提的补提交）。
-    消息单行化（换行不进 message）。init 也入锁——防并发双 init。"""
-    if not _ensure_repo(dir_):
-        return False
-    message = " ".join((message or "").split())[:200]
-    r = _git(dir_, "add", "-A")
-    if r is None or r.returncode != 0:
-        return False
-    args = ["commit", "-m", message]
-    if allow_empty:
-        args.append("--allow-empty")
-    r = _git(dir_, *args)
-    if r is not None and r.returncode != 0 \
-            and "nothing to commit" not in (r.stderr or ""):
-        return False
-    return True
-
-
-def commit_domain(dir_: Path, message: str, *, allow_empty: bool = False) -> bool:
-    """对域提交一次变更（取锁→ensure→add -A→commit）。锁超时放弃本次
-    commit（调用方文件已写，下趟 add -A 补提交）。"""
-    with _domain_lock(dir_) as ok:
-        if not ok:
-            log.warning("记忆域锁超时——本次 commit 放弃（文件已写，下趟补）：%s",
-                        " ".join(message.split())[:60])
-            return False
-        return _commit_locked(dir_, message, allow_empty=allow_empty)
-
-
-def canary_hit(text: str) -> bool:
-    """蜜罐/凭证形态命中（护栏第 1 道：熔断不存）。"""
-    return bool(_CANARY_RE.search(text or "") or _SECRET_RE.search(text or ""))
-
-
-def eligible(new_messages: list[dict]) -> tuple[bool, str]:
-    """资格判定（zcode 决策 run/skip 同构）。new_messages=[
-    {role, content}]。"""
-    def _words(t: str) -> int:
-        # 中文无空格分词：词数≈max(空格分词, CJK 字符数/2)（zcode 语义的
-        # CJK 适配——用户实际表达量，而非字节噪声）
-        cjk = sum(1 for ch in t if "\u4e00" <= ch <= "\u9fff")
-        return max(len(t.split()), cjk // 2)
-    user_words = sum(_words(str(m.get("content") or ""))
-                     for m in new_messages if m.get("role") == "user")
-    if user_words < MINIMUM_USER_WORDS:
-        return False, "no-user-prose"
-    return True, ""
-
-
-def load_entries(cwd: Path, domain: str = PROJECT_DOMAIN) -> list[dict]:
-    return _manifest(memory_dir(cwd, domain)).get("entries") or []
-
-
-def forget(cwd: Path, keyword: str, *, session=None,
-          domain: str = PROJECT_DOMAIN) -> int:
-    """忘掉：summary/content 命中 keyword 的条目删除（返回删除数；单域）。"""
-    if domain == USER_DOMAIN and not user_enabled():
-        return 0                         # off：用户域零读写
-    dir_ = memory_dir(cwd, domain)
-    with _domain_lock(dir_) as locked:
-        m = _manifest(dir_)
-        keep, removed = [], []
-        # 词级匹配：指令剥词后语序常与库内相反（「忘掉 pytest 偏好」vs 摘要
-        # 「偏好 pytest」）——按 token 全命中判定，比整串子串稳
-        tokens = [t for t in re.split(r"[\s，。,]+", keyword) if t]
-
-        def _hit(e: dict) -> bool:
-            hay = (e.get("summary") or "") + " " + (e.get("content") or "")
-            if not tokens:
-                return False
-            return all(t in hay for t in tokens)
-        for e in m.get("entries") or []:
-            (removed if _hit(e) else keep).append(e)
-        if not removed:
-            return 0
-        for e in removed:
-            try:
-                (dir_ / e["file"]).unlink(missing_ok=True)
-            except OSError:
-                pass
-        m["entries"] = keep
-        _save_manifest(dir_, m)
-        if locked:      # 锁超时：删除已落盘，commit 让下趟补
-            _commit_locked(dir_, f"memory: 忘掉 {keyword[:30]}"
-                                 f"（{len(removed)} 条）")
-        _trace(session, "memory_forgotten",
-               {"keyword": keyword, "removed": [e["id"] for e in removed]})
-        return len(removed)
-
-
-def remember(cwd: Path, summary: str, content: str, *, origin_session: str,
-             session=None, domain: str = PROJECT_DOMAIN) -> dict | None:
-    """写入一条记忆（直写通道与抽取通道同库；两域同守护栏）。敏感护栏前置。"""
-    if domain == USER_DOMAIN and not user_enabled():
-        return None                      # off：用户域零读写（显式面也拒）
-    if canary_hit(summary + "\n" + content):
-        # P5：拒绝也是事件——空提交留审计痕（不落被拒内容本体）
-        commit_domain(memory_dir(cwd, domain),
-                      f"memory: reject 护栏拦截 [session:{origin_session}]",
-                      allow_empty=True)
-        _trace(session, "memory_blocked", {"summary": summary[:80]})
-        return None
-    dir_ = memory_dir(cwd, domain)
-    m = _manifest(dir_)
-    eid = uuid.uuid4().hex[:12]
-    fname = f"{eid}.md"
-    (dir_).mkdir(parents=True, exist_ok=True)
-    (dir_ / fname).write_text(
-        f"---\nid: {eid}\nsummary: {summary}\norigin_session: {origin_session}\n"
-        f"created_at: {time.strftime('%Y-%m-%dT%H:%M:%S')}\n---\n\n{content}\n",
-        encoding="utf-8")
-    # P5 并发安全：manifest 读改写+LRU 淘汰+commit 全段在域锁内（用户域是
-    # 全局目录，多会话进程/线程并发写是常态——20 并发实测互抢 tmp 曾致
-    # 丢更新）。锁超时：文件已写、manifest 照更（回落旧的窄竞态），仅放弃
-    # 本次 commit（下趟 add -A 补提交）
-    with _domain_lock(dir_) as locked:
-        m = _manifest(dir_)
-        m.setdefault("entries", []).append(
-            {"id": eid, "file": fname, "summary": summary,
-             "content": content[:2000], "origin_session": origin_session,
-             "created_at": time.strftime("%Y-%m-%dT%H:%M:%S")})
-        # LRU 上限：最旧淘汰
-        if len(m["entries"]) > MAX_ENTRIES:
-            for old in m["entries"][:len(m["entries"]) - MAX_ENTRIES]:
-                try:
-                    (dir_ / old["file"]).unlink(missing_ok=True)
-                except OSError:
-                    pass
-            m["entries"] = m["entries"][-MAX_ENTRIES:]
-        _save_manifest(dir_, m)
-        if locked:
-            # 一次写入=一次 commit（LRU 淘汰的删除同 commit 入史可找回）
-            _commit_locked(dir_, f"memory: {summary} [session:{origin_session}]")
-        _trace(session, "memory_written",
-               {"id": eid, "summary": summary[:80], "origin": origin_session})
-        return m["entries"][-1]
-
-
+# ---------------------------------------------------------------- 注入
 def _render_domain(cwd: Path, limit: int, domain: str, title: str,
                   tag: str, note: str) -> str:
     entries = load_entries(cwd, domain)[-limit:]
@@ -376,68 +86,6 @@ def render_block(cwd: Path, limit: int = 12) -> str:
     return "\n".join(p for p in parts if p)
 
 
-def forget_all(cwd: Path, keyword: str, *, session=None) -> int:
-    """"忘掉 X"两域生效：project 全查 + user（开关开时）。返回总删除数。"""
-    n = forget(cwd, keyword, session=session)
-    if user_enabled():
-        n += forget(cwd, keyword, session=session, domain=USER_DOMAIN)
-    return n
-
-
-def _remove_entry(dir_: Path, m: dict, eid: str) -> dict | None:
-    """按 id 从 manifest 摘除并删文件（promote 用）。"""
-    for i, e in enumerate(m.get("entries") or []):
-        if e.get("id") == eid:
-            m["entries"] = (m.get("entries") or [])[:i] + \
-                (m.get("entries") or [])[i + 1:]
-            try:
-                (dir_ / e["file"]).unlink(missing_ok=True)
-            except OSError:
-                pass
-            return e
-    return None
-
-
-def promote(cwd: Path, eid: str, *, session=None) -> dict | None:
-    """手动提升：项目域条目 → 用户域（原域删除，溯源保留）。CLI 面。"""
-    if not user_enabled():
-        log.warning("promote 需要 LOADN_USER_MEMORY=on")
-        return None
-    dir_ = memory_dir(cwd, PROJECT_DOMAIN)
-    m = _manifest(dir_)
-    e = _remove_entry(dir_, m, eid)
-    if e is None:
-        return None
-    _save_manifest(dir_, m)
-    commit_domain(dir_, f"memory: 提升 {eid} 至用户域")
-    out = remember(cwd, e.get("summary") or eid, e.get("content") or "",
-                   origin_session=e.get("origin_session") or "?",
-                   session=session, domain=USER_DOMAIN)
-    _trace(session, "memory_promoted", {"id": eid})
-    return out
-
-
-def boundary_of(cwd: Path) -> str:
-    return str(_manifest(memory_dir(cwd)).get("boundary", {}).get(
-        "message_id") or "")
-
-
-def advance_boundary(cwd: Path, message_id: str) -> None:
-    dir_ = memory_dir(cwd)
-    m = _manifest(dir_)
-    m["boundary"] = {"message_id": message_id}
-    _save_manifest(dir_, m)
-
-
-def _trace(session, type_: str, payload: dict) -> None:
-    """记忆变更留痕（transcript；引擎侧等价审计）。"""
-    try:
-        if session is not None:
-            session.append_event(type_, payload)
-    except Exception:                                      # noqa: BLE001
-        pass
-
-
 # ---------------------------------------------------------------- 抽取钩子（P1-4b）
 EXTRACT_PROMPT = """从下面这轮对话新增段里抽取**项目级长期记忆**（用户偏好/
 约定/环境事实），供未来会话使用。只抽稳定、可复用的信息，忽略一次性细节。
@@ -450,6 +98,21 @@ EXTRACT_PROMPT = """从下面这轮对话新增段里抽取**项目级长期记�
 # 直写/删除指令形态（当轮跳过自动抽取——用户已显式表达，zcode
 # direct-memory-write 同构）
 _DIRECT_WRITE_RE = re.compile(r"记住[:：]|请记住|忘掉|忘记[:：]?|以后都", re.I)
+
+
+def eligible(new_messages: list[dict]) -> tuple[bool, str]:
+    """资格判定（zcode 决策 run/skip 同构）。new_messages=[
+    {role, content}]。"""
+    def _words(t: str) -> int:
+        # 中文无空格分词：词数≈max(空格分词, CJK 字符数/2)（zcode 语义的
+        # CJK 适配——用户实际表达量，而非字节噪声）
+        cjk = sum(1 for ch in t if "一" <= ch <= "鿿")
+        return max(len(t.split()), cjk // 2)
+    user_words = sum(_words(str(m.get("content") or ""))
+                     for m in new_messages if m.get("role") == "user")
+    if user_words < MINIMUM_USER_WORDS:
+        return False, "no-user-prose"
+    return True, ""
 
 
 def direct_write_intent(user_text: str) -> str | None:
@@ -502,6 +165,7 @@ async def extract_and_store(provider, cwd: Path, session, *,
     推进。任何失败静默（后台任务不炸主循环）。
     """
     try:
+        sink = _sink(session)
         segment, last_id = new_segment_since_boundary(cwd, session)
         if not segment or not last_id:
             return 0
@@ -517,14 +181,14 @@ async def extract_and_store(provider, cwd: Path, session, *,
             if content and not canary_hit(content):
                 remember(cwd, content[:20], content,
                          origin_session=getattr(session, "session_id", "?"),
-                         session=session,
+                         event_sink=sink,
                          domain=classify_domain(content))
             _advance(session, cwd, last_id)
             return 1
         if intent == "forget":
             kw = re.sub(r"忘掉|忘记[:：]?", "", user_tail).strip()
             if kw:
-                forget_all(cwd, kw, session=session)
+                forget_all(cwd, kw, event_sink=sink)
             _advance(session, cwd, last_id)
             return 0
         # 自动抽取：small_model JSON 数组
@@ -555,7 +219,7 @@ async def extract_and_store(provider, cwd: Path, session, *,
                 continue
             if remember(cwd, summary, content,
                         origin_session=getattr(session, "session_id", "?"),
-                        session=session,
+                        event_sink=sink,
                         domain=classify_domain(summary + " " + content)):
                 written += 1
         _advance(session, cwd, last_id)

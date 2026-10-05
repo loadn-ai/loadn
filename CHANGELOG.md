@@ -5,6 +5,16 @@
 
 ## [未发布]（Unreleased）
 
+- **webui 记忆管理页（P6，Lindy「不是黑盒」语义）**：管理中心「记忆」tab
+  ——域 tab（用户级/项目级）、左条目列表右编辑器（源码/预览双模式，
+  react-markdown 复用）、历史侧栏（版本查看+恢复）、删除二次确认。API
+  `/api/memory/*`（7 端点，写操作 admin 双头）：新建/编辑**保存即 commit**
+  （`memory: manual:webui …`）、编辑与删除**重跑蜜罐/凭证护栏**（命中 400
+  返回原因，不落被拒内容）、删除留史、已删条目按原 id 重建恢复（溯源从
+  版本 frontmatter 读回）、禁整仓 reset。新建/编辑/删除/恢复入审计账本
+  （type=memory；查看不记）。**架构**：存储层抽顶层 `loadn/memorystore.py`
+  （进程边界禁 webui 入 loadn.core，而域锁/manifest 协议必须单实现——
+  skilllock 同款先例），引擎侧转消费者+再导出（调用方导入路径不变）。
 - **记忆 git 版本化（P5，MemFS 语义）**：一次 commit=一次「记住」——域目录
   首写 git init（本地仓，永不触网络，GPG 关），写入=add -A+commit
   （`memory: <摘要> [session:<id>]`，LRU 淘汰的删除同 commit 入史可找回）、

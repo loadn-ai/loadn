@@ -1,5 +1,5 @@
 // 管理中心各 tab 共享的类型与小件（AdminPanel 拆分沉淀，v0.6.12）
-export type AdminTab = 'skills' | 'tools' | 'settings' | 'schedules' | 'webhooks' | 'cost' | 'egress' | 'security' | 'resources';
+export type AdminTab = 'skills' | 'tools' | 'settings' | 'schedules' | 'webhooks' | 'memory' | 'cost' | 'egress' | 'security' | 'resources';
 
 export interface SkillItem {
   name: string; description: string; mtime: string; disabled: boolean;

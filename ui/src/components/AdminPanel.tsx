@@ -6,6 +6,7 @@ import { useState } from 'react';
 import CostTab from './CostPanel';
 import SchedulesTab from './SchedulePanel';
 import WebhooksTab from './admin/WebhooksTab';
+import MemoryTab from './admin/MemoryTab';
 import SecurityTab from './SecurityPanel';
 import ResourcesTab from './ResourcesPanel';
 import EgressPanel from './admin/EgressPanel';
@@ -33,6 +34,7 @@ export default function AdminPanel({ onClose, initialTab, filterSid, onClearFilt
         <button className={`tab ${tab === 'settings' ? 'on' : ''}`} onClick={() => setTab('settings')}>设置</button>
         <button className={`tab ${tab === 'schedules' ? 'on' : ''}`} onClick={() => setTab('schedules')}>定时</button>
         <button className={`tab ${tab === 'webhooks' ? 'on' : ''}`} onClick={() => setTab('webhooks')}>Webhooks</button>
+        <button className={`tab ${tab === 'memory' ? 'on' : ''}`} onClick={() => setTab('memory')}>记忆</button>
         <button className={`tab ${tab === 'cost' ? 'on' : ''}`} onClick={() => setTab('cost')}>成本</button>
         <button className={`tab ${tab === 'egress' ? 'on' : ''}`} onClick={() => setTab('egress')}>流量</button>
         <button className={`tab ${tab === 'security' ? 'on' : ''}`} onClick={() => setTab('security')}>安全</button>
@@ -42,6 +44,7 @@ export default function AdminPanel({ onClose, initialTab, filterSid, onClearFilt
         : tab === 'schedules'
           ? <SchedulesTab filterSid={filterSid} onClearFilter={onClearFilter} />
           : tab === 'webhooks' ? <WebhooksTab />
+          : tab === 'memory' ? <MemoryTab />
           : tab === 'cost' ? <CostTab />
           : tab === 'egress' ? <EgressPanel />
           : tab === 'security' ? <SecurityTab onClose={onClose} />

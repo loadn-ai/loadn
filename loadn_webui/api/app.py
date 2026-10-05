@@ -46,7 +46,8 @@ _TICKETS: dict[str, float] = {}
 # 管理面前缀（W0.4）：非 GET/HEAD/OPTIONS 一律要求 X-Workdaddy-Admin。
 _ADMIN_PREFIXES = ("/api/skills", "/api/skillhub", "/api/tools",
                    "/api/settings", "/api/schedules", "/api/admin",
-                   "/api/hooks")
+                   "/api/hooks",
+                   "/api/memory")
 
 # 会话级破坏性端点（W6.4）：路径形如 /api/sessions/{sid}/kill，前缀表
 # 表达不了通配，按末段判定（kill/rollback/unlock 非法 GET 一律双头）
