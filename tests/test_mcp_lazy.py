@@ -146,22 +146,44 @@ async def test_internal_keep_exemption(monkeypatch, tmp_path):
 
 
 async def test_toolsearch_execute_guards(monkeypatch, tmp_path):
-    """物化语义：命中→原地插入 tools + 返回全 schema；未知名/disallow 拒。"""
+    """物化语义：命中→原地插入 tools + 返回全 schema；未知名/disallow 拒；
+    守卫细节（空参/错误列表上限 20/索引行截 80 字/schema 原文不转义/
+    read_only——懒加载通道不得放大权限面）。"""
+    from loadn.mcp.client import MCPTool
     from loadn.tools.tool_search import ToolSearchTool
-    _, deferred, _, conns = await _discover(
-        monkeypatch, tmp_path, {"big": [f"t{i:02d}" for i in range(20)]})
+    conn = _FakeConn("big", [])
+    index: dict = {}
+    for i in range(22):
+        spec = {"name": f"t{i:02d}",
+                "description": ("长" * 120 if i == 0
+                                else f"t{i:02d} 的描述。第二句忽略"),
+                "inputSchema": {"type": "object",
+                                "properties": {"x": {
+                                    "type": "string",
+                                    "description": "参数说明"}},
+                                "required": ["x"]}}
+        t = MCPTool(conn, spec)
+        index[t.name] = t
     tools: dict = {}
-    ts = ToolSearchTool(deferred, tools, disallow={"mcp__big__t01"})
-    # enum 索引：name + 首句 + @server
+    ts = ToolSearchTool(index, tools, disallow={"mcp__big__t01"})
+    assert ts.read_only is True
+    # enum 索引：name + 首句 + @server；超长描述截 80 字
     desc = ts.input_schema["properties"]["tool"]["description"]
-    assert "mcp__big__t00：t00 的描述@big" in desc
+    assert "mcp__big__t02：t02 的描述@big" in desc
+    assert "长" * 80 in desc and "长" * 81 not in desc
     out = await ts.execute({"tool": "mcp__big__t00"}, None)
     assert "mcp__big__t00" in tools and "required" in out
     assert "来源 server：big" in out
+    assert "参数说明" in out                    # schema 中文原文不转义
     again = await ts.execute({"tool": "mcp__big__t00"}, None)
     assert "此前已物化" in again
-    with pytest.raises(ToolError, match="未知或已全量注入"):
+    # 空参（区分于未知名）：报「缺少必填参数」而非「未知」
+    with pytest.raises(ToolError, match="缺少必填参数"):
+        await ts.execute({"tool": ""}, None)
+    # 未知名：可用列表恰 20 个（22 工具剔 1 个 disallow，第 21 个起不进文案）
+    with pytest.raises(ToolError, match="未知或已全量注入") as ei:
         await ts.execute({"tool": "nope"}, None)
+    assert "mcp__big__t20" in str(ei.value) and "mcp__big__t21" not in str(ei.value)
     with pytest.raises(ToolError, match="disallow"):
         await ts.execute({"tool": "mcp__big__t01"}, None)
     assert "mcp__big__t01" not in tools
@@ -218,32 +240,54 @@ async def test_loop_direct_call_auto_materializes(monkeypatch, tmp_path):
 
 
 async def test_build_wires_toolsearch_and_disallow_prefilter(tmp_path, monkeypatch):
-    """build 全链：延迟非空注册 ToolSearch + AgentCore 带索引；disallow 的
-    工具不进延迟索引（enum 不可见——fail-closed 而非调用时报错）。"""
+    """build 全链：延迟非空才注册 ToolSearch（空索引不注册）+ AgentCore 带
+    索引；disallow 对三面生效——非延迟工具不注入、延迟名不进索引（enum
+    不可见）、ToolSearch 本身可被禁。"""
     import loadn.mcp.client as mc
+    from loadn.core.build import build_agent
     monkeypatch.chdir(tmp_path)
     (tmp_path / ".mcp.json").write_text(json.dumps(
-        {"mcpServers": {"big": {"type": "stdio", "command": "x"}}}),
+        {"mcpServers": {"big": {"type": "stdio", "command": "x"},
+                        "small": {"type": "stdio", "command": "y"}}}),
         encoding="utf-8")
-    conn = _FakeConn("big", [f"t{i:02d}" for i in range(20)])
-    monkeypatch.setattr(mc, "StdioMCPConnection",
-                        lambda n, c, a, e: conn)
-    from loadn.core.build import build_agent
+    conns: dict = {}
+
+    def factory(name, command, args, env):
+        conns[name] = _FakeConn(
+            name, [f"t{i:02d}" for i in range(20)] if name == "big"
+            else ["s0", "s1"])
+        return conns[name]
+
+    monkeypatch.setattr(mc, "StdioMCPConnection", factory)
     bundle = await build_agent(tmp_path, cfg={"provider": "fake"})
     assert "ToolSearch" in bundle.core.tools
     assert len(bundle.core.mcp_deferred) == 20
+    assert "mcp__small__s0" in bundle.core.tools   # 小 server 照常全量
     for c in bundle.mcp_conns:
         await c.stop()
-    bundle2 = await build_agent(tmp_path, cfg={"provider": "fake"},
-                                disallow=["mcp__big__t03", "mcp__big__t04"])
+    bundle2 = await build_agent(
+        tmp_path, cfg={"provider": "fake"},
+        disallow=["mcp__big__t03", "mcp__big__t04", "mcp__small__s0"])
     idx = bundle2.core.mcp_deferred
     assert "mcp__big__t03" not in idx and "mcp__big__t04" not in idx
     assert len(idx) == 18
-    assert "ToolSearch" in bundle2.core.tools
+    assert "mcp__small__s0" not in bundle2.core.tools   # 非延迟路径同受约束
+    assert "mcp__small__s1" in bundle2.core.tools
     enum = bundle2.core.tools["ToolSearch"].input_schema["properties"]["tool"]["enum"]
     assert "mcp__big__t03" not in enum
     for c in bundle2.mcp_conns:
         await c.stop()
+    # ToolSearch 本身可禁：延迟面存在也不注册（模型失去懒加载入口）
+    bundle3 = await build_agent(tmp_path, cfg={"provider": "fake"},
+                                disallow=["ToolSearch"])
+    assert "ToolSearch" not in bundle3.core.tools
+    for c in bundle3.mcp_conns:
+        await c.stop()
+    # 无 MCP server 的 workspace：空索引不注册（空 enum 工具不进装配）
+    bare = tmp_path / "bare"
+    bare.mkdir()
+    bundle4 = await build_agent(bare, cfg={"provider": "fake"})
+    assert "ToolSearch" not in bundle4.core.tools
 
 
 async def test_repair_known_tools_include_deferred(tmp_path, monkeypatch):
