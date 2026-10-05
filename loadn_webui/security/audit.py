@@ -40,6 +40,7 @@ TYPES = (
     "codemode_run",               # 受限执行域运行/工具回调（P3-4）
     "browser_cua",                # 浏览器驱动动作（P2-5）
     "lsp_diag",                   # LSP 语言 server 启动留痕（P3-3）
+    "webhook",                    # 事件触发命中/拒绝（P3：token 校验/限流/禁用/IP）
     "anomaly",
 )
 

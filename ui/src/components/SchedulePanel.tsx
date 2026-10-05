@@ -135,6 +135,34 @@ export default function SchedulesTab({ filterSid, onClearFilter }: {
           </tbody>
         </table>
       </div>
+      <HooksAside />{/* P3：事件触发与 cron 并列展示（管理在 Webhooks tab） */}
+    </div>
+  );
+}
+
+/** 事件触发概览（只读并列卡——与 cron 时间触发对照；建改去管理中心 Webhooks tab） */
+function HooksAside() {
+  const [hooks, setHooks] = useState<{ id: number; name: string; enabled: number;
+    rate_limit_per_min: number; last_fired_at: string | null }[]>([]);
+  useEffect(() => {
+    void (async () => {
+      try {
+        const d = await api<{ hooks: typeof hooks }>('/api/hooks');
+        setHooks(d.hooks);
+      } catch { /* 管理面不可达时静默——概览卡不炸调度页 */ }
+    })();
+  }, []);
+  if (!hooks.length) return null;
+  return (
+    <div className="admin-toolbar" style={{ marginTop: 10, opacity: 0.9 }}>
+      <span className="muted">事件触发（webhook）：</span>
+      {hooks.map(h => (
+        <span key={h.id} className={`sk-src ${h.enabled ? 'local' : 'off-tag'}`}
+          title={h.last_fired_at ? `最近触发 ${h.last_fired_at}` : '未触发过'}>
+          {h.name}（{h.enabled ? `${h.rate_limit_per_min}/min` : '停'}）
+        </span>
+      ))}
+      <span className="muted">建改在管理中心 → Webhooks</span>
     </div>
   );
 }

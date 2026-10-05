@@ -45,7 +45,8 @@ _TICKETS: dict[str, float] = {}
 
 # 管理面前缀（W0.4）：非 GET/HEAD/OPTIONS 一律要求 X-Workdaddy-Admin。
 _ADMIN_PREFIXES = ("/api/skills", "/api/skillhub", "/api/tools",
-                   "/api/settings", "/api/schedules", "/api/admin")
+                   "/api/settings", "/api/schedules", "/api/admin",
+                   "/api/hooks")
 
 # 会话级破坏性端点（W6.4）：路径形如 /api/sessions/{sid}/kill，前缀表
 # 表达不了通配，按末段判定（kill/rollback/unlock 非法 GET 一律双头）
@@ -271,6 +272,11 @@ async def gzip_json_middleware(request: Request, call_next):
 app.include_router(routes.router)
 # /share 公开只读路由（auth 中间件只护 /api）：注册须早于下方 spa_fallback
 app.include_router(share_router)
+# P3：webhook 公开触发面（/hooks/{token}，token 即凭证——在 /api 外，
+# auth 中间件不护；host_guard 照守）。须早于 spa_fallback 注册。
+from .routes.hooks import pub as hooks_pub_router  # noqa: E402
+
+app.include_router(hooks_pub_router)
 
 
 @app.get("/api/sessions/{sid}/events")

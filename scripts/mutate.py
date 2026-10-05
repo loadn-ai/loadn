@@ -273,6 +273,12 @@ TARGET_TESTS: dict[str, list[str]] = {
         "tests/test_m7b_units.py",
     ],
     "loadn_webui/api/routes/skills.py": ["tests/test_admin.py"],
+    "loadn_webui/hooks.py": [
+        "tests/test_webhooks.py",
+    ],
+    "loadn_webui/api/routes/hooks.py": [
+        "tests/test_webhooks.py",
+    ],
     "loadn_webui/skills.py": [
         "tests/test_admin.py",
         "tests/security/test_b6_skills_lock.py",

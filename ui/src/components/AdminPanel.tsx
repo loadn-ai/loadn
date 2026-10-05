@@ -2,8 +2,10 @@
 // 定时 / 成本分析——原侧栏三个入口（暗色/成本/管理）合并于此。
 // v0.6.12 起各 tab 拆至 components/admin/*（本文件只留页壳与 tab 切换）。
 import { useState } from 'react';
-import SchedulesTab from './SchedulePanel';
+
 import CostTab from './CostPanel';
+import SchedulesTab from './SchedulePanel';
+import WebhooksTab from './admin/WebhooksTab';
 import SecurityTab from './SecurityPanel';
 import ResourcesTab from './ResourcesPanel';
 import EgressPanel from './admin/EgressPanel';
@@ -30,6 +32,7 @@ export default function AdminPanel({ onClose, initialTab, filterSid, onClearFilt
         <button className={`tab ${tab === 'tools' ? 'on' : ''}`} onClick={() => setTab('tools')}>工具</button>
         <button className={`tab ${tab === 'settings' ? 'on' : ''}`} onClick={() => setTab('settings')}>设置</button>
         <button className={`tab ${tab === 'schedules' ? 'on' : ''}`} onClick={() => setTab('schedules')}>定时</button>
+        <button className={`tab ${tab === 'webhooks' ? 'on' : ''}`} onClick={() => setTab('webhooks')}>Webhooks</button>
         <button className={`tab ${tab === 'cost' ? 'on' : ''}`} onClick={() => setTab('cost')}>成本</button>
         <button className={`tab ${tab === 'egress' ? 'on' : ''}`} onClick={() => setTab('egress')}>流量</button>
         <button className={`tab ${tab === 'security' ? 'on' : ''}`} onClick={() => setTab('security')}>安全</button>
@@ -38,6 +41,7 @@ export default function AdminPanel({ onClose, initialTab, filterSid, onClearFilt
       {tab === 'skills' ? <SkillsTab /> : tab === 'tools' ? <ToolsTab />
         : tab === 'schedules'
           ? <SchedulesTab filterSid={filterSid} onClearFilter={onClearFilter} />
+          : tab === 'webhooks' ? <WebhooksTab />
           : tab === 'cost' ? <CostTab />
           : tab === 'egress' ? <EgressPanel />
           : tab === 'security' ? <SecurityTab onClose={onClose} />

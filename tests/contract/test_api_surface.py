@@ -40,6 +40,8 @@ EXPECTED = {
     ("/api/categories", "get,post"),
     ("/api/categories/{cid}", "delete,patch"),
     ("/api/health", "get"),
+    ("/api/hooks", "get,post"),
+    ("/api/hooks/{hid}", "delete,patch"),
     ("/api/messages/{mid}", "delete,put"),
     ("/api/profiles", "get"),
     ("/api/projects", "get,post"),

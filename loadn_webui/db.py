@@ -24,7 +24,7 @@ from .config import PATHS
 
 # R7 回滚门禁：每次加列/加表 +1；RELEASE.json 记此值，rollback 时比对。
 # additive-only 契约：只加列/加表（旧代码可跑新 schema，多余列无害）。
-SCHEMA_REV = 3
+SCHEMA_REV = 4
 from .util import iso
 
 SCHEMA = """
@@ -159,6 +159,28 @@ CREATE INDEX IF NOT EXISTS idx_evt_session ON session_events(session_id, id);
 CREATE INDEX IF NOT EXISTS idx_evt_turn ON session_events(turn_id, id);
 CREATE INDEX IF NOT EXISTS idx_art_session ON artifacts(session_id, id);
 CREATE INDEX IF NOT EXISTS idx_job_due ON scheduled_jobs(status, due_at);
+
+CREATE TABLE IF NOT EXISTS webhooks (          -- P3 事件触发（token 即凭证，删行即吊销）
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  token TEXT UNIQUE NOT NULL,        -- 20 hex 高熵（share 同构）
+  name TEXT NOT NULL,
+  profile TEXT,                      -- 空 = auto（关键词匹配）
+  prompt_template TEXT NOT NULL,     -- 须含 {{payload}}（仅字面替换，禁求值）
+  enabled INTEGER DEFAULT 1,
+  allowed_ips_json TEXT,             -- JSON 数组；空 = 不限（client.host 直配，不信 XFF）
+  rate_limit_per_min INTEGER DEFAULT 6,
+  last_fired_at TEXT,
+  created_at TEXT,
+  updated_at TEXT
+);
+
+CREATE TABLE IF NOT EXISTS webhook_runs (      -- 触发→会话映射（外部按 run id 轮询结果）
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  hook_id INTEGER REFERENCES webhooks(id),
+  session_id TEXT REFERENCES sessions(id),
+  created_at TEXT
+);
+CREATE INDEX IF NOT EXISTS idx_hook_run ON webhook_runs(hook_id, id);
 """
 
 ACTIVE_TURN_STATUSES = ("queued", "running")
@@ -574,6 +596,55 @@ def due_jobs(c: sqlite3.Connection, now_iso: str) -> list[sqlite3.Row]:
     return c.execute(
         "SELECT * FROM scheduled_jobs WHERE status='active' AND due_at<=? ORDER BY due_at",
         (now_iso,)).fetchall()
+
+
+# ---------------------------------------------------------------- webhooks（P3 事件触发）
+def create_hook(c: sqlite3.Connection, **fields: Any) -> int:
+    fields.setdefault("enabled", 1)
+    fields.setdefault("rate_limit_per_min", 6)
+    now = iso()
+    fields.update(created_at=now, updated_at=now)
+    cols = ", ".join(fields.keys())
+    ph = ", ".join("?" for _ in fields)
+    return c.execute(f"INSERT INTO webhooks({cols}) VALUES({ph})",
+                     tuple(fields.values())).lastrowid
+
+
+def get_hook(c: sqlite3.Connection, hid: int) -> sqlite3.Row | None:
+    return c.execute("SELECT * FROM webhooks WHERE id=?", (hid,)).fetchone()
+
+
+def get_hook_by_token(c: sqlite3.Connection, token: str) -> sqlite3.Row | None:
+    return c.execute("SELECT * FROM webhooks WHERE token=?", (token,)).fetchone()
+
+
+def list_hooks(c: sqlite3.Connection) -> list[sqlite3.Row]:
+    return c.execute("SELECT * FROM webhooks ORDER BY id").fetchall()
+
+
+def update_hook(c: sqlite3.Connection, hid: int, **fields: Any) -> None:
+    if not fields:
+        return
+    sets = ", ".join(f"{k}=?" for k in fields)
+    c.execute(f"UPDATE webhooks SET {sets}, updated_at=? WHERE id=?",
+              (*fields.values(), iso(), hid))
+
+
+def delete_hook(c: sqlite3.Connection, hid: int) -> bool:
+    c.execute("DELETE FROM webhook_runs WHERE hook_id=?", (hid,))
+    return bool(c.execute("DELETE FROM webhooks WHERE id=?", (hid,)).rowcount)
+
+
+def add_hook_run(c: sqlite3.Connection, hook_id: int, session_id: str) -> int:
+    return c.execute(
+        "INSERT INTO webhook_runs(hook_id, session_id, created_at) VALUES(?,?,?)",
+        (hook_id, session_id, iso())).lastrowid
+
+
+def get_hook_run(c: sqlite3.Connection, hook_id: int, run_id: int) -> sqlite3.Row | None:
+    return c.execute(
+        "SELECT * FROM webhook_runs WHERE id=? AND hook_id=?",
+        (run_id, hook_id)).fetchone()
 
 
 # ---------------------------------------------------------------- 统计

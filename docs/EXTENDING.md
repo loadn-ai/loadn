@@ -111,6 +111,21 @@ enum 即索引（name + description 首句 + 来源 server），模型点名后�
 `mcp_deferred` 字段（延迟工具数与估算 token）供观测。引擎内部直用的
 工具（如 `mcp__lsp__diagnostics`）永不延迟。
 
+## 4b. Webhook 事件触发（P3）
+
+外部事件（PR / 支付回调 / 表单提交）→ agent 会话：管理中心「Webhooks」
+tab 建钩（name / profile / prompt 模板 / 限流 / IP 白名单），得到
+`POST /hooks/{token}` 触发地址——token 即凭证（20 hex 高熵，删行即吊销）。
+payload 是**不可信事件数据**：仅 `{{payload}}` 字面替换（禁求值）、≤64KB
+超限截断标注、整体作为用户消息投递（带来源标注包装，不解析为系统操作）。
+响应 `202 + {session_id, run_id}`，`GET /hooks/{token}/runs/{run_id}` 轮询
+结果。命中/拒绝全部入审计账本（哈希链）。默认限流 6/min（per-hook）。
+
+部署注意：公开触发端点在 `/api` 外（W0 认证不护，token 即凭证），但
+**host_guard 照守全部路径**——外网源须走已配域名（`share.base_url`）或在
+`server.extra_hosts` 加白；IP 白名单匹配 `client.host`，不信任
+X-Forwarded-For（fail-closed）。签名校验（HMAC）为后续卡。
+
 ## 5. Hooks：拦截与审计工具调用
 
 项目 `.agent/settings.json` 的 `hooks` 段挂外部命令：stdin 收

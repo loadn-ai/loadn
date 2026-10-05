@@ -5,6 +5,17 @@
 
 ## [未发布]（Unreleased）
 
+- **Webhook 事件触发入口（P3）**：外部事件（PR/支付/表单）→ agent 会话。
+  实体 {token(20hex)/name/profile/prompt 模板/enabled/allowed_ips/限流}，
+  CRUD 管理面（`/api/hooks`，admin 双头）+ Webhooks 管理页 + 调度页并列卡。
+  公开触发 `POST /hooks/{token}`（挂 `/api` 外——W0 只护 /api，token 即凭证，
+  share 同构；host_guard 照守）：校验→限流→渲染→建 session 后台执行，
+  `202+{session_id, run_id}`；`GET /hooks/{token}/runs/{run_id}` 轮询。
+  安全：命中/拒绝全入审计账本（TYPES 扩 `webhook`）；payload 仅 `{{payload}}`
+  字面替换（禁求值）、≤64KB 截断标注、整体作用户消息（不可信，不解析为
+  指令）；限流 6/min 默认；IP 白名单不信任 X-Forwarded-For（fail-closed）；
+  SCHEMA_REV 3→4（webhooks/webhook_runs 两表，additive）。卡面「/api/hooks/
+  {token}」路径按 W0 现实修正为 /hooks/{token}。签名校验留 TODO。
 - **MCP 工具懒加载 ToolSearch（P2）**：单 server 工具数超阈值（默认 15，
   env `LOADN_MCP_LAZY_TOOL_THRESHOLD` 覆盖，0=关）时不全量注入工具面
   （大 server 单家可吃 12.6 万 token）——只注册 `ToolSearch`：参数 enum 即
