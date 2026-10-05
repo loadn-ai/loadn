@@ -182,6 +182,44 @@ async def test_runs_polling(client, server_url):
         assert (await c.get(f"/hooks/{h['token']}/runs/99999")).status_code == 404
 
 
+# ---------------------------------------------------------------- 边界与守卫补强
+async def test_clip_boundary_and_explicit_profile(client, server_url):
+    """64KB 恰好不截断/64KB+1 截断；显式 profile 生效（不落 auto 分支）。"""
+    from loadn_webui import db as db_mod
+    from loadn_webui import profile as profile_mod
+    prof_name = sorted(profile_mod.load_registry())[0]
+    h = await _mk_hook(client, profile=prof_name)
+
+    def _user_text(sid):
+        with db_mod.conn() as c:
+            row = c.execute("SELECT content FROM messages WHERE session_id=? "
+                            "AND role='user' ORDER BY id DESC LIMIT 1",
+                            (sid,)).fetchone()
+            sess = db_mod.get_session(c, sid)
+        return row["content"], sess["profile"]
+
+    r1 = await _fire(server_url, h["token"], b"y" * (64 * 1024))
+    assert r1.status_code == 202
+    text1, prof = _user_text(r1.json()["session_id"])
+    assert "已截断" not in text1                     # 恰 64KB：clip 标志为假
+    assert prof == prof_name                          # 显式 profile 直达
+    r2 = await _fire(server_url, h["token"], b"y" * (64 * 1024 + 1))
+    assert r2.status_code == 202
+    text2, _ = _user_text(r2.json()["session_id"])
+    assert "已截断至前 64KB" in text2                 # 越界一字节即截断
+
+
+async def test_corrupt_ip_allowlist_fail_closed(client, server_url):
+    """白名单 JSON 损坏 → 拒绝（fail-closed，不静默放行）。"""
+    from loadn_webui import db as db_mod
+    h = await _mk_hook(client)
+    with db_mod.conn() as c:
+        db_mod.update_hook(c, h["id"], allowed_ips_json="{bad json")
+    r = await _fire(server_url, h["token"])
+    assert r.status_code == 403
+    assert any(x["action"] == "reject_ip" for x in _audit_rows())
+
+
 # ---------------------------------------------------------------- 执行面故障
 async def test_engine_failure_503_and_audited(client, server_url, monkeypatch):
     """submit 被熔断/队列故障拒绝：session 已建 → 留痕（reject_engine）+ 503。"""
