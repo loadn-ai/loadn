@@ -300,3 +300,13 @@ def test_p4_promote_cli(tmp_path, monkeypatch, capsys):
     assert main(["promote", "no-such-id"]) == 1
     monkeypatch.setenv("LOADN_USER_MEMORY", "off")
     assert main(["promote", u[0]["id"]]) == 1
+
+
+def test_p4_word_file_malformed_lines(tmp_path):
+    """词表文件空行/注释不产生空正则（空交替=一切文本命中 user 的 fail-open）。"""
+    from loadn import loadn_home
+    f = loadn_home() / "memory" / "user-domain-words.txt"
+    f.parent.mkdir(parents=True, exist_ok=True)
+    f.write_text("\n\n# 注释行\n\n有效词\n\n", encoding="utf-8")
+    assert mem.classify_domain("中性描述一句话") == mem.PROJECT_DOMAIN
+    assert mem.classify_domain("有效词出现了") == mem.USER_DOMAIN
