@@ -5,6 +5,15 @@
 
 ## [未发布]（Unreleased）
 
+- **用户级跨项目记忆域（P4）**：域键抽象 project/user——新增
+  `$LOADN_HOME/memory/_user/` 全局域（换项目不再失忆）。归属判定为确定性
+  启发式（禁模型猜）：第一人称偏好词表 ∧ 无路径/文件/包管理指称 → user，
+  拿不准 → project 宁保守；词表经 `memory/user-domain-words.txt` 可扩充。
+  注入两段：`[user-memory|溯源]` 置于 `[memory|溯源]` 之上（身份先于项目）；
+  两域同守蜜罐/凭证护栏与 LRU 上限。"忘掉 X"跨两域生效；新增 CLI
+  `loadn memory promote <id>` 手动提升。开关 `LOADN_USER_MEMORY=off`
+  （默认 on）= 显式面拒绝+目录零创建+注入面零读，行为与单域现状逐字节
+  一致。不迁移存量记忆；boundary 锚点仍只存 project 域 manifest。
 - **Webhook 事件触发入口（P3）**：外部事件（PR/支付/表单）→ agent 会话。
   实体 {token(20hex)/name/profile/prompt 模板/enabled/allowed_ips/限流}，
   CRUD 管理面（`/api/hooks`，admin 双头）+ Webhooks 管理页 + 调度页并列卡。

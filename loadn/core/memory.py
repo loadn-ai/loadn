@@ -35,6 +35,56 @@ log = get_logger(__name__)
 MINIMUM_USER_WORDS = 3          # zcode 同构
 MAX_ENTRIES = 200
 MEMORY_NOTE = "（以上为平台自动抽取的项目记忆，可能过时；以最近指令为准）"
+MEMORY_NOTE_USER = "（以上为平台自动抽取的跨项目用户记忆，可能过时；以最近指令为准）"
+
+# ---------------------------------------------------------------- P4 双域
+PROJECT_DOMAIN = "project"
+USER_DOMAIN = "user"
+USER_DIR_NAME = "_user"          # $LOADN_HOME/memory/_user/（下划线前缀避让 hex 域键）
+
+
+def user_enabled() -> bool:
+    """LOADN_USER_MEMORY=off → 用户域整体关闭（默认 on；off=单域现状逐字节一致）。"""
+    return (os.environ.get("LOADN_USER_MEMORY", "on").strip().lower()
+            not in ("off", "0", "false", "no"))
+
+
+# 归属判定词表（确定性启发式，禁模型猜）：
+#   user 侧=第一人称偏好指称；project 侧=路径/文件名/import·包管理形态指称。
+#   user-domain-words.txt（$LOADN_HOME/memory/，一行一正则，# 注释）可扩 user 侧。
+_USER_MARKS_DEFAULT = (
+    "我喜欢", "我讨厌", "我偏好", "我习惯", "我总是", "我爱用", "我的",
+    "I prefer", "I like", "I hate", "I always", "I use", "my favorite",
+)
+_PROJECT_HINT_RE = re.compile(
+    r"[\w.-]+/[\w.-]+"                       # 路径形态：src/x.py、~/.zshrc、a/b
+    r"|\.(?:py|ts|tsx|js|jsx|go|rs|java|c|cpp|h|md|json|ya?ml|toml|sql|sh|cfg|ini)\b"
+    r"|(?:import\s+\w+|from\s+\w+\s+import"
+    r"|pip\s+install|npm\s+(?:i|install)|cargo\s+(?:add|install))", re.I)
+
+
+def _user_mark_re() -> re.Pattern:
+    """默认词表 + 配置文件扩充（读失败回落默认；抽取频度低，直接读不缓存）。"""
+    words = list(_USER_MARKS_DEFAULT)
+    try:
+        for ln in (loadn_home() / "memory" / "user-domain-words.txt").read_text(
+                encoding="utf-8").splitlines():
+            ln = ln.strip()
+            if ln and not ln.startswith("#"):
+                words.append(ln)
+    except OSError:
+        pass
+    return re.compile("|".join(re.escape(w) for w in words), re.I)
+
+
+def classify_domain(text: str) -> str:
+    """归属判定（确定性）：第一人称偏好指称 且 无项目指称 → user；
+    其余（含拿不准）→ project（宁保守）。开关 off → 恒 project。"""
+    if not user_enabled():
+        return PROJECT_DOMAIN
+    if _PROJECT_HINT_RE.search(text or ""):
+        return PROJECT_DOMAIN
+    return USER_DOMAIN if _user_mark_re().search(text or "") else PROJECT_DOMAIN
 
 # 蜜罐诱饵（与 webui canary 同族——引擎侧守抽取面）
 _CANARY_RE = re.compile(r"canary|诱饵|honeypot|sk-[a-z0-9]{16,}|ghp_[A-Za-z0-9]{20,}"
@@ -60,7 +110,10 @@ def project_key(cwd: Path) -> str:
     return hashlib.sha1(root.encode()).hexdigest()[:12]
 
 
-def memory_dir(cwd: Path) -> Path:
+def memory_dir(cwd: Path, domain: str = PROJECT_DOMAIN) -> Path:
+    """域目录：user 域忽略 cwd（全局唯一 _user/）；project 域按 git 根隔离。"""
+    if domain == USER_DOMAIN:
+        return loadn_home() / "memory" / USER_DIR_NAME
     return loadn_home() / "memory" / project_key(cwd)
 
 
@@ -102,13 +155,16 @@ def eligible(new_messages: list[dict]) -> tuple[bool, str]:
     return True, ""
 
 
-def load_entries(cwd: Path) -> list[dict]:
-    return _manifest(memory_dir(cwd)).get("entries") or []
+def load_entries(cwd: Path, domain: str = PROJECT_DOMAIN) -> list[dict]:
+    return _manifest(memory_dir(cwd, domain)).get("entries") or []
 
 
-def forget(cwd: Path, keyword: str, *, session=None) -> int:
-    """忘掉：summary/content 命中 keyword 的条目删除（返回删除数）。"""
-    dir_ = memory_dir(cwd)
+def forget(cwd: Path, keyword: str, *, session=None,
+          domain: str = PROJECT_DOMAIN) -> int:
+    """忘掉：summary/content 命中 keyword 的条目删除（返回删除数；单域）。"""
+    if domain == USER_DOMAIN and not user_enabled():
+        return 0                         # off：用户域零读写
+    dir_ = memory_dir(cwd, domain)
     m = _manifest(dir_)
     keep, removed = [], []
     # 词级匹配：指令剥词后语序常与库内相反（「忘掉 pytest 偏好」vs 摘要
@@ -136,12 +192,14 @@ def forget(cwd: Path, keyword: str, *, session=None) -> int:
 
 
 def remember(cwd: Path, summary: str, content: str, *, origin_session: str,
-             session=None) -> dict | None:
-    """写入一条记忆（直写通道与抽取通道同库）。敏感护栏前置。"""
+             session=None, domain: str = PROJECT_DOMAIN) -> dict | None:
+    """写入一条记忆（直写通道与抽取通道同库；两域同守护栏）。敏感护栏前置。"""
+    if domain == USER_DOMAIN and not user_enabled():
+        return None                      # off：用户域零读写（显式面也拒）
     if canary_hit(summary + "\n" + content):
         _trace(session, "memory_blocked", {"summary": summary[:80]})
         return None
-    dir_ = memory_dir(cwd)
+    dir_ = memory_dir(cwd, domain)
     m = _manifest(dir_)
     eid = uuid.uuid4().hex[:12]
     fname = f"{eid}.md"
@@ -168,17 +226,70 @@ def remember(cwd: Path, summary: str, content: str, *, origin_session: str,
     return m["entries"][-1]
 
 
-def render_block(cwd: Path, limit: int = 12) -> str:
-    """注入块（zcode recall 同构）：[memory] 标注 + 溯源会话。"""
-    entries = load_entries(cwd)[-limit:]
+def _render_domain(cwd: Path, limit: int, domain: str, title: str,
+                  tag: str, note: str) -> str:
+    entries = load_entries(cwd, domain)[-limit:]
     if not entries:
         return ""
     lines = []
     for e in entries:
         src = (e.get("origin_session") or "?")[:16]
-        lines.append(f"- [memory|{src}] {e.get('summary', '')}"
+        lines.append(f"- [{tag}|{src}] {e.get('summary', '')}"
                      f"{'：' + e['content'][:120] if e.get('content') else ''}")
-    return "### 项目长期记忆\n" + "\n".join(lines) + "\n" + MEMORY_NOTE
+    return f"{title}\n" + "\n".join(lines) + "\n" + note
+
+
+def render_block(cwd: Path, limit: int = 12) -> str:
+    """注入块（zcode recall 同构）：user 段 [user-memory] 置于 project 段
+    [memory] 之上（身份先于项目）；off 或 user 域空 → 与单域现状一致。"""
+    parts = []
+    if user_enabled():
+        parts.append(_render_domain(cwd, limit, USER_DOMAIN,
+                                    "### 用户长期记忆", "user-memory",
+                                    MEMORY_NOTE_USER))
+    parts.append(_render_domain(cwd, limit, PROJECT_DOMAIN,
+                                "### 项目长期记忆", "memory", MEMORY_NOTE))
+    return "\n".join(p for p in parts if p)
+
+
+def forget_all(cwd: Path, keyword: str, *, session=None) -> int:
+    """"忘掉 X"两域生效：project 全查 + user（开关开时）。返回总删除数。"""
+    n = forget(cwd, keyword, session=session)
+    if user_enabled():
+        n += forget(cwd, keyword, session=session, domain=USER_DOMAIN)
+    return n
+
+
+def _remove_entry(dir_: Path, m: dict, eid: str) -> dict | None:
+    """按 id 从 manifest 摘除并删文件（promote 用）。"""
+    for i, e in enumerate(m.get("entries") or []):
+        if e.get("id") == eid:
+            m["entries"] = (m.get("entries") or [])[:i] + \
+                (m.get("entries") or [])[i + 1:]
+            try:
+                (dir_ / e["file"]).unlink(missing_ok=True)
+            except OSError:
+                pass
+            return e
+    return None
+
+
+def promote(cwd: Path, eid: str, *, session=None) -> dict | None:
+    """手动提升：项目域条目 → 用户域（原域删除，溯源保留）。CLI 面。"""
+    if not user_enabled():
+        log.warning("promote 需要 LOADN_USER_MEMORY=on")
+        return None
+    dir_ = memory_dir(cwd, PROJECT_DOMAIN)
+    m = _manifest(dir_)
+    e = _remove_entry(dir_, m, eid)
+    if e is None:
+        return None
+    _save_manifest(dir_, m)
+    out = remember(cwd, e.get("summary") or eid, e.get("content") or "",
+                   origin_session=e.get("origin_session") or "?",
+                   session=session, domain=USER_DOMAIN)
+    _trace(session, "memory_promoted", {"id": eid})
+    return out
 
 
 def boundary_of(cwd: Path) -> str:
@@ -281,13 +392,14 @@ async def extract_and_store(provider, cwd: Path, session, *,
             if content and not canary_hit(content):
                 remember(cwd, content[:20], content,
                          origin_session=getattr(session, "session_id", "?"),
-                         session=session)
+                         session=session,
+                         domain=classify_domain(content))
             _advance(session, cwd, last_id)
             return 1
         if intent == "forget":
             kw = re.sub(r"忘掉|忘记[:：]?", "", user_tail).strip()
             if kw:
-                forget(cwd, kw, session=session)
+                forget_all(cwd, kw, session=session)
             _advance(session, cwd, last_id)
             return 0
         # 自动抽取：small_model JSON 数组
@@ -318,7 +430,8 @@ async def extract_and_store(provider, cwd: Path, session, *,
                 continue
             if remember(cwd, summary, content,
                         origin_session=getattr(session, "session_id", "?"),
-                        session=session):
+                        session=session,
+                        domain=classify_domain(summary + " " + content)):
                 written += 1
         _advance(session, cwd, last_id)
         return written

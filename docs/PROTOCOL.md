@@ -111,6 +111,7 @@ loadn 引擎 SessionStart/SessionEnd hooks **无触发点**（声明不支持直
 | `LOADN_PROVIDER` | provider 覆盖（fake/anthropic/…） | — | `HAHANESS_PROVIDER` |
 | `LOADN_STEALTH` | GLM 通道 CC 伪装 | — | `HAHANESS_STEALTH` |
 | `LOADN_WEBUI_HOME` | **平台**数据根（DB/workspace/config） | monorepo 根 | `WORKDADDY_HOME` |
+| `LOADN_USER_MEMORY` | 用户级跨项目记忆域（P4：`_user/` 全局域，注入 `[user-memory]` 段；归属=第一人称偏好词表∧无项目指称） | `on` | — |
 | `LOADN_MCP_LAZY_TOOL_THRESHOLD` | MCP 工具懒加载阈值：单 server 工具数超此值只注入 ToolSearch 索引（enum=name+首句@server），经其按需物化；`0`=关 | `15` | — |
 
 两类 HOME 语义不同（引擎 vs 平台），spawn 传递时互不污染。
