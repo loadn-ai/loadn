@@ -150,3 +150,23 @@ async def test_create_validation_and_off_domain(client, monkeypatch):
     r = await client.post("/api/memory/file", json={
         "domain": "user", "summary": "偏好", "content": "我喜欢 X"})
     assert r.status_code == 400
+
+
+async def test_user_domain_created_on_demand_and_no_dup_restore(client):
+    """守卫对赌：空 user 域 GET=404（create 语义只放行新建面）；恢复已存在
+    条目走编辑路径（同 id 不重复入库）。"""
+    # user 域目录尚不存在：读 404（不是空列表——与「先有写入才有域」一致）
+    assert (await client.get("/api/memory/entries",
+                             params={"domain": "user"})).status_code == 404
+    e = await _mk(client)
+    await client.put("/api/memory/file", json={
+        "domain": "user", "id": e["id"], "content": "编辑后正文"})
+    h = (await client.get("/api/memory/history",
+                          params={"domain": "user", "id": e["id"]})).json()["history"]
+    # 恢复「已存在」条目：entries 数量不变（同 id 编辑，非重建重复）
+    r = await client.post("/api/memory/restore", json={
+        "domain": "user", "id": e["id"], "ref": h[-1]["hash"]})
+    assert r.status_code == 200
+    entries = (await client.get("/api/memory/entries",
+                                params={"domain": "user"})).json()["entries"]
+    assert [x["id"] for x in entries].count(e["id"]) == 1
