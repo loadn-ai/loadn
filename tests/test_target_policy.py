@@ -40,6 +40,7 @@ def test_match_and_fail_closed(tmp_path, monkeypatch):
     monkeypatch.setenv("LOADN_WEBUI_HOME", str(tmp_path))
     monkeypatch.setenv("LOADN_HOME", str(tmp_path / "eng"))
     assert tp.match_hit("a.com", "a.com") and not tp.match_hit("a.com", "b.com")
+    assert not tp.match_hit("", "a.com") and not tp.match_hit("a.com", "")
     assert tp.match_hit("*.evil.com", "x.evil.com")
     assert tp.match_hit("*.evil.com", "deep.x.evil.com")
     assert not tp.match_hit("*.evil.com", "evil.com")     # 裸域不吃通配
@@ -47,6 +48,9 @@ def test_match_and_fail_closed(tmp_path, monkeypatch):
     tp.add("dual.com", "host", "never")
     tp.add("dual.com", "host", "always")
     assert tp.decide("host", "dual.com") == "never"
+    # 空键/坏维度 → ask（守卫负路径：不进表查询）
+    assert tp.decide("host", "") == "ask"
+    assert tp.decide("nope", "a.com") == "ask"
     # ⑤ 表损坏 → ask（fail-closed）
     with sqlite3.connect(PATHS["db"]) as c:
         c.execute("DROP TABLE target_policies")
