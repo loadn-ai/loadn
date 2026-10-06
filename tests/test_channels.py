@@ -325,3 +325,33 @@ async def test_r2_markdown_fallback_and_cursor_advance(monkeypatch):
     kinds = [(m, b.get("parse_mode")) for m, b in sent]
     assert ("sendMessage", "Markdown") in kinds
     assert ("sendMessage", None) in kinds       # 降级纯文本（非重试 Markdown）
+
+
+async def test_r2_callback_race_already_decided(client, monkeypatch):
+    """二轮修#17 对赌：webui 抢先裁决后 telegram 回调到达——decide 返回
+    ok:False + status=approved，回执须如实「已是 approved 态（他人已
+    裁决）」，不得走「已批准，码已注回会话」分支（突变 399 and→or
+    实证存活——ok=False 但 status 命中元组即误入批准分支）。"""
+    from loadn_webui import db as db_mod
+    from loadn_webui.security import approve as approve_mod
+    _allow(monkeypatch, ("100",))
+    fake = FakeTG()
+    eng = FakeEngine()
+    svc = _svc(fake, engine=eng)
+    svc.status["running"] = True
+    svc.handle_update(_upd(text="/new"))
+    with db_mod.conn() as c:
+        sidA = c.execute(
+            "SELECT session_id FROM channel_bindings").fetchone()["session_id"]
+    out = approve_mod.create(sidA, "mail_send", {"to": "x@y.z"})
+    aid = out["id"]
+    # webui 面抢先裁决（并发窗口的另一头）
+    approve_mod.decide(aid, True, by="webui")
+    assert approve_mod.status(aid)["status"] == "approved"
+    svc.handle_update({"update_id": 95, "callback_query": {
+        "id": "cb9", "data": f"apr:{aid}:a",
+        "message": {"chat": {"id": 100}, "text": "?"}}})
+    replies = [b for m, b in fake.sent if m == "answerCallbackQuery"]
+    assert replies and "他人已裁决" in replies[-1]["text"]
+    assert "码已注回" not in replies[-1]["text"]
+    assert not eng.steered, "已被裁决的回调不得再注入确认码（码已明文过一次）"
