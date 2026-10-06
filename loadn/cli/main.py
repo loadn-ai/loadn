@@ -261,6 +261,13 @@ async def _heartbeat(emitter, fmt: str) -> None:
 
 
 async def _shutdown_bundle(bundle) -> None:
+    # 二轮修#3：先排空 turn 收尾挂的后台任务（记忆抽取/P12 检测）——
+    # 不排空则 asyncio.run 收尾取消 pending，平台 webui 主路径上这些
+    # 写入从未完成过（fire-and-forget 三连在 -p 进程退出时全灭）
+    try:
+        await bundle.core.drain_bg(timeout_s=30.0)
+    except Exception:  # noqa: BLE001 — 排空失败不挡退出
+        pass
     for conn in getattr(bundle, "mcp_conns", []) or []:
         try:
             await conn.stop()

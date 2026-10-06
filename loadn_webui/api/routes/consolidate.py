@@ -19,8 +19,10 @@ router = APIRouter(prefix="/api")
 
 
 def _ws_of(sid: str):
-    from ...config import PATHS
-    ws = PATHS["workspace"] / sid
+    # 二轮修#5：DB 感知（sessions.workspace 列——项目子任务在
+    # <项目根>/tasks/，不是默认 workspace/<sid>）
+    from ... import workspace as ws_mod
+    ws = ws_mod.ws_of(sid)
     if not ws.is_dir():
         raise HTTPException(404, f"会话不存在: {sid}")
     return ws
@@ -58,31 +60,19 @@ def decide_suggest(sid: str, body: dict):
             raise HTTPException(400, "技能名需匹配 ^[a-z0-9][a-z0-9._-]{0,63}$")
         if not body_text:
             raise HTTPException(400, "正文不能为空")
-        skill_md = (f"---\nname: {name}\ndescription: {desc or name}\n"
-                     f"origin: user-taught:{card.get('fingerprint')}\n"
-                     f"---\n\n{body_text}\n")
-        # 复查修#5 双写：①会话工作区 .agents/skills/（本会话立即生效——
-        # cwd 即工作区，下轮 discover 直接可见）
+        # 二轮修#16：description/origin 单行化（换行会串键/注入伪造键）
+        desc = " ".join((desc or name).split())
+        origin = f"user-taught:{card.get('fingerprint')}"
+        skill_md = (f"---\nname: {name}\ndescription: {desc}\n"
+                     f"origin: {origin}\n---\n\n{body_text}\n")
         skill_dir = ws / ".agents" / "skills" / name
         if skill_dir.exists():
             raise HTTPException(409, f"已存在同名 skill: {name}")
         skill_dir.mkdir(parents=True, exist_ok=True)
         (skill_dir / "SKILL.md").write_text(skill_md, encoding="utf-8")
-        # ②平台技能库（数据根 skills/——跨会话持久：工作区是每会话独立
-        # 的，只写①则「下次同类请求自动启用」跨会话不成立；②进管理面
-        # 可见可挂载，同名冲突时带 -taught 后缀不覆盖既有技能）
-        from ... import skills as platform_skills
-        lib_dir = platform_skills._writable_root() / name
-        if lib_dir.exists():
-            lib_dir = platform_skills._writable_root() / f"{name}-taught"
-        lib_dir.mkdir(parents=True, exist_ok=True)
-        (lib_dir / "SKILL.md").write_text(skill_md, encoding="utf-8")
-        import json as _json
-        (lib_dir / ".loadn-source.json").write_text(_json.dumps({
-            "via": "user-taught", "sid": sid,
-            "fingerprint": card.get("fingerprint")}, ensure_ascii=False),
-            encoding="utf-8")
-        # 供应链扫描（W4 八类——用户教学也不豁免；红线拒写即清目录）
+        # 供应链扫描（W4 八类）——二轮修#4：**先扫后写库副本**（原顺序
+        # 库先落盘，红线时只清工作区目录——红线内容留在平台技能库任意
+        # 后续会话可挂载执行）
         from ...security import skill_scan
         report = skill_scan.scan_skill(skill_dir)
         if report["level"] == "red":
@@ -92,6 +82,25 @@ def decide_suggest(sid: str, body: dict):
                                   "name": name})
             raise HTTPException(400, f"扫描红线拒写："
                                      f"{[x['rule'] for x in report['findings'] if x['level'] == 'red'][:3]}")
+        # ②平台技能库（跨会话持久）：扫描已过才写；同名冲突用指纹后缀
+        # 循环找空位（-taught 固定后缀二次冲突会静默覆盖第一份——二轮修#4b）
+        from ... import skills as platform_skills
+        lib_root = platform_skills._writable_root()
+        lib_dir = lib_root / name
+        fp = str(card.get("fingerprint") or "")[:8]
+        for cand in (name, f"{name}-taught", f"{name}-{fp}"):
+            lib_dir = lib_root / cand
+            if not lib_dir.exists():
+                break
+        else:
+            raise HTTPException(409, f"技能库同名冲突无法落位: {name}")
+        lib_dir.mkdir(parents=True, exist_ok=True)
+        (lib_dir / "SKILL.md").write_text(skill_md, encoding="utf-8")
+        import json as _json
+        (lib_dir / ".loadn-source.json").write_text(_json.dumps({
+            "via": "user-taught", "sid": sid,
+            "fingerprint": card.get("fingerprint")}, ensure_ascii=False),
+            encoding="utf-8")
         consolidate.clear_pending(ws)
         audit("consolidate", {"action": "accepted", "sid": sid, "name": name,
                               "kind": card.get("kind"),

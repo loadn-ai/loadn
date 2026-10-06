@@ -260,6 +260,10 @@ class AgentCore:
         self._tool_execs = 0          # 累计工具执行数（口头交付检测）
         # P1-8 repomap：冷启动前 3 轮带仓库地图，之后让位上下文预算
         self._repomap_turns = 0
+        # 二轮修#3：turn 收尾 fire-and-forget 任务登记（不存引用会被 GC，
+        # 更要命的是 -p 模式 asyncio.run 收尾直接取消它们——平台 webui 主
+        # 路径上记忆抽取/P12 检测从未写完过。main._shutdown_bundle 排空）
+        self._bg_tasks: set = set()
         self._emit_hook = None             # P2-3 v2：工具区事件源（run_turn 注入）
         # P1-6 cache-warm：空闲期保温（长命进程语义；详见 core/cache_warmer）
         self._warmer = None
@@ -994,30 +998,45 @@ class AgentCore:
             pass
 
     # ------------------------------------------------------------ P1-4b memory
+    def _spawn_bg(self, coro) -> None:
+        """登记式后台任务（存引用防 GC + 供收尾排空）。无运行 loop 时静默弃。"""
+        import asyncio as _aio
+        try:
+            t = _aio.get_running_loop().create_task(coro)
+        except RuntimeError:
+            return
+        self._bg_tasks.add(t)
+        t.add_done_callback(self._bg_tasks.discard)
+
+    async def drain_bg(self, timeout_s: float = 30.0) -> None:
+        """排空后台任务（-p 进程退出前调用——不排空则 asyncio.run 取消
+        pending task，小模型调用写一半即灭）。超时兜底：宁可丢尾部也不挂死。"""
+        import asyncio as _aio
+        pending = [t for t in list(self._bg_tasks) if not t.done()]
+        if not pending:
+            return
+        try:
+            await _aio.wait_for(
+                _aio.gather(*pending, return_exceptions=True), timeout_s)
+        except _aio.TimeoutError:
+            log.warning("后台任务排空超时 %ss（丢弃尾部）", timeout_s)
+        self._bg_tasks.clear()
+
     def _memory_extract(self) -> None:
-        """turn 成功后的记忆抽取（后台语义；同步执行——fake/小模型路径快，
-        真实网关下 small_model 一次短调用可接受，失败静默不炸主循环）。"""
+        """turn 成功后的记忆抽取（后台语义；失败静默不炸主循环）。"""
         from loadn.core import memory as mem_mod
         small = getattr(self.compactor, "small_model", None) \
             if self.compactor else None
-        import asyncio as _aio
 
         async def _run():
             return await mem_mod.extract_and_store(
                 self.provider, self.cwd, self.session, small_model=small)
-        try:
-            _aio.get_running_loop().create_task(_run())
-        except RuntimeError:
-            pass
+        self._spawn_bg(_run())
 
     # ------------------------------------------------------------ P12 经验固化
     def _consolidate_check(self) -> None:
         """纠错检测（turn 成功后；确定性词表禁模型猜）。失败静默。"""
-        import asyncio as _aio
-        try:
-            _aio.get_running_loop().create_task(self._consolidate_async())
-        except RuntimeError:
-            pass
+        self._spawn_bg(self._consolidate_async())
 
     async def _consolidate_async(self) -> None:
         from loadn import consolidate as _c

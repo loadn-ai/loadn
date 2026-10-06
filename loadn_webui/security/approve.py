@@ -184,14 +184,15 @@ def _grant_browser_single_step(sid: str, params_json: str) -> None:
         host = str(params.get("host") or "")
         if not host:
             return
-        from ..config import PATHS
-        d = PATHS["workspace"] / sid / ".loadn"
+        from .. import workspace as _ws
+        d = _ws.ws_of(sid) / ".loadn"   # 二轮修#5：DB 感知真工作区
         d.mkdir(parents=True, exist_ok=True)
         (d / "browser-allow-once.json").write_text(_json.dumps({
             "host": host, "exp": _time.time() + 300}),
             encoding="utf-8")
-    except Exception:                                  # noqa: BLE001 — 票失败不挡批准
-        pass
+    except Exception as e:                              # noqa: BLE001 — 票失败不挡批准
+        log.warning("P13 单步票写入失败（批准已生效，agent 侧将保持冻结）"
+                    " sid=%s: %r", sid, e)              # 二轮修：留痕可排查
 
 
 def decide(aid: int, approve: bool, by: str = "user") -> dict:

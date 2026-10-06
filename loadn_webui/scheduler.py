@@ -148,15 +148,19 @@ class Scheduler:
         return n
 
     async def fire(self, job) -> bool:
+        # 二轮修#1：Row/dict 双态统一在**入口**（此前 to_dict 插在 KILL_ALL
+        # 检查之后——:155 的 job.get("id") 对 Row 抛 AttributeError 被外层
+        # pass 吞掉，熔断反转 fail-open；接线级对赌抓回）
+        if not isinstance(job, dict):
+            job = db_mod.to_dict(job)
         # W6.4 全局熔断标记：KILL_ALL 存在时调度器不投递
         try:
             from .config import PATHS as _P
             if (_P["run"] / "KILL_ALL").exists():
-                log.warning("KILL_ALL 生效中，调度投递暂停（job %s）", job.get("id"))
+                log.warning("KILL_ALL 生效中，调度投递暂停（job %s）", job["id"])
                 return False
-        except Exception:                              # noqa: BLE001
+        except (OSError, ImportError):
             pass
-        """触发单个 job：按 kind 分流 + 记账（fires/due_at/终态）。返回是否投递成功。"""
         now = datetime.now(timezone.utc)
         # P11：内置 job 走专属三防路径（sqlite3.Row 无 .get——keys 判列）
         if "is_system" in job.keys() and job["is_system"]:
@@ -287,7 +291,10 @@ class Scheduler:
         from .routines import heartbeat_prompt
         if self.heartbeat_busy():
             log.info("heartbeat：主队列忙，跳过本轮")
-            self._hb_advance(job, fired=False)
+            # 二轮修#2：忙跳过不计数（×N 语义=「连续无产出」，忙≠无产出；
+            # 原实现在 3 次忙跳过后永久停投——_hb_advance(fired=True) 是
+            # 死代码，实投从不清零）
+            self._hb_advance(job, fired=False, count=False)
             return False
         # 空转判定：连续空轮计数编在 label 尾标 ×N（_hb_advance 维护）
         self._heartbeat_last_empty(job)
@@ -310,8 +317,8 @@ class Scheduler:
                                         "job": job["id"]})
                 log.warning("heartbeat：连续 3 轮无产出，降频为 2h（面板可查）")
                 job = {**job, "label": f"{self.HEARTBEAT_LOW_FREQ_MARK}"
-                       f"{job['label']}"}
-            self._hb_advance(job, fired=False)
+                       f"{job['label']}", "cron": "5 */2 * * *"}
+            self._hb_advance(job, fired=False, count=False)
             return False
         # 投递（new_session 复用现有路径，prompt 用巡检模板）
         now = datetime.now(timezone.utc)
@@ -319,6 +326,11 @@ class Scheduler:
             {**job, "prompt": heartbeat_prompt(),
              "profile": job["profile"] or "assistant",
              "label": job["label"] or "🫀 心跳巡检"}, now)
+        if fired and "×" in (job["label"] or ""):
+            # 二轮修#2：实投成功清零连续无产出计数（×N 从此=真·连续）
+            with db_mod.conn() as c:
+                db_mod.update_job(c, job["id"],
+                                  label=job["label"].split(" ×")[0])
         return fired
 
     def _heartbeat_last_empty(self, job) -> bool:
@@ -336,16 +348,25 @@ class Scheduler:
                 (job["session_id"],)).fetchone()
         return bool(row) and not row["has_text"]
 
-    def _hb_advance(self, job, *, fired: bool) -> None:
-        """推进 due_at；连续空轮计数编在 label 尾标（×1/×2/×3）。"""
+    def _hb_advance(self, job, *, fired: bool, count: bool = True) -> None:
+        """推进 due_at；连续空轮计数编在 label 尾标（×1/×2/×3）。
+
+        count=False（忙跳过/降频跳过）只推 due_at 不动 label——被忙挡住
+        的那轮没有产出机会，不该计数。label 解析带 try（用户改出非数字
+        尾标不炸——否则 20s 热循环）。"""
         now = datetime.now(timezone.utc)
         next_due = _next_due(job, now)
+        if not count:
+            with db_mod.conn() as c:
+                if next_due is not None:
+                    db_mod.update_job(c, job["id"], due_at=next_due)
+            return
         label = job["label"] or "🫀 心跳巡检"
-        if fired:
-            label = label.split(" ×")[0]            # 实投清零
-        else:
-            n = int(label.rsplit("×", 1)[-1]) if "×" in label else 0
-            label = f"{label.split(' ×')[0]} ×{n + 1}"
+        try:
+            n = int(label.rsplit("×", 1)[-1].strip()) if "×" in label else 0
+        except ValueError:
+            n = 0                                     # 非数字尾标从头计
+        label = f"{label.split(' ×')[0]} ×{n + 1}"
         with db_mod.conn() as c:
             updates = {"label": label}
             if next_due is not None:

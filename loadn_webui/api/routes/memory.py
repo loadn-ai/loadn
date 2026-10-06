@@ -21,8 +21,8 @@ router = APIRouter(prefix="/api")
 
 
 def ws_of(sid: str):
-    from ...config import PATHS
-    return PATHS["workspace"] / sid
+    from ... import workspace as ws_mod
+    return ws_mod.ws_of(sid)        # 二轮修#5：DB 感知（项目子任务≠默认路径）
 
 
 def _dir_of(domain: str, *, create: bool = False):

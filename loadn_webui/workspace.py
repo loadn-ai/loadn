@@ -58,6 +58,19 @@ def render_claude_md(sid: str, title: str, prof: profile_mod.Profile,
     return out
 
 
+def _sid_of_ws(ws: Path) -> str:
+    """ws → 会话 id（browser MCP 的审批回调面用）。查不到回落 ws.name。"""
+    try:
+        from . import db as db_mod
+        with db_mod.conn() as c:
+            row = c.execute(
+                "SELECT id FROM sessions WHERE workspace=? "
+                "ORDER BY created_at DESC LIMIT 1", (str(ws),)).fetchone()
+        return row["id"] if row else ws.name
+    except Exception:                                  # noqa: BLE001
+        return ws.name
+
+
 def write_mcp_json(ws: Path, session_mcp: dict | None) -> None:
     """全局 config.mcp.servers + 会话级覆盖 合并落 ws/.mcp.json（标准项目级格式）。
 
@@ -78,8 +91,9 @@ def write_mcp_json(ws: Path, session_mcp: dict | None) -> None:
         merged["browser"] = {
             "command": str(Path(sys.executable).parent / "loadn-web"),
             "args": ["_browser-mcp"],
-            # P13 复查修#4：敏感冻结的审批请求需要 sid（此前恒空→审批从不建）
-            "env": {"LOADN_BROWSER_SID": ws.name},
+            # P13 敏感冻结审批需要 sid。二轮修#5：项目子任务的 ws.name 是
+            # "01-slug" 不是 sid——查 DB 拿真 sid（create 后 session 行必有）
+            "env": {"LOADN_BROWSER_SID": _sid_of_ws(ws)},
         }
     # P3-3：LSP 诊断回注（平台侧 MCP server——引擎拿到 mcp__lsp__diagnostics）
     if CONFIG.security.lsp_enabled and "lsp" not in merged:

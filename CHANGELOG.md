@@ -5,6 +5,25 @@
 
 ## [未发布]（Unreleased）
 
+- **二轮全面分析修复批（致命 5 项）**：三路侦察 + 逐条实证后修——
+  ①调度器 Row/dict 双态统一在 fire() **入口**（to_dict 原插在 KILL_ALL
+  检查之后：:155 job.get("id") 对 Row 炸穿被 pass 吞掉→**kill 开关
+  fail-open**；_heartbeat_last_empty 同款→heartbeat 20s 热循环永不投递；
+  接线级对赌再抓回一次——Row 直传+KILL_ALL 双形态）②heartbeat ×N 语义
+  归正：实投成功清零（原 _hb_advance(fired=True) 死代码，3 次忙跳过后
+  **永久停投**）、忙跳过/降频不计数（忙≠无产出）、label 解析带 try、
+  降频后 cron 同步进本地 dict ③**后台任务排空**（fire-and-forget 三连
+  在 -p 模式 asyncio.run 收尾被取消——平台 webui 主路径上记忆抽取/P12
+  检测从未写完过）：_spawn_bg 登记防 GC + drain_bg（30s 超时兜底）挂
+  _shutdown_bundle ④P12 库副本**先扫后写**（原顺序红线内容留在平台
+  技能库任意后续会话可挂载执行）+ 同名落位用指纹后缀循环（-taught 二次
+  冲突静默覆盖）+ description/origin 单行化（frontmatter 换行注入）⑤
+  ws_of 统一 DB 感知（P7 sources/P12 suggest/P13 票三处原用
+  workspace/<sid> 拼接——**项目子任务会话全错位**：sources 恒 deleted、
+  固化 404、票永不生效）；.mcp.json SID 注入改 DB 反查；票写失败留痕。
+  测试侧：decide 类测试隔离平台技能库根到 tmp（原直写真实 skills/——
+  污染+跨 run 409）；新增 Row 生产路径/KILL_ALL 翻转/库红线零残留/
+  drain 排空四条接线级对赌。
 - **P1-P13 全面复查修复批**：修复生产路径三严重 bug——①heartbeat 三防
   是死代码（fire() 不路由 is_system job，生产从未执行忙跳过/降频；修路由
   + 经 fire() 的接线级对赌）②P12 教学检测在带工具的 turn 恒漏检（users[-1]

@@ -85,7 +85,9 @@ async def test_heartbeat_three_guards(client, monkeypatch, tmp_path):
     fired = await sched.fire_heartbeat(job)
     assert fired is False                      # 忙跳过
     job2 = _get(hb)
-    assert "×1" in job2["label"]               # 空轮计数起步
+    # 二轮修#2：忙跳过不计数（×N=连续无产出，忙≠无产出）——label 不动
+    assert "×" not in job2["label"]
+    assert job2["due_at"] > "2000"             # due_at 照常推进（不热循环）
     # 防连续空转：凑满 ×3 标记 → 降频（cron→2h + 🫀·low 前缀）
     with db_mod.conn() as c:
         db_mod.update_job(c, hb, label="🫀 心跳巡检 ×3",
@@ -106,6 +108,14 @@ async def test_heartbeat_three_guards(client, monkeypatch, tmp_path):
     assert fired is False
     job5 = _get(hb)
     assert job5["label"].startswith(label_before.split(" ×")[0])
+    # 二轮修#2 对赌：实投成功清零 ×N（假 ×2 垫高→实投→label 归净）
+    with db_mod.conn() as c:
+        db_mod.update_job(c, hb, label="🫀 心跳巡检 ×2",
+                          due_at="2000-01-01T00:00:00")
+    job_x = _get(hb)
+    fired = await sched.fire_heartbeat(job_x)
+    assert fired is True
+    assert _get(hb)["label"] == "🫀 心跳巡检"      # 实投清零
     # 正常态（无 running turn、无 ×3）：实投（new_session 真路径）
     with db_mod.conn() as c:
         c.execute("UPDATE turns SET status='done'")
@@ -172,7 +182,8 @@ async def test_fix_heartbeat_routes_via_fire(client, monkeypatch):
     fired = await sched.fire(job)                 # ← 生产路由（非直调）
     assert fired is False                          # 忙 → 三防跳过
     j2 = _get(hb)
-    assert "×1" in j2["label"]                     # 空轮计数（fire_heartbeat 路径）
+    assert "×" not in j2["label"]                 # 忙跳过不计数（新语义）
+    assert j2["due_at"] > "2000"
     # 对照：非 system 的 new_session job 同条件走普通路径（实投不计数）
     with db_mod.conn() as c:
         nb = db_mod.create_job(c, kind="new_session", label="普通任务",
@@ -182,3 +193,39 @@ async def test_fix_heartbeat_routes_via_fire(client, monkeypatch):
     fired2 = await sched.fire(nj)
     assert fired2 is True                          # 忙不挡普通 job（原语义）
     assert "×" not in _get(nb)["label"]
+
+
+async def test_r2_row_path_and_killall(client, monkeypatch):
+    """二轮修#1 对赌：tick（sqlite3.Row 生产路径）触发 system job 不炸、
+    KILL_ALL 熔断不再被 AttributeError 反转（fail-open）。"""
+    import sqlite3
+
+    from loadn_webui import db as db_mod
+    from loadn_webui.config import PATHS
+    eng = FakeEngine()
+    sched = Scheduler(eng)
+    r = await client.post("/api/sessions", json={"title": "Row 路径"})
+    sid = r.json()["session"]["id"]
+    with db_mod.conn() as c:
+        c.execute("DELETE FROM turns WHERE status IN ('running','queued')")
+        hb = db_mod.create_job(c, kind="new_session", label="🫀 心跳巡检",
+                               prompt="x", cron="7/30 * * * *",
+                               due_at="2000-01-01T00:00:00",
+                               profile="assistant", is_system=1)
+    # Row 直传（tick 形态——不经 to_dict）
+    with db_mod.conn() as c:
+        row = db_mod.get_job(c, hb)
+    assert isinstance(row, sqlite3.Row)
+    fired = await sched.fire(row)                # Row 进 fire_heartbeat 全链
+    assert fired is True                          # 空闲+无×N → 实投（无 AttributeError）
+    # KILL_ALL 熔断：标记存在时 Row 路径必须拒投（原被 .get('id') 炸穿）
+    with db_mod.conn() as c:
+        db_mod.update_job(c, hb, label="🫀 心跳巡检",
+                          due_at="2000-01-01T00:00:00")
+    (PATHS["run"] / "KILL_ALL").write_text("x")
+    try:
+        with db_mod.conn() as c:
+            row2 = db_mod.get_job(c, hb)
+        assert await sched.fire(row2) is False    # 熔断生效（不再 fail-open）
+    finally:
+        (PATHS["run"] / "KILL_ALL").unlink(missing_ok=True)
