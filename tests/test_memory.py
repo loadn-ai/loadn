@@ -431,8 +431,13 @@ async def test_p7_memory_hits_exact_and_stable_id(tmp_path):
     again = mem.remember(tmp_path, "偏好 A", "我喜欢 A", origin_session="su",
                          domain="user", reason="explicit")
     assert again["id"] == eu["id"]
-    assert len([x for x in mem.load_entries(tmp_path, "user")
-                if x["id"] == eu["id"]]) == 1
+    eu2 = mem.remember(tmp_path, "偏好 C", "我喜欢 C", origin_session="su2",
+                       domain="user", reason="explicit")
+    mem.remember(tmp_path, "偏好 A", "我喜欢 A", origin_session="su",
+                 domain="user", reason="explicit")     # 多条目下仍只更新自身
+    users = mem.load_entries(tmp_path, "user")
+    assert len([x for x in users if x["id"] == eu["id"]]) == 1
+    assert any(x["id"] == eu2["id"] for x in users)    # 邻居不被误替换
     session = SessionManager.create(tmp_path, home=tmp_path / "home")
     core = AgentCore(provider=H.ScriptedProvider([H.text_round("好")]),
                      tools={}, session=session, cwd=tmp_path,
