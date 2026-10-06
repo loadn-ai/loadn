@@ -521,6 +521,7 @@ def edit_entry(dir_: Path, eid: str, *, content: str | None = None,
         e["summary"] = summ
         e["content"] = body[:2000]
         e.setdefault("reason", "inferred")
+        e.pop("draft", None)      # P12：保存即转正（draft 教训去角标）
         _save_manifest(dir_, m)
         if locked:
             _commit_locked(dir_, f"memory: manual:{actor} 编辑 {eid}")

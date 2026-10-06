@@ -5,6 +5,22 @@
 
 ## [未发布]（Unreleased）
 
+- **经验→技能固化闭环（P12，本批主战场）**：纠正/教学一次→沉淀可复用
+  技能。**纠错信号检测**（确定性词表挂 turn 收尾，禁模型猜常开）：显式
+  教学（以后都/记住要/always/never…）与否定纠错（不对/错了/重做…）两类
+  才触发；防自激每会话 ≤2 次。**建议卡**：命中写会话工作区
+  .loadn/skill-suggest.json（预填名/描述/正文=用户原话+上轮摘要，不改写
+  语义），webui 卡片可编辑；确认→写项目 .agents/skills/（**过 W4 八类
+  供应链扫描**，红线拒写；origin: user-taught 戳——自备内容不进 P0-3
+  锁，实测 source 字段会撞锁拒索引）；拒绝→负样本（同类指纹 7 天抑制，
+  引擎侧同文件）。**压缩后反思**（默认 off，env
+  LOADN_REFLECT_AFTER_COMPACT）：cheap 通道读压缩摘要 → ≤3 条操作教训 →
+  项目记忆域 **draft 条目**（带角标待确认——P6 记忆页编辑保存即转正，
+  绝不自动落盘）；反思不触发纠错检测（防自激）。全链路审计 type=
+  consolidate（accepted/rejected/scan_rejected/lesson_confirmed）。
+  架构：顶层 loadn/consolidate.py（memorystore 先例，引擎 loop 与 webui
+  决策面共用，进程边界安全）。手测真实纠正→存技能→新会话命中未做
+  （loop 级触发/接受/索引可见/拒绝抑制/反思 draft 全链 API+引擎对赌）。
 - **Heartbeat 巡检 + Routine 模板包（P11）**：schedule 加 destination
   三档（dashboard 默认零改 / notify 推送 / notify+artifact 推送+确保
   会话 artifacts 目录并附路径）。系统级内置 heartbeat（🫀 is_system=1，

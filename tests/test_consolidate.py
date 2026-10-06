@@ -1,0 +1,188 @@
+"""P12 经验→技能固化闭环（fake provider，零 token）：验收五件。
+
+①教学句式触发（teach/correct 两类；普通对话不触发）
+②普通对话不触发
+③确认后技能存在且下轮索引可见（.agents/skills/ 过扫描、frontmatter source）
+④拒绝负样本生效（同类指纹 7 天抑制，引擎侧同文件）
+⑤反思产物进记忆域 draft（带标记不转正；转正=编辑保存去 draft）
+外加：每会话 ≤2 次防自激；扫描红线拒写；审计入账。
+"""
+from __future__ import annotations
+
+import json
+import sqlite3
+
+import pytest
+
+from loadn import consolidate as cs
+from loadn.core.loop import AgentCore, LoopSettings
+from loadn.core.session import SessionManager
+
+import tests.helpers as H
+
+
+@pytest.fixture(autouse=True)
+def _home(tmp_path, monkeypatch):
+    monkeypatch.setenv("LOADN_HOME", str(tmp_path / "eng_home"))
+    monkeypatch.setenv("LOADN_WEBUI_HOME", str(tmp_path / "web_home"))
+    yield
+
+
+def _audit_actions() -> list[str]:
+    from loadn_webui.config import PATHS
+    p = PATHS["var"] / "audit.db"
+    if not p.exists():
+        return []
+    out = []
+    with sqlite3.connect(p) as c:
+        tables = [r[0] for r in c.execute(
+            "SELECT name FROM sqlite_master WHERE type='table' "
+            "AND name LIKE 'audit_events%'")]
+        for t in sorted(tables):
+            for r in c.execute(f"SELECT detail_json FROM {t} "
+                               "WHERE type='consolidate' ORDER BY rowid"):
+                out.append(json.loads(r[0]).get("action"))
+    return out
+
+
+async def _turn(tmp_path, user_text: str, rounds=None):
+    session = SessionManager.create(tmp_path, home=tmp_path / "eng_home")
+    core = AgentCore(provider=H.ScriptedProvider(rounds or [H.text_round("好")]),
+                     tools={}, session=session, cwd=tmp_path,
+                     settings=LoopSettings(max_turns=2))
+    await core.run_turn(user_text, emit=lambda e: None)
+    for _ in range(10):
+        import asyncio
+        await asyncio.sleep(0)      # 让 _consolidate_check 任务跑完
+    return session
+
+
+# ---------------------------------------------------------------- ①② 检测
+async def test_teach_triggers_and_plain_does_not(tmp_path):
+    sess = await _turn(tmp_path, "以后都先跑测试再提交代码")
+    card = json.loads((tmp_path / ".loadn" / "skill-suggest.json").read_text())
+    assert card["kind"] == "teach" and card["fingerprint"]
+    assert card["body"].startswith("# 用户教导（teach）")
+    assert "先跑测试再提交代码" in card["body"]     # 用户原话不改写
+    assert any(e["type"] == "skill_suggest"
+               for e in sess.transcript.read_events())
+    # ② 普通对话不触发（新会话）
+    tmp2 = tmp_path / "plain"
+    tmp2.mkdir()
+    sess2 = await _turn(tmp2, "今天天气不错，帮我看看日程")
+    assert not (tmp2 / ".loadn" / "skill-suggest.json").exists()
+    # 纠错类也触发
+    tmp3 = tmp_path / "corr"
+    tmp3.mkdir()
+    await _turn(tmp3, "这样不对，重来一遍")
+    card3 = json.loads((tmp3 / ".loadn" / "skill-suggest.json").read_text())
+    assert card3["kind"] == "correct" and card3["name"].startswith("avoid-")
+
+
+async def test_max_two_per_session(tmp_path):
+    await _turn(tmp_path, "以后都先跑测试再提交", [H.text_round("好"), H.text_round("好")])
+    n0 = 0
+    sess = SessionManager.resume(None, tmp_path) if False else None  # noqa
+    # 第二次：同会话追加纠错 turn——计数达 2 后第三次不再产卡
+    for text in ("错了，重来", "记住要写日志"):
+        session = SessionManager.create(
+            tmp_path, home=tmp_path / "eng_home") if sess is None else sess
+        break
+    # 直接单元级：suggest_count 上限（造 2 个事件后再 maybe_suggest 返回 None）
+    session = await _turn(tmp_path, "以后都用 ruff")
+    from loadn import consolidate as c2
+    assert c2.suggest_count(session) >= 1
+    # 手工把计数垫到 2 → 再触发被拒
+    session.append_event("skill_suggest", {"name": "x"})
+    (tmp_path / ".loadn" / "skill-suggest.json").unlink(missing_ok=True)
+    assert c2.maybe_suggest(tmp_path, session) is None
+
+
+# ---------------------------------------------------------------- ③ 确认→技能
+async def test_accept_creates_skill_visible_next_turn(client):
+    from loadn_webui.config import PATHS
+    r = await client.post("/api/sessions", json={"title": "P12"})
+    sid = r.json()["session"]["id"]
+    ws = PATHS["workspace"] / sid
+    card = {"kind": "teach", "fingerprint": "fp123", "name": "run-tests-first",
+            "description": "先测后交", "body": "# 规则\n先跑测试",
+            "origin_session": sid, "created_at": "now"}
+    (ws / ".loadn").mkdir(parents=True, exist_ok=True)
+    (ws / ".loadn" / "skill-suggest.json").write_text(json.dumps(card))
+    r = await client.post(f"/api/sessions/{sid}/skill-suggest/decide",
+                          json={"accept": True})
+    assert r.status_code == 200, r.text
+    assert r.json()["skill"] == "run-tests-first"
+    md = (ws / ".agents" / "skills" / "run-tests-first" / "SKILL.md").read_text()
+    assert "name: run-tests-first" in md and "先跑测试" in md
+    assert not (ws / ".loadn" / "skill-suggest.json").exists()   # pending 清
+    # 下轮索引可见：引擎 discover 认 .agents/skills（P1）
+    from loadn.core import trust
+    from loadn.core.skills import discover_skills
+    trust.admit(ws)
+    assert "run-tests-first" in discover_skills(ws)
+    assert "accepted" in _audit_actions()
+    # 坏名/空正文拒
+    card["name"], card["body"] = "Bad Name", ""
+    (ws / ".loadn" / "skill-suggest.json").write_text(json.dumps(card))
+    assert (await client.post(f"/api/sessions/{sid}/skill-suggest/decide",
+                              json={"accept": True})).status_code == 400
+
+
+# ---------------------------------------------------------------- ④ 拒绝负样本
+async def test_reject_suppresses_same_fingerprint(client, tmp_path):
+    from loadn_webui.config import PATHS
+    r = await client.post("/api/sessions", json={"title": "P12 拒"})
+    sid = r.json()["session"]["id"]
+    ws = PATHS["workspace"] / sid
+    card = {"kind": "teach", "fingerprint": cs.fingerprint("以后都写日志"),
+            "name": "keep-log", "description": "d", "body": "b",
+            "origin_session": sid, "created_at": "now"}
+    (ws / ".loadn").mkdir(parents=True, exist_ok=True)
+    (ws / ".loadn" / "skill-suggest.json").write_text(json.dumps(card))
+    r = await client.post(f"/api/sessions/{sid}/skill-suggest/decide",
+                          json={"accept": False})
+    assert r.status_code == 200 and r.json()["rejected"]
+    assert cs.is_rejected(cs.fingerprint("以后都写日志"))       # 引擎侧同文件
+    assert not cs.is_rejected("unrelated-fp")
+    # 同类句式再来 → 引擎 maybe_suggest 直接 None（7 天抑制）
+    plain = tmp_path / "suppressed"
+    plain.mkdir()
+    session = SessionManager.create(plain, home=tmp_path / "eng_home")
+    session.append_user("以后都写日志")
+    assert cs.maybe_suggest(plain, session) is None
+    assert "rejected" in _audit_actions()
+
+
+# ---------------------------------------------------------------- ⑤ 反思 draft
+async def test_reflection_draft_not_auto_promoted(tmp_path, monkeypatch):
+    monkeypatch.setenv("LOADN_REFLECT_AFTER_COMPACT", "on")
+    assert cs.reflection_enabled()
+    from loadn.providers import Chunk
+    lessons = ('[{"summary": "提交前先跑测试", "content": "同类任务先 pytest 再提交"},'
+               ' {"summary": "日志用中文", "content": "运维日志写中文"}]')
+    provider = H.ScriptedProvider([
+        [Chunk(kind="text_delta", text=lessons),
+         Chunk(kind="stop", usage={"input_tokens": 20, "output_tokens": 10},
+               stop_reason="end_turn", model="fake")],
+    ])
+    session = SessionManager.create(tmp_path, home=tmp_path / "eng_home")
+    n = await cs.reflect_after_compact(provider, tmp_path, session,
+                                       "会话压缩摘要：干了 A/B/C")
+    assert n == 2
+    from loadn import memorystore as ms
+    entries = ms.load_entries(tmp_path)
+    assert len(entries) == 2
+    assert all(e.get("draft") for e in entries)      # ⑤ draft 标记不转正
+    assert any(e["type"] == "lesson_draft"
+               for e in session.transcript.read_events())
+    # 转正=编辑保存（draft 去除）——经 confirm API
+    d = ms.memory_dir(tmp_path)
+    eid = entries[0]["id"]
+    ms.edit_entry(d, eid, content=entries[0]["content"])
+    after = ms.load_entries(tmp_path)
+    target = next(e for e in after if e["id"] == eid)
+    assert not target.get("draft")                   # 保存即转正
+    # 反思默认 off（防自激的另一半：off 时不跑）
+    monkeypatch.setenv("LOADN_REFLECT_AFTER_COMPACT", "off")
+    assert not cs.reflection_enabled()

@@ -472,6 +472,8 @@ class AgentCore:
                                     tokens_cropped=getattr(
                                         self.compactor,
                                         "last_dropped_tokens", None))
+                                await self._reflect_if_due(
+                                    self.compactor.last_summary)
                                 overflowed = True
                                 break        # 出内层，回 while True 重发
                             summary.subtype = "error_during_execution"
@@ -699,6 +701,7 @@ class AgentCore:
             await _fire(emit, {"type": "turn", "summary": summary})
             self._warmer_schedule()          # P1-6：空闲保温（长命进程）
             self._memory_extract()          # P1-4b：后台记忆抽取（同步快路径）
+            self._consolidate_check()       # P12：纠错→技能建议（确定性词表）
             self._titlegen(first_user_text)  # P1-7：引擎侧标题（一次性）
         return summary
 
@@ -1006,6 +1009,29 @@ class AgentCore:
             _aio.get_running_loop().create_task(_run())
         except RuntimeError:
             pass
+
+    # ------------------------------------------------------------ P12 经验固化
+    def _consolidate_check(self) -> None:
+        """纠错检测（turn 成功后；确定性词表禁模型猜）。失败静默。"""
+        import asyncio as _aio
+        try:
+            _aio.get_running_loop().create_task(self._consolidate_async())
+        except RuntimeError:
+            pass
+
+    async def _consolidate_async(self) -> None:
+        from loadn import consolidate as _c
+        _c.maybe_suggest(self.cwd, self.session)
+
+    async def _reflect_if_due(self, summary_text: str) -> None:
+        """压缩后反思（默认 off；cheap 通道 → 记忆域 draft 待确认）。"""
+        from loadn import consolidate as _c
+        if not _c.reflection_enabled() or not summary_text:
+            return
+        small = (getattr(self.compactor, "small_model", None)
+                 if self.compactor else None)
+        await _c.reflect_after_compact(self.provider, self.cwd, self.session,
+                                       summary_text, small_model=small)
 
     # ------------------------------------------------------------ P1-2 tool-repair
     def _repair_tool_calls(self, blocks: list) -> list:

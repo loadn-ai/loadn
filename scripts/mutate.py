@@ -185,6 +185,9 @@ TARGET_TESTS: dict[str, list[str]] = {
     "loadn_webui/routines.py": [
         "tests/test_routines.py",
     ],
+    "loadn/consolidate.py": [
+        "tests/test_consolidate.py",
+    ],
     "loadn/cli/memory_cli.py": [
         "tests/test_memory.py",
     ],
