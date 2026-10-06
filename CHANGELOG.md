@@ -5,6 +5,20 @@
 
 ## [未发布]（Unreleased）
 
+- **按目标系统的权限三档（P10，allow/ask/never）**：外部副作用动作的
+  目标级持久策略——target_policies 表（match=域名精确/*.suffix 通配或
+  动作类名；kind host|action）。决策序在审批门之前：never→建审批+自动
+  否决（全链路留痕）；always→建审批+自动批准（一次性码随 create 响应
+  给 agent 即用即 consume——用户对该目标的常设决定语义，与逐次审批同一
+  条 consume 链）；ask/无记录/**表损坏**→原审批门（fail-closed）；多规则
+  命中最严优先（never>always>ask）。host 维度与 action 维度叠加取严。
+  挂两点：POST /sessions/{sid}/approvals（bash_allow 本地动作不进此表）
+  与 egress 出口 ask 门（never 直接拒 / always 落临时授权同审批批准
+  回收语义）。审批卡「Always allow」三档窄化（exact=动作类+参数指纹 /
+  domain-action / target，created_from=approval:id）；SKILL.md frontmatter
+  targets: 仅建议展示绝不自动生效。管理面 /api/admin/target-policy CRUD
+  （改动入审计 policy_change）。手测某域名 never 后浏览器动作被拒——
+  UI 手测未走真浏览器（API 层 never/always/ask 全对赌，如实记录）。
 - **Telegram 双向对话渠道（P9/P9b）**：ChannelProvider 抽象（WhatsApp/
   Signal 注册位预留）+ Telegram 首实现——长轮询 getUpdates（指数退避
   1s→60s，成功复位）；白名单 chat_id（fail-closed：非白名单忽略+审计

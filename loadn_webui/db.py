@@ -24,7 +24,7 @@ from .config import PATHS
 
 # R7 回滚门禁：每次加列/加表 +1；RELEASE.json 记此值，rollback 时比对。
 # additive-only 契约：只加列/加表（旧代码可跑新 schema，多余列无害）。
-SCHEMA_REV = 6
+SCHEMA_REV = 7
 from .util import iso
 
 SCHEMA = """
@@ -182,6 +182,16 @@ CREATE TABLE IF NOT EXISTS webhook_runs (      -- 触发→会话映射（外部
   created_at TEXT
 );
 CREATE INDEX IF NOT EXISTS idx_hook_run ON webhook_runs(hook_id, id);
+
+CREATE TABLE IF NOT EXISTS target_policies (     -- P10 按目标权限三档
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  match TEXT NOT NULL,             -- 域名（精确/*.suffix）或动作类名
+  kind TEXT CHECK(kind IN ('host','action')),
+  mode TEXT CHECK(mode IN ('always','ask','never')),
+  scope_note TEXT,                 -- 窄化说明（exact/domain-action/target）
+  created_from TEXT,               -- manual | approval:<id> | skill-suggestion
+  created_at TEXT, updated_at TEXT
+);
 
 CREATE TABLE IF NOT EXISTS channel_bindings (    -- P9 渠道 chat↔会话绑定
   chat_id TEXT PRIMARY KEY,

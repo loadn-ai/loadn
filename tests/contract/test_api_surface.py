@@ -14,6 +14,9 @@ from loadn_webui.api.app import app
 EXPECTED = {
     ("/api/admin/approvals", "get"),
     ("/api/admin/channels", "get,put"),
+    ("/api/admin/target-policy", "get,post"),
+    ("/api/admin/target-policy/from-approval/{aid}", "post"),
+    ("/api/admin/target-policy/{pid}", "delete,patch"),
     ("/api/admin/channels/probe", "get"),
     ("/api/admin/channels/token", "put"),
     ("/api/admin/audit", "get"),

@@ -355,13 +355,37 @@ def create_approval(sid: str, body: dict):
     _get_session_or_404(sid)
     from ...engine import ENGINE
     from ...security import approve as approve_mod
+    from ...security import target_policy as tp
+    action_type = str(body.get("action_type") or "")
+    params = dict(body.get("params") or {})
+    # P10 决策序（外部副作用动作；bash_allow 等本地动作不进此表）：never→
+    # 建+自动否决（全链路留痕）；always→建+自动批准（码随响应给 agent，
+    # 即用即 consume——常设决定语义）；ask/无记录→原审批门
+    policy = (tp.decide("action", action_type) if action_type != "bash_allow"
+              else "ask")
+    if params.get("host"):                  # 带目标域名的动作叠加 host 维度
+        host_pol = tp.decide("host", str(params["host"]))
+        policy = min((policy, host_pol),
+                     key=lambda m: {"never": 0, "ask": 1, "always": 2}[m])
     try:
-        out = approve_mod.create(sid, str(body.get("action_type") or ""),
-                                 dict(body.get("params") or {}),
+        out = approve_mod.create(sid, action_type, params,
                                  note=str(body.get("note") or ""),
                                  turn_id=body.get("turn_id"))
     except ValueError as e:
         raise HTTPException(400, str(e))
+    if policy == "never":
+        d = approve_mod.decide(out["id"], False, by="target_policy")
+        ENGINE.publish(sid, "approval", {"kind": "request", **out})
+        ENGINE.publish(sid, "approval", {"kind": "decided", "id": out["id"],
+                                         "status": "denied"})
+        return {**out, "policy": "never", "status": "denied"}
+    if policy == "always":
+        d = approve_mod.decide(out["id"], True, by="target_policy")
+        ENGINE.publish(sid, "approval", {"kind": "request", **out})
+        ENGINE.publish(sid, "approval", {"kind": "decided", "id": out["id"],
+                                         "status": "approved"})
+        return {**out, "policy": "always", "status": "approved",
+                "code": d.get("code")}
     ENGINE.publish(sid, "approval", {"kind": "request", **out})
     return out
 @router.post("/sessions/{sid}/schedules")
