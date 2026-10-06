@@ -345,7 +345,10 @@ async def discover(cwd: Path) -> tuple[dict[str, Tool], dict[str, MCPTool], list
                      if len(srv_tools) > len(keep) else "")
         except Exception as e:  # noqa: BLE001 — 初始化失败降级
             log.warning("MCP %s 初始化失败（跳过）：%s", name, e)
-            await conn.stop()
+            try:
+                await conn.stop()
+            except Exception:  # noqa: BLE001 — 二轮修#22：stop 再抛不炸 discover
+                pass
     return tools, deferred, conns
 
 

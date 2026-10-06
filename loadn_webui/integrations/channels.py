@@ -296,30 +296,60 @@ class ChannelsService:
                           "WHERE chat_id=?", (r["tid"], r["chat_id"]))
 
     def send_reply(self, chat_id: str, text: str) -> None:
-        for _i, part in enumerate(split_message(text)):
-            self.api.call("sendMessage", {
-                "chat_id": chat_id, "text": part,
-                "parse_mode": "Markdown"})
+        # 二轮修#11：Markdown 失败（截断劈开 code fence 等 400）降级纯文本
+        # 重发一次——不走断线退避（那会让游标不推进→同一失败行无限
+        # 重试+队列头阻塞其他 chat 的回信；游标在 push_completed_turns
+        # 无条件推进）
+        for part in split_message(text):
+            try:
+                self.api.call("sendMessage", {
+                    "chat_id": chat_id, "text": part,
+                    "parse_mode": "Markdown"})
+            except RuntimeError:
+                try:                              # Markdown 解析失败 → 纯文本
+                    self.api.call("sendMessage",
+                                  {"chat_id": chat_id, "text": part})
+                except RuntimeError:
+                    from ..security.audit import audit
+                    audit("channel", {"action": "reply_failed",
+                                      "chat_id": chat_id,
+                                      "len": len(part)})
 
     # ---- P9b 审批按钮
     def notify_approval(self, aid: int, sid: str, summary: str) -> None:
         """审批请求 → 绑定该会话的 chat 收到内联键盘（无绑定则静默）。"""
         from .. import db as db_mod
+        # 二轮修#20：fetchall——一个会话多 chat 绑定时全部送达（原
+        # fetchone 只推第一行）；失败不炸调用方（审计留痕）
         with db_mod.conn() as c:
-            row = c.execute(
+            rows = c.execute(
                 "SELECT chat_id FROM channel_bindings WHERE session_id=?",
-                (sid,)).fetchone()
-        if row is None or not self.status.get("running"):
+                (sid,)).fetchall()
+        if not rows or not self.status.get("running"):
             return
-        self.api.call("sendMessage", {
-            "chat_id": row["chat_id"],
-            "text": f"🔔 审批请求 #{aid}：{summary[:200]}\n"
-                    "批准后确认码会自动注回会话。",
-            "reply_markup": {"inline_keyboard": [[
-                {"text": "Approve ✅", "callback_data": f"apr:{aid}:a"},
-                {"text": "Deny ❌", "callback_data": f"apr:{aid}:d"}]]}})
+        for row in rows:
+            try:
+                self.api.call("sendMessage", {
+                    "chat_id": row["chat_id"],
+                    "text": f"🔔 审批请求 #{aid}：{summary[:200]}\n"
+                            "批准后确认码会自动注回会话。",
+                    "reply_markup": {"inline_keyboard": [[
+                        {"text": "Approve ✅",
+                         "callback_data": f"apr:{aid}:a"},
+                        {"text": "Deny ❌",
+                         "callback_data": f"apr:{aid}:d"}]]}})
+            except RuntimeError as e:
+                from ..security.audit import audit
+                audit("channel", {"action": "notify_approval_failed",
+                                  "aid": aid, "chat_id": row["chat_id"],
+                                  "err": str(e)[:120]})
 
     def _handle_callback(self, cq: dict) -> None:
+        # 二轮修#10/#17/#18/#20：绑定校验（审批须属于绑定到本 chat 的
+        # 会话——否则任一白名单 chat 可枚举小整数 aid 裁决他人审批）、
+        # 码路由到审批所属 sid（非当前绑定）、decide 结果核对（并发
+        # 已裁决时失败即如实回执）、executed 态不算否决、answer 面
+        # try 包裹（回执失败不炸轮询线程）。
         from ..security import approve as approve_mod
         from ..security.audit import audit
         data = str(cq.get("data") or "")
@@ -328,31 +358,81 @@ class ChannelsService:
         if chat_id not in (CONFIG.channels.telegram_allow or []):
             return                                     # 非白名单回调忽略
         if not data.startswith("apr:"):
-            self.api.call("answerCallbackQuery",
-                          {"callback_query_id": cb_id, "text": "未知操作"})
+            try:
+                self.api.call("answerCallbackQuery",
+                              {"callback_query_id": cb_id, "text": "未知操作"})
+            except RuntimeError:
+                pass
             return
         _, aid_s, verdict = data.split(":", 2)
         try:
-            out = approve_mod.decide(int(aid_s), verdict == "a")
+            bound_sid = self._bound_sid(chat_id)
+            ap = approve_mod.status(int(aid_s))
+            appr_sid = str(ap.get("sid") or "")
+            # 二轮修#10：审批须属于绑定到本 chat 的会话（bind 换绑后旧
+            # 键盘的裁决即失效——sid 不匹配拒绝，不 decide）
+            if not bound_sid or appr_sid != bound_sid:
+                audit("channel", {"action": "callback_binding_mismatch",
+                                  "aid": aid_s, "chat_id": chat_id,
+                                  "approval_sid": appr_sid[:18]})
+                try:
+                    self.api.call("answerCallbackQuery", {
+                        "callback_query_id": cb_id,
+                        "text": "该审批不属于当前绑定的会话"
+                                "（/bind 换绑后旧键盘失效）"})
+                except RuntimeError:
+                    pass
+                return
+            out = approve_mod.decide(int(aid_s), verdict == "a",
+                                     by=f"telegram:{chat_id}")
+        except LookupError:
+            try:
+                self.api.call("answerCallbackQuery", {
+                    "callback_query_id": cb_id, "text": "审批不存在或已过期"})
+            except RuntimeError:
+                pass
+            audit("channel", {"action": "approval_callback_gone",
+                              "aid": aid_s, "chat_id": chat_id})
+            return
         except Exception as e:                         # noqa: BLE001
             out = {"ok": False, "error": str(e)}
-        if out.get("ok") and out.get("status") == "approved":
-            code = str(out.get("code") or "")
-            sid = self._bound_sid(chat_id)
-            if sid:
-                self._steer(sid, f"审批 #{aid_s} 已批准（Telegram 渠道），"
-                                 f"确认码 {code}")
-            self.api.call("answerCallbackQuery", {
-                "callback_query_id": cb_id, "text": "已批准，码已注回会话"})
-        elif out.get("ok"):
-            self.api.call("answerCallbackQuery", {
-                "callback_query_id": cb_id, "text": "已否决"})
+        if out.get("ok") and out.get("status") in ("approved", "executed"):
+            # 二轮修#17：并发已裁决（webui 抢先）时 decide 返回 ok:False——
+            # 重读真态再回执，不谎报失败。#18：executed=已批准并消费。
+            code = str(out.get("code") or "")       # executed 无码
+            if appr_sid:
+                note = f"审批 #{aid_s} 已批准（Telegram 渠道）"
+                if code:
+                    note += f"，确认码 {code}"
+                self._steer(appr_sid, note)         # 路由到审批所属会话
+            try:
+                self.api.call("answerCallbackQuery", {
+                    "callback_query_id": cb_id, "text": "已批准，码已注回会话"})
+            except RuntimeError:
+                pass
+        elif out.get("ok") and out.get("status") == "denied":
+            try:
+                self.api.call("answerCallbackQuery", {
+                    "callback_query_id": cb_id, "text": "已否决"})
+            except RuntimeError:
+                pass
         else:
-            self.api.call("answerCallbackQuery", {
-                "callback_query_id": cb_id,
-                "text": f"失败：{out.get('error', '?')}"})
+            # 失败：重读真态（并发已裁决 → 如实回执终态）
+            try:
+                real = approve_mod.status(int(aid_s)).get("status")
+            except LookupError:
+                real = "gone"
+            try:
+                self.api.call("answerCallbackQuery", {
+                    "callback_query_id": cb_id,
+                    "text": (f"该审批已是 {real} 态（他人已裁决）"
+                             if real in ("approved", "executed", "denied")
+                             else f"失败：{out.get('error', '?')}")})
+            except RuntimeError:
+                pass
         audit("channel", {"action": "approval_callback", "aid": aid_s,
-                          "verdict": verdict, "chat_id": chat_id})
+                          "verdict": verdict, "chat_id": chat_id,
+                          "by": f"telegram:{chat_id}"})
 
     def _steer(self, sid: str, text: str) -> None:
         st = self.engine.steer_if_running(sid, text)

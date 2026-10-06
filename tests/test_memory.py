@@ -474,3 +474,58 @@ async def test_p7_hits_empty_when_no_memory(tmp_path):
     at = [e for e in session.transcript.read_events()
           if e["type"] == "assistant"][-1]["payload"]
     assert "memory_hits" not in at
+
+
+async def test_r2_single_read_hits_match_render(tmp_path, monkeypatch):
+    """二轮修#8 对赌：memory_project 单读共享——select_injected 每 turn
+    只调一次，last_memory_hits 与 render_block 渲染的是同一份 picked
+    （原两次独立选采在边界处 ids 不一致=命中清单与实际注入脱节）。"""
+    from loadn.core.loop import AgentCore, LoopSettings
+    from loadn.core.session import SessionManager
+    mem.remember(tmp_path, "事实 X", "X 在 a.py", origin_session="s1")
+    calls = []
+    orig = mem.select_injected
+
+    def counting(cwd, limit=12):
+        calls.append(1)
+        return orig(cwd, limit)
+    monkeypatch.setattr(mem, "select_injected", counting)
+    session = SessionManager.create(tmp_path, home=tmp_path / "home")
+    core = AgentCore(provider=H.ScriptedProvider([H.text_round("好")]),
+                     tools={}, session=session, cwd=tmp_path,
+                     settings=LoopSettings(max_turns=2))
+    events = []
+    await core.run_turn("干活", emit=events.append)
+    assert calls == [1], f"select_injected 须单次（实际 {len(calls)}）"
+    hits = [e for e in events if e["type"] == "assistant"][-1]["memory_hits"]
+    block = mem.render_block(tmp_path)
+    assert hits and all(h["id"] in block for h in hits), \
+        "hits 与渲染块须同一份 picked（行首 id8 均出现于注入块）"
+
+
+def test_r2_dup_remember_returns_updated_entry(tmp_path):
+    """二轮修#14 对赌：dup 原位更新不挪尾——remember 返回的就是被更新的
+    条目本身（原 [-1] 在 manifest 尾部是别的条目时返回错对象）。"""
+    a = mem.remember(tmp_path, "偏 A", "内容甲", origin_session="s1")
+    mem.remember(tmp_path, "别的", "邻居", origin_session="s1")   # 挠尾
+    b = mem.remember(tmp_path, "偏 A", "内容甲", origin_session="s1")
+    assert b["id"] == a["id"]
+    assert b["summary"] == "偏 A" and b["content"] == "内容甲"
+    assert b["origin_session"] == "s1"            # 返回的是自身不是邻居
+
+
+def test_r2_frontmatter_newlines_flattened(tmp_path):
+    """二轮修#15/#16 对赌：summary/origin_session 带换行 → 写入前单行化
+    （换行可伪造 frontmatter 键/串键——单行后 manifest 行可解析且 eid
+    对空白不敏感）。"""
+    n = mem.remember(tmp_path, "行1\n行2: 伪造键", "C", origin_session="s\nX")
+    assert "\n" not in n["summary"] and "\n" not in (n["origin_session"] or "")
+    import json as _j
+    mfile = mem.memory_dir(tmp_path) / "manifest.json"
+    data = _j.loads(mfile.read_text(encoding="utf-8"))   # 整体可解析
+    row = next(x for x in data["entries"] if x["id"] == n["id"])
+    assert "\n" not in row["summary"]
+    # 幂等：同内容不同空白重抽 → 同 eid 原位更新（不重复入库）
+    m2 = mem.remember(tmp_path, "行1  行2: 伪造键", "C", origin_session="s X")
+    assert m2["id"] == n["id"]
+    assert len([x for x in data["entries"] if x["id"] == n["id"]]) == 1

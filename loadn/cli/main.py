@@ -285,6 +285,18 @@ def _patch_system(core, extra: str) -> None:
     inner = core.assembler
 
     class _Patched:
+        # 二轮修#9：属性委托（原代理只实现 build——loop 往 assembler 写
+        # with_repomap/mentioned_files 落在 wrapper 上不透传→repomap 失效；
+        # 读 last_memory_hits 也取不到→P7 来源标注恒空）
+        def __getattr__(self, name):
+            return getattr(inner, name)      # 委托（写入经 setattr 下行使真源生效）
+
+        def __setattr__(self, name, value):
+            if name.startswith("_"):
+                object.__setattr__(self, name, value)
+            else:
+                setattr(inner, name, value)  # loop 的 with_repomap 等写真源
+
         def build(self, **kw):
             return inner.build(**kw) + "\n\n## 追加指令\n" + extra
 

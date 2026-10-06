@@ -79,24 +79,33 @@ def _default_reason(domain: str, e: dict) -> str:
     return "user_pref" if domain == USER_DOMAIN else "project_fact"
 
 
-def injected_hits(cwd: Path, limit: int = 12) -> list[dict]:
-    """本 turn 注入清单（loop 挂 assistant 消息 memory_hits 扩展字段）：
-    [{id, domain, reason, hash}]——hash=注入时内容指纹（sources 判已修改）。"""
+def hits_of(picked: list[tuple[str, dict]]) -> list[dict]:
+    """注入清单（单读共享形态）：[{id, domain, reason, hash}]——hash=注入时
+    内容指纹（sources 判已修改）。"""
     from loadn.memorystore import content_hash8 as _h
     return [{"id": e.get("id"), "domain": domain,
              "reason": _default_reason(domain, e),
              "hash": _h(e.get("content") or "")}
-            for domain, e in select_injected(cwd, limit)]
+            for domain, e in picked]
 
 
-def render_block(cwd: Path, limit: int = 12) -> str:
+def injected_hits(cwd: Path, limit: int = 12) -> list[dict]:
+    """兼容口（独立读一次）——主链路用 hits_of(select_injected()) 单读。"""
+    return hits_of(select_injected(cwd, limit))
+
+
+def render_block(cwd: Path, limit: int = 12, *,
+                picked: list[tuple[str, dict]] | None = None) -> str:
     """注入块（zcode recall 同构）：user 段 [user-memory:<id8>|溯源] 置于
     project 段 [memory:<id8>|溯源] 之上（身份先于项目）；行首带稳定 id8
-    （P7 来源标注，人类可读）；off 或 user 域空 → 与单域现状一致。"""
+    （P7 来源标注，人类可读）；off 或 user 域空 → 与单域现状一致。
+
+    picked：调用方已取的 select_injected 结果（二轮修#8——与 hits 共用
+    同一次读取，杜绝两读盘之间后台抽取落盘造成的 hits≠实际注入 TOCTOU）。"""
     parts = []
     titles = {USER_DOMAIN: ("### 用户长期记忆", "user-memory", MEMORY_NOTE_USER),
               PROJECT_DOMAIN: ("### 项目长期记忆", "memory", MEMORY_NOTE)}
-    picked = select_injected(cwd, limit)
+    picked = picked if picked is not None else select_injected(cwd, limit)
     by_domain: dict[str, list] = {}
     for domain, e in picked:
         by_domain.setdefault(domain, []).append(e)

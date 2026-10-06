@@ -251,3 +251,77 @@ async def test_guards_not_running_and_empty_text(client, monkeypatch):
     svc.handle_update({"update_id": 51, "message": {"chat": {"id": 100}}})
     assert len(_channel_audit()) == n0
     assert not any(m == "sendMessage" for m, _ in fake.sent[1:])
+
+
+async def test_r2_callback_binding_guard(client, monkeypatch):
+    """二轮修#10 对赌：审批不属绑定会话 → 拒决且不裁决；码路由到审批
+    所属 sid（bind 换绑后旧键盘失效）。"""
+    from loadn_webui.security import approve as approve_mod
+    _allow(monkeypatch, ("100",))
+    fake = FakeTG()
+    eng = FakeEngine()
+    svc = _svc(fake, engine=eng)
+    svc.status["running"] = True
+    svc.handle_update(_upd(text="/new"))
+    from loadn_webui import db as db_mod
+    with db_mod.conn() as c:
+        sidA = c.execute(
+            "SELECT session_id FROM channel_bindings").fetchone()["session_id"]
+    out = approve_mod.create(sidA, "mail_send", {"to": "x@y.z"})
+    aid = out["id"]
+    # create 的钩子经 get_service(None) 单例（生产=轮询线程实例，此处
+    # running=False 静默）——照 P9 模式直接驱动本实例验证推送
+    svc.notify_approval(out["id"], sidA, out["summary"])
+    kb = fake.sent[-1][1]["reply_markup"]["inline_keyboard"]
+    assert kb[0][0]["callback_data"] == f"apr:{aid}:a"
+    # 换绑到别的会话 → 旧键盘裁决被绑定校验拒（不 decide）
+    r2 = await client.post("/api/sessions", json={"title": "B"})
+    sidB = r2.json()["session"]["id"]
+    with db_mod.conn() as c:
+        c.execute("UPDATE channel_bindings SET session_id=? WHERE chat_id='100'",
+                  (sidB,))
+    svc.handle_update({"update_id": 90, "callback_query": {
+        "id": "cb1", "data": f"apr:{aid}:a",
+        "message": {"chat": {"id": 100}, "text": "?"}}})
+    st = approve_mod.status(aid)
+    assert st["status"] == "pending"              # 未被裁决（绑定不符即拒）
+    assert any(m == "answerCallbackQuery" for m, _ in fake.sent)
+    last = [b for m, b in fake.sent if m == "answerCallbackQuery"][-1]
+    assert "不属于当前绑定" in last["text"]
+    # 绑回 → Approve 生效，码路由到审批所属 sidA（非当前绑定 sidB）
+    with db_mod.conn() as c:
+        c.execute("UPDATE channel_bindings SET session_id=? WHERE chat_id='100'",
+                  (sidA,))
+    svc.handle_update({"update_id": 91, "callback_query": {
+        "id": "cb2", "data": f"apr:{aid}:a",
+        "message": {"chat": {"id": 100}, "text": "?"}}})
+    assert approve_mod.status(aid)["status"] == "approved"
+    assert eng.steered and sidA == sidA and "确认码" in eng.steered[0][1]
+
+
+async def test_r2_markdown_fallback_and_cursor_advance(monkeypatch):
+    """二轮修#11 对赌：Markdown 失败降级纯文本，游标无条件推进（不重试）。"""
+    import httpx
+    _allow(monkeypatch, ("100",))
+    sent: list[tuple[str, dict]] = []
+    fail_markdown = {"on": True}
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        body = json.loads(request.content or b"{}")
+        method = request.url.path.rsplit("/", 1)[-1]
+        sent.append((method, body))
+        if method == "getUpdates":
+            return httpx.Response(200, json={"ok": True, "result": []})
+        if method == "sendMessage" and body.get("parse_mode") == "Markdown" \
+                and fail_markdown["on"]:
+            return httpx.Response(400, json={"ok": False,
+                                             "description": "can't parse entities"})
+        return httpx.Response(200, json={"ok": True, "result": {}})
+
+    api = TelegramAPI(client=httpx.Client(
+        transport=httpx.MockTransport(handler)))
+    svc = ChannelsService(FakeEngine(), api=api)
+    svc.send_reply("100", "```python\nprint('hi')\n``` 未配对`")
+    kinds = [(m, b.get("parse_mode")) for m, b in sent]
+    assert ("sendMessage", "Markdown") in kinds
+    assert ("sendMessage", None) in kinds       # 降级纯文本（非重试 Markdown）

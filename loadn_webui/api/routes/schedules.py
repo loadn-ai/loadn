@@ -33,6 +33,14 @@ def create_schedule_global(body: dict):
     return {"ok": True, "job": job}
 @router.patch("/schedules/{jid}")
 def patch_schedule(jid: int, body: dict):
+    # 二轮修#13：内置 system job（🫀心跳）禁改——label/cron/max_fires
+    # 是三防的档位参数，改动即绕过降频语义；去重键=恒定形态而非 label
+    from ... import db as _db
+    with _db.conn() as _c:
+        row = _db.get_job(_c, jid)
+    if row is not None and row["is_system"]:
+        raise HTTPException(403, "内置任务（🫀 心跳巡检）不可编辑——"
+                                 "停用走暂停，永久关闭删除后即不重建")
     """改 label/prompt/max_fires/status/触发时刻（cron|at|in|every_s）与
     new_session 的 title/profile/engine。触发字段改动会重算 due_at（cron
     真源）；done 是终态不复活——要重跑就删了重建。"""
@@ -118,6 +126,19 @@ def patch_schedule(jid: int, body: dict):
 @router.delete("/schedules/{jid}")
 def delete_schedule(jid: int):
     with db_mod.conn() as c:
+        row = db_mod.get_job(c, jid)
+        was_system = row is not None and row["is_system"]
         if not db_mod.delete_job(c, jid):
             raise HTTPException(404, f"schedule 不存在: {jid}")
+    if was_system:
+        # 二轮修#13：删除内置心跳 = 显式永久关闭（记 kv 哨兵——重启的
+        # ensure_heartbeat 见哨兵不重建；原「删即关」重启就复活）
+        c2 = None
+        try:
+            c2 = db_mod.conn()
+            with c2 as cc:
+                cc.execute("INSERT OR REPLACE INTO kv(key, value) "
+                           "VALUES('heartbeat_disabled', '1')")
+        except Exception:                              # noqa: BLE001 — kv 缺表等
+            pass
     return {"ok": True}

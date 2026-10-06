@@ -366,3 +366,51 @@ async def test_parse_when_accepts_js_iso():
     assert parse_when(at="2026-09-18T17:20:51Z") == "2026-09-18T17:20:51+00:00"
     with pytest.raises(ValueError):
         parse_when(at="not-a-time-Z")
+
+
+async def test_r2_system_job_guard_and_sentinel(client):
+    """二轮修#7/#13 对赌：内置心跳 cron=7,37 双点（30min 档——"7,30" 在
+    本仓解析=单值每小时一次）；PATCH is_system → 403（守卫不可绕过）；
+    DELETE → kv 哨兵写入 + ensure_heartbeat 不复活（删即关≠重启复活）。"""
+    from loadn_webui.scheduler import ensure_heartbeat
+    # 全量序自净：前置测试可能已建 system job / 写过关闭哨兵——清出干净
+    # 现场（本测试自带全部前置，不依赖全局状态）
+    with db_mod.conn() as c:
+        c.execute("DELETE FROM scheduled_jobs WHERE is_system=1")
+        c.execute("DELETE FROM kv WHERE key='heartbeat_disabled'")
+    ensure_heartbeat(None)
+    with db_mod.conn() as c:
+        row = c.execute("SELECT id, cron FROM scheduled_jobs "
+                        "WHERE is_system=1 AND kind='new_session'").fetchone()
+    assert row is not None
+    assert row["cron"] == "7,37 * * * *", "30min 档须双分钟点（7,30=单值 hourly）"
+    jid = row["id"]
+
+    # 守卫否定路径：任何字段 PATCH 都 403（fail-closed，不是部分字段白名单）
+    r = await client.patch(f"/api/schedules/{jid}", json={"label": "hack"})
+    assert r.status_code == 403 and "不可编辑" in r.json()["detail"]
+    r = await client.patch(f"/api/schedules/{jid}", json={"cron": "* * * * *"})
+    assert r.status_code == 403
+    with db_mod.conn() as c:      # 守卫反转对赌：DB 里真没被改
+        assert c.execute("SELECT cron FROM scheduled_jobs WHERE id=?",
+                         (jid,)).fetchone()["cron"] == "7,37 * * * *"
+
+    # DELETE → 哨兵 + 不复活
+    r = await client.delete(f"/api/schedules/{jid}")
+    assert r.status_code == 200
+    with db_mod.conn() as c:
+        v = c.execute("SELECT value FROM kv WHERE "
+                      "key='heartbeat_disabled'").fetchone()
+        assert v is not None and v["value"] == "1"
+    ensure_heartbeat(None)
+    with db_mod.conn() as c:
+        n = c.execute("SELECT COUNT(*) AS n FROM scheduled_jobs WHERE "
+                      "is_system=1").fetchone()["n"]
+    assert n == 0, "哨兵生效：重启不重建（永久关闭语义）"
+    # 清哨兵 → 重建（幂等创建路径不受污染）
+    with db_mod.conn() as c:
+        c.execute("DELETE FROM kv WHERE key='heartbeat_disabled'")
+    ensure_heartbeat(None)
+    with db_mod.conn() as c:
+        assert c.execute("SELECT COUNT(*) AS n FROM scheduled_jobs WHERE "
+                         "is_system=1").fetchone()["n"] == 1

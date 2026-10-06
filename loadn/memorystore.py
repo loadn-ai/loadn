@@ -360,6 +360,8 @@ def _remember_dir(dir_: Path, summary: str, content: str, *, origin_session: str
         return None
     # P7 稳定 id：域键|溯源|摘要|内容 的 sha1 前 8 位——同内容重抽不换 id
     # （uuid 仅保留给显式指定 eid 的恢复路径）
+    summary = " ".join((summary or "").split())          # 二轮修#16：单行化
+    origin_session = " ".join((origin_session or "").split())  # （换行=串键/伪造溯源）
     eid = eid or hashlib.sha1(
         f"{dir_.name}|{origin_session}|{summary}|{content}".encode()
     ).hexdigest()[:8]
@@ -403,7 +405,7 @@ def _remember_dir(dir_: Path, summary: str, content: str, *, origin_session: str
             event_sink("memory_written",
                        {"id": eid, "summary": summary[:80],
                         "origin": origin_session})
-        return m["entries"][-1]
+        return entry  # 二轮修#14：dup 原位更新不挪尾——[-1] 会返回别的条目
 
 
 def forget_all(cwd: Path, keyword: str, *, event_sink=None) -> int:
@@ -459,10 +461,13 @@ def boundary_of(cwd: Path) -> str:
 
 
 def advance_boundary(cwd: Path, message_id: str) -> None:
+    # 二轮修#15：manifest RMW 入域锁（与 remember/forget 同款——否则与
+    # 写入并发时丢 entries）
     dir_ = memory_dir(cwd)
-    m = _manifest(dir_)
-    m["boundary"] = {"message_id": message_id}
-    _save_manifest(dir_, m)
+    with _domain_lock(dir_):
+        m = _manifest(dir_)
+        m["boundary"] = {"message_id": message_id}
+        _save_manifest(dir_, m)
 
 
 # ---------------------------------------------------------------- P7 来源标注

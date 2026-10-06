@@ -5,6 +5,32 @@
 
 ## [未发布]（Unreleased）
 
+- **二轮全面分析修复批（高/中 13 项）**：致命批之后的高/中清剿——
+  ⑥常规压缩点补反思调用（原只挂 overflow 自救路径，正常压缩的摘要
+  从不进反思=P12 特性半残）⑦heartbeat cron 归正 7,37 双分钟点（"7,30"
+  在本仓 cron 解析=单值每小时一次≠30min 档）⑧记忆注入单读共享
+  （select_injected 调一次，hits_of+render_block 共用 picked——两读盘
+  间隙后台抽取落盘会造成 memory_hits≠实际注入的 TOCTOU）⑨CLI _Patched
+  属性委托（非下划线属性透传内层——诊断器探属性 AttributeError）⑩
+  Telegram 回调**绑定校验**（审批须属于绑定到本 chat 的会话：原任一
+  白名单 chat 可枚举小整数 aid 裁决他人审批；码路由到审批所属 sid 非
+  当前绑定）⑪send_reply Markdown 失败降级纯文本重发（原走断线退避=
+  游标不推进→同一失败行无限重试+队列头阻塞）⑫引擎注入 user 事件带
+  engine:true（consolidate 不把截断 nudge/自检 gate 当用户教导触发
+  建议卡）⑬内置心跳 job：PATCH 403 禁改（三防档位参数不可绕）+ 删除
+  =kv 哨兵永久关闭（原删即重启复活）+ 去重键改恒定形态（is_system
+  AND kind，原 label LIKE 用户可骗）⑭remember dup 原位更新返回自身
+  条目（原 [-1] 挪尾后返回别的条目）⑮⑯summary/origin_session 写入
+  前单行化（换行=frontmatter 串键/伪造溯源键）+ advance_boundary 入
+  域锁（RMW 与写入并发丢 entries）⑰decide 并发窗口如实回执（重读
+  真态 approved-race，不谎报失败）⑱executed 态不算否决⑲浏览器预算
+  随 open 重置（新任务不吃上一任务剩额度）+ 冻结拒步不烧预算⑳回调
+  answer 面 try 包裹+审计带 by ㉑notify_approval fetchall 多绑定全送
+  ㉒MCP discover 降级分支 stop 再抛不炸㉓webhook 未知 token 恒定耗时
+  比对+审计带来源 ip。对赌新增 11 条（system job 守卫三段/单读一致/
+  dup 返回/frontmatter 单行/engine 标记/常规压缩反思/预算重置/ip
+  留痕/绑定校验/Markdown 降级）。backlog：decide 端 admin 面授权、
+  promote 跨域原子性、update_lock_entry 无锁、_fm_upsert 换行防御。
 - **二轮全面分析修复批（致命 5 项）**：三路侦察 + 逐条实证后修——
   ①调度器 Row/dict 双态统一在 fire() **入口**（to_dict 原插在 KILL_ALL
   检查之后：:155 job.get("id") 对 Row 炸穿被 pass 吞掉→**kill 开关

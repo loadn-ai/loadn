@@ -296,3 +296,55 @@ async def test_r2_drain_bg_before_exit(tmp_path):
     assert core._bg_tasks
     await core.drain_bg(timeout_s=5)
     assert done == [1] and not core._bg_tasks            # 排空而非取消
+
+
+async def test_r2_engine_injected_user_not_taught(tmp_path):
+    """二轮修#12 对赌：engine=True 的 user 事件（截断 nudge/自检 gate/
+    反思检查点注入）不是用户教导——含教学词也不触发建议卡。"""
+    session = SessionManager.create(tmp_path, home=tmp_path / "eng_home")
+    session.append_user("正常对话一句")
+    session.append_event("user", {
+        "role": "user", "engine": True,
+        "content": [{"type": "text",
+                     "text": "以后都先跑测试再提交（引擎注入 nudge）"}]})
+    assert cs.maybe_suggest(tmp_path, session) is None
+    assert not (tmp_path / ".loadn" / "skill-suggest.json").exists()
+    # 真人随后一句话才触发（last_user=真人话）
+    session.append_user("错了，重来")
+    assert cs.maybe_suggest(tmp_path, session) is not None
+
+
+async def test_r2_reflect_at_regular_compact(tmp_path, monkeypatch):
+    """二轮修#6 对赌：常规压缩点（⑥ 压缩复查）也触发反思——原只挂
+    overflow 自救路径，正常压缩的摘要从不进反思=特性半残。"""
+    monkeypatch.setenv("LOADN_REFLECT_AFTER_COMPACT", "on")
+
+    class _AlwaysCompact:
+        last_summary = "完成了 A；B 路线走不通改用 C"
+        last_dropped_tokens = 5
+        small_model = None
+
+        async def maybe_compact(self, messages, usage, window):
+            return messages, True
+
+    from loadn.providers import Chunk
+    # 轮序：tool 轮（工具批后走 ⑥ 压缩点）→ reflect JSON（反思通道）→
+    # 终轮 text（收束）
+    prov = H.ScriptedProvider([
+        H.tool_round("tu_1", "Echo", {"msg": "a"}),
+        [Chunk(kind="text_delta", text='[{"summary": "改用C", "content": '
+                                       '"遇 B 类阻塞直接换 C"}]')],
+        H.text_round("好")])
+    session = SessionManager.create(tmp_path, home=tmp_path / "eng_home")
+    core = AgentCore(provider=prov, tools={"Echo": H.EchoTool()},
+                     session=session, cwd=tmp_path,
+                     settings=LoopSettings(max_turns=3),
+                     compactor=_AlwaysCompact())
+    await core.run_turn("干活", emit=lambda e: None)
+    # 反思产物：project 域 draft 条目 + lesson_draft 事件（非 overflow 路径）
+    assert any(e["type"] == "lesson_draft"
+               for e in session.transcript.read_events())
+    from loadn import memorystore as ms
+    row = next(x for x in ms.load_entries(tmp_path, "project")
+               if x["summary"] == "改用C")
+    assert "换 C" in row["content"]

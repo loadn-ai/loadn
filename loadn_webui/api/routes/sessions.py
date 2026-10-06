@@ -375,6 +375,21 @@ def create_approval(sid: str, body: dict):
         raise HTTPException(400, str(e))
     if policy == "never":
         d = approve_mod.decide(out["id"], False, by="target_policy")
+        # 二轮修#17：并发已裁决（webui/TG 抢先 Approve）时 decide 返回
+        # ok:False——重读真态，approved 即把码带出（fail-open 窗口虽窄，
+        # 但 silent deny→approved 的真相不能瞒）
+        if not d.get("ok"):
+            try:
+                real = approve_mod.status(out["id"]).get("status")
+            except LookupError:
+                real = "gone"
+            if real == "approved":
+                ENGINE.publish(sid, "approval", {"kind": "decided",
+                                                 "id": out["id"],
+                                                 "status": "approved"})
+                return {**out, "policy": "never",
+                        "status": "approved-race",
+                        "note": "并发窗口内已被批准（码经审批面发放）"}
         ENGINE.publish(sid, "approval", {"kind": "request", **out})
         ENGINE.publish(sid, "approval", {"kind": "decided", "id": out["id"],
                                          "status": "denied"})

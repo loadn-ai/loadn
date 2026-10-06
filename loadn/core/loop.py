@@ -329,7 +329,7 @@ class AgentCore:
                         "当前工作；与本任务无关的，记下不打断。")
             messages.append(Message(role="user", content=[TextBlock(text=injected)]))
             self.session.append_event("user", {
-                "role": "user", "content": [{"type": "text", "text": injected}]})
+                "role": "user", "engine": True, "content": [{"type": "text", "text": injected}]})
             if emit is not None:
                 await _fire(emit, {"type": "steer", "text": t})
             n += 1
@@ -361,7 +361,7 @@ class AgentCore:
             messages = [Message(role="user", content=[TextBlock(
                 text=injected_reminder)]), *messages]
             self.session.append_event("user", {
-                "role": "user",
+                "role": "user", "engine": True,
                 "content": [{"type": "text", "text": injected_reminder}]})
 
         # ---- v0.2 并行拆分调度：可拆任务先扇出子代理，结果注入主循环收敛
@@ -390,7 +390,7 @@ class AgentCore:
                     "的收尾与修正（子代理可能有个别错误），然后给出最终交付。"
                     "若子结果之间有冲突，以可验证的证据为准。")
                 self.session.append_event("user", {
-                    "role": "user", "content": [{"type": "text", "text": converge}]})
+                    "role": "user", "engine": True, "content": [{"type": "text", "text": converge}]})
                 messages.append(Message(role="user", content=[
                     TextBlock(text=converge)]))
 
@@ -557,7 +557,7 @@ class AgentCore:
                         messages.append(Message(role="user", content=[
                             TextBlock(text=nudge)]))
                         self.session.append_event("user", {
-                            "role": "user",
+                            "role": "user", "engine": True,
                             "content": [{"type": "text", "text": nudge}]})
                         continue
                     # v0.7 完工自检关卡（grind 模式）：模型说完成 ≠ 任务完成。
@@ -568,7 +568,7 @@ class AgentCore:
                         messages.append(Message(role="user", content=[
                             TextBlock(text=gate)]))
                         self.session.append_event("user", {
-                            "role": "user",
+                            "role": "user", "engine": True,
                             "content": [{"type": "text", "text": gate}]})
                         continue
                     summary.subtype = "success"   # 纯文本=turn 终结（自检放行）
@@ -614,7 +614,7 @@ class AgentCore:
                         messages.append(Message(role="user", content=[
                             TextBlock(text=nudge_text)]))
                         self.session.append_event("user", {
-                            "role": "user",
+                            "role": "user", "engine": True,
                             "content": [{"type": "text", "text": nudge_text}]})
                 if result_blocks:
                     # transcript 已逐条落 tool_result 事件（replay 自动归并成
@@ -632,6 +632,10 @@ class AgentCore:
                             self.compactor.last_summary,
                             tokens_cropped=getattr(
                                 self.compactor, "last_dropped_tokens", None))
+                        # 二轮修#6：常规压缩点也反思（原只挂 overflow 自救
+                        # 路径——正常压缩的摘要从不进反思=特性半残）
+                        await self._reflect_if_due(
+                            self.compactor.last_summary)
 
                 # v0.7 反思检查点：长磨不迷路（coq 6h 那场靠运气做到的事
                 # 变成机制）——周期性强制总结已确立/已废/下一步
@@ -644,7 +648,7 @@ class AgentCore:
                     messages.append(Message(role="user", content=[
                         TextBlock(text=reflect)]))
                     self.session.append_event("user", {
-                        "role": "user",
+                        "role": "user", "engine": True,
                         "content": [{"type": "text", "text": reflect}]})
 
                 # 轮次闸

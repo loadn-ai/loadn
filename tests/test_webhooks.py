@@ -117,6 +117,7 @@ async def test_unknown_token_401_and_audited(server_url):
     assert r.status_code == 401
     rows = _audit_rows()[n0:]
     assert rows and rows[-1]["action"] == "reject_unknown_token"
+    assert rows[-1]["ip"], "二轮修#24：拒因审计须带来源 ip（原空串无法溯源）"
 
 
 # ---------------------------------------------------------------- 验收③④⑤ + IP

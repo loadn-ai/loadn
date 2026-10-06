@@ -242,8 +242,11 @@ class ContextAssembler:
                                    mentioned=self.mentioned_files) or ""
         if sid == "memory_project":
             from loadn.core import memory as mem_mod
-            self.last_memory_hits = mem_mod.injected_hits(self.cwd)
-            return mem_mod.render_block(self.cwd) or ""
+            # 二轮修#8：单读共享（两读盘之间抽取 task 落盘会让 hits 与
+            # 实际注入不一致——chips 误报已修改/已删除）
+            picked = mem_mod.select_injected(self.cwd)
+            self.last_memory_hits = mem_mod.hits_of(picked)
+            return mem_mod.render_block(self.cwd, picked=picked) or ""
         if sid == "memory":
             memory_parts = []
             proj_mem = _read_first([_claude_project_memory(self.cwd)])

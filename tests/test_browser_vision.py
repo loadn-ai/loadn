@@ -212,3 +212,25 @@ def test_fix_single_step_ticket_release(monkeypatch, _fake_session, tmp_path):
         {"host": "other.com", "exp": _t.time() + 300}))
     with pytest.raises(RuntimeError, match="敏感页冻结"):
         bm.tool_p13_type({"text": "pwd3"})
+
+
+def test_r2_budget_reset_on_open(_fake_session, monkeypatch):
+    """二轮修#19 对赌：新导航=新任务面——预算随 open 重置（原进程级计数，
+    第二个任务的预算被第一个任务吃剩的腰斩）；敏感冻结拒步不烧预算。"""
+    monkeypatch.setattr(bm, "MAX_SCREENSHOTS", 1)
+    monkeypatch.setattr(bm, "MAX_CLICKS", 1)
+    page = _fake_session
+    # FakePage 无 goto——open 的导航动作打桩（重置逻辑不依赖导航结果）
+    page.goto = lambda *a, **k: None
+    page.title = lambda: "fake"
+    bm._budget.update(screenshot=1, click=1)      # 模拟上一任务吃满
+    with pytest.raises(RuntimeError, match="截图预算耗尽"):
+        bm.tool_p13_screenshot({})                # 确认旧预算确实拦着
+    bm.tool_open({"url": "http://localhost:5173/"})   # open → 重置
+    assert bm._budget == {"screenshot": 0, "click": 0}
+    assert bm.tool_p13_screenshot({}).startswith("data:image/png")   # 新任务可用
+    # 冻结拒步不烧预算：把 click 预算塞满后走 _p13_page 拒步路径在
+    # 预算检查之后（先预算后冻结的次序对赌见 tool_p13_click 源序）
+    bm._budget["click"] = bm.MAX_CLICKS           # 塞满 → 预算门先拒
+    with pytest.raises(RuntimeError, match="点击预算耗尽"):
+        bm.tool_p13_click({"x": 1, "y": 1})

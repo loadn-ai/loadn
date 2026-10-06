@@ -125,6 +125,9 @@ def tool_open(args: dict) -> str:
         return f"拒绝：URL 非法（{why}）"
     page = _SESSION.page()
     page.goto(url, wait_until="domcontentloaded", timeout=45000)
+    # 二轮修#19：新导航=新任务面——预算随 open 重置（原是进程级计数，
+    # 长会话第二个任务的预算被第一个任务吃剩的腰斩）
+    _budget.update(screenshot=0, click=0)
     audit("browser_cua", {"action": "open", "url": url, "zone": why})
     return f"已打开 {url}（title={page.title()[:60]}）"
 
@@ -243,8 +246,9 @@ def tool_p13_click(args: dict) -> str:
     x, y = int(args.get("x", -1)), int(args.get("y", -1))
     if x < 0 or y < 0:
         raise RuntimeError("x/y 需为非负像素坐标（先 browser_screenshot 看画面）")
+    page = _p13_page(url_required=True)      # 敏感页冻结（拒步不烧预算——
+                                             # 二轮修#19：预算在过门后才 +1）
     _budget["click"] += 1
-    page = _p13_page(url_required=True)      # 敏感页冻结
     page.mouse.click(x, y)
     audit("browser_cua", {"action": "click", "x": x, "y": y,
                           "domain": (_usplit(page.url or "").hostname or "")})

@@ -131,7 +131,10 @@ def maybe_suggest(cwd: Path, session) -> dict | None:
         users, assistants = [], []
         for ev in session.transcript.read_events():
             if ev.get("type") == "user":
-                c = (ev.get("payload") or {}).get("content")
+                _pl = ev.get("payload") or {}
+                if _pl.get("engine"):          # 二轮修#12：引擎注入（截断
+                    continue                   # nudge/自检 gate）不是用户教导
+                c = _pl.get("content")
                 if isinstance(c, list):
                     # 复查修#2：tool_result 块不是人话——只取真人 text 块；
                     # 整条是 tool_result（无 text）的 user 事件跳过，否则

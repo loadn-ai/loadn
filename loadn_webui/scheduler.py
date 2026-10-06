@@ -375,19 +375,33 @@ class Scheduler:
 
 
 def ensure_heartbeat(engine) -> None:
-    """P11：内置 heartbeat schedule（幂等创建；删除即关）。"""
+    """P11：内置 heartbeat schedule（幂等创建）。
+
+    二轮修#13：显式删除 = 永久关闭（kv 哨兵 heartbeat_disabled——原「删
+    即关」重启就复活）；去重键=恒定形态（is_system=1 AND kind=new_session）
+    而非 label LIKE（用户曾可改 label）。"""
     from .cron import next_run_iso
+    try:
+        with db_mod.conn() as _c:
+            _off = _c.execute(
+                "SELECT value FROM kv WHERE key='heartbeat_disabled'").fetchone()
+        if _off and _off["value"] == "1":
+            return
+    except Exception:                                  # noqa: BLE001 — kv 缺表
+        pass
     with db_mod.conn() as c:
         row = c.execute(
-            "SELECT id FROM scheduled_jobs WHERE label LIKE ? AND is_system=1",
-            ("%🫀%",)).fetchone()
+            "SELECT id FROM scheduled_jobs WHERE is_system=1 "
+            "AND kind='new_session'").fetchone()
         if row is not None:
             return
         now = datetime.now(timezone.utc)
         db_mod.create_job(
             c, kind="new_session", label="🫀 心跳巡检",
             prompt=__import__("loadn_webui.routines", fromlist=["heartbeat_prompt"]).heartbeat_prompt(),
-            cron="7/30 * * * *", due_at=next_run_iso("7/30 * * * *", now),
+            # 二轮修#7：7/30 在本仓 cron 解析=单值 7（每小时一次）——
+            # 30min 档须显式双点
+            cron="7,37 * * * *", due_at=next_run_iso("7,37 * * * *", now),
             profile="assistant", title="🫀 心跳巡检", is_system=1,
             destination="notify+artifact", max_fires=100000)
 
