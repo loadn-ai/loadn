@@ -155,3 +155,29 @@ def test_mcp_tools_list_has_vision_tools():
     # click 描述带敏感冻结提示（模型面知情）
     click_desc = next(v[2] for v in bm.TOOLS.values() if v[0] == "browser_click")
     assert "冻结" in click_desc or "敏感" in click_desc
+
+
+def test_mutation_blind_spots_budget_edges(monkeypatch, _fake_session):
+    """突变补杀：预算边界恰好可越（=MAX 允许、+1 拒）；text 空/缺拒；
+    自纠回图不越预算（预算尽时退文本提示）。"""
+    monkeypatch.setattr(bm, "MAX_SCREENSHOTS", 2)
+    monkeypatch.setattr(bm, "MAX_CLICKS", 1)
+    page = _fake_session
+    # 边界：第 2 张（=MAX）仍允许
+    assert bm.tool_p13_screenshot({}).startswith("data:image/png")
+    assert bm.tool_p13_screenshot({}).startswith("data:image/png")
+    with pytest.raises(RuntimeError, match="截图预算耗尽"):
+        bm.tool_p13_screenshot({})
+    # click=1 次预算 + 截图已尽：点击成功但自纠退文本提示（不炸不越预算）
+    out = bm.tool_p13_click({"x": 5, "y": 5})
+    assert out == "已点击（截图预算已尽，无法自动回图）"
+    assert ("click", 5, 5) in page.log
+    with pytest.raises(RuntimeError, match="点击预算耗尽"):
+        bm.tool_p13_click({"x": 6, "y": 6})
+    # 空文本拒
+    with pytest.raises(RuntimeError, match="text 不能为空"):
+        bm.tool_p13_type({"text": ""})
+    with pytest.raises(RuntimeError, match="text 不能为空"):
+        bm.tool_p13_type({})
+    # dy=0 合法（原地滚动零像素也是动作）
+    assert bm.tool_p13_scroll({"dy": 0}) is not None
