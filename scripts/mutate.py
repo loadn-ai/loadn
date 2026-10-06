@@ -340,6 +340,7 @@ TARGET_TESTS: dict[str, list[str]] = {
     ],
     "loadn/core/loop.py": [
         "tests/test_loop.py",
+        "tests/test_memory.py",
         "tests/test_mcp_lazy.py",
         "tests/contract/test_protocol_v2.py",
         "tests/test_ext.py",

@@ -134,6 +134,7 @@ class ActiveTurn:
     # stream_event 逐 delta 直播（--verbose 下 claude/loadn 都发）：缓冲合流
     # 后按 0.5s/320 字符冲刷成 delta 事件；整块 assistant 到达时若该类块已
     # 流式发射过则跳过重复直播（数据层照常入账）
+    memory_hits: list = field(default_factory=list)   # P7：本 turn 注入记忆清单
     delta_buf: dict = field(default_factory=lambda: {"think": "", "text": ""})
     delta_last_flush: dict = field(default_factory=lambda: {"think": 0.0, "text": 0.0})
     streamed_kinds: set = field(default_factory=set)
@@ -518,6 +519,8 @@ class Engine:
             self._flush_delta(sid, tid, at, "think")
             self._flush_delta(sid, tid, at, "text")
         if t == "assistant":
+            if isinstance(ev.get("memory_hits"), list):   # P7 来源标注
+                at.memory_hits = ev["memory_hits"]
             for b in (ev.get("message") or {}).get("content") or []:
                 if not isinstance(b, dict):
                     continue
@@ -739,7 +742,10 @@ class Engine:
             with db_mod.conn() as c:
                 db_mod.add_message(c, session_id=sid, turn_id=tid, role="assistant",
                                    content=content or "（无文本输出）",
-                                   blocks_json=json.dumps(at.blocks, ensure_ascii=False))
+                                   blocks_json=json.dumps(at.blocks, ensure_ascii=False),
+                                   **({"memory_hits_json": json.dumps(
+                                       at.memory_hits, ensure_ascii=False)}
+                                      if at.memory_hits else {}))
 
         # ---- turn / session 记账
         usage = res.usage or {}

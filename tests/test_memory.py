@@ -80,10 +80,10 @@ def test_eligible_user_words_gate():
 
 # ---------------------------------------------------------------- 注入
 def test_render_block_annotation(tmp_path):
-    mem.remember(tmp_path, "构建用 ruff", "lint 偏好 ruff 而非 flake8",
-                 origin_session="20260924_1100-abc12345")
+    e = mem.remember(tmp_path, "构建用 ruff", "lint 偏好 ruff 而非 flake8",
+                     origin_session="20260924_1100-abc12345")
     block = mem.render_block(tmp_path)
-    assert "[memory|20260924_1100-ab" in block
+    assert f"[memory:{e['id']}|20260924_1100-ab" in block
     assert "构建用 ruff" in block
 
 
@@ -93,7 +93,7 @@ def test_context_build_includes_memory(tmp_path):
                  origin_session="sess-XYZ")
     asm = ContextAssembler(tmp_path, tools=["Bash"])
     out = asm.build()
-    assert "[memory|" in out and "回复要简短" in out
+    assert "[memory:" in out and "回复要简短" in out
     # 宪法在前、记忆在后（注入位契约）
     assert out.index("宪法") < out.index("项目长期记忆") \
         if "宪法" in out else True
@@ -206,16 +206,17 @@ def test_p4_word_file_extends(tmp_path):
 
 def test_p4_user_storage_and_two_block_injection(tmp_path):
     """user 域落 _user/；注入两段：[user-memory] 置于 [memory] 之上。"""
-    mem.remember(tmp_path, "偏好深色", "用户喜欢深色主题。", origin_session="su",
-                 domain="user")
-    mem.remember(tmp_path, "用 ruff", "lint 一律用 ruff", origin_session="sp")
+    eu = mem.remember(tmp_path, "偏好深色", "用户喜欢深色主题。",
+                      origin_session="su", domain="user")
+    ep = mem.remember(tmp_path, "用 ruff", "lint 一律用 ruff", origin_session="sp")
     d = mem.memory_dir(tmp_path, "user")
     assert d.name == "_user" and (d / "manifest.json").exists()
     out = mem.render_block(tmp_path)
-    assert "[user-memory|su]" in out and "[memory|sp]" in out
+    assert f"[user-memory:{eu['id']}|su]" in out
+    assert f"[memory:{ep['id']}|sp]" in out
     assert out.index("### 用户长期记忆") < out.index("### 项目长期记忆")
     from loadn.core.context import ContextAssembler
-    assert "[user-memory|" in ContextAssembler(tmp_path, tools=[]).build()
+    assert "[user-memory:" in ContextAssembler(tmp_path, tools=[]).build()
 
 
 def test_p4_guard_same_for_user_domain(tmp_path):
@@ -415,3 +416,56 @@ def test_p5_cli_log_and_restore(tmp_path, monkeypatch, capsys):
     mem.remember(tmp_path, "用户域", "我喜欢 Z", origin_session="su", domain="user")
     assert main(["log", "--domain", "user"]) == 0
     assert "用户域" in capsys.readouterr().out
+
+
+# ---------------------------------------------------------------- P7 来源标注
+async def test_p7_memory_hits_exact_and_stable_id(tmp_path):
+    """验收①：注入 N 条后 assistant 消息 memory_hits 恰为注入清单（id/域/
+    reason/哈希全等，transcript 与 stdout 事件双落）；稳定 id 同内容幂等。"""
+    from loadn.core.loop import AgentCore, LoopSettings
+    from loadn.core.session import SessionManager
+    eu = mem.remember(tmp_path, "偏好 A", "我喜欢 A", origin_session="su",
+                      domain="user", reason="explicit")
+    ep = mem.remember(tmp_path, "事实 B", "入口在 src/b.py", origin_session="sp")
+    # 稳定 id：同域同溯源同内容重写 → 同 id 原位更新（不重复入库）
+    again = mem.remember(tmp_path, "偏好 A", "我喜欢 A", origin_session="su",
+                         domain="user", reason="explicit")
+    assert again["id"] == eu["id"]
+    assert len([x for x in mem.load_entries(tmp_path, "user")
+                if x["id"] == eu["id"]]) == 1
+    session = SessionManager.create(tmp_path, home=tmp_path / "home")
+    core = AgentCore(provider=H.ScriptedProvider([H.text_round("好")]),
+                     tools={}, session=session, cwd=tmp_path,
+                     settings=LoopSettings(max_turns=2))
+    events = []
+    await core.run_turn("干活", emit=events.append)
+    expect = mem.injected_hits(tmp_path)
+    assert {eu["id"], ep["id"]} <= {h["id"] for h in expect}
+    got_ev = next(e for e in events
+                  if e["type"] == "assistant")["memory_hits"]
+    assert got_ev == expect                              # stdout 事件透传
+    at = [e for e in session.transcript.read_events()
+          if e["type"] == "assistant"][-1]["payload"]
+    assert at["memory_hits"] == expect                   # JSONL 扩展字段
+    reason = {h["id"]: h["reason"] for h in expect}
+    assert reason[eu["id"]] == "explicit"
+    assert reason[ep["id"]] == "inferred"                # 未标注回落
+    for h in expect:                                     # hash=注入时内容指纹
+        assert h["hash"] and len(h["hash"]) == 8
+
+
+async def test_p7_hits_empty_when_no_memory(tmp_path):
+    """无记忆会话：assistant 消息不带 memory_hits 字段（旧格式逐字节一致，
+    向后兼容——旧记录无此字段读取不报错）。"""
+    from loadn.core.loop import AgentCore, LoopSettings
+    from loadn.core.session import SessionManager
+    session = SessionManager.create(tmp_path, home=tmp_path / "home")
+    core = AgentCore(provider=H.ScriptedProvider([H.text_round("好")]),
+                     tools={}, session=session, cwd=tmp_path,
+                     settings=LoopSettings(max_turns=2))
+    events = []
+    await core.run_turn("干活", emit=events.append)
+    assert "memory_hits" not in next(e for e in events if e["type"] == "assistant")
+    at = [e for e in session.transcript.read_events()
+          if e["type"] == "assistant"][-1]["payload"]
+    assert "memory_hits" not in at

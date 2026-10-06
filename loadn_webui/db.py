@@ -24,7 +24,7 @@ from .config import PATHS
 
 # R7 回滚门禁：每次加列/加表 +1；RELEASE.json 记此值，rollback 时比对。
 # additive-only 契约：只加列/加表（旧代码可跑新 schema，多余列无害）。
-SCHEMA_REV = 4
+SCHEMA_REV = 5
 from .util import iso
 
 SCHEMA = """
@@ -59,6 +59,7 @@ CREATE TABLE IF NOT EXISTS messages (
   role TEXT,                        -- user|assistant
   content TEXT,
   blocks_json TEXT,                 -- assistant 的工具卡片摘要 [{name,brief,is_error}]
+  memory_hits_json TEXT,            -- P7 本 turn 注入记忆清单 [{id,domain,reason,hash}]
   created_at TEXT
 );
 

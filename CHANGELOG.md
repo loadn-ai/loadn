@@ -5,6 +5,16 @@
 
 ## [未发布]（Unreleased）
 
+- **记忆来源标注 Sources 数据层（P7）**：记忆条目改**稳定 id**（域|溯源|
+  摘要|内容 的 sha1[:8]——同内容重抽幂等原位更新，不再换 id）；注入行首带
+  `[memory:<id8>|溯源]`（人类可读）。每 turn 实际注入清单写入 assistant 消息
+  JSONL 扩展字段 `memory_hits: [{id,domain,reason,hash}]`（选择器与渲染
+  共用单一真相——节关/被预算裁=空清单；旧记录无字段读取不报错）。reason
+  枚举 explicit/inferred/user_pref/project_fact（直写=explicit、自动抽取按
+  域=user_pref/project_fact，存条目 frontmatter 与 manifest，注入透传）。
+  新增 `GET /api/sessions/{sid}/messages/{mid}/sources`：命中记忆全文+
+  来源会话 id+当前状态（present/modified/deleted——已删除经 git 史回溯
+  内容）。messages 表加 memory_hits_json 列（SCHEMA_REV 5，additive）。
 - **webui 记忆管理页（P6，Lindy「不是黑盒」语义）**：管理中心「记忆」tab
   ——域 tab（用户级/项目级）、左条目列表右编辑器（源码/预览双模式，
   react-markdown 复用）、历史侧栏（版本查看+恢复）、删除二次确认。API

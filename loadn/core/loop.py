@@ -395,6 +395,10 @@ class AgentCore:
         else:
             self.assembler.with_repomap = False
             system = self.assembler.build()
+        # P7：本轮实际注入的记忆清单（assembler 真源：节关/被裁=空）——
+        # 挂到本 turn 的 assistant 消息扩展字段 memory_hits
+        self._turn_memory_hits = list(getattr(self.assembler,
+                                              "last_memory_hits", []))
         max_turns = self.settings.max_turns or 0
         final_text = ""
         truncation_nudged = False
@@ -520,9 +524,14 @@ class AgentCore:
                     blocks = self._repair_tool_calls(blocks)
                 msg = Message(role="assistant", content=blocks)
                 messages.append(msg)
-                self.session.append_event("assistant", msg.to_dict())
+                payload = msg.to_dict()
+                hits = getattr(self, "_turn_memory_hits", None)
+                if hits:
+                    payload["memory_hits"] = hits   # P7：本 turn 注入清单
+                self.session.append_event("assistant", payload)
                 await _fire(emit, {"type": "assistant", "message": msg,
-                                   "message_id": asm.message_id})
+                                   "message_id": asm.message_id,
+                                   **({"memory_hits": hits} if hits else {})})
 
                 tool_uses = [b for b in blocks if isinstance(b, ToolUseBlock)]
                 texts = [b.text for b in blocks if isinstance(b, TextBlock)]
@@ -804,9 +813,14 @@ class AgentCore:
         self._merge_usage(summary, asm)
         msg = Message(role="assistant", content=asm.blocks())
         messages.append(msg)
-        self.session.append_event("assistant", msg.to_dict())
+        payload = msg.to_dict()
+        hits = getattr(self, "_turn_memory_hits", None)
+        if hits:
+            payload["memory_hits"] = hits       # P7：本 turn 注入清单
+        self.session.append_event("assistant", payload)
         await _fire(emit, {"type": "assistant", "message": msg,
-                           "message_id": asm.message_id})
+                           "message_id": asm.message_id,
+                           **({"memory_hits": hits} if hits else {})})
         return "".join(asm.text_parts)
 
     async def _exec_tool(self, tu: ToolUseBlock, emit: Emitter) -> tuple[ToolResultBlock, str]:

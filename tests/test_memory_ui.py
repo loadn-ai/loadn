@@ -170,3 +170,49 @@ async def test_user_domain_created_on_demand_and_no_dup_restore(client):
     entries = (await client.get("/api/memory/entries",
                                 params={"domain": "user"})).json()["entries"]
     assert [x["id"] for x in entries].count(e["id"]) == 1
+
+
+# ---------------------------------------------------------------- P7 sources
+async def test_p7_sources_present_modified_deleted(client):
+    """验收②：sources 三态——present（hash 一致）/modified（编辑后哈希变）/
+    deleted（已删但内容经 git 史回溯）；旧消息无字段兼容空清单。"""
+    from loadn import memorystore as mstore
+    from loadn_webui import db as db_mod
+
+    r = await client.post("/api/sessions", json={"title": "来源测试"})
+    sid = r.json()["session"]["id"]
+    e = await _mk(client, summary="来源条目", content="原始内容 S1")
+    hits = json.dumps([{"id": e["id"], "domain": "user", "reason": "explicit",
+                        "hash": mstore.content_hash8(e["content"])}],
+                      ensure_ascii=False)
+    with db_mod.conn() as c:
+        mid = db_mod.add_message(c, session_id=sid, turn_id=None,
+                                 role="assistant", content="回复正文",
+                                 memory_hits_json=hits)
+        old_mid = db_mod.add_message(c, session_id=sid, turn_id=None,
+                                     role="assistant", content="旧消息")
+
+    # present：hash 一致
+    r = await client.get(f"/api/sessions/{sid}/messages/{mid}/sources")
+    assert r.status_code == 200
+    h0 = r.json()["hits"][0]
+    assert h0["status"] == "present" and h0["content"] == "原始内容 S1"
+    assert h0["origin_session"] == "manual:webui" and h0["reason"] == "explicit"
+    # modified：编辑改内容 → 哈希不一致
+    await client.put("/api/memory/file", json={
+        "domain": "user", "id": e["id"], "content": "编辑后的内容 S2"})
+    r = await client.get(f"/api/sessions/{sid}/messages/{mid}/sources")
+    h1 = r.json()["hits"][0]
+    assert h1["status"] == "modified" and h1["content"] == "编辑后的内容 S2"
+    # deleted：删除条目 → 状态已删 + git 史回溯内容（非空）
+    await client.delete("/api/memory/entry", params={"domain": "user",
+                                                     "id": e["id"]})
+    r = await client.get(f"/api/sessions/{sid}/messages/{mid}/sources")
+    h2 = r.json()["hits"][0]
+    assert h2["status"] == "deleted" and h2["content"]   # 内容可回溯
+    assert "S2" in h2["content"] or "S1" in h2["content"]
+    # 旧消息（无 memory_hits_json）→ 空清单；未知消息 404
+    r = await client.get(f"/api/sessions/{sid}/messages/{old_mid}/sources")
+    assert r.status_code == 200 and r.json()["hits"] == []
+    assert (await client.get(
+        f"/api/sessions/{sid}/messages/99999/sources")).status_code == 404

@@ -62,7 +62,7 @@ def cmd_restore(cwd: Path, commit: str, domain: str) -> int:
         print(f"找不到提交 {commit}", file=sys.stderr)
         return 1
     mds = [ln.strip() for ln in (r.stdout or "").splitlines()
-           if re.fullmatch(r"[0-9a-f]{12}\.md", ln.strip())]
+           if re.fullmatch(r"[0-9a-f]{8}\.md", ln.strip())]
     if not mds:
         print(f"提交 {commit} 没有记忆条目文件（可能只是 manifest/reject 提交）",
               file=sys.stderr)

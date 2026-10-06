@@ -102,6 +102,7 @@ EXPECTED = {
     ("/api/skills/{name}/export", "get"),
     ("/api/skills/{name}/file", "delete,get,post,put"),
     ("/api/skills/{name}/toggle", "post"),
+    ("/api/sessions/{sid}/messages/{mid}/sources", "get"),
     ("/api/sse-ticket", "get"),
     ("/api/stats/cost", "get"),
     ("/api/stats/usage", "get"),

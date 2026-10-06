@@ -22,7 +22,6 @@ import os
 import re
 import subprocess
 import time
-import uuid
 from contextlib import contextmanager
 from pathlib import Path
 
@@ -335,18 +334,20 @@ def _forget_dir(dir_: Path, keyword: str, *, event_sink=None,
 
 
 def remember(cwd: Path, summary: str, content: str, *, origin_session: str,
-             event_sink=None, domain: str = PROJECT_DOMAIN) -> dict | None:
+             event_sink=None, domain: str = PROJECT_DOMAIN,
+             reason: str | None = None) -> dict | None:
     """写入一条记忆（直写通道与抽取通道同库；两域同守护栏）。敏感护栏前置。"""
     return _remember_dir(
         memory_dir(cwd, domain), summary, content,
         origin_session=origin_session, event_sink=event_sink,
         user_domain=(domain == USER_DOMAIN),
-        message=f"memory: {summary} [session:{origin_session}]")
+        message=f"memory: {summary} [session:{origin_session}]",
+        reason=reason)
 
 
 def _remember_dir(dir_: Path, summary: str, content: str, *, origin_session: str,
                   event_sink, user_domain: bool, message: str,
-                  eid: str | None = None) -> dict | None:
+                  eid: str | None = None, reason: str | None = None) -> dict | None:
     if user_domain and not user_enabled():
         return None                      # off：用户域零读写（显式面也拒）
     if canary_hit(summary + "\n" + content):
@@ -357,11 +358,16 @@ def _remember_dir(dir_: Path, summary: str, content: str, *, origin_session: str
         if event_sink:
             event_sink("memory_blocked", {"summary": summary[:80]})
         return None
-    eid = eid or uuid.uuid4().hex[:12]
+    # P7 稳定 id：域键|溯源|摘要|内容 的 sha1 前 8 位——同内容重抽不换 id
+    # （uuid 仅保留给显式指定 eid 的恢复路径）
+    eid = eid or hashlib.sha1(
+        f"{dir_.name}|{origin_session}|{summary}|{content}".encode()
+    ).hexdigest()[:8]
     fname = f"{eid}.md"
     (dir_).mkdir(parents=True, exist_ok=True)
     (dir_ / fname).write_text(
-        f"---\nid: {eid}\nsummary: {summary}\norigin_session: {origin_session}\n"
+        f"---\nid: {eid}\nsummary: {summary}\n"
+        f"origin_session: {origin_session}\nreason: {reason or 'inferred'}\n"
         f"created_at: {time.strftime('%Y-%m-%dT%H:%M:%S')}\n---\n\n{content}\n",
         encoding="utf-8")
     # P5 并发安全：manifest 读改写+LRU 淘汰+commit 全段在域锁内（用户域是
@@ -369,10 +375,18 @@ def _remember_dir(dir_: Path, summary: str, content: str, *, origin_session: str
     # 照更（回落旧的窄竞态），仅放弃本次 commit（下趟 add -A 补提交）
     with _domain_lock(dir_) as locked:
         m = _manifest(dir_)
-        m.setdefault("entries", []).append(
-            {"id": eid, "file": fname, "summary": summary,
-             "content": content[:2000], "origin_session": origin_session,
-             "created_at": time.strftime("%Y-%m-%dT%H:%M:%S")})
+        # P7 幂等：同 id（同内容重抽）原位更新而非重复入库
+        dup = next((x for x in m.get("entries") or [] if x.get("id") == eid), None)
+        entry = {"id": eid, "file": fname, "summary": summary,
+                 "content": content[:2000], "origin_session": origin_session,
+                 "reason": reason or "inferred",
+                 "created_at": (dup or {}).get("created_at")
+                 or time.strftime("%Y-%m-%dT%H:%M:%S")}
+        if dup is not None:
+            m["entries"] = [entry if x.get("id") == eid else x
+                            for x in m.get("entries") or []]
+        else:
+            m.setdefault("entries", []).append(entry)
         # LRU 上限：最旧淘汰
         if len(m["entries"]) > MAX_ENTRIES:
             for old in m["entries"][:len(m["entries"]) - MAX_ENTRIES]:
@@ -428,7 +442,8 @@ def promote(cwd: Path, eid: str, *, event_sink=None) -> dict | None:
     commit_domain(dir_, f"memory: 提升 {eid} 至用户域")
     out = remember(cwd, e.get("summary") or eid, e.get("content") or "",
                    origin_session=e.get("origin_session") or "?",
-                   event_sink=event_sink, domain=USER_DOMAIN)
+                   event_sink=event_sink, domain=USER_DOMAIN,
+                   reason=e.get("reason"))
     if event_sink:
         event_sink("memory_promoted", {"id": eid})
     return out
@@ -446,6 +461,21 @@ def advance_boundary(cwd: Path, message_id: str) -> None:
     _save_manifest(dir_, m)
 
 
+# ---------------------------------------------------------------- P7 来源标注
+def content_hash8(content: str) -> str:
+    """内容指纹（memory_hits 携带；sources 对比判定 存在/已修改）。"""
+    return hashlib.sha1((content or "").encode()).hexdigest()[:8]
+
+
+def find_entry(domain_key: str, eid: str) -> tuple[Path | None, dict | None]:
+    """按域键+条目 id 找条目（sources 解析用）。返回 (域目录, 条目|None)。"""
+    d = domain_dir_by_key(domain_key)
+    if d is None:
+        return None, None
+    e = next((x for x in entries_of(d) if x.get("id") == eid), None)
+    return d, e
+
+
 # ---------------------------------------------------------------- P6 管理面操作
 # 编辑/删除/恢复/历史：webui 记忆管理页与 CLI 共用；护栏与域锁同上文通道。
 class MemoryOpError(Exception):
@@ -461,7 +491,8 @@ def create_entry(dir_: Path, summary: str, content: str, *,
     return _remember_dir(
         dir_, summary, content, origin_session=f"manual:{actor}",
         event_sink=event_sink, user_domain=(dir_.name == USER_DIR_NAME),
-        message=f"memory: manual:{actor} 新增 {summary[:30]}")
+        message=f"memory: manual:{actor} 新增 {summary[:30]}",
+        reason="explicit")
 
 
 def edit_entry(dir_: Path, eid: str, *, content: str | None = None,
@@ -489,6 +520,7 @@ def edit_entry(dir_: Path, eid: str, *, content: str | None = None,
             f"---\n{fm}\n---\n\n{body}\n", encoding="utf-8")
         e["summary"] = summ
         e["content"] = body[:2000]
+        e.setdefault("reason", "inferred")
         _save_manifest(dir_, m)
         if locked:
             _commit_locked(dir_, f"memory: manual:{actor} 编辑 {eid}")
@@ -554,7 +586,8 @@ def restore_version(dir_: Path, eid: str, ref: str, *, actor: str = "webui",
             dir_, str(meta.get("summary") or eid), body,
             origin_session=str(meta.get("origin_session") or "?"),
             event_sink=None, user_domain=(dir_.name == USER_DIR_NAME),
-            message=f"memory: manual:{actor} 恢复 {eid}@{ref}", eid=eid)
+            message=f"memory: manual:{actor} 恢复 {eid}@{ref}", eid=eid,
+            reason=str(meta.get("reason") or "inferred"))
         if e is None:
             raise MemoryOpError("恢复被拒（护栏或用户域关闭）")
     with _domain_lock(dir_) as locked:

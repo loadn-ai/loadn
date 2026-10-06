@@ -7,9 +7,12 @@ GET 只读不记审计；新建/编辑/删除/恢复入审计账本（type=memor
 """
 from __future__ import annotations
 
+import json
+
 from fastapi import APIRouter, HTTPException
 
 from loadn import memorystore as mstore
+from loadn.util import parse_frontmatter as _parse_fm
 
 from ...security.audit import audit
 from ._common import _http_err
@@ -132,3 +135,55 @@ def restore_version(body: dict):
     except mstore.MemoryOpError as e:
         raise HTTPException(400, str(e)) from None
     return {"ok": True, "entry": e}
+
+
+# ---------------------------------------------------------------- P7 sources
+@router.get("/sessions/{sid}/messages/{mid}/sources")
+def message_sources(sid: str, mid: int):
+    """P7 来源标注：assistant 消息的 memory_hits → 逐条解析命中记忆的
+    全文 + 来源会话 id + 当前状态（present/modified/deleted——已删除时
+    内容经 git 史回溯）。旧消息无 memory_hits → {"hits": []}（向后兼容）。"""
+    from ... import db as db_mod2
+    with db_mod2.conn() as c:
+        row = c.execute(
+            "SELECT memory_hits_json, role FROM messages WHERE id=? AND session_id=?",
+            (mid, sid)).fetchone()
+    if row is None:
+        raise HTTPException(404, f"消息不存在: {mid}")
+    try:
+        hits = json.loads(row["memory_hits_json"] or "[]")
+    except ValueError:
+        hits = []
+    if not isinstance(hits, list):
+        hits = []
+    out = []
+    for h in hits:
+        if not isinstance(h, dict):
+            continue
+        eid = str(h.get("id") or "")
+        dkey = str(h.get("domain") or "")
+        d, e = mstore.find_entry(dkey, eid)
+        item = {"id": eid, "domain": dkey,
+                "reason": h.get("reason"),
+                "origin_session": (e or {}).get("origin_session"),
+                "status": "deleted", "content": None}
+        if e is not None:
+            cur_hash = mstore.content_hash8(e.get("content") or "")
+            if h.get("hash") and cur_hash != h.get("hash"):
+                item["status"] = "modified"
+            else:
+                item["status"] = "present"
+            item["content"] = e.get("content") or ""
+        elif d is not None and (d / ".git").exists():
+            # 已删除：git 史最新版本回溯（删→史在→可回溯）
+            hist = mstore.file_history(d, f"{eid}.md", limit=5)
+            for v in hist:
+                try:
+                    text = mstore.version_text(d, f"{eid}.md", v["hash"])
+                    _, body = _parse_fm(text)
+                    item["content"] = (body or "").strip()
+                    break
+                except mstore.MemoryOpError:
+                    continue
+        out.append(item)
+    return {"message_id": mid, "session_id": sid, "hits": out}

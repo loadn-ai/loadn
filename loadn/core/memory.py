@@ -21,8 +21,10 @@ from loadn.memorystore import (  # noqa: F401  再导出：存储真源在顶层
     canary_hit,
     classify_domain,
     commit_domain,
+    content_hash8,
     domain_dir_by_key,
     entries_of,
+    find_entry,
     forget,
     forget_all,
     list_domain_keys,
@@ -59,30 +61,55 @@ def _sink(session):
     return lambda t, p: _trace(session, t, p)
 
 
-# ---------------------------------------------------------------- 注入
-def _render_domain(cwd: Path, limit: int, domain: str, title: str,
-                  tag: str, note: str) -> str:
-    entries = load_entries(cwd, domain)[-limit:]
-    if not entries:
-        return ""
-    lines = []
-    for e in entries:
-        src = (e.get("origin_session") or "?")[:16]
-        lines.append(f"- [{tag}|{src}] {e.get('summary', '')}"
-                     f"{'：' + e['content'][:120] if e.get('content') else ''}")
-    return f"{title}\n" + "\n".join(lines) + "\n" + note
+# ---------------------------------------------------------------- 注入（P7：选择器单一真相）
+def select_injected(cwd: Path, limit: int = 12) -> list[tuple[str, dict]]:
+    """注入选择（render 与 memory_hits 共用——保证「hits 恰为注入清单」）：
+    user 段（开关开时）在前、project 段在后，各取最新 limit 条。"""
+    out: list[tuple[str, dict]] = []
+    domains = ([USER_DOMAIN] if user_enabled() else []) + [PROJECT_DOMAIN]
+    for domain in domains:
+        out += [(domain, e) for e in load_entries(cwd, domain)[-limit:]]
+    return out
+
+
+def _default_reason(domain: str, e: dict) -> str:
+    """reason 回落：旧条目无标记时按域给默认（user=偏好/project=事实）。"""
+    if e.get("reason"):
+        return str(e["reason"])
+    return "user_pref" if domain == USER_DOMAIN else "project_fact"
+
+
+def injected_hits(cwd: Path, limit: int = 12) -> list[dict]:
+    """本 turn 注入清单（loop 挂 assistant 消息 memory_hits 扩展字段）：
+    [{id, domain, reason, hash}]——hash=注入时内容指纹（sources 判已修改）。"""
+    from loadn.memorystore import content_hash8 as _h
+    return [{"id": e.get("id"), "domain": domain,
+             "reason": _default_reason(domain, e),
+             "hash": _h(e.get("content") or "")}
+            for domain, e in select_injected(cwd, limit)]
 
 
 def render_block(cwd: Path, limit: int = 12) -> str:
-    """注入块（zcode recall 同构）：user 段 [user-memory] 置于 project 段
-    [memory] 之上（身份先于项目）；off 或 user 域空 → 与单域现状一致。"""
+    """注入块（zcode recall 同构）：user 段 [user-memory:<id8>|溯源] 置于
+    project 段 [memory:<id8>|溯源] 之上（身份先于项目）；行首带稳定 id8
+    （P7 来源标注，人类可读）；off 或 user 域空 → 与单域现状一致。"""
     parts = []
-    if user_enabled():
-        parts.append(_render_domain(cwd, limit, USER_DOMAIN,
-                                    "### 用户长期记忆", "user-memory",
-                                    MEMORY_NOTE_USER))
-    parts.append(_render_domain(cwd, limit, PROJECT_DOMAIN,
-                                "### 项目长期记忆", "memory", MEMORY_NOTE))
+    titles = {USER_DOMAIN: ("### 用户长期记忆", "user-memory", MEMORY_NOTE_USER),
+              PROJECT_DOMAIN: ("### 项目长期记忆", "memory", MEMORY_NOTE)}
+    picked = select_injected(cwd, limit)
+    by_domain: dict[str, list] = {}
+    for domain, e in picked:
+        by_domain.setdefault(domain, []).append(e)
+    for domain in ([USER_DOMAIN] if user_enabled() else []) + [PROJECT_DOMAIN]:
+        entries = by_domain.get(domain) or []
+        if not entries:
+            continue
+        title, tag, note = titles[domain]
+        lines = [f"- [{tag}:{e.get('id')}|{(e.get('origin_session') or '?')[:16]}] "
+                 f"{e.get('summary', '')}"
+                 f"{'：' + e['content'][:120] if e.get('content') else ''}"
+                 for e in entries]
+        parts.append(f"{title}\n" + "\n".join(lines) + "\n" + note)
     return "\n".join(p for p in parts if p)
 
 
@@ -179,10 +206,11 @@ async def extract_and_store(provider, cwd: Path, session, *,
             # 直写：把指令语句本身入库（去指令词），本轮不再自动抽取
             content = re.sub(r"^(请)?记住[:：]?", "", user_tail).strip()
             if content and not canary_hit(content):
+                dom = classify_domain(content)
                 remember(cwd, content[:20], content,
                          origin_session=getattr(session, "session_id", "?"),
-                         event_sink=sink,
-                         domain=classify_domain(content))
+                         event_sink=sink, domain=dom,
+                         reason="explicit")
             _advance(session, cwd, last_id)
             return 1
         if intent == "forget":
@@ -217,10 +245,12 @@ async def extract_and_store(provider, cwd: Path, session, *,
             content = str(it.get("content") or "")[:2000].strip()
             if not summary or not content:
                 continue
+            dom = classify_domain(summary + " " + content)
             if remember(cwd, summary, content,
                         origin_session=getattr(session, "session_id", "?"),
-                        event_sink=sink,
-                        domain=classify_domain(summary + " " + content)):
+                        event_sink=sink, domain=dom,
+                        reason=("user_pref" if dom == USER_DOMAIN
+                                else "project_fact")):
                 written += 1
         _advance(session, cwd, last_id)
         return written

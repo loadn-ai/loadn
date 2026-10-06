@@ -143,11 +143,11 @@ def test_dir_tree_skips_hidden_and_heavy(tmp_path):
 
 def test_memory_project_section_injects_entries(tmp_path):
     """长期记忆注入块进 context（or→and=记忆永不上桌）。"""
-    mem.remember(tmp_path, "偏好 TDD", "先写测试再实现",
-                 origin_session="sess-x")
+    e = mem.remember(tmp_path, "偏好 TDD", "先写测试再实现",
+                     origin_session="sess-x")
     b = ctx.ContextAssembler(cwd=tmp_path)
     text = b._build_section("memory_project")
-    assert "[memory|sess-x]" in text and "偏好 TDD" in text
+    assert f"[memory:{e['id']}|sess-x]" in text and "偏好 TDD" in text
     assert mem.MEMORY_NOTE in text
 
 
