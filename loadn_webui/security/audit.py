@@ -42,6 +42,7 @@ TYPES = (
     "lsp_diag",                   # LSP 语言 server 启动留痕（P3-3）
     "webhook",                    # 事件触发命中/拒绝（P3：token 校验/限流/禁用/IP）
     "memory",                     # 记忆管理面新建/编辑/删除/恢复（P6；查看不记）
+    "channel",                    # 渠道消息：白名单外忽略/限速/命令/回信（P9）
     "anomaly",
 )
 

@@ -13,6 +13,9 @@ from loadn_webui.api.app import app
 # (path, "逗号排序的 method 集")——regen 脚本打 stdout，贴回来即可
 EXPECTED = {
     ("/api/admin/approvals", "get"),
+    ("/api/admin/channels", "get,put"),
+    ("/api/admin/channels/probe", "get"),
+    ("/api/admin/channels/token", "put"),
     ("/api/admin/audit", "get"),
     ("/api/admin/audit/verify", "post"),
     ("/api/admin/egress", "get"),

@@ -24,7 +24,7 @@ from .config import PATHS
 
 # R7 回滚门禁：每次加列/加表 +1；RELEASE.json 记此值，rollback 时比对。
 # additive-only 契约：只加列/加表（旧代码可跑新 schema，多余列无害）。
-SCHEMA_REV = 5
+SCHEMA_REV = 6
 from .util import iso
 
 SCHEMA = """
@@ -182,6 +182,13 @@ CREATE TABLE IF NOT EXISTS webhook_runs (      -- 触发→会话映射（外部
   created_at TEXT
 );
 CREATE INDEX IF NOT EXISTS idx_hook_run ON webhook_runs(hook_id, id);
+
+CREATE TABLE IF NOT EXISTS channel_bindings (    -- P9 渠道 chat↔会话绑定
+  chat_id TEXT PRIMARY KEY,
+  session_id TEXT REFERENCES sessions(id),
+  last_turn_id INTEGER DEFAULT 0,    -- 回信增量游标（已推送的 turn id）
+  created_at TEXT
+);
 """
 
 ACTIVE_TURN_STATUSES = ("queued", "running")

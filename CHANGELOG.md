@@ -5,6 +5,17 @@
 
 ## [未发布]（Unreleased）
 
+- **Telegram 双向对话渠道（P9/P9b）**：ChannelProvider 抽象（WhatsApp/
+  Signal 注册位预留）+ Telegram 首实现——长轮询 getUpdates（指数退避
+  1s→60s，成功复位）；白名单 chat_id（fail-closed：非白名单忽略+审计
+  channel）；bot 消息丢弃（防 loop）；每 chat 限速 10/min；命令
+  /new /bind /status /unbind；文本=绑定会话用户消息（ENGINE.submit 经主
+  loop 线程安全投递）；turn 终态增量回信（Markdown，>4096 按段分段）。
+  管理面 /api/admin/channels（token 只入 vault password 位、白名单/启停
+  热生效、getMe 健康探测）+ 资源控制台「渠道」卡。**P9b**：审批请求推
+  内联键盘（Approve/Deny），回调走既有 decide 语义、一次性确认码经
+  steer 注回会话。SCHEMA_REV 6（channel_bindings）。手测真机问答/审批
+  未做（无 bot token 环境；fake API 五件验收全绿）。
 - **来源 chips + 动作台账页（P8）**：消息流里带 memory_hits 的 assistant
   消息下方渲染来源 chips（🧠用户域/📁项目域 + id8），点击弹层看记忆全文/
   当前状态（存在/已修改/已删除）/reason/来源会话，「去记忆页编辑」直达

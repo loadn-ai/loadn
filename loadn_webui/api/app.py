@@ -129,11 +129,18 @@ async def lifespan(app: FastAPI):
     reaped = reap_orphans(skip=recovered["claimed_pids"])
     sched = get_scheduler(ENGINE)
     sched.start()          # durable：停机期间到期的 job 重启后由首轮扫描补投
+    # P9 双向渠道：配置启用才起轮询线程（token 在 vault，白名单在 config）
+    from ..integrations.channels import get_service
+    _ch = get_service(ENGINE)
+    if CONFIG.channels.telegram_enabled:
+        _ch.start(loop=app.state.loop)
     log.info("loadn webui 启动：孤儿清理 %d，收养 %s 补记账 %s interrupted %d requeue %s",
              reaped, recovered["adopted"], recovered["finished"],
              recovered["interrupted"], recovered["requeued"])
     yield
     await sched.stop()
+    from ..integrations.channels import get_service as _gs
+    _gs(ENGINE).stop()
     if _EGRESS[0] is not None:
         await _EGRESS[0].stop()
     # 优雅停：turn 子进程独立 session 存活（配 systemd KillMode=process），
