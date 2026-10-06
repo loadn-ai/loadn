@@ -163,6 +163,12 @@ def create(sid: str, action_type: str, params: dict, note: str = "",
           {"id": aid, "sid": sid, "action_type": action_type,
            "summary": _render_summary(action_type, params),
            "agent_note": (note or "")[:200]}, sid=sid, turn_id=turn_id)
+    try:                                   # P9b：渠道审批键盘（无绑定/未启用静默）
+        from ..integrations.channels import get_service
+        get_service(None).notify_approval(
+            aid, sid, _render_summary(action_type, params))
+    except Exception:                                  # noqa: BLE001
+        pass
     return {"id": aid, "summary": _render_summary(action_type, params),
             "ttl_s": ttl_s}
 
