@@ -186,3 +186,29 @@ async def test_reflection_draft_not_auto_promoted(tmp_path, monkeypatch):
     # 反思默认 off（防自激的另一半：off 时不跑）
     monkeypatch.setenv("LOADN_REFLECT_AFTER_COMPACT", "off")
     assert not cs.reflection_enabled()
+
+
+def test_mutation_blind_spots(tmp_path, monkeypatch):
+    """突变盲区补杀：长文本(>2000)不触发；空 assistant 事件不炸；
+    反思条数上限 3（>3 截断）；超长 slug 截断到合法长度。"""
+    assert cs.detect_correction("好" * 2001) is None        # 长文本守卫
+    assert cs.detect_correction("") is None                  # 空文本
+    # 反思 >3 条只写 3
+    from loadn.providers import Chunk
+    monkeypatch.setenv("LOADN_REFLECT_AFTER_COMPACT", "on")
+    lessons = json.dumps([
+        {"summary": f"教训{i}", "content": f"行为{i}"} for i in range(6)])
+    provider = H.ScriptedProvider([
+        [Chunk(kind="text_delta", text=lessons),
+         Chunk(kind="stop", usage={"input_tokens": 20}, stop_reason="end_turn",
+               model="fake")]])
+    session = SessionManager.create(tmp_path, home=tmp_path / "eng_home")
+    import asyncio
+    n = asyncio.run(cs.reflect_after_compact(provider, tmp_path, session, "S"))
+    assert n == 3                                            # 上限截断
+    from loadn import memorystore as ms
+    assert len(ms.load_entries(tmp_path)) == 3
+    # slug 长截断仍合法
+    name = cs._slug("teach", " ".join(f"词{i}字" for i in range(30)))
+    import re as _re
+    assert _re.match(r"^[a-z0-9][a-z0-9._-]{0,63}$", name)
