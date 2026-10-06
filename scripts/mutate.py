@@ -182,6 +182,9 @@ TARGET_TESTS: dict[str, list[str]] = {
     "loadn_webui/security/target_policy.py": [
         "tests/test_target_policy.py",
     ],
+    "loadn_webui/routines.py": [
+        "tests/test_routines.py",
+    ],
     "loadn/cli/memory_cli.py": [
         "tests/test_memory.py",
     ],

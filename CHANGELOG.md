@@ -5,6 +5,16 @@
 
 ## [未发布]（Unreleased）
 
+- **Heartbeat 巡检 + Routine 模板包（P11）**：schedule 加 destination
+  三档（dashboard 默认零改 / notify 推送 / notify+artifact 推送+确保
+  会话 artifacts 目录并附路径）。系统级内置 heartbeat（🫀 is_system=1，
+  30min cron、assistant 档、可删即关）：三防——主队列忙跳过本轮、
+  连续空轮计数编 label 尾标（实投清零）、连续 3 轮无产出自动降频 30min→2h
+  （🫀·low 前缀+审计，面板可查）。routine 模板包 5 例（晨报/资讯论文
+  巡检/凭证预算体检/日程提醒/仓库日报），调度页「模板库」：Ready 一键
+  启用 / Needs setup 显示缺什么+去配置链接；**安装=复制为用户 schedule**
+  （is_system=0，与平台升级解耦）。SCHEMA_REV 8（destination/is_system
+  两列 additive）。手测空转心跳未做（三防+安装 API 全对赌）。
 - **按目标系统的权限三档（P10，allow/ask/never）**：外部副作用动作的
   目标级持久策略——target_policies 表（match=域名精确/*.suffix 通配或
   动作类名；kind host|action）。决策序在审批门之前：never→建审批+自动

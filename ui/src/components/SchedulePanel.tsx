@@ -136,6 +136,7 @@ export default function SchedulesTab({ filterSid, onClearFilter }: {
         </table>
       </div>
       <HooksAside />{/* P3：事件触发与 cron 并列展示（管理在 Webhooks tab） */}
+      <RoutinesLib />{/* P11：模板库——Ready 一键启用 / Needs setup 缺什么 */}
     </div>
   );
 }
@@ -523,3 +524,60 @@ function JobForm({ job, presetSid, onDone }: {
     </div>
   );
 }
+
+
+/** P11 模板库：例程模板卡片（安装=复制为用户 schedule，与平台升级解耦） */
+export function RoutinesLib() {
+  const [items, setItems] = useState<RoutineInfo[]>([]);
+  const [msg, setMsg] = useState('');
+  useEffect(() => {
+    void (async () => {
+      try {
+        const d = await api<{ routines: RoutineInfo[] }>('/api/routines');
+        setItems(d.routines);
+      } catch { /* 静默 */ }
+    })();
+  }, []);
+  async function install(key: string) {
+    try {
+      const d = await api<{ job: { id: number; label: string } }>(
+        `/api/routines/${key}/install`, { method: 'POST' });
+      setMsg(`已安装「${d.job.label}」为你的定时任务（可在上方列表编辑）`);
+    } catch (e) { setMsg(`安装失败：${String(e)}`); }
+  }
+  if (!items.length) return null;
+  return (
+    <div style={{ marginTop: 12 }}>
+      <b style={{ fontSize: 13 }}>模板库</b>
+      <div className="hub-results">
+        {items.map(t => (
+          <div key={t.key} className="hub-card slim">
+            <div className="sk-head">
+              <b>{t.name}</b>
+              <span className={`sk-src ${t.ready ? 'local' : 'off-tag'}`}>
+                {t.ready ? 'Ready' : '需配置'}
+              </span>
+              <span className="sk-src ext">{t.cron}</span>
+            </div>
+            <div className="sk-desc">{t.description}</div>
+            {!t.ready && (
+              <div className="admin-err" style={{ fontSize: 12 }}>
+                缺：{t.missing.join('、')}
+                <button className="link" onClick={() => {
+                  location.hash = '#/admin/settings';
+                }}>去配置 →</button>
+              </div>
+            )}
+            <div className="sk-foot">
+              <span className="sk-time">建议档：notify 推送</span>
+              <button className="btn sm primary" disabled={!t.ready}
+                onClick={() => void install(t.key)}>一键启用</button>
+            </div>
+          </div>
+        ))}
+      </div>
+      {msg && <div className="admin-msg">{msg}</div>}
+    </div>
+  );
+}
+interface RoutineInfo { key: string; name: string; cron: string; description: string; ready: boolean; missing: string[] }

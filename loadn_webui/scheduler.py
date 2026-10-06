@@ -238,9 +238,135 @@ class Scheduler:
                         event="on_scheduled")
         except Exception:
             log.exception("调度通知异常")
+        await self._deliver_destination(job, new_sid or sid, label)
         log.info("job %s「%s」触发（%d/%d，%s）→ %s", job["id"], label, fires,
                  job["max_fires"], "插话" if steered else "排队", new_sid or sid)
         return True
+
+    async def _deliver_destination(self, job, sid: str | None, label: str) -> None:
+        """P11 destination：dashboard（默认，现状零改）/ notify（推送提醒）/
+        notify+artifact（推送 + 巡检产物写会话 artifacts/ 并附路径）。
+        推送在投递时发「已触发+去向」；产物落盘=给 agent 的下一轮指示由
+        _wrap 附言承担（结果产物由 turn 内产出，此处只保证目录与提醒）。"""
+        dest = job["destination"] or "dashboard"
+        if dest == "dashboard" or not sid:
+            return
+        from . import workspace as ws_mod
+        from .integrations import notify
+        extra = ""
+        if "artifact" in dest:
+            try:
+                ws = ws_mod.ws_of(sid)
+                art_dir = ws / "artifacts"
+                art_dir.mkdir(parents=True, exist_ok=True)
+                extra = f"（产物目录 {art_dir}，turn 内落盘自动入产物面板）"
+            except Exception:                             # noqa: BLE001
+                pass
+        if "notify" in dest:
+            notify.fire(f"🔄 例行触发 · {label}",
+                        f"会话 {sid} 已投递{extra}", event="on_scheduled")
+
+    # ------------------------------------------------------------ P11 heartbeat
+    HEARTBEAT_EMPTY_SKIP = "heartbeat-empty"      # 空/忙跳过（不计数）
+    HEARTBEAT_LOW_FREQ_MARK = "🫀·low"
+
+    def heartbeat_busy(self) -> bool:
+        """三防①：主队列忙（有 running/queued turn）跳过本轮。"""
+        with db_mod.conn() as c:
+            row = c.execute(
+                "SELECT COUNT(*) AS n FROM turns WHERE status IN "
+                "('running','queued')").fetchone()
+        return bool(row and row["n"] > 0)
+
+    async def fire_heartbeat(self, job) -> bool:
+        """heartbeat 专用触发：三防（忙跳过 / 空输出不投递不落账 /
+        连续 3 轮无产出自动降频）。返回是否实际投递。"""
+        from .routines import heartbeat_prompt
+        if self.heartbeat_busy():
+            log.info("heartbeat：主队列忙，跳过本轮")
+            self._hb_advance(job, fired=False)
+            return False
+        # 空转判定：连续空轮计数编在 label 尾标 ×N（_hb_advance 维护）
+        empty = self._heartbeat_last_empty(job)
+        empties = 0
+        if "×" in (job["label"] or ""):
+            try:
+                empties = int(job["label"].rsplit("×", 1)[-1].strip())
+            except ValueError:
+                empties = 0
+        if empties >= 3:                       # 三防③：连续 3 轮无产出
+            low = self.HEARTBEAT_LOW_FREQ_MARK in (job["label"] or "")
+            if not low:
+                with db_mod.conn() as c:
+                    db_mod.update_job(
+                        c, job["id"],
+                        label=f"{self.HEARTBEAT_LOW_FREQ_MARK}{job['label']}",
+                        cron="5 */2 * * *")     # 30min → 2h 降频
+                from .security.audit import audit
+                audit("policy_change", {"action": "heartbeat_lowfreq",
+                                        "job": job["id"]})
+                log.warning("heartbeat：连续 3 轮无产出，降频为 2h（面板可查）")
+                job = {**job, "label": f"{self.HEARTBEAT_LOW_FREQ_MARK}"
+                       f"{job['label']}"}
+            self._hb_advance(job, fired=False)
+            return False
+        # 投递（new_session 复用现有路径，prompt 用巡检模板）
+        now = datetime.now(timezone.utc)
+        fired = await self._fire_new_session(
+            {**job, "prompt": heartbeat_prompt(),
+             "profile": job["profile"] or "assistant",
+             "label": job["label"] or "🫀 心跳巡检"}, now)
+        return fired
+
+    def _heartbeat_last_empty(self, job) -> bool:
+        """上一轮 heartbeat 会话最后 turn 是否无文本（无产出形态）。"""
+        if not job.get("last_fired_at") or not job.get("session_id"):
+            # new_session 递归不回填 sid——空转计数经 label 记录（fires 只计
+            # 实投；连续空轮数编码在 label 尾标 ×N，见 _hb_advance）
+            return "×" in (job["label"] or "")
+        with db_mod.conn() as c:
+            row = c.execute(
+                "SELECT t.id, (SELECT COUNT(*) FROM messages m WHERE "
+                "m.turn_id=t.id AND m.role='assistant' AND "
+                "length(m.content)>20) AS has_text FROM turns t "
+                "WHERE t.session_id=? ORDER BY t.id DESC LIMIT 1",
+                (job["session_id"],)).fetchone()
+        return bool(row) and not row["has_text"]
+
+    def _hb_advance(self, job, *, fired: bool) -> None:
+        """推进 due_at；连续空轮计数编在 label 尾标（×1/×2/×3）。"""
+        now = datetime.now(timezone.utc)
+        next_due = _next_due(job, now)
+        label = job["label"] or "🫀 心跳巡检"
+        if fired:
+            label = label.split(" ×")[0]            # 实投清零
+        else:
+            n = int(label.rsplit("×", 1)[-1]) if "×" in label else 0
+            label = f"{label.split(' ×')[0]} ×{n + 1}"
+        with db_mod.conn() as c:
+            updates = {"label": label}
+            if next_due is not None:
+                updates["due_at"] = next_due
+            db_mod.update_job(c, job["id"], **updates)
+
+
+def ensure_heartbeat(engine) -> None:
+    """P11：内置 heartbeat schedule（幂等创建；删除即关）。"""
+    from .cron import next_run_iso
+    with db_mod.conn() as c:
+        row = c.execute(
+            "SELECT id FROM scheduled_jobs WHERE label LIKE ? AND is_system=1",
+            ("%🫀%",)).fetchone()
+        if row is not None:
+            return
+        now = datetime.now(timezone.utc)
+        db_mod.create_job(
+            c, kind="new_session", label="🫀 心跳巡检",
+            prompt=__import__("loadn_webui.routines", fromlist=["heartbeat_prompt"]).heartbeat_prompt(),
+            cron="7/30 * * * *", due_at=next_run_iso("7/30 * * * *", now),
+            profile="assistant", title="🫀 心跳巡检", is_system=1,
+            destination="notify+artifact", max_fires=100000)
+
 
 
 def next_wake(sid: str) -> dict | None:

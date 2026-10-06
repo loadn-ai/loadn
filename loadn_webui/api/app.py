@@ -129,6 +129,9 @@ async def lifespan(app: FastAPI):
     reaped = reap_orphans(skip=recovered["claimed_pids"])
     sched = get_scheduler(ENGINE)
     sched.start()          # durable：停机期间到期的 job 重启后由首轮扫描补投
+    # P11：内置 heartbeat 巡检 schedule（幂等；删 job 即关）
+    from ..scheduler import ensure_heartbeat
+    ensure_heartbeat(ENGINE)
     # P9 双向渠道：配置启用才起轮询线程（token 在 vault，白名单在 config）
     from ..integrations.channels import get_service
     _ch = get_service(ENGINE)

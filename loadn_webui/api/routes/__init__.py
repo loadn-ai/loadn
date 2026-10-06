@@ -18,6 +18,7 @@ from . import (
     hooks,
     memory,
     projects,
+    routines,
     schedules,
     sessions,
     settings,
@@ -30,7 +31,7 @@ from . import (
 
 router = APIRouter()
 for _m in (skills, tools, settings, projects, sessions, turns, admin,
-           approvals, schedules, files, artifacts, stats, hooks, memory,
+           approvals, schedules, files, artifacts, stats, hooks, memory, routines,
            activity, channels_admin, target_policy_admin):
     router.include_router(_m.router)
 

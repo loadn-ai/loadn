@@ -24,7 +24,7 @@ from .config import PATHS
 
 # R7 回滚门禁：每次加列/加表 +1；RELEASE.json 记此值，rollback 时比对。
 # additive-only 契约：只加列/加表（旧代码可跑新 schema，多余列无害）。
-SCHEMA_REV = 7
+SCHEMA_REV = 8
 from .util import iso
 
 SCHEMA = """
@@ -142,7 +142,9 @@ CREATE TABLE IF NOT EXISTS scheduled_jobs (
   last_fired_at TEXT,
   title TEXT,                                -- new_session：会话标题（缺省用 label）
   profile TEXT,                              -- new_session：profile 名（空 = auto 匹配）
-  engine TEXT,                               -- new_session：写新会话 engine_override（空 = 跟随默认）
+  engine TEXT,                              -- new_session：写新会话 engine_override（空 = 跟随默认）
+  destination TEXT DEFAULT 'dashboard',    -- P11: dashboard|notify|notify+artifact
+  is_system INTEGER DEFAULT 0,             -- P11: 内置 heartbeat 标记（面板区分）
   created_at TEXT, updated_at TEXT
 );
 
@@ -242,6 +244,13 @@ def _migrate(c: sqlite3.Connection) -> None:
     if "engine_override" not in cols:
         # 聊天框引擎切换的会话级覆盖（NULL = 跟随 profile/全局默认）
         c.execute("ALTER TABLE sessions ADD COLUMN engine_override TEXT")
+    jcols = {r["name"] for r in c.execute("PRAGMA table_info(scheduled_jobs)")}
+    if "destination" not in jcols:      # P11 投递档
+        c.execute("ALTER TABLE scheduled_jobs ADD COLUMN destination TEXT "
+                  "DEFAULT 'dashboard'")
+    if "is_system" not in jcols:        # P11 内置 heartbeat 标记
+        c.execute("ALTER TABLE scheduled_jobs ADD COLUMN is_system INTEGER "
+                  "DEFAULT 0")
     tcols = {r["name"] for r in c.execute("PRAGMA table_info(turns)")}
     if "models_json" not in tcols:
         c.execute("ALTER TABLE turns ADD COLUMN models_json TEXT")
