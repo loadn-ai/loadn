@@ -33,6 +33,7 @@ EXPECTED = {
     ("/api/admin/vault/entry/{platform}", "delete"),
     ("/api/admin/vault/{platform}", "delete,get,put"),
     ("/api/approvals/consume", "post"),
+    ("/api/activity", "get"),
     ("/api/approvals/{aid}", "get"),
     ("/api/approvals/{aid}/decide", "post"),
     ("/api/artifacts/{aid}/download", "get"),

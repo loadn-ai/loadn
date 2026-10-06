@@ -50,6 +50,7 @@ export interface TurnInfo {
 export interface MessageInfo {
   id: number; turn_id: number | null; role: 'user' | 'assistant';
   content: string; blocks_json?: string | null; created_at: string;
+  memory_hits_json?: string | null;   // P7：本 turn 注入记忆清单
 }
 
 export interface ProjectInfo {

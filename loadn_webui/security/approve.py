@@ -331,6 +331,21 @@ def pending_egress_id(sid: str, host: str) -> int | None:
     return out
 
 
+def list_items(sid: str | None = None, limit: int = 200) -> list[dict]:
+    """全态审批清单（P8 动作台账：pending/approved/denied 全收）。"""
+    with _conn() as c:
+        _ensure(c)
+        q = ("SELECT id, sid, turn_id, action_type, summary, status,"
+             " created_at, decided_at FROM approvals")
+        args: list = []
+        if sid:
+            q += " WHERE sid=?"
+            args.append(sid)
+        q += " ORDER BY id DESC LIMIT ?"
+        args.append(max(1, min(limit, 500)))
+        return [dict(r) for r in c.execute(q, args)]
+
+
 def list_pending(sid: str | None = None) -> list[dict]:
     with _conn() as c:
         _ensure(c)
