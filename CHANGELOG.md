@@ -5,6 +5,19 @@
 
 ## [未发布]（Unreleased）
 
+- **视觉 GUI 工具层（P13，CUA 兜底）**：browser_mcp 扩四纯视觉工具——
+  browser_screenshot（viewport png→base64 vision block，**不注 DOM 信息**）、
+  browser_click(x,y)/browser_type(text)/browser_scroll(dy)（坐标/键盘，
+  无 CSS 选择器）。**敏感冻结**（确定性、模型之外）：动作前 URL 命中
+  支付/登录/验证码等模式（SENSITIVE_URL_RE 可配正则族）→ 拒本步 +
+  approve.create 审批请求 + 通过后仅放行该单步（下一步重新冻结——
+  连续两步敏感操作永不自动放行）；screenshot 只读不冻结（能看不能动）。
+  **预算**：screenshot≤20/click≤30（超限 RuntimeError 终止汇报）；步间隔
+  ≥800ms 节流。**自纠**：click 后自动补 screenshot 回图供模型验证。
+  审计 browser_cua（坐标/域名/动作）全入账本；截图不留存。四工具经既有
+  stdio MCP server tools/list 面注册（引擎 .mcp.json 即得）。fake
+  playwright 页面测试四件全绿；真机静态页「截图→点→验证」与支付页冻结
+  手测未做（无 CDP 沙箱环境）。
 - **经验→技能固化闭环（P12，本批主战场）**：纠正/教学一次→沉淀可复用
   技能。**纠错信号检测**（确定性词表挂 turn 收尾，禁模型猜常开）：显式
   教学（以后都/记住要/always/never…）与否定纠错（不对/错了/重做…）两类

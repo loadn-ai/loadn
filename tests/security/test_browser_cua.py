@@ -80,7 +80,10 @@ def test_mcp_server_protocol():
     listing = next(e for e in evs if e.get("id") == 2)
     names = {t["name"] for t in listing["result"]["tools"]}
     assert names == {"browser.open", "browser.click", "browser.fill",
-                     "browser.screenshot", "browser.read_console"}
+                     "browser.screenshot", "browser.read_console",
+                     # P13 视觉 GUI 四工具（纯视觉坐标面）
+                     "browser_screenshot", "browser_click",
+                     "browser_type", "browser_scroll"}
     # 越权域：可读拒绝文案（绕网后门语义）
     denied = next(e for e in evs if e.get("id") == 3)
     text = denied["result"]["content"][0]["text"]

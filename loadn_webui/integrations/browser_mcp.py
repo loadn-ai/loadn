@@ -2,7 +2,7 @@
 
 形态：stdio MCP server（JSON-RPC，与 loadn/mcp/client.py StdioMCPConnection
 对话）——webui 把它注入会话 .mcp.json（write_mcp_json 的 browser 条目），
-引擎经 MCP 动态工具获得 browser.open/navigate/click/fill/screenshot/
+引擎经 MCP 动态工具。P13 视觉 GUI 层：browser_screenshot/click/type/scroll 四工具（纯视觉——截图不注 DOM 信息；坐标点击），敏感 URL 冻结（支付/登录/验证码模式 → 审批+单步放行）、动作预算（screenshot≤20/click≤30）、步间隔 ≥800ms、click 后自动补 screenshot 供自纠。审计 browser_cua。获得 browser.open/navigate/click/fill/screenshot/
 read_console。
 
 架构决策（ZCode 同构）：
@@ -21,7 +21,10 @@ from __future__ import annotations
 
 import json
 import os
+import re
 import sys
+import time
+from urllib.parse import urlsplit as _usplit
 
 from ..config import CONFIG
 from ..security.audit import audit
@@ -30,7 +33,7 @@ from ..security.audit import audit
 # ---------------------------------------------------------------- 域策略
 def _host_allowed(url: str) -> tuple[bool, str]:
     """导航域判定：本地前端（loopback/私网）放行；公网须出口白名单。"""
-    from urllib.parse import urlsplit
+    from urllib.parse import urlsplit  # noqa: F401  （P13 域名审计用）
     try:
         host = (urlsplit(url).hostname or "").lower()
     except ValueError:
@@ -161,6 +164,105 @@ def tool_read_console(args: dict) -> str:
     return json.dumps(logs[-50:], ensure_ascii=False) if logs else "（无注入日志）"
 
 
+# ---------------------------------------------------------------- P13 视觉 GUI
+SENSITIVE_URL_RE = re.compile(
+    r"pay|login|signin|auth|captcha|verify|password|checkout|bank|otp|2fa",
+    re.I)
+MAX_SCREENSHOTS = 20          # 单任务截图预算（超限终止）
+MAX_CLICKS = 30               # 单任务点击预算
+STEP_INTERVAL_MS = 800        # 动作节流（含人味+防抖）
+_budget = {"screenshot": 0, "click": 0}
+
+
+def _p13_page(url_required: bool = False):
+    """P13 门链：敏感 URL 冻结（审批+单步放行）→ 预算 → 节流。"""
+    page = _SESSION.page()
+    if url_required:
+        url = page.url or ""
+        if SENSITIVE_URL_RE.search(url):
+            # 敏感页：拒绝本步 + 审批请求（附快照与拟执行动作在批准后由
+            # 用户在卡内看到 params）；通过后仅放行该单步（approved_once
+            # 内存票——下次动作重新冻结）
+            sid = os.environ.get("LOADN_BROWSER_SID", "")
+            audit("browser_cua", {"action": "sensitive_freeze", "url": url[:120]})
+            if sid:
+                from ..security import approve as _ap
+                try:
+                    _ap.create(sid, "browser_open",
+                               {"host": (_usplit(url).hostname or "")},
+                               note=f"敏感页视觉动作冻结：{url[:80]}")
+                except ValueError:
+                    pass
+            raise RuntimeError(
+                f"敏感页冻结：当前页面疑似支付/登录/验证码（{url[:80]}）。"
+                "已生成审批请求——批准后重试本步（仅放行这一步）")
+    time.sleep(STEP_INTERVAL_MS / 1000.0)
+    return page
+
+
+def tool_p13_screenshot(args: dict) -> str:
+    """纯视觉截图（viewport png→base64；不注入 DOM 信息保持纯视觉）。"""
+    if _budget["screenshot"] >= MAX_SCREENSHOTS:
+        raise RuntimeError(f"截图预算耗尽（{MAX_SCREENSHOTS}）——任务终止并汇报")
+    _budget["screenshot"] += 1
+    page = _p13_page()                      # 截图不吃敏感冻结（只读）
+    data = _shot_b64(page)
+    audit("browser_cua", {"action": "screenshot",
+                          "n": _budget["screenshot"],
+                          "domain": (_usplit(page.url or "").hostname or "")})
+    return data
+
+
+def tool_p13_click(args: dict) -> str:
+    if _budget["click"] >= MAX_CLICKS:
+        raise RuntimeError(f"点击预算耗尽（{MAX_CLICKS}）——任务终止并汇报")
+    x, y = int(args.get("x", -1)), int(args.get("y", -1))
+    if x < 0 or y < 0:
+        raise RuntimeError("x/y 需为非负像素坐标（先 browser_screenshot 看画面）")
+    _budget["click"] += 1
+    page = _p13_page(url_required=True)      # 敏感页冻结
+    page.mouse.click(x, y)
+    audit("browser_cua", {"action": "click", "x": x, "y": y,
+                          "domain": (_usplit(page.url or "").hostname or "")})
+    # 自纠：click 后自动补 screenshot 供模型验证（预算内）
+    if _budget["screenshot"] < MAX_SCREENSHOTS:
+        _budget["screenshot"] += 1
+        return _shot_b64(page)
+    return "已点击（截图预算已尽，无法自动回图）"
+
+
+def tool_p13_type(args: dict) -> str:
+    text = str(args.get("text") or "")
+    if not text:
+        raise RuntimeError("text 不能为空")
+    page = _p13_page(url_required=True)
+    page.keyboard.type(text, delay=30)
+    audit("browser_cua", {"action": "type", "len": len(text),
+                          "domain": (_usplit(page.url or "").hostname or "")})
+    return f"已输入 {len(text)} 字符"
+
+
+def tool_p13_scroll(args: dict) -> str:
+    dy = int(args.get("dy", 0))
+    page = _p13_page()
+    page.mouse.wheel(0, dy)
+    audit("browser_cua", {"action": "scroll", "dy": dy})
+    return f"已滚动 {dy}px"
+
+
+def _shot_b64(page) -> str:
+    import base64
+    import tempfile
+    from pathlib import Path
+    fd, tmp = tempfile.mkstemp(suffix=".png")
+    os.close(fd)
+    page.screenshot(path=tmp)               # viewport（非 full_page——纯视觉）
+    data = "data:image/png;base64," + base64.b64encode(
+        Path(tmp).read_bytes()).decode()
+    Path(tmp).unlink(missing_ok=True)       # 截图不留存（审计快照临时保留=同款）
+    return data
+
+
 TOOLS = {
     "open": ("browser.open", tool_open,
              "打开 URL（本地前端直接放行；公网域须出口白名单）",
@@ -177,6 +279,19 @@ TOOLS = {
                    {"full_page": {"type": "boolean"}}),
     "read_console": ("browser.read_console", tool_read_console,
                      "读页面 console 注入日志（错误验证）", {}),
+    # P13 视觉 GUI 四工具（纯视觉：坐标/像素，无 DOM 选择器）
+    "p13_screenshot": ("browser_screenshot", tool_p13_screenshot,
+                       "视口截图（纯视觉 png，无 DOM 信息）。先看再动。",
+                       {}),
+    "p13_click": ("browser_click", tool_p13_click,
+                  "按像素坐标点击（先 browser_screenshot 看画面定坐标；"
+                  "点击后自动回图验证）；敏感页（支付/登录/验证码）冻结待审批",
+                  {"x": {"type": "integer"}, "y": {"type": "integer"}}),
+    "p13_type": ("browser_type", tool_p13_type,
+                 "在当前焦点输入文本（敏感页冻结待审批）",
+                 {"text": {"type": "string"}}),
+    "p13_scroll": ("browser_scroll", tool_p13_scroll,
+                   "滚动 dy 像素（正=向下）", {"dy": {"type": "integer"}}),
 }
 
 

@@ -14,11 +14,10 @@ import sqlite3
 
 import pytest
 
+import tests.helpers as H
 from loadn import consolidate as cs
 from loadn.core.loop import AgentCore, LoopSettings
 from loadn.core.session import SessionManager
-
-import tests.helpers as H
 
 
 @pytest.fixture(autouse=True)
