@@ -228,3 +228,26 @@ async def test_approval_keyboard_and_callback(client, monkeypatch):
     n1 = len(fake.sent)
     svc.handle_update(cb2)
     assert len(fake.sent) == n1
+
+
+async def test_guards_not_running_and_empty_text(client, monkeypatch):
+    """守卫对赌：running=False 时审批不推送；空文本/无 chat 更新静默忽略。"""
+    _allow(monkeypatch, ("100",))
+    from loadn_webui.security import approve as approve_mod
+    fake = FakeTG()
+    eng = FakeEngine()
+    svc = _svc(fake, engine=eng)          # running=False（未 start）
+    svc.handle_update(_upd(text="/new"))
+    from loadn_webui import db as db_mod
+    with db_mod.conn() as c:
+        sid = c.execute(
+            "SELECT session_id FROM channel_bindings").fetchone()["session_id"]
+    out = approve_mod.create(sid, "mail_send", {"to": "x@y.z"})
+    svc.notify_approval(out["id"], sid, out["summary"])
+    assert not any("reply_markup" in b for _, b in fake.sent)  # 未运行不推
+    # 空文本：不命令、不投递、不审计
+    n0 = len(_channel_audit())
+    svc.handle_update(_upd(text="", update_id=50))
+    svc.handle_update({"update_id": 51, "message": {"chat": {"id": 100}}})
+    assert len(_channel_audit()) == n0
+    assert not any(m == "sendMessage" for m, _ in fake.sent[1:])
