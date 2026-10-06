@@ -58,13 +58,29 @@ def decide_suggest(sid: str, body: dict):
             raise HTTPException(400, "技能名需匹配 ^[a-z0-9][a-z0-9._-]{0,63}$")
         if not body_text:
             raise HTTPException(400, "正文不能为空")
+        skill_md = (f"---\nname: {name}\ndescription: {desc or name}\n"
+                     f"origin: user-taught:{card.get('fingerprint')}\n"
+                     f"---\n\n{body_text}\n")
+        # 复查修#5 双写：①会话工作区 .agents/skills/（本会话立即生效——
+        # cwd 即工作区，下轮 discover 直接可见）
         skill_dir = ws / ".agents" / "skills" / name
         if skill_dir.exists():
             raise HTTPException(409, f"已存在同名 skill: {name}")
         skill_dir.mkdir(parents=True, exist_ok=True)
-        (skill_dir / "SKILL.md").write_text(
-            f"---\nname: {name}\ndescription: {desc or name}\n"
-            f"origin: user-taught:{card.get('fingerprint')}\n---\n\n{body_text}\n",
+        (skill_dir / "SKILL.md").write_text(skill_md, encoding="utf-8")
+        # ②平台技能库（数据根 skills/——跨会话持久：工作区是每会话独立
+        # 的，只写①则「下次同类请求自动启用」跨会话不成立；②进管理面
+        # 可见可挂载，同名冲突时带 -taught 后缀不覆盖既有技能）
+        from ... import skills as platform_skills
+        lib_dir = platform_skills._writable_root() / name
+        if lib_dir.exists():
+            lib_dir = platform_skills._writable_root() / f"{name}-taught"
+        lib_dir.mkdir(parents=True, exist_ok=True)
+        (lib_dir / "SKILL.md").write_text(skill_md, encoding="utf-8")
+        import json as _json
+        (lib_dir / ".loadn-source.json").write_text(_json.dumps({
+            "via": "user-taught", "sid": sid,
+            "fingerprint": card.get("fingerprint")}, ensure_ascii=False),
             encoding="utf-8")
         # 供应链扫描（W4 八类——用户教学也不豁免；红线拒写即清目录）
         from ...security import skill_scan
@@ -80,7 +96,8 @@ def decide_suggest(sid: str, body: dict):
         audit("consolidate", {"action": "accepted", "sid": sid, "name": name,
                               "kind": card.get("kind"),
                               "fingerprint": card.get("fingerprint")})
-        return {"ok": True, "skill": name, "scanned": report["level"]}
+        return {"ok": True, "skill": name, "scanned": report["level"],
+                "library": lib_dir.name}
     # 拒绝 → 负样本
     consolidate.reject(str(card.get("fingerprint") or ""))
     consolidate.clear_pending(ws)

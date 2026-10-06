@@ -160,7 +160,7 @@ async def test_whitelist_bot_and_rate(client, monkeypatch):
 def test_split_message():
     small = "短消息"
     assert split_message(small) == [small]
-    big = "\n\n".join("段落%d\n内容%s" % (i, "x" * 20)
+    big = "\n\n".join(f"段落{i}\n内容{'x' * 20}"
                       for i in range(200))
     parts = split_message(big)
     assert len(parts) > 1 and all(len(p) <= 4096 for p in parts)

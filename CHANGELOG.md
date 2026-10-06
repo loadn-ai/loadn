@@ -5,6 +5,21 @@
 
 ## [未发布]（Unreleased）
 
+- **P1-P13 全面复查修复批**：修复生产路径三严重 bug——①heartbeat 三防
+  是死代码（fire() 不路由 is_system job，生产从未执行忙跳过/降频；修路由
+  + 经 fire() 的接线级对赌）②P12 教学检测在带工具的 turn 恒漏检（users[-1]
+  恒为 tool_result；过滤非人话块）③P7/P8 项目域记忆 hits 在 sources/chips
+  恒误报「已删除」（域枚举名≠目录键；按会话项目域目录解析）。设计缺口
+  四项——④P13 敏感冻结补全「单步放行」三层（.mcp.json 注 SID env→审批
+  批准落一次性票文件→冻结处验票消费；此前审批从不建、文案对模型说谎）
+  ⑤P12 技能确认改双写（会话工作区立即生效 + 平台技能库跨会话持久——
+  原只写工作区，「下次自动启用」跨会话不成立）⑥P5 promote() manifest
+  读改写入域锁（并发丢更新残留点）⑦P12 pending 建议卡单槽保护（未决策
+  不被覆盖）。过程又抓一 bug：sqlite3.Row 无 .get()——fire() 新增路由
+  对全部调度 job 抛 AttributeError（7 测试红出）；测试隔离修复（busy
+  检查全局语义下跨文件残留 running turn 串扰）。中项留 backlog（P13
+  预算进程级语义/敏感正则过宽可配、P9 回信 25s 延迟、P3 token 入 URL
+  日志面、P6 frontmatter 换行值、P12 双通道同捕）。
 - **视觉 GUI 工具层（P13，CUA 兜底）**：browser_mcp 扩四纯视觉工具——
   browser_screenshot（viewport png→base64 vision block，**不注 DOM 信息**）、
   browser_click(x,y)/browser_type(text)/browser_scroll(dy)（坐标/键盘，

@@ -434,12 +434,16 @@ def promote(cwd: Path, eid: str, *, event_sink=None) -> dict | None:
         log.warning("promote 需要 LOADN_USER_MEMORY=on")
         return None
     dir_ = memory_dir(cwd, PROJECT_DOMAIN)
-    m = _manifest(dir_)
-    e = _remove_entry(dir_, m, eid)
-    if e is None:
-        return None
-    _save_manifest(dir_, m)
-    commit_domain(dir_, f"memory: 提升 {eid} 至用户域")
+    # 复查修#6：manifest 读改写入域锁（与 remember/forget 同款——此前锁外
+    # RMW，与引擎写入并发丢更新）
+    with _domain_lock(dir_) as locked:
+        m = _manifest(dir_)
+        e = _remove_entry(dir_, m, eid)
+        if e is None:
+            return None
+        _save_manifest(dir_, m)
+        if locked:
+            _commit_locked(dir_, f"memory: 提升 {eid} 至用户域")
     out = remember(cwd, e.get("summary") or eid, e.get("content") or "",
                    origin_session=e.get("origin_session") or "?",
                    event_sink=event_sink, domain=USER_DOMAIN,
@@ -467,9 +471,17 @@ def content_hash8(content: str) -> str:
     return hashlib.sha1((content or "").encode()).hexdigest()[:8]
 
 
-def find_entry(domain_key: str, eid: str) -> tuple[Path | None, dict | None]:
-    """按域键+条目 id 找条目（sources 解析用）。返回 (域目录, 条目|None)。"""
-    d = domain_dir_by_key(domain_key)
+def find_entry(domain_key: str, eid: str, *, project_dir: Path | None = None):
+    """按域键+条目 id 找条目（sources 解析用）。返回 (域目录, 条目|None)。
+
+    domain_key："user" / "p:<hex>" / "project"（P7 注入的域枚举名——须由
+    调用方给 project_dir=该会话的项目域目录，否则 project 域条目会被误判
+    为已删除，复查修#3）。"""
+    d = None
+    if domain_key == PROJECT_DOMAIN:
+        d = project_dir
+    elif domain_key != PROJECT_DOMAIN:
+        d = domain_dir_by_key(domain_key)
     if d is None:
         return None, None
     e = next((x for x in entries_of(d) if x.get("id") == eid), None)

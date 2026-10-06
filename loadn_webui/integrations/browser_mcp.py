@@ -174,28 +174,52 @@ STEP_INTERVAL_MS = 800        # 动作节流（含人味+防抖）
 _budget = {"screenshot": 0, "click": 0}
 
 
+def _consume_single_step_ticket(url: str) -> bool:
+    """P13 复查修#4：验票+消费（一次性）。票=approve.decide 批准 browser_open
+    时落在 cwd/.loadn/browser-allow-once.json（host 匹配 + 5 分钟内）。
+    先删再判保证原子一次性——只放行下一个动作，再下一步重新冻结。"""
+    import time as _t
+    from pathlib import Path as _P
+    tp = _P.cwd() / ".loadn" / "browser-allow-once.json"
+    try:
+        ticket = json.loads(tp.read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        return False
+    try:
+        tp.unlink()                         # 消费即删（验票原子一次性）
+    except OSError:
+        pass
+    host = (_usplit(url).hostname or "").lower()
+    ok_host = str(ticket.get("host") or "").lower() in ("", host)
+    return bool(ok_host and _t.time() < float(ticket.get("exp") or 0))
+
+
 def _p13_page(url_required: bool = False):
-    """P13 门链：敏感 URL 冻结（审批+单步放行）→ 预算 → 节流。"""
+    """P13 门链：敏感 URL 冻结（审批+单步票放行）→ 预算 → 节流。"""
     page = _SESSION.page()
     if url_required:
         url = page.url or ""
         if SENSITIVE_URL_RE.search(url):
-            # 敏感页：拒绝本步 + 审批请求（附快照与拟执行动作在批准后由
-            # 用户在卡内看到 params）；通过后仅放行该单步（approved_once
-            # 内存票——下次动作重新冻结）
-            sid = os.environ.get("LOADN_BROWSER_SID", "")
-            audit("browser_cua", {"action": "sensitive_freeze", "url": url[:120]})
-            if sid:
-                from ..security import approve as _ap
-                try:
-                    _ap.create(sid, "browser_open",
-                               {"host": (_usplit(url).hostname or "")},
-                               note=f"敏感页视觉动作冻结：{url[:80]}")
-                except ValueError:
-                    pass
-            raise RuntimeError(
-                f"敏感页冻结：当前页面疑似支付/登录/验证码（{url[:80]}）。"
-                "已生成审批请求——批准后重试本步（仅放行这一步）")
+            if _consume_single_step_ticket(url):
+                audit("browser_cua", {"action": "single_step_released",
+                                      "url": url[:120]})
+            else:
+                # 敏感页：拒绝本步 + 审批请求（批准后经工作区单步票放行
+                # 下一个动作——票一次性，连续两步敏感操作永不自动连放）
+                sid = os.environ.get("LOADN_BROWSER_SID", "")
+                audit("browser_cua", {"action": "sensitive_freeze",
+                                      "url": url[:120]})
+                if sid:
+                    from ..security import approve as _ap
+                    try:
+                        _ap.create(sid, "browser_open",
+                                   {"host": (_usplit(url).hostname or "")},
+                                   note=f"敏感页视觉动作冻结：{url[:80]}")
+                    except ValueError:
+                        pass
+                raise RuntimeError(
+                    f"敏感页冻结：当前页面疑似支付/登录/验证码（{url[:80]}）。"
+                    "已生成审批请求——批准后重试本步（仅放行这一步）")
     time.sleep(STEP_INTERVAL_MS / 1000.0)
     return page
 

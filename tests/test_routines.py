@@ -92,7 +92,9 @@ async def test_heartbeat_three_guards(client, monkeypatch, tmp_path):
                           due_at="2000-01-01T00:00:00")
     job3 = _get(hb)
     with db_mod.conn() as c:
-        c.execute("UPDATE turns SET status='done' WHERE session_id=?", (sid,))
+        # 隔离：busy 检查是全局的——其他测试文件留下的 running/queued turn
+        # 会让本步走 busy 分支（真实语义），清场后再验降频分支
+        c.execute("UPDATE turns SET status='done'")
     fired = await sched.fire_heartbeat(job3)
     assert fired is False                      # 降频路径不投递
     job4 = _get(hb)
@@ -106,6 +108,7 @@ async def test_heartbeat_three_guards(client, monkeypatch, tmp_path):
     assert job5["label"].startswith(label_before.split(" ×")[0])
     # 正常态（无 running turn、无 ×3）：实投（new_session 真路径）
     with db_mod.conn() as c:
+        c.execute("UPDATE turns SET status='done'")
         db_mod.update_job(c, hb, label="🫀 心跳巡检",
                           due_at="2000-01-01T00:00:00")
     job6 = _get(hb)
@@ -147,3 +150,35 @@ async def test_install_creates_user_schedule(client, monkeypatch):
     assert (await client.post("/api/routines/no-such/install")).status_code == 404
     assert (await client.post("/api/routines/morning_brief/install",
                               json={"cron": "bad cron"})).status_code == 400
+
+
+async def test_fix_heartbeat_routes_via_fire(client, monkeypatch):
+    """复查修#1 对赌：经 fire()（生产路由）触发 is_system job 走三防——
+    原实现 fire 只按 kind 分流，三防在生产中是死代码。"""
+    from loadn_webui import db as db_mod
+    eng = FakeEngine()
+    sched = Scheduler(eng)
+    r = await client.post("/api/sessions", json={"title": "fire 路由"})
+    sid = r.json()["session"]["id"]
+    with db_mod.conn() as c:
+        c.execute("DELETE FROM turns WHERE status IN ('running','queued')")  # 清他测残留
+        c.execute("INSERT INTO turns(session_id,status,mode) VALUES(?,"
+                  "'running','background')", (sid,))
+        hb = db_mod.create_job(c, kind="new_session", label="🫀 心跳巡检",
+                               prompt="x", cron="7/30 * * * *",
+                               due_at="2000-01-01T00:00:00",
+                               profile="assistant", is_system=1)
+    job = _get(hb)
+    fired = await sched.fire(job)                 # ← 生产路由（非直调）
+    assert fired is False                          # 忙 → 三防跳过
+    j2 = _get(hb)
+    assert "×1" in j2["label"]                     # 空轮计数（fire_heartbeat 路径）
+    # 对照：非 system 的 new_session job 同条件走普通路径（实投不计数）
+    with db_mod.conn() as c:
+        nb = db_mod.create_job(c, kind="new_session", label="普通任务",
+                               prompt="干活", cron="0 8 * * *",
+                               due_at="2000-01-01T00:00:00", is_system=0)
+    nj = _get(nb)
+    fired2 = await sched.fire(nj)
+    assert fired2 is True                          # 忙不挡普通 job（原语义）
+    assert "×" not in _get(nb)["label"]

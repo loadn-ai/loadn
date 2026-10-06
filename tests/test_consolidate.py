@@ -78,22 +78,22 @@ async def test_teach_triggers_and_plain_does_not(tmp_path):
     assert card3["kind"] == "correct" and card3["name"].startswith("avoid-")
 
 
-async def test_max_two_per_session(tmp_path):
-    await _turn(tmp_path, "以后都先跑测试再提交", [H.text_round("好"), H.text_round("好")])
-    n0 = 0
-    sess = SessionManager.resume(None, tmp_path) if False else None  # noqa
-    # 第二次：同会话追加纠错 turn——计数达 2 后第三次不再产卡
-    for text in ("错了，重来", "记住要写日志"):
-        session = SessionManager.create(
-            tmp_path, home=tmp_path / "eng_home") if sess is None else sess
-        break
-    # 直接单元级：suggest_count 上限（造 2 个事件后再 maybe_suggest 返回 None）
-    session = await _turn(tmp_path, "以后都用 ruff")
+async def test_max_two_per_session_and_single_slot(tmp_path):
+    session = await _turn(tmp_path, "以后都先跑测试再提交",
+                          [H.text_round("好"), H.text_round("好")])
     from loadn import consolidate as c2
-    assert c2.suggest_count(session) >= 1
-    # 手工把计数垫到 2 → 再触发被拒
-    session.append_event("skill_suggest", {"name": "x"})
-    (tmp_path / ".loadn" / "skill-suggest.json").unlink(missing_ok=True)
+    assert c2.suggest_count(session) == 1
+    # 单槽保护（复查修#7）：pending 未决策时同类再触发不覆盖、不再计数
+    assert c2.maybe_suggest(tmp_path, session) is None
+    assert c2.suggest_count(session) == 1
+    # 决策（清 pending）后第二次可触发
+    c2.clear_pending(tmp_path)
+    session.append_user("以后都用 ruff")
+    assert c2.maybe_suggest(tmp_path, session) is not None
+    assert c2.suggest_count(session) == 2
+    # 计数达 2 → 第三次被拒（防自激上限）
+    c2.clear_pending(tmp_path)
+    session.append_user("记住要写日志")
     assert c2.maybe_suggest(tmp_path, session) is None
 
 
@@ -211,3 +211,38 @@ def test_mutation_blind_spots(tmp_path, monkeypatch):
     name = cs._slug("teach", " ".join(f"词{i}字" for i in range(30)))
     import re as _re
     assert _re.match(r"^[a-z0-9][a-z0-9._-]{0,63}$", name)
+
+
+# ---------------------------------------------------------------- 复查修复对赌
+async def test_fix_detection_with_tool_results(tmp_path):
+    """复查修#2 对赌：教学句后跟 tool_result 事件（真实带工具 turn 形态）
+    仍能命中——原实现 users[-1] 恒为 tool_result 导致检测失明。"""
+    session = SessionManager.create(tmp_path, home=tmp_path / "eng_home")
+    session.append_user("以后都先跑测试再提交代码")
+    session.append_event("user", {"role": "user", "content": [
+        {"type": "tool_result", "tool_use_id": "t1", "content": "ok"}]})
+    out = cs.maybe_suggest(tmp_path, session)
+    assert out is not None and out["kind"] == "teach"
+
+
+async def test_fix_skill_dual_write_to_library(client):
+    """复查修#5 对赌：确认后双写——会话工作区（本会话立即生效）+ 平台
+    技能库（跨会话持久，管理面可见）。"""
+    from loadn_webui import skills as platform_skills
+    from loadn_webui.config import PATHS
+    r = await client.post("/api/sessions", json={"title": "双写"})
+    sid = r.json()["session"]["id"]
+    ws = PATHS["workspace"] / sid
+    card = {"kind": "teach", "fingerprint": "fpdw", "name": "dual-write-skill",
+            "description": "d", "body": "内容", "origin_session": sid,
+            "created_at": "now"}
+    (ws / ".loadn").mkdir(parents=True, exist_ok=True)
+    (ws / ".loadn" / "skill-suggest.json").write_text(json.dumps(card))
+    r = await client.post(f"/api/sessions/{sid}/skill-suggest/decide",
+                          json={"accept": True})
+    assert r.status_code == 200 and r.json().get("library")
+    # ①工作区
+    assert (ws / ".agents" / "skills" / "dual-write-skill" / "SKILL.md").exists()
+    # ②平台技能库（available 可见——跨会话）
+    names = {s["name"] for s in platform_skills.available()}
+    assert "dual-write-skill" in names

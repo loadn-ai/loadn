@@ -20,6 +20,11 @@ from ._common import _http_err
 router = APIRouter(prefix="/api")
 
 
+def ws_of(sid: str):
+    from ...config import PATHS
+    return PATHS["workspace"] / sid
+
+
 def _dir_of(domain: str, *, create: bool = False):
     d = mstore.domain_dir_by_key(domain or "", create=create)
     if d is None:
@@ -162,7 +167,10 @@ def message_sources(sid: str, mid: int):
             continue
         eid = str(h.get("id") or "")
         dkey = str(h.get("domain") or "")
-        d, e = mstore.find_entry(dkey, eid)
+        # 复查修#3：project 域按「该会话的项目域目录」解析（域枚举名不是
+        # 目录键——此前 project 命中恒误报已删除）
+        pdir = mstore.memory_dir(ws_of(sid)) if dkey == "project" else None
+        d, e = mstore.find_entry(dkey, eid, project_dir=pdir)
         item = {"id": eid, "domain": dkey,
                 "reason": h.get("reason"),
                 "origin_session": (e or {}).get("origin_session"),

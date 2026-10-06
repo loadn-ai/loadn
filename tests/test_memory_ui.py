@@ -216,3 +216,29 @@ async def test_p7_sources_present_modified_deleted(client):
     assert r.status_code == 200 and r.json()["hits"] == []
     assert (await client.get(
         f"/api/sessions/{sid}/messages/99999/sources")).status_code == 404
+
+
+async def test_fix_project_domain_sources(client, tmp_path, monkeypatch):
+    """复查修#3 对赌：project 域 memory_hits 在 sources API 正确解析——
+    原实现 domain_dir_by_key('project') 恒 None → 项目域全部误报已删除。"""
+    from loadn import memorystore as mstore
+    from loadn_webui.config import PATHS
+    r = await client.post("/api/sessions", json={"title": "项目域来源"})
+    sid = r.json()["session"]["id"]
+    ws = PATHS["workspace"] / sid
+    e = mstore.remember(ws, "项目事实", "入口在 src/app/main.py",
+                        origin_session="sess-p")
+    hits = json.dumps([{"id": e["id"], "domain": "project",
+                        "reason": "project_fact",
+                        "hash": mstore.content_hash8(e["content"])}],
+                      ensure_ascii=False)
+    from loadn_webui import db as db_mod
+    with db_mod.conn() as c:
+        mid = db_mod.add_message(c, session_id=sid, turn_id=None,
+                                 role="assistant", content="回复",
+                                 memory_hits_json=hits)
+    r = await client.get(f"/api/sessions/{sid}/messages/{mid}/sources")
+    h = r.json()["hits"][0]
+    assert h["status"] == "present", "project 域被误报 deleted"
+    assert "src/app/main.py" in h["content"]
+    assert h["origin_session"] == "sess-p"

@@ -126,13 +126,21 @@ def maybe_suggest(cwd: Path, session) -> dict | None:
     返回建议 dict 或 None。同步函数（transcript 读写均为本地 IO）。
     """
     try:
+        if pending_path(cwd).exists():
+            return None                     # 已有未决策卡：不覆盖（单槽保护）
         users, assistants = [], []
         for ev in session.transcript.read_events():
             if ev.get("type") == "user":
                 c = (ev.get("payload") or {}).get("content")
                 if isinstance(c, list):
-                    c = " ".join(str(b.get("text", "")) for b in c
-                                 if isinstance(b, dict))
+                    # 复查修#2：tool_result 块不是人话——只取真人 text 块；
+                    # 整条是 tool_result（无 text）的 user 事件跳过，否则
+                    # 带工具的 turn 里 users[-1] 恒为 tool_result → 检测失明
+                    texts = [str(b.get("text") or "") for b in c
+                             if isinstance(b, dict) and b.get("type") == "text"]
+                    if not texts:
+                        continue
+                    c = " ".join(t for t in texts if t.strip())
                 users.append(str(c or ""))
             elif ev.get("type") == "assistant":
                 c = (ev.get("payload") or {}).get("content")

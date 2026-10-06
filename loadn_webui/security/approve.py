@@ -173,6 +173,27 @@ def create(sid: str, action_type: str, params: dict, note: str = "",
             "ttl_s": ttl_s}
 
 
+def _grant_browser_single_step(sid: str, params_json: str) -> None:
+    """P13 复查修#4：browser_open 批准 → 会话工作区落单步票（一次性、
+    5 分钟有效）。browser_mcp 敏感冻结路径验票消费——只放行下一个动作。"""
+    import json as _json
+    import time as _time
+    try:
+        import json as _j
+        params = _j.loads(params_json or "{}")
+        host = str(params.get("host") or "")
+        if not host:
+            return
+        from ..config import PATHS
+        d = PATHS["workspace"] / sid / ".loadn"
+        d.mkdir(parents=True, exist_ok=True)
+        (d / "browser-allow-once.json").write_text(_json.dumps({
+            "host": host, "exp": _time.time() + 300}),
+            encoding="utf-8")
+    except Exception:                                  # noqa: BLE001 — 票失败不挡批准
+        pass
+
+
 def decide(aid: int, approve: bool, by: str = "user") -> dict:
     """用户裁决。批准 → 生成一次性 6 位码（明文只在本响应出现一次）。"""
     with _conn() as c:
@@ -252,6 +273,8 @@ def decide(aid: int, approve: bool, by: str = "user") -> dict:
                       (_now(), by, code_hash, aid))
             audit("approval_decision", {"id": aid, "decision": "approved"},
                   sid=row["sid"])
+            if row["action_type"] == "browser_open":
+                _grant_browser_single_step(row["sid"], row["params_json"])
             return {"ok": True, "status": "approved", "code": code}
         c.execute("UPDATE approvals SET status='denied', decided_at=?, decided_by=?"
                   " WHERE id=?", (_now(), by, aid))

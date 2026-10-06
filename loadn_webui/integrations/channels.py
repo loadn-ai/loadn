@@ -296,7 +296,7 @@ class ChannelsService:
                           "WHERE chat_id=?", (r["tid"], r["chat_id"]))
 
     def send_reply(self, chat_id: str, text: str) -> None:
-        for i, part in enumerate(split_message(text)):
+        for _i, part in enumerate(split_message(text)):
             self.api.call("sendMessage", {
                 "chat_id": chat_id, "text": part,
                 "parse_mode": "Markdown"})

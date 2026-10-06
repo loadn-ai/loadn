@@ -78,6 +78,8 @@ def write_mcp_json(ws: Path, session_mcp: dict | None) -> None:
         merged["browser"] = {
             "command": str(Path(sys.executable).parent / "loadn-web"),
             "args": ["_browser-mcp"],
+            # P13 复查修#4：敏感冻结的审批请求需要 sid（此前恒空→审批从不建）
+            "env": {"LOADN_BROWSER_SID": ws.name},
         }
     # P3-3：LSP 诊断回注（平台侧 MCP server——引擎拿到 mcp__lsp__diagnostics）
     if CONFIG.security.lsp_enabled and "lsp" not in merged:

@@ -12,8 +12,8 @@ import sqlite3
 
 import pytest
 
-from loadn_webui.integrations import browser_mcp as bm
 from loadn_webui.config import PATHS
+from loadn_webui.integrations import browser_mcp as bm
 
 
 class FakeMouse:
@@ -181,3 +181,34 @@ def test_mutation_blind_spots_budget_edges(monkeypatch, _fake_session):
         bm.tool_p13_type({})
     # dy=0 合法（原地滚动零像素也是动作）
     assert bm.tool_p13_scroll({"dy": 0}) is not None
+
+
+def test_fix_single_step_ticket_release(monkeypatch, _fake_session, tmp_path):
+    """复查修#4 对赌：批准落票 → 冻结验票放行该单步（一次性消费）。"""
+    import time as _t
+    page = _fake_session
+    page.url = "https://bank.example.com/pay"
+    ticket = tmp_path / ".loadn" / "browser-allow-once.json"
+    ticket.parent.mkdir(parents=True, exist_ok=True)
+    ticket.write_text(json.dumps(
+        {"host": "bank.example.com", "exp": _t.time() + 300}))
+    monkeypatch.chdir(tmp_path)                  # MCP server cwd=工作区
+    # 票在 → 该步放行（click 执行 + 自纠回图）
+    out = bm.tool_p13_click({"x": 9, "y": 9})
+    assert ("click", 9, 9) in page.log
+    assert not ticket.exists()                   # 票已消费
+    evs = [a["action"] for a in _cua_audit()]
+    assert "single_step_released" in evs
+    # 下一步（无票）重新冻结
+    with pytest.raises(RuntimeError, match="敏感页冻结"):
+        bm.tool_p13_type({"text": "pwd"})
+    # 过期票不放行
+    ticket.write_text(json.dumps(
+        {"host": "bank.example.com", "exp": _t.time() - 1}))
+    with pytest.raises(RuntimeError, match="敏感页冻结"):
+        bm.tool_p13_type({"text": "pwd2"})
+    # 异域票不放行
+    ticket.write_text(json.dumps(
+        {"host": "other.com", "exp": _t.time() + 300}))
+    with pytest.raises(RuntimeError, match="敏感页冻结"):
+        bm.tool_p13_type({"text": "pwd3"})

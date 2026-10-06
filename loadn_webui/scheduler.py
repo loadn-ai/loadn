@@ -158,6 +158,9 @@ class Scheduler:
             pass
         """触发单个 job：按 kind 分流 + 记账（fires/due_at/终态）。返回是否投递成功。"""
         now = datetime.now(timezone.utc)
+        # P11：内置 job 走专属三防路径（sqlite3.Row 无 .get——keys 判列）
+        if "is_system" in job.keys() and job["is_system"]:
+            return await self.fire_heartbeat(job)
         if (job["kind"] or "message") == "new_session":
             return await self._fire_new_session(job, now)
         return await self._fire_message(job, now)
@@ -287,7 +290,7 @@ class Scheduler:
             self._hb_advance(job, fired=False)
             return False
         # 空转判定：连续空轮计数编在 label 尾标 ×N（_hb_advance 维护）
-        empty = self._heartbeat_last_empty(job)
+        self._heartbeat_last_empty(job)
         empties = 0
         if "×" in (job["label"] or ""):
             try:
