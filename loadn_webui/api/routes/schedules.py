@@ -34,11 +34,14 @@ def create_schedule_global(body: dict):
 @router.patch("/schedules/{jid}")
 def patch_schedule(jid: int, body: dict):
     # 二轮修#13：内置 system job（🫀心跳）禁改——label/cron/max_fires
-    # 是三防的档位参数，改动即绕过降频语义；去重键=恒定形态而非 label
+    # 是三防的档位参数，改动即绕过降频语义；去重键=恒定形态而非 label。
+    # 唯一放行：status-only（暂停/恢复）——提示语「停用走暂停」的兑现，
+    # 暂停心跳 ≠ 永久关闭是两档能力
     from ... import db as _db
     with _db.conn() as _c:
         row = _db.get_job(_c, jid)
-    if row is not None and row["is_system"]:
+    if row is not None and row["is_system"] \
+            and set(body.keys()) - {"status"}:
         raise HTTPException(403, "内置任务（🫀 心跳巡检）不可编辑——"
                                  "停用走暂停，永久关闭删除后即不重建")
     """改 label/prompt/max_fires/status/触发时刻（cron|at|in|every_s）与

@@ -386,10 +386,19 @@ async def test_r2_system_job_guard_and_sentinel(client):
     assert row["cron"] == "7,37 * * * *", "30min 档须双分钟点（7,30=单值 hourly）"
     jid = row["id"]
 
-    # 守卫否定路径：任何字段 PATCH 都 403（fail-closed，不是部分字段白名单）
+    # 守卫否定路径：档位字段 PATCH 都 403（fail-closed，不是部分字段白名单）
     r = await client.patch(f"/api/schedules/{jid}", json={"label": "hack"})
     assert r.status_code == 403 and "不可编辑" in r.json()["detail"]
     r = await client.patch(f"/api/schedules/{jid}", json={"cron": "* * * * *"})
+    assert r.status_code == 403
+    # status-only 放行（「停用走暂停」的兑现）：暂停 → 恢复往返
+    r = await client.patch(f"/api/schedules/{jid}", json={"status": "paused"})
+    assert r.status_code == 200 and r.json()["job"]["status"] == "paused"
+    r = await client.patch(f"/api/schedules/{jid}", json={"status": "active"})
+    assert r.status_code == 200 and r.json()["job"]["status"] == "active"
+    # 夹带私货：status+label 混合 → 仍 403（不是「含 status 即放行」）
+    r = await client.patch(f"/api/schedules/{jid}",
+                           json={"status": "paused", "label": "hack"})
     assert r.status_code == 403
     with db_mod.conn() as c:      # 守卫反转对赌：DB 里真没被改
         assert c.execute("SELECT cron FROM scheduled_jobs WHERE id=?",

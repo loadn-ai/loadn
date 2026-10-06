@@ -15,6 +15,7 @@ export interface ScheduleInfo {
   status: 'active' | 'paused' | 'done';
   title: string | null; profile: string | null; engine: string | null;
   last_fired_at: string | null;
+  is_system?: boolean;      // 内置 job（🫀心跳）：不可编辑档位，可暂停/永久关
 }
 
 function fmtDue(iso: string): string {
@@ -89,7 +90,10 @@ export default function SchedulesTab({ filterSid, onClearFilter }: {
   }
 
   async function del(j: ScheduleInfo) {
-    if (!confirm(`删除定时任务「${j.label || j.prompt.slice(0, 30)}」？`)) return;
+    const tip = j.is_system
+      ? '（内置心跳：删除=永久关闭，重启后不再重建；临时停用请用暂停）'
+      : '';
+    if (!confirm(`删除定时任务「${j.label || j.prompt.slice(0, 30)}」？${tip}`)) return;
     try {
       await api(`/api/schedules/${j.id}`, { method: 'DELETE' });
       await reload();
@@ -213,13 +217,16 @@ function JobRow({ job: j, onAct, onDel, onChanged }: {
                 {j.status === 'active' ? <Pause size={13} /> : <Play size={13} />}
               </button>
             )}
-            {j.status !== 'done' && (
+            {j.status !== 'done' && !j.is_system && (
               <button className="btn ghost sm" title="编辑（标签/指令/触发/目标）"
                       onClick={() => setEditing(v => !v)}>
                 <Pencil size={13} />
               </button>
             )}
-            <button className="btn ghost sm danger-link" title="删除"
+            <button className="btn ghost sm danger-link"
+                    title={j.is_system
+                      ? '永久关闭（删除后重启不重建；暂停可临时停用）'
+                      : '删除'}
                     onClick={() => void onDel(j)}><Trash size={13} /></button>
           </div>
         </td>
