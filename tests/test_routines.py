@@ -114,7 +114,7 @@ async def test_heartbeat_three_guards(client, monkeypatch, tmp_path):
 
 
 # ---------------------------------------------------------------- ③ 安装
-async def test_install_creates_user_schedule(client):
+async def test_install_creates_user_schedule(client, monkeypatch):
     r = await client.get("/api/routines")
     assert r.status_code == 200
     rs = r.json()["routines"]
@@ -123,6 +123,17 @@ async def test_install_creates_user_schedule(client):
         "day_reminder", "repo_daily"}
     ready_map = {x["key"]: x["ready"] for x in rs}
     assert ready_map["morning_brief"] is True      # 无资源声明恒 Ready
+    # Needs setup 语义对赌：notify 通道未配 → day_reminder 报缺项
+    from loadn_webui.config import CONFIG
+    monkeypatch.setattr(CONFIG.notify, "provider", "")
+    r = await client.get("/api/routines")
+    day = next(x for x in r.json()["routines"] if x["key"] == "day_reminder")
+    assert day["ready"] is False and day["missing"] == ["通知通道（设置→通知）"]
+    monkeypatch.setattr(CONFIG.notify, "provider", "bark")
+    r = await client.get("/api/routines")
+    day = next(x for x in r.json()["routines"] if x["key"] == "day_reminder")
+    assert day["ready"] is True
+    monkeypatch.setattr(CONFIG.notify, "provider", "")
     # 一键安装 → 用户 schedule（is_system=0、cron/prompt 来自模板）
     r = await client.post("/api/routines/morning_brief/install")
     assert r.status_code == 200, r.text

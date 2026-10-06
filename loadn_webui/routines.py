@@ -81,8 +81,7 @@ def template_status(t: dict) -> dict:
     """Ready / Needs setup（缺什么）。资源声明映射到平台配置检测。"""
     missing = []
     for res in t.get("resources") or []:
-        if res == "web" and not (CONFIG.resources.proxy or True):
-            missing.append("出网能力（resources.proxy）")
         if res == "notify" and not CONFIG.notify.provider:
             missing.append("通知通道（设置→通知）")
+        # web 无硬依赖（出口走 allowlist/ask 门）——不产生缺配项
     return {"ready": not missing, "missing": missing}
