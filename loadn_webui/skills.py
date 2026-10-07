@@ -129,6 +129,16 @@ def available() -> list[dict]:
             src = _source(p.name)
             if src:
                 item["source"] = src
+                # 七轮修（设定审计#6）：供应链锁状态露出——带 source 的
+                # 外部 skill 受锁保护；锁校验不过会被引擎拒索引（webui
+                # 仍显示=「挂着但 agent 说没有」的不可见故障）。lock_ok=
+                # 锁条目存在且哈希一致
+                from loadn import skilllock
+                locks = skilllock.load_locks()
+                ent = locks.get(p.name)
+                item["pinned"] = ent is not None
+                item["lock_ok"] = bool(
+                    ent and skilllock.skill_hash(md) == ent.get("computedHash"))
             out.append(item)
     return out
 

@@ -45,6 +45,16 @@ def channels_put(body: dict):
     settings_admin._write_section("channels", updates)   # config.yaml 持久化
     for k, v in updates.items():                          # 热生效（轮询线程即读即用）
         setattr(CONFIG.channels, k, v)
+    # 七轮修（设定审计#5）：enabled 切换热起/停轮询线程——原只在 lifespan
+    # 起线程判一次：UI 勾选启用后实际收不到消息直到重启（注释宣称热生效
+    # 只对白名单成立）。重启线程前 stop 旧的（旧线程长轮询醒来即退；短暂
+    # 双线程窗口 Telegram 侧 409 退避可忍）
+    if "telegram_enabled" in updates:
+        from ...integrations.channels import get_service
+        svc = get_service(None)
+        svc.stop()
+        if updates["telegram_enabled"]:
+            svc.start()
     return {"ok": True}
 
 

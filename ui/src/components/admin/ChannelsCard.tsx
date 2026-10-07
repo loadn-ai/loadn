@@ -2,9 +2,11 @@
 // 轮询状态/最近错误 + getMe 健康探测。WhatsApp/Signal 预留位未实现。
 import { useEffect, useState } from 'react';
 import { api } from '../../api/client';
+import { useStore } from '../../stores/sessions';
 
 interface ChanCfg { telegram_enabled: boolean; telegram_allow: string[]; token_set: boolean }
 interface ChanStat { running: boolean; last_ok: string; last_error: string; processed: number; backoff_s: number }
+interface ChanBind { chat_id: string; session_id: string; last_turn_id: number; created_at: string }
 
 export default function ChannelsCard() {
   const [cfg, setCfg] = useState<ChanCfg | null>(null);
@@ -12,11 +14,14 @@ export default function ChannelsCard() {
   const [allow, setAllow] = useState('');
   const [token, setToken] = useState('');
   const [msg, setMsg] = useState('');
+  const [binds, setBinds] = useState<ChanBind[]>([]);
+  const openSession = useStore(s => s.openSession);
 
   async function reload() {
     try {
-      const d = await api<{ config: ChanCfg; status: ChanStat }>('/api/admin/channels');
-      setCfg(d.config); setStat(d.status);
+      const d = await api<{ config: ChanCfg; status: ChanStat; bindings: ChanBind[] }>(
+        '/api/admin/channels');
+      setCfg(d.config); setStat(d.status); setBinds(d.bindings || []);
       setAllow((d.config.telegram_allow || []).join(', '));
     } catch { /* 面板不可达静默 */ }
   }
@@ -33,7 +38,7 @@ export default function ChannelsCard() {
           body: JSON.stringify({ token: token.trim() }) });
         setToken('');
       }
-      setMsg('已保存（重启平台后轮询线程按新配置启动）');
+      setMsg('已保存（启停即时生效；白名单即时生效）');
       void reload();
     } catch (e) { setMsg(`保存失败：${String(e)}`); }
   }
@@ -76,6 +81,22 @@ export default function ChannelsCard() {
           {stat.last_ok ? ` · 最近成功 ${stat.last_ok.slice(11, 19)}` : ''}
           {stat.last_error ? ` · 最近错误：${stat.last_error}` : ''}
           {stat.backoff_s ? ` · 退避 ${stat.backoff_s}s` : ''}
+        </div>
+      )}
+      {binds.length > 0 && (
+        <div className="setting-row" style={{ flexDirection: 'column', alignItems: 'stretch' }}>
+          <label>会话绑定（{binds.length}）</label>
+          {binds.map(b => (
+            <div key={b.chat_id} className="row"
+                 style={{ justifyContent: 'space-between', fontSize: 12 }}>
+              <a className="link" onClick={() => void openSession(b.session_id)}
+                 title={b.session_id}>
+                chat {b.chat_id} → {b.session_id.slice(0, 18)}
+              </a>
+              <span className="muted">游标 turn #{b.last_turn_id}</span>
+            </div>
+          ))}
+          <span className="muted">解绑在 Telegram 侧发 /unbind</span>
         </div>
       )}
     </div>

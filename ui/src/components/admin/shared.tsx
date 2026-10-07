@@ -4,6 +4,8 @@ export type AdminTab = 'skills' | 'tools' | 'settings' | 'schedules' | 'webhooks
 export interface SkillItem {
   name: string; description: string; mtime: string; disabled: boolean;
   source?: { via: string; repo?: string; subpath?: string; installed_at?: string };
+  pinned?: boolean;      // 七轮：供应链锁状态（外部 skill 受 rug-pull 防护）
+  lock_ok?: boolean;     // false=哈希不匹配——引擎已拒索引（页面仍显示）
 }
 export interface McpServer { name: string; spec: Record<string, any>; sessions_overriding: number; session_only?: boolean }
 export interface ProfileTools { name: string; description: string; disallowed_tools: string[] }

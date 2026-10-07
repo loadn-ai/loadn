@@ -187,7 +187,12 @@ function JobRow({ job: j, onAct, onDel, onChanged }: {
     <>
       <tr className="clickable">
         <td>
-          <div className="sched-label">{j.label || '（无标签）'}</div>
+          <div className="sched-label">
+            {j.label || '（无标签）'}
+            {j.is_system && (j.label || '').includes('🫀·low')
+              ? <span className="chip" title="连续 3 轮无产出已降频为 2h（有产出自动恢复 30min）">降频中</span>
+              : null}
+          </div>
           <div className="sched-prompt" title={j.prompt}>{j.prompt.slice(0, 60)}</div>
         </td>
         <td>
@@ -551,9 +556,11 @@ export function RoutinesLib() {
   }, []);
   async function install(key: string) {
     try {
-      const d = await api<{ job: { id: number; label: string } }>(
+      const d = await api<{ job: { id: number; label: string }; existing?: boolean }>(
         `/api/routines/${key}/install`, { method: 'POST' });
-      setMsg(`已安装「${d.job.label}」为你的定时任务（可在上方列表编辑）`);
+      setMsg(d.existing
+        ? `「${d.job.label}」此前已安装——已定位既有任务（未重复创建）`
+        : `已安装「${d.job.label}」为你的定时任务（可在上方列表编辑）`);
     } catch (e) { setMsg(`安装失败：${String(e)}`); }
   }
   if (!items.length) return null;

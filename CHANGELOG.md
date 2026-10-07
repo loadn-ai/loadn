@@ -5,6 +5,23 @@
 
 ## [0.6.26] - 2026-10-07
 
+- **浏览器级 e2e 补面 + 设定↔UI 全量审计补齐（9 项 UI 能力）**：
+  ①新增 tests/e2e_ui/（playwright chromium headless 连真 uvicorn+fake
+  引擎，零 token）三条旅程：SSE 流渲染+resync 快照消费不清空（六轮修
+  A1 的运行时对赌）、审批卡实时出现不刷新（A2 对赌）、「始终允许·确切
+  →策略落库（P10 新 UI 对赌）——前端从此有运行时验证面（此前仅 tsc
+  +build，resync 清空这类纯运行时 bug 无测试可抓）②**P10 per-target
+  三档补全 UI**（设定审计最大缺口：审批卡加「始终允许·确切/域名+动作/
+  目标全放行」三键 + 安全中心「目标放行策略」管理卡——list/改档/删/
+  手工建/skill targets 只读建议；此前全链零 UI）③**P12 技能建议卡**
+  （SkillSuggestCard：引擎检测教学/纠错 → 会话内可编辑卡片 → 确认固化
+  （过八类扫描）/拒绝（7 天抑制）——闭环此前断在决策端）④Telegram
+  启停**热起轮询线程**（原勾选启用后实际收不到消息直到重启）⑤skills
+  供应链锁状态露出（pinned/lock_ok 字段+徽标——「挂着但 agent 说没有」
+  的不可见故障可见化）⑥记忆 draft「待确认」角标⑦渠道卡会话绑定表
+  （chat↔会话+游标）⑧heartbeat 降频「降频中」徽标⑨routines 安装
+  existing 幂等文案区分。审计确认已良好覆盖：egress 三态/白名单/授权、
+  KILL_ALL、webhook、审计链、MCP、引擎切换、vault/成本/notify 等。
 - **六轮复查批（前后端契约 diff+修复对抗复审，12 项）**：换三新方法论
   ——前端 ui/src 从未系统审查过 + 近六 commit 的修复本身是最大新 bug 面。
   ①**resync 空载荷清空会话**（Critical：删/改消息发 {}，前端当全量快照

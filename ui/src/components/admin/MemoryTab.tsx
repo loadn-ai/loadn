@@ -6,7 +6,7 @@ import ReactMarkdown from 'react-markdown';
 import { api } from '../../api/client';
 import { Plus } from '../icons';
 
-interface Entry { id: string; summary: string; content?: string; origin_session: string; created_at: string }
+interface Entry { id: string; summary: string; content?: string; origin_session: string; created_at: string; draft?: boolean }
 interface Ver { hash: string; date: string; subject: string }
 
 export default function MemoryTab() {
@@ -103,7 +103,9 @@ export default function MemoryTab() {
           {entries.map(e => (
             <div key={e.id} className={`hub-card slim${sel?.id === e.id ? ' on' : ''}`}
               onClick={() => pick(e)} role="button">
-              <b>{e.summary}</b>
+              <b>{e.summary}{e.draft
+                ? <span className="chip" title="压缩后反思的候选教训——保存编辑即转正">待确认</span>
+                : null}</b>
               <div className="sk-foot">
                 <span className="sk-time">{e.origin_session.slice(0, 18)} · {e.created_at?.slice(5, 16)}</span>
                 <span className="sk-actions">

@@ -79,7 +79,10 @@ export default function SkillsTab() {
                     <b>{s.name}</b>
                     {s.disabled && <span className="sk-src off-tag">已禁用</span>}
                     <span className={`sk-src ${s.source ? 'ext' : 'local'}`}>
-                      {s.source ? (s.source.repo ?? s.source.via) : '本地'}
+                      {s.source
+                        ? (s.source.repo ?? s.source.via)
+                          + (s.lock_ok === false ? ' ⚠锁校验失败' : ' 🔒')
+                        : '本地'}
                     </span>
                   </div>
                   <div className="sk-desc" title={zh[s.name] ? s.description : undefined}>

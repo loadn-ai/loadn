@@ -419,3 +419,28 @@ async def test_r6_resync_carries_snapshot(client):
         assert "turns" in data and "session" in data
     finally:
         ENGINE.unsubscribe(sid, q)
+
+
+async def test_r7_channels_put_toggles_poll_thread(client, monkeypatch):
+    """七轮（设定审计#5）对赌：PUT /channels 切 enabled 热起/停轮询线程
+    （原只在 lifespan 判一次——UI 勾选启用后实际收不到消息直到重启）。"""
+    from loadn_webui.integrations.channels import get_service, reset_service
+    reset_service()
+    svc = get_service(None)
+    try:
+        r = await client.put("/api/admin/channels",
+                             json={"telegram_enabled": True})
+        assert r.status_code == 200
+        assert svc.status["running"] is True          # 线程已起
+        r = await client.put("/api/admin/channels",
+                             json={"telegram_enabled": False})
+        assert r.status_code == 200
+        # stop 置位（线程退出要等长轮询醒——不 join，断言标志语义）
+        for _ in range(50):
+            if svc.status["running"] is False:
+                break
+            await asyncio.sleep(0.1)
+        assert svc.status["running"] is False
+    finally:
+        svc.stop()
+        reset_service()
