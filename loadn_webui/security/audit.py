@@ -17,6 +17,7 @@ from __future__ import annotations
 import hashlib
 import json
 import sqlite3
+import threading
 from datetime import datetime, timezone
 from pathlib import Path
 
@@ -163,6 +164,9 @@ def _canonical(ts: str, sid: str | None, turn_id: int | None,
         ensure_ascii=False, sort_keys=True, separators=(",", ":"))
 
 
+_CHAIN_LOCK = threading.Lock()   # 链尾读→INSERT 的进程内串行（三轮修）
+
+
 def _row_hash(prev: str, canonical: str) -> str:
     return hashlib.sha256((prev + "|" + canonical).encode("utf-8")).hexdigest()
 
@@ -178,8 +182,12 @@ def audit(type_: str, detail: dict, *, sid: str | None = None,
     # 里的 token 一律 ***；哈希链在脱敏后文本上计算，校验天然一致）
     from .net_policy import redact as _redact
     detail_json = _redact(detail_json)
+    # 三轮修：链尾取读与 INSERT 须同写事务——生产审计库实证 3 处链分叉
+    # （两行 prev_hash 相同=两写者同毫秒都取到同一旧尾）。进程内 threading
+    # 锁 + BEGIN IMMEDIATE 跨连接/跨进程双保险；_maybe_anchor 在锁外
     try:
-        with _conn() as c:
+        with _CHAIN_LOCK, _conn() as c:
+            c.execute("BEGIN IMMEDIATE")
             # 链尾=全部表中 ts 最新的一行（分表各表 id 独立——旧法逐表
             # 循环在存在历史主表时永远取旧尾，月表 prev 全错——生产实测教训）
             tables = _all_tables(c)

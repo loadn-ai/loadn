@@ -838,11 +838,18 @@ class Engine:
         except Exception:
             log.exception("产物扫描失败 sid=%s", sid)
         await self._publish_files(sid, tid, at)
-        with db_mod.conn() as c:
-            removed = db_mod.prune_events(c, sid, CONFIG.run.events_retain_days)
-        if removed:
-            log.info("事件清理 sid=%s 删除 %d 行（保留 %.1f 天）",
-                     sid, removed, CONFIG.run.events_retain_days)
+        # 三轮修：prune 是收尾侧支——失败不得把已 done 的 turn 覆写成
+        # error（原异常直穿 _session_worker 兜底 handler：DB 记 done→error、
+        # SSE 先 turn_done 后 turn_error，下游按 status 消费的全部误判）
+        try:
+            with db_mod.conn() as c:
+                removed = db_mod.prune_events(c, sid,
+                                              CONFIG.run.events_retain_days)
+            if removed:
+                log.info("事件清理 sid=%s 删除 %d 行（保留 %.1f 天）",
+                         sid, removed, CONFIG.run.events_retain_days)
+        except Exception:
+            log.exception("事件清理失败（不影响终态）sid=%s", sid)
 
     # ------------------------------------------------------------ 生命周期（daemon 独立重启）
     def requeue(self, sid: str, tid: int) -> None:

@@ -159,6 +159,14 @@ def _manifest(dir_: Path) -> dict:
     return {"entries": [], "boundary": {}}
 
 
+def _atomic_write(path: Path, text: str) -> None:
+    """三轮修：tmp+rename 原子写——进程写一半被杀不留截断文件（skilllock
+    / manifest 同族防线）。"""
+    tmp = path.with_name(path.name + ".tmp")
+    tmp.write_text(text, encoding="utf-8")
+    tmp.replace(path)
+
+
 def _save_manifest(dir_: Path, m: dict) -> None:
     dir_.mkdir(parents=True, exist_ok=True)
     tmp = dir_ / "manifest.json.tmp"
@@ -302,6 +310,11 @@ def _forget_dir(dir_: Path, keyword: str, *, event_sink=None,
     if user_domain and not user_enabled():
         return 0                         # off：用户域零读写
     with _domain_lock(dir_) as locked:
+        if not locked:
+            # 三轮修：fail-closed——锁忙时放弃删除（原"体照跑"：超时后
+            # 无锁整文件 RMW 会覆盖并发 remember 的新条目=已删条目复活/
+            # 新条目变孤儿）
+            return 0
         m = _manifest(dir_)
         keep, removed = [], []
         # 词级匹配：指令剥词后语序常与库内相反（「忘掉 pytest 偏好」vs 摘要
@@ -369,13 +382,20 @@ def _remember_dir(dir_: Path, summary: str, content: str, *, origin_session: str
     (dir_).mkdir(parents=True, exist_ok=True)
     (dir_ / fname).write_text(
         f"---\nid: {eid}\nsummary: {summary}\n"
-        f"origin_session: {origin_session}\nreason: {reason or 'inferred'}\n"
+        f"origin_session: {origin_session}\n"
+        f"reason: {' '.join((reason or 'inferred').split())}\n"
         f"created_at: {time.strftime('%Y-%m-%dT%H:%M:%S')}\n---\n\n{content}\n",
         encoding="utf-8")
     # P5 并发安全：manifest 读改写+LRU 淘汰+commit 全段在域锁内（用户域是
-    # 全局目录，多会话进程/线程并发写是常态）。锁超时：文件已写、manifest
-    # 照更（回落旧的窄竞态），仅放弃本次 commit（下趟 add -A 补提交）
+    # 全局目录，多会话进程/线程并发写是常态）。三轮修：锁超时 fail-closed
+    # 放弃 manifest 变更（原"照更"的超时路径无锁整文件 RMW——与持锁方的
+    # 写互相覆盖=丢条目/复活；.md 已写无妨：不进 manifest 即不注入）
     with _domain_lock(dir_) as locked:
+        if not locked:
+            if event_sink:
+                event_sink("memory_blocked", {"summary": summary[:80],
+                                              "why": "domain_lock_busy"})
+            return None
         m = _manifest(dir_)
         # P7 幂等：同 id（同内容重抽）原位更新而非重复入库
         dup = next((x for x in m.get("entries") or [] if x.get("id") == eid), None)
@@ -518,7 +538,9 @@ def edit_entry(dir_: Path, eid: str, *, content: str | None = None,
     """编辑条目（正文/摘要；frontmatter 其余字段与溯源保留）。
     护栏重跑：命中即拒（fail-closed，不部分写入）。保存即 commit
     `memory: manual:<actor> 编辑 <id>`。"""
-    new_summary = (summary or "").strip() or None
+    # 三轮修：单行化（#15/#16 修了 remember 通道，编辑通道漏——多行
+    # summary 使 parse_frontmatter 在首个 \n--- 提前闭合=元数据全灭/伪键注入）
+    new_summary = " ".join((summary or "").split()) or None
     with _domain_lock(dir_) as locked:
         m = _manifest(dir_)
         e = next((x for x in m.get("entries") or [] if x.get("id") == eid), None)

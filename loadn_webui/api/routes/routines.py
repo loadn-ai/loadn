@@ -36,6 +36,14 @@ def install_routine(key: str, body: dict = None):
     except ValueError as e:
         raise HTTPException(400, str(e)) from None
     with db_mod.conn() as c:
+        # 三轮修：幂等——同模板已装未终态（active/paused）→ 返回既有行
+        # （原无条件 create：前端双击/网关重发=每天双份晨报双会话双推送）
+        row = c.execute(
+            "SELECT * FROM scheduled_jobs WHERE label=? AND is_system=0 "
+            "AND status IN ('active','paused') ORDER BY id LIMIT 1",
+            (t["name"],)).fetchone()
+        if row is not None:
+            return {"ok": True, "job": db_mod.to_dict(row), "existing": True}
         jid = db_mod.create_job(
             c, kind="new_session", label=t["name"],
             prompt=str(body.get("prompt") or t["prompt"]),

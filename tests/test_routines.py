@@ -102,21 +102,30 @@ async def test_heartbeat_three_guards(client, monkeypatch, tmp_path):
     job4 = _get(hb)
     assert "🫀·low" in job4["label"]
     assert job4["cron"].split()[1].startswith("*/2") or "*/2" in job4["cron"]
-    # 已降频后：再触发不重复降频、不投递（计数继续）
-    label_before = job4["label"]
+    # 三轮修新语义：低频档空转**照投**（2h 探针自愈——否则 ×3 后永久停投）
     fired = await sched.fire_heartbeat(job4)
-    assert fired is False
+    assert fired is True
     job5 = _get(hb)
-    assert job5["label"].startswith(label_before.split(" ×")[0])
-    # 二轮修#2 对赌：实投成功清零 ×N（假 ×2 垫高→实投→label 归净）
+    assert "×" not in job5["label"]            # 实投清零计数
+    assert "🫀·low" not in job5["label"]       # 探针投出 → 恢复高频档
+    assert job5["cron"] == "7,37 * * * *"
+    # 垫高 ×2 → 上一轮有产出（造真 assistant 文本）→ 不计数照投 → 清零
     with db_mod.conn() as c:
+        c.execute("UPDATE turns SET status='done'")
         db_mod.update_job(c, hb, label="🫀 心跳巡检 ×2",
                           due_at="2000-01-01T00:00:00")
+        sid5 = _get(hb)["session_id"]
+        assert sid5                             # 三轮修：实投回填 sid
+        tid = c.execute("INSERT INTO turns(session_id,status,mode) "
+                        "VALUES(?, 'done','background')", (sid5,)).lastrowid
+        c.execute("INSERT INTO messages(session_id,turn_id,role,content) "
+                  "VALUES(?,?, 'assistant', ?)",
+                  (sid5, tid, "巡检完成：三服务健康，无新增告警项。" * 2))
     job_x = _get(hb)
     fired = await sched.fire_heartbeat(job_x)
     assert fired is True
     assert _get(hb)["label"] == "🫀 心跳巡检"      # 实投清零
-    # 正常态（无 running turn、无 ×3）：实投（new_session 真路径）
+    # 正常态（无 running turn、上轮有产出）：实投（new_session 真路径）
     with db_mod.conn() as c:
         c.execute("UPDATE turns SET status='done'")
         db_mod.update_job(c, hb, label="🫀 心跳巡检",
@@ -229,3 +238,60 @@ async def test_r2_row_path_and_killall(client, monkeypatch):
         assert await sched.fire(row2) is False    # 熔断生效（不再 fail-open）
     finally:
         (PATHS["run"] / "KILL_ALL").unlink(missing_ok=True)
+
+
+async def test_r3_heartbeat_empties_counted_via_real_path(client, monkeypatch):
+    """三轮修对赌：空转计数走**真路径**——真投一轮（无产出）→ 下轮 fire
+    判定上轮空 → ×1 且不投（原 _heartbeat_last_empty 返回值被丢弃、
+    _hb_advance 无 count=True 调用点，×N 恒 0，三防②③全死——旧测试
+    手工改 label 垫 ×3 才绿，正是盲区）。"""
+    from loadn_webui import db as db_mod
+    eng = FakeEngine()
+    sched = Scheduler(eng)
+    with db_mod.conn() as c:
+        c.execute("UPDATE turns SET status='done'")   # 清 busy
+        hb = db_mod.create_job(c, kind="new_session", label="🫀 心跳巡检",
+                               prompt="x", cron="7,37 * * * *",
+                               due_at="2000-01-01T00:00:00",
+                               profile="assistant", is_system=1)
+    # 第一轮：无 ×、无 sid → 真投（FakeEngine 不产 assistant 消息=空会话）
+    fired = await sched.fire_heartbeat(_get(hb))
+    assert fired is True
+    sid = _get(hb)["session_id"]
+    assert sid                                   # 实投回填（判定的数据源）
+    # 模拟引擎落账：done turn 无 assistant 文本（空产出形态）
+    with db_mod.conn() as c:
+        c.execute("INSERT INTO turns(session_id,status,mode) "
+                  "VALUES(?, 'done','background')", (sid,))
+    # 第二轮：上轮空 → ×1 且不投
+    fired = await sched.fire_heartbeat(_get(hb))
+    assert fired is False
+    job2 = _get(hb)
+    assert job2["label"].endswith("×1"), job2["label"]
+    assert job2["session_id"] == sid
+    # 第三轮：仍空 → ×2；第四轮 ×3 → 降频（cron 2h + 🫀·low）
+    await sched.fire_heartbeat(_get(hb))
+    assert _get(hb)["label"].endswith("×2")
+    await sched.fire_heartbeat(_get(hb))
+    job4 = _get(hb)
+    assert "🫀·low" in job4["label"] and "*/2" in job4["cron"]
+
+
+async def test_r3_install_idempotent(client):
+    """三轮修对赌：同模板连续 install 两次 → 单行 job（原双击/重发=每天
+    双份晨报双会话双推送），返回 existing 标记。"""
+    from loadn_webui import db as db_mod
+    with db_mod.conn() as c:      # 全量序自净：前序测试可能已装过晨报
+        c.execute("DELETE FROM scheduled_jobs WHERE label='晨报' "
+                  "AND is_system=0")
+    r1 = await client.post("/api/routines/morning_brief/install")
+    assert r1.status_code == 200 and r1.json().get("existing") is not True
+    r2 = await client.post("/api/routines/morning_brief/install")
+    assert r2.status_code == 200 and r2.json().get("existing") is True
+    assert r1.json()["job"]["id"] == r2.json()["job"]["id"]
+    label = r1.json()["job"]["label"]
+    with db_mod.conn() as c:
+        n = c.execute(
+            "SELECT COUNT(*) AS n FROM scheduled_jobs WHERE label=? "
+            "AND is_system=0", (label,)).fetchone()["n"]
+    assert n == 1

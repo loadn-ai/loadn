@@ -97,7 +97,7 @@ class OpencodeSpec(EngineSpec):
         # fresh 不传任何 session flag（引擎自建会话）；resume 携带 engine 侧登记的 id
         if call.resume and call.session_id:
             cmd += ["--session", call.session_id]
-        cmd.append(call.prompt)   # argv[-1] 契约
+        cmd += ["--", call.prompt]   # 三轮修：-- 终结符 + argv[-1] 契约
         return cmd, self.build_env(call)
 
     def new_session_id(self) -> str:

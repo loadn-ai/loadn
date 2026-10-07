@@ -138,6 +138,16 @@ class Scheduler:
         jobs = []
         with db_mod.conn() as c:
             jobs = db_mod.due_jobs(c, iso())
+        # 三轮修：顺带过期审批清扫（原纯惰性过期——会话结束后无人触发，
+        # 生产 23 行 pending 全部超 TTL 僵尸；一条 UPDATE 量级，20s 一轮
+        # 无感）。失败静默（sweep 内部兜底）
+        try:
+            from .security.approve import sweep_expired
+            swept = sweep_expired()
+            if swept:
+                log.info("审批过期清扫：%d 行 pending → expired", swept)
+        except Exception:                              # noqa: BLE001
+            pass
         n = 0
         for job in jobs:
             try:
@@ -161,7 +171,23 @@ class Scheduler:
                 return False
         except (OSError, ImportError):
             pass
+        # 三轮修：先 claim 再投递——把 due_at 预推一档缓冲（cron 重算/
+        # every+间隔；单次推到远未来）。副作用（建会话/submit/steer）成功
+        # 后 _settle 正常记账覆盖；**半途失败**（submit 抛/settle 写失败）
+        # 时 due_at 已离开过去——原形态下 job 每 20s 被 due_jobs 重新选中，
+        # new_session 类每轮造一个孤儿会话+整套 workspace，IO 降级持续
+        # 多久堆多久（故障注入侦查实证）。claim 自身的失败原样上抛（tick
+        # 记日志，下轮再试——不投递不放大）。
         now = datetime.now(timezone.utc)
+        try:
+            claim_due = _next_due(job, now) or (now + _timedelta_s(86400)
+                                                ).isoformat(timespec="seconds")
+            with db_mod.conn() as c:
+                db_mod.update_job(c, job["id"], due_at=claim_due)
+            job = {**job, "due_at": claim_due}
+        except Exception:                              # noqa: BLE001 — claim 失败不投
+            log.exception("job %s claim 失败（本轮跳过）", job["id"])
+            return False
         # P11：内置 job 走专属三防路径（sqlite3.Row 无 .get——keys 判列）
         if "is_system" in job.keys() and job["is_system"]:
             return await self.fire_heartbeat(job)
@@ -214,6 +240,11 @@ class Scheduler:
         await self.engine.submit(sid, self._wrap(job, now), mode="background")
         log.info("job %s 新建会话 %s（%s%s）", job["id"], sid, prof.name,
                  f"/{job['engine']}" if job["engine"] else "")
+        # 三轮修：回填 session_id——heartbeat 的空转判定（上一轮会话有无
+        # 产出）靠它；不回填则 new_session 恒无据可查（三防②③的原死因
+        # 之二）。普通 new_session job 回填同样合理（列表可点进最新实例）
+        with db_mod.conn() as c:
+            db_mod.update_job(c, job["id"], session_id=sid)
         return await self._settle(job, now, sid, new_sid=sid)
 
     async def _settle(self, job, now: datetime, sid: str | None, *,
@@ -296,17 +327,24 @@ class Scheduler:
             # 死代码，实投从不清零）
             self._hb_advance(job, fired=False, count=False)
             return False
-        # 空转判定：连续空轮计数编在 label 尾标 ×N（_hb_advance 维护）
-        self._heartbeat_last_empty(job)
+        # 三轮修：空转计数接线（原 _heartbeat_last_empty 返回值被丢弃且
+        # _hb_advance 无 count=True 调用点——×N 恒 0，三防②③全是死代码，
+        # 测试靠手工改 label 才绿）。语义：本轮 fire 时查**上一轮** heartbeat
+        # 会话产出——空 → ×N+1 且本轮不投（三防②省钱）；连续 3 次 → 降频
+        # 2h（三防③）；低频档空转**照投**（2h 探针自愈，否则 ×3 后永久
+        # 停投）；实投有产出 → 清 ×N 并恢复高频档。
+        low = self.HEARTBEAT_LOW_FREQ_MARK in (job["label"] or "")
+        last_empty = self._heartbeat_last_empty(job)
         empties = 0
         if "×" in (job["label"] or ""):
             try:
                 empties = int(job["label"].rsplit("×", 1)[-1].strip())
             except ValueError:
                 empties = 0
-        if empties >= 3:                       # 三防③：连续 3 轮无产出
-            low = self.HEARTBEAT_LOW_FREQ_MARK in (job["label"] or "")
-            if not low:
+        if last_empty and not low:
+            self._hb_advance(job, fired=False, count=True)   # ×N+1（推 due）
+            empties += 1
+            if empties >= 3:                   # 三防③：连续 3 轮无产出
                 with db_mod.conn() as c:
                     db_mod.update_job(
                         c, job["id"],
@@ -316,21 +354,31 @@ class Scheduler:
                 audit("policy_change", {"action": "heartbeat_lowfreq",
                                         "job": job["id"]})
                 log.warning("heartbeat：连续 3 轮无产出，降频为 2h（面板可查）")
-                job = {**job, "label": f"{self.HEARTBEAT_LOW_FREQ_MARK}"
-                       f"{job['label']}", "cron": "5 */2 * * *"}
-            self._hb_advance(job, fired=False, count=False)
-            return False
+            return False                       # 三防②：空转轮不投递
         # 投递（new_session 复用现有路径，prompt 用巡检模板）
         now = datetime.now(timezone.utc)
         fired = await self._fire_new_session(
             {**job, "prompt": heartbeat_prompt(),
              "profile": job["profile"] or "assistant",
              "label": job["label"] or "🫀 心跳巡检"}, now)
-        if fired and "×" in (job["label"] or ""):
-            # 二轮修#2：实投成功清零连续无产出计数（×N 从此=真·连续）
+        if fired:
             with db_mod.conn() as c:
-                db_mod.update_job(c, job["id"],
-                                  label=job["label"].split(" ×")[0])
+                updates = {}
+                if "×" in (job["label"] or ""):
+                    # 二轮修#2：实投成功清零连续无产出计数（×N=真·连续）
+                    updates["label"] = job["label"].split(" ×")[0]
+                if low:
+                    # 三轮修：低频档实投（上一轮有产出才走到这——空转分支
+                    # 已 return）→ 恢复高频 30min 档
+                    base = (updates.get("label") or job["label"]).replace(
+                        self.HEARTBEAT_LOW_FREQ_MARK, "")
+                    updates["label"] = base
+                    updates["cron"] = "7,37 * * * *"
+                    from .security.audit import audit
+                    audit("policy_change", {"action": "heartbeat_highfreq",
+                                            "job": job["id"]})
+                if updates:
+                    db_mod.update_job(c, job["id"], **updates)
         return fired
 
     def _heartbeat_last_empty(self, job) -> bool:

@@ -188,7 +188,9 @@ async def test_new_session_job(sched, client):
         sid = row["id"]
         msgs = [m["content"] for m in db_mod.list_messages(c, sid) if m["role"] == "user"]
     assert job["fires"] == 1 and job["status"] == "done"
-    assert job["session_id"] is None            # 不回填：递归时每次建全新会话
+    # 三轮修：回填最新实例 sid（heartbeat 空转判定的数据源；递归仍每次
+    # 建全新会话——见 recurring 测试）
+    assert job["session_id"] == sid
     assert any("【定时唤醒】" in m for m in msgs)
     await _wait_jobs_done(sched, sid, n_turns=1)
 
@@ -314,9 +316,10 @@ async def test_api_global_endpoints(client):
     mine = [x for x in rows if x["id"] == mid][0]
     assert mine["session_title"] == "全局调度"
     assert mine["cron_desc"] == "每 5 分钟"
-    newones = [x for x in rows if x["kind"] == "new_session"]
-    assert all(x["session_title"] is None for x in newones)
-    assert any(x["cron_desc"] == "每天 20:00" for x in newones)
+    # 三轮修：session_id 回填后，全表 new_session 的 title 取决于是否
+    # 触发过（前序测试的 job 共享 db）——只断言本测试自建的 20:00 job
+    mine_new = next(x for x in rows if x["cron_desc"] == "每天 20:00")
+    assert mine_new["session_title"] is None      # 未到点未触发：无绑定
 
 
 async def test_api_patch_reschedule(client):
@@ -423,3 +426,35 @@ async def test_r2_system_job_guard_and_sentinel(client):
     with db_mod.conn() as c:
         assert c.execute("SELECT COUNT(*) AS n FROM scheduled_jobs WHERE "
                          "is_system=1").fetchone()["n"] == 1
+
+
+async def test_r3_fire_claim_prevents_storm(sched, client, monkeypatch):
+    """三轮修对赌：fire 半途失败（submit 抛）→ due_at 已被 claim 预推——
+    第二次 tick 不重选该 job（原形态：settle 未达，due_at 留在过去，每
+    20s 重投一次，new_session 类每轮造一个孤儿会话）。"""
+    from loadn_webui.util import iso
+
+    class _BoomEngine:
+        async def submit(self, sid, text, mode="foreground", attachments=None):
+            raise OSError("磁盘满（模拟）")
+
+    jid = _make_job(None, iso(), kind="new_session", title="孤儿风暴",
+                    prompt="跑巡检", max_fires=100)
+    boom = Scheduler(_BoomEngine())
+    with db_mod.conn() as c:
+        n0 = c.execute("SELECT COUNT(*) AS n FROM sessions").fetchone()["n"]
+    with db_mod.conn() as c:
+        job_row = db_mod.get_job(c, jid)
+    n_fired0 = await boom.tick()               # 生产路径：tick 兜底吞异常
+    assert n_fired0 == 0                        # submit 抛 → 无成功触发
+    with db_mod.conn() as c:
+        job = db_mod.get_job(c, jid)
+        n1 = c.execute("SELECT COUNT(*) AS n FROM sessions").fetchone()["n"]
+    assert n1 == n0 + 1                         # 第一轮的孤儿已产生（沉没）
+    assert job["due_at"] > iso(), "claim 须预推 due_at 离开过去"
+    # 第二次 tick：job 不再被选中（不再造孤儿）
+    n_fired = await boom.tick()
+    assert n_fired == 0
+    with db_mod.conn() as c:
+        n2 = c.execute("SELECT COUNT(*) AS n FROM sessions").fetchone()["n"]
+    assert n2 == n1, "due_at 已推走——不产生 20s 重投风暴"

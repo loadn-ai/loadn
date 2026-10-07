@@ -5,6 +5,30 @@
 
 ## [0.6.26] - 2026-10-07
 
+- **三轮多方法论复查修复批（并发红线 6+高/中 5 项）**：故障注入/
+  并发时序矩阵/序列化边界/重启幂等/生产数据逆向五路侦查——①**审批并发
+  双写**（decide/consume 的 SELECT→UPDATE 无写事务无守卫：Telegram 轮询
+  线程×webui 线程池双开时否决可盲写覆盖批准、同码可双消费=不可逆动作
+  双执行）→ BEGIN IMMEDIATE 串行化 + UPDATE 带 status 守卫 + changes()
+  核对②**审计哈希链并发分叉**（生产库实证 3 处两行 prev_hash 相同——
+  SELECT 链尾与 INSERT 之间无锁）→ 进程内 threading.Lock + BEGIN
+  IMMEDIATE 双保险③**heartbeat 空转计数是死代码**（_heartbeat_last_empty
+  返回值被丢弃且 _hb_advance 无 count=True 调用点——三防②③从未生效，
+  旧测试手工改 label 才绿）→ 真路径接线 + 实投回填 session_id + 低频档
+  2h 探针自愈（防 ×3 后永久停投）+ 产出恢复高频④**调度 fire 半途失败
+  20s 重投风暴**（settle 在副作用后：submit 抛/记账写失败时 due_at 留在
+  过去，new_session 类每 20s 造一个孤儿会话）→ fire 入口先 claim 预推
+  due_at⑤**记忆域锁超时后无锁 RMW**（与持锁方整文件互覆盖=丢条目/复活）
+  → remember/forget fail-closed 放弃本次变更⑥**skill 供应链锁裸 RMW+
+  非原子写**（并发丢条目=skill 被 fail-closed 拒索引；写一半截断=全部
+  外部 skill 失索引）→ flock+进程锁+tmp/rename 原子写⑦edit_entry 单行化
+  （#15 漏的编辑通道：多行 summary 使 frontmatter 提前闭合）+reason 同款
+  ⑧prune_events 失败不再把 done 覆写成 error⑨审批过期清扫挂调度 tick
+  （生产 23 行 pending 全超 TTL 僵尸；顺带补 decided_at）⑩用户消息 argv
+  加 -- 终结符（单词消息 --version/-h 被 flag 劫持）⑪routine 安装幂等
+  （双击/重发=每天双份推送）。对赌新增 12 条（并发三面：审批裁决/同码
+  消费/审计链 8 线程；真路径空转计数 ×1→×2→×3 降频；claim 防风暴；
+  8 线程锁不丢条目；sweep 幂等+decided_at；flag 不劫持；install 幂等）。
 - **二轮全面分析修复批（高/中 13 项）**：致命批之后的高/中清剿——
   ⑥常规压缩点补反思调用（原只挂 overflow 自救路径，正常压缩的摘要
   从不进反思=P12 特性半残）⑦heartbeat cron 归正 7,37 双分钟点（"7,30"

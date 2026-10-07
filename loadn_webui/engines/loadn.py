@@ -80,8 +80,8 @@ class LoadnSpec(EngineSpec):
             cmd += ["--resume", session]
         else:
             cmd += ["--session-id", session]
-        cmd.append(call.prompt)
-        env = self.build_env()
+        cmd += ["--", call.prompt]   # 三轮修：-- 终结符（单词消息
+        env = self.build_env()          # 不被当 flag 劫持——argv[-1] 契约）
         # 随时插话（steering）：宿主把用户插话追加进 workspace 的
         # .steer.<sid>.jsonl（带 sid 段——共享工作区多任务并发时插话不串台），
         # loadn 主循环每轮 LLM 调用前轮询注入——运行中的消息不等排队。

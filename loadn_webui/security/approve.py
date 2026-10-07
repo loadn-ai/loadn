@@ -196,9 +196,16 @@ def _grant_browser_single_step(sid: str, params_json: str) -> None:
 
 
 def decide(aid: int, approve: bool, by: str = "user") -> dict:
-    """用户裁决。批准 → 生成一次性 6 位码（明文只在本响应出现一次）。"""
+    """用户裁决。批准 → 生成一次性 6 位码（明文只在本响应出现一次）。
+
+    三轮修：BEGIN IMMEDIATE 把 SELECT→UPDATE 包成一个写事务（Telegram
+    轮询线程 × webui 线程池双开时，第二方 SELECT 见到第一方终态走
+    「非 pending」分支——原 deferred 事务 SELECT 不持写锁，两方都过
+    pending 检查后 UPDATE 盲写互踩：否决可覆盖批准）。"""
     with _conn() as c:
         _ensure(c)
+        c.execute("BEGIN IMMEDIATE")            # 写锁先行（串行化裁决——
+        # 须在 _ensure 后：executescript 会隐式提交挂起事务）
         row = c.execute("SELECT * FROM approvals WHERE id=?", (aid,)).fetchone()
         if row is None:
             raise LookupError(f"approval {aid} 不存在")
@@ -270,15 +277,22 @@ def decide(aid: int, approve: bool, by: str = "user") -> dict:
             code = f"{secrets.randbelow(1000000):06d}"
             code_hash = hashlib.sha256(code.encode()).hexdigest()
             c.execute("UPDATE approvals SET status='approved', decided_at=?,"
-                      " decided_by=?, confirm_code_hash=? WHERE id=?",
+                      " decided_by=?, confirm_code_hash=?"
+                      " WHERE id=? AND status='pending'",
                       (_now(), by, code_hash, aid))
+            if c.execute("SELECT changes()").fetchone()[0] == 0:
+                return {"ok": False, "status": "concurrent",
+                        "error": "并发裁决窗口（他方先落）"}
             audit("approval_decision", {"id": aid, "decision": "approved"},
                   sid=row["sid"])
             if row["action_type"] == "browser_open":
                 _grant_browser_single_step(row["sid"], row["params_json"])
             return {"ok": True, "status": "approved", "code": code}
         c.execute("UPDATE approvals SET status='denied', decided_at=?, decided_by=?"
-                  " WHERE id=?", (_now(), by, aid))
+                  " WHERE id=? AND status='pending'", (_now(), by, aid))
+        if c.execute("SELECT changes()").fetchone()[0] == 0:
+            return {"ok": False, "status": "concurrent",
+                    "error": "并发裁决窗口（他方先落）"}
         audit("approval_decision", {"id": aid, "decision": "denied"},
               sid=row["sid"])
         return {"ok": True, "status": "denied"}
@@ -290,6 +304,33 @@ def _expired(row) -> bool:
     except ValueError:
         return True
     return time.time() - created > (row["ttl_s"] or DEFAULT_TTL_S)
+
+
+def sweep_expired() -> int:
+    """过期清扫（三轮修）：pending 超 TTL 的审批批量置 expired。
+
+    生产逆向实证：23 行 pending 全部超 TTL（最老 12 天）——过期原本纯
+    惰性（decide/consume 触发时才翻），会话结束/重启后无人再碰=永久
+    pending 僵尸，审批列表被死行占据。scheduler.tick 每轮顺带调（一条
+    UPDATE 很便宜）；顺带补 decided_at（原三处 UPDATE 只有 decide 带——
+    P8 台账时间轴残缺的根因）。"""
+    try:
+        with _conn() as c:
+            _ensure(c)
+            rows = c.execute(
+                "SELECT id, created_at, ttl_s FROM approvals "
+                "WHERE status='pending'").fetchall()
+            # TTL 判定要 iso 解析——Python 侧过滤（挑真过期的）
+            ids = [r["id"] for r in rows if _expired(r)]
+            if not ids:
+                return 0
+            c.executemany(
+                "UPDATE approvals SET status='expired', decided_at="
+                "COALESCE(decided_at, ?) WHERE id=? AND status='pending'",
+                [(_now(), i) for i in ids])
+            return len(ids)
+    except sqlite3.Error:
+        return 0                        # 清扫失败不炸调用方（下轮再试）
 
 
 def status(aid: int) -> dict:
@@ -309,6 +350,10 @@ def consume(sid: str, action_type: str, params: dict,
     ph = _params_hash(params)
     with _conn() as c:
         _ensure(c)
+        c.execute("BEGIN IMMEDIATE")            # 三轮修：SELECT→UPDATE 同写
+        # 事务——两 agent 并发带码消费时第二方 SELECT 见 executed 走拒
+        # 绝分支（原 deferred：两方都命中 approved，UPDATE 盲写互踩=
+        # 双付费/双发信）
         row = c.execute(
             "SELECT * FROM approvals WHERE sid=? AND action_type=? AND params_hash=?"
             " AND status='approved' AND executed_at IS NULL"
@@ -325,8 +370,11 @@ def consume(sid: str, action_type: str, params: dict,
             audit("approval_decision",
                   {"id": row["id"], "decision": "confirm_code_mismatch"}, sid=sid)
             return {"ok": False, "error": "确认码不符"}
-        c.execute("UPDATE approvals SET status='executed', executed_at=? WHERE id=?",
+        c.execute("UPDATE approvals SET status='executed', executed_at=?"
+                  " WHERE id=? AND status='approved' AND executed_at IS NULL",
                   (_now(), row["id"]))
+        if c.execute("SELECT changes()").fetchone()[0] == 0:
+            return {"ok": False, "error": "并发消费（已执行）"}
     audit("approval_decision",
           {"id": row["id"], "decision": "executed", "action_type": action_type},
           sid=sid)

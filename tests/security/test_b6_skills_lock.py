@@ -279,3 +279,27 @@ def test_remove_lock_entry_missing_silent(tmp_path: Path, home: Path):
     remove_lock_entry("a")
     after = json.loads((home / "skills.lock.json").read_text(encoding="utf-8"))
     assert "a" not in after["skills"]
+
+
+def test_r3_concurrent_update_no_lost_entry(tmp_path: Path, home: Path):
+    """三轮修对赌：8 线程并发 update_lock_entry 不同 name → 锁文件含全部
+    8 条（原裸读-合-写 RMW：两方各读旧档各写新档，后写覆盖前写=丢条目，
+    被丢的 skill 被 discover fail-closed 拒索引）。"""
+    import concurrent.futures
+
+    from loadn import skilllock
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    names = [f"skill-{i}" for i in range(8)]
+    for n in names:
+        md = repo / n / "SKILL.md"
+        md.parent.mkdir(parents=True)
+        md.write_text(f"---\nname: {n}\ndescription: x\n---\nbody", encoding="utf-8")
+    with concurrent.futures.ThreadPoolExecutor(max_workers=8) as ex:
+        list(ex.map(lambda n: skilllock.update_lock_entry(
+            n, repo / n / "SKILL.md", "local"), names))
+    locked = skilllock.load_locks()
+    assert set(names) <= set(locked.keys()), \
+        f"并发写丢条目：{set(names) - set(locked.keys())}"
+    # 原子写形态：无 .tmp 残留
+    assert not (home / "skills.lock.json.tmp").exists()

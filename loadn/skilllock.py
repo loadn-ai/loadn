@@ -13,6 +13,8 @@ from __future__ import annotations
 
 import hashlib
 import json
+import threading
+from contextlib import contextmanager
 from pathlib import Path
 
 from loadn import loadn_home
@@ -47,14 +49,45 @@ def skill_hash(skill_md: Path) -> str:
     return hashlib.sha256(skill_md.read_bytes()).hexdigest()
 
 
+def _atomic_write(path: Path, text: str) -> None:
+    """三轮修：tmp+rename 原子写——进程写一半被杀不留截断 JSON（截断=
+    load_locks 跳过该层=全部外部 skill 被 discover fail-closed 拒索引）。"""
+    tmp = path.with_name(path.name + ".tmp")
+    tmp.write_text(text, encoding="utf-8")
+    tmp.replace(path)
+
+
+_PROC_LOCK = threading.Lock()   # 进程内线程串行（flock 只管跨进程）
+
+
+@contextmanager
+def _user_lock_ctx():
+    """用户层锁文件的跨进程 flock（webui 线程池 × CLI 进程的读-合-写
+    串行——原裸 RMW 两方各丢对方条目）。"""
+    import fcntl
+    user_lock = lock_paths()[-1]
+    with _PROC_LOCK:
+        user_lock.parent.mkdir(parents=True, exist_ok=True)
+        user_lock.touch(exist_ok=True)
+        fd = open(user_lock)
+        try:
+            fcntl.flock(fd, fcntl.LOCK_EX)
+            yield
+        finally:
+            try:
+                fcntl.flock(fd, fcntl.LOCK_UN)
+            finally:
+                fd.close()
+
+
 def write_user_lock(skills: dict) -> None:
     """整仓写用户层锁（键排序 + 固定序列化——CLI 与 webui 安装面共用的单一真相）。"""
     user_lock = lock_paths()[-1]
-    user_lock.parent.mkdir(parents=True, exist_ok=True)
-    user_lock.write_text(
+    _atomic_write(
+        user_lock,
         json.dumps({"version": LOCK_VERSION,
                     "skills": {k: skills[k] for k in sorted(skills)}},
-                   ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
+                   ensure_ascii=False, indent=2) + "\n")
 
 
 def update_lock_entry(name: str, skill_md: Path, source: str) -> None:
@@ -69,25 +102,27 @@ def update_lock_entry(name: str, skill_md: Path, source: str) -> None:
              "sourceType": source_type if ref else "local",
              "skillPath": str(skill_md),
              "computedHash": skill_hash(skill_md)}
-    try:
-        data = json.loads(lock_paths()[-1].read_text(encoding="utf-8"))
-    except (OSError, ValueError):
-        data = None
-    skills = data.get("skills") if isinstance(data, dict) else None
-    if not isinstance(skills, dict):
-        skills = {}
-    skills[name] = entry
-    write_user_lock(skills)
+    with _user_lock_ctx():
+        try:
+            data = json.loads(lock_paths()[-1].read_text(encoding="utf-8"))
+        except (OSError, ValueError):
+            data = None
+        skills = data.get("skills") if isinstance(data, dict) else None
+        if not isinstance(skills, dict):
+            skills = {}
+        skills[name] = entry
+        write_user_lock(skills)
 
 
 def remove_lock_entry(name: str) -> None:
     """删用户层锁条目（skill 删除时清幽灵；没有该条/文件坏 → 静默返回）。"""
-    try:
-        data = json.loads(lock_paths()[-1].read_text(encoding="utf-8"))
-    except (OSError, ValueError):
-        return
-    skills = data.get("skills") if isinstance(data, dict) else None
-    if not isinstance(skills, dict) or name not in skills:
-        return
-    del skills[name]
-    write_user_lock(skills)
+    with _user_lock_ctx():
+        try:
+            data = json.loads(lock_paths()[-1].read_text(encoding="utf-8"))
+        except (OSError, ValueError):
+            return
+        skills = data.get("skills") if isinstance(data, dict) else None
+        if not isinstance(skills, dict) or name not in skills:
+            return
+        del skills[name]
+        write_user_lock(skills)

@@ -529,3 +529,20 @@ def test_r2_frontmatter_newlines_flattened(tmp_path):
     m2 = mem.remember(tmp_path, "行1  行2: 伪造键", "C", origin_session="s X")
     assert m2["id"] == n["id"]
     assert len([x for x in data["entries"] if x["id"] == n["id"]]) == 1
+
+
+def test_r3_edit_entry_flattens_newlines(tmp_path):
+    """三轮修对赌：编辑通道的 summary 单行化（#15/#16 修了 remember，
+    edit 漏——多行 summary 使 frontmatter 在首个 \\n--- 提前闭合=元数据
+    全灭/伪键注入）。"""
+    e = mem.remember(tmp_path, "原摘要", "原内容", origin_session="s1")
+    from loadn import memorystore as ms
+    out = ms.edit_entry(ms.memory_dir(tmp_path), e["id"],
+                        summary="行1\n---\nid: fake\nsource: evil")
+    assert "\n" not in out["summary"]          # 写入前单行化
+    from loadn.util import parse_frontmatter
+    text = ms.entry_file_text(ms.memory_dir(tmp_path), out)
+    meta, _ = parse_frontmatter(text)
+    assert meta.get("id") == e["id"]           # 元数据未被注入挤掉
+    assert meta.get("origin_session") == "s1"  # 溯源保留
+    assert "fake" not in (meta.get("source") or "") and "source" not in meta
