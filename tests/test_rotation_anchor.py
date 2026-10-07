@@ -328,3 +328,46 @@ async def test_r3_delete_message_clears_turn_ref(client):
     with db_mod.conn() as c:
         row = db_mod.get_turn(c, tid)
     assert row["message_id"] is None             # 悬挂清除
+
+
+async def test_r6_purge_instance_keeps_new_session_job(client, monkeypatch):
+    """六轮修 B1 对赌：purge 一个 new_session job 的实例会话——job 存活
+    （session_id 只是最新实例指针；原 delete_session 级联把整个递归 job/
+    内置心跳静默删掉=数据丢失+机制停摆）。"""
+    from loadn_webui import db as db_mod
+    from loadn_webui.scheduler import Scheduler
+    from loadn_webui.util import iso
+    eng = _FakeEngine()
+    sched = Scheduler(eng)
+    jid = db_mod.create_job.__wrapped__(None) if False else None
+    with db_mod.conn() as c:
+        jid = db_mod.create_job(c, kind="new_session", label="日更",
+                                prompt="p", due_at=iso(), title="日更")
+    job_row = None
+    with db_mod.conn() as c:
+        job_row = db_mod.get_job(c, jid)
+    # 模拟 fire 回填实例指针（三轮修行为）
+    with db_mod.conn() as c:
+        db_mod.update_job(c, jid, session_id="20260101_0000-实例sid000")
+    # purge 该实例
+    with db_mod.conn() as c:
+        db_mod.delete_session(c, "20260101_0000-实例sid000")
+    with db_mod.conn() as c:
+        job = db_mod.get_job(c, jid)
+    assert job is not None, "purge 实例不得删掉递归 job"
+    assert job["session_id"] is None, "实例指针摘除（下次 fire 重回填）"
+
+
+class _FakeEngine:
+    def __init__(self):
+        self.submitted = []
+
+    async def submit(self, sid, text, mode="foreground", attachments=None):
+        self.submitted.append((sid, text))
+        return 1
+
+    def steer_if_running(self, sid, text):
+        return None
+
+    def publish(self, *a, **k):
+        return 0

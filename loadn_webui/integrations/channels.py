@@ -208,7 +208,7 @@ class ChannelsService:
                     "chat_id": chat_id,
                     "text": "尚未绑定会话：/new 新建，或 /bind <会话id>。"})
                 return
-            self._submit(sid, text)
+            self._submit(sid, text, chat_id=chat_id)
             audit("channel", {"action": "message", "chat_id": chat_id,
                               "sid": sid})
 
@@ -286,18 +286,48 @@ class ChannelsService:
         sid, _ = ws_mod.create_session(title, prof, None, None)
         return sid
 
-    def _submit(self, sid: str, text: str) -> None:
-        """投递用户消息（ENGINE.submit 是协程——经主 loop 线程安全调度）。"""
+    def _submit(self, sid: str, text: str, chat_id: str = "") -> None:
+        """投递用户消息（ENGINE.submit 是协程——经主 loop 线程安全调度）。
+
+        六轮修 B8：拒收（全局熔断 KILL_ALL/canary 锁）回执用户——原
+        future 结果无人取，熔断期间 Telegram 消息静默消失无提示。"""
         import asyncio
         coro = self.engine.submit(sid, text, mode="background")
+
+        def _report(fut) -> None:
+            try:
+                fut.result()
+            except Exception as e:                        # noqa: BLE001
+                from ..security.audit import audit
+                audit("channel", {"action": "submit_rejected",
+                                  "sid": sid, "err": str(e)[:120]})
+                if chat_id:
+                    try:
+                        self.api.call("sendMessage", {
+                            "chat_id": chat_id,
+                            "text": f"⚠️ 投递被拒：{str(e)[:160]}"})
+                    except RuntimeError:
+                        pass
+
         loop = getattr(self, "_loop", None)
         if loop is not None:
-            asyncio.run_coroutine_threadsafe(coro, loop)   # 轮询线程→主 loop
+            fut = asyncio.run_coroutine_threadsafe(coro, loop)  # 轮询线程→主 loop
+            fut.add_done_callback(_report)
             return
         try:                                              # 已有 loop（测试/主线程）
-            asyncio.get_running_loop().create_task(coro)
+            t = asyncio.get_running_loop().create_task(coro)
+            t.add_done_callback(_report)
         except RuntimeError:                              # 无 loop 直跑
-            asyncio.run(coro)
+            try:
+                asyncio.run(coro)
+            except Exception as e:                        # noqa: BLE001 — 复用回执路径
+                class _Done:
+                    def __init__(self, exc):
+                        self._exc = exc
+
+                    def result(self):
+                        raise self._exc
+                _report(_Done(e))
 
     # ---- 回信（turn 终态增量）
     def push_completed_turns(self) -> None:

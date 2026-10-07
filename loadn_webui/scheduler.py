@@ -195,18 +195,42 @@ class Scheduler:
         try:
             claim_due = _next_due(job, now) or (now + _timedelta_s(86400)
                                                 ).isoformat(timespec="seconds")
+            # 六轮修：claim 用 compare-and-set——due_jobs 的 SELECT 与本
+            # UPDATE 之间无锁（服务端调度循环与测试/手动 tick 并发扫同一
+            # job 时双 fire：fires 计数翻倍+双投递）。占位失败=他方已 claim
             with db_mod.conn() as c:
-                db_mod.update_job(c, job["id"], due_at=claim_due)
+                cur = c.execute(
+                    "UPDATE scheduled_jobs SET due_at=? WHERE id=? AND due_at=?",
+                    (claim_due, job["id"], job["due_at"]))
+                if cur.rowcount == 0:
+                    return False            # 他方 tick 已占位
             job = {**job, "due_at": claim_due}
         except Exception:                              # noqa: BLE001 — claim 失败不投
             log.exception("job %s claim 失败（本轮跳过）", job["id"])
             return False
-        # P11：内置 job 走专属三防路径（sqlite3.Row 无 .get——keys 判列）
+        # P11：内置 job 走专属三防路径（sqlite3.Row 无 .get——keys 刭列）
         if "is_system" in job.keys() and job["is_system"]:
             return await self.fire_heartbeat(job)
-        if (job["kind"] or "message") == "new_session":
-            return await self._fire_new_session(job, now)
-        return await self._fire_message(job, now)
+        try:
+            if (job["kind"] or "message") == "new_session":
+                return await self._fire_new_session(job, now)
+            return await self._fire_message(job, now)
+        except Exception:
+            # 六轮修 B3：单次 job（无 cron/every）claim 已把 due_at 推到
+            # +24h——失败若无痕=「明天才补且面板无异常」。置 paused 让
+            # 失败可见（用户可手动恢复）；cron/every 类按 claim 节奏自愈
+            log.exception("job %s 投递失败", job["id"])
+            if not job["cron"] and not job["every_s"]:
+                try:
+                    with db_mod.conn() as c:
+                        db_mod.update_job(c, job["id"], status="paused")
+                    from .security.audit import audit
+                    audit("policy_change", {
+                        "action": "one_shot_job_failed_paused",
+                        "job": job["id"]})
+                except Exception:                          # noqa: BLE001
+                    pass
+            return False
 
     def _wrap(self, job, now: datetime) -> str:
         label = job["label"] or "定时任务"

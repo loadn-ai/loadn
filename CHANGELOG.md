@@ -5,6 +5,28 @@
 
 ## [0.6.26] - 2026-10-07
 
+- **六轮复查批（前后端契约 diff+修复对抗复审，12 项）**：换三新方法论
+  ——前端 ui/src 从未系统审查过 + 近六 commit 的修复本身是最大新 bug 面。
+  ①**resync 空载荷清空会话**（Critical：删/改消息发 {}，前端当全量快照
+  消费——另一 tab/断线回放路径把 messages/turns/artifacts 全清成空）→
+  改带整包快照 ②**purge 实例会话级联删掉整个递归 job/内置心跳**（回填
+  session_id 与 delete_session 级联的组合炸弹——清一个旧会话=日更任务/
+  心跳静默消失）→ 级联前摘 new_session 类指针 ③**approval 事件从未被
+  SSE 订阅**（agent 请求审批时卡片永不实时出现，冻结等裁决须刷新页面）
+  ④**egress '*' 广播永不投递**（_subs.get('*') 恒空=数据流面板「SSE
+  驱动不轮询」的设计从未生效）→ publish('*') fan-out 全订阅+前端放行
+  广播 ⑤job_fired/interrupted_salvaged 补订阅（定时触发/重启补记账的
+  即时反馈）⑥decideApproval 吞 ok:false（host 非法/并发窗口/非 pending
+  时点击无反应零反馈）→ alert 真因 ⑦调度 claim 改 **compare-and-set**
+  （due_jobs 读与 claim 写无锁——服务端循环与手动 tick 并发双 fire，
+  fires 翻倍+双投递）⑧单次 job 投递失败置 paused+审计（原 claim 推
+  +24h 后无告警面——「明天才补」且面板无异常）⑨upsert ON CONFLICT 真
+  兜底（索引建置失败的库回落旧路径——注释宣称的 fallback 此前不存在）
+  ⑩surrogate 漏网两处（add_message/scan_session——API JSON 体转义与
+  rglob 文件名）⑪advance_boundary 锁结果检查（fail-closed 漏网实例）
+  ⑫Telegram 投递拒绝回执（熔断期间消息静默消失）+前端 new_session
+  回填实例链接放行。对赌新增 6 条（purge 保 job/广播 fan-out/resync
+  快照/单次失败 paused/add_message 清洗）。
 - **三轮 backlog 中优清偿批（9 项）**：①lone surrogate 三通道清洗
   （sanitize_text：transcript 两处写+session_events+外部命令钩子——原
   surrogateescape 非常规文件名经工具结果进入事件流即 UnicodeEncodeError：

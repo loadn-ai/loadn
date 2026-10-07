@@ -173,10 +173,18 @@ class Engine:
 
     def publish(self, sid: str, type_: str, data: dict,
                 turn_id: int | None = None) -> int:
-        """事件落库（拿自增 id 作为 SSE event id）→ 推给所有订阅者。"""
+        """事件落库（拿自增 id 作为 SSE event id）→ 推给所有订阅者。
+
+        sid='*' 是广播（egress 决策流水）：fan-out 给**全部**订阅者——
+        原 _subs.get("*") 恒空集=egress 面板的 SSE 驱动刷新从未生效
+        （六轮修 A3）。"""
         with db_mod.conn() as c:
             eid = db_mod.add_event(c, sid, turn_id, type_, data)
-        for q in list(self._subs.get(sid, ())):
+        if sid == "*":
+            queues = [q for qs in self._subs.values() for q in qs]
+        else:
+            queues = list(self._subs.get(sid, ()))
+        for q in queues:
             q.put_nowait((eid, type_, data))
         return eid
 

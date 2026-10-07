@@ -187,3 +187,17 @@ async def test_r3_hooks_payload_with_surrogate(monkeypatch, tmp_path):
     out = await runner.fire("PreToolUse", {"file": "x\udce9y"})
     assert b"x" in captured["data"]              # encode 成功（不再抛）
     assert not out.blocked                       # 钩子照常执行未跳过
+
+
+def test_r6_add_message_sanitizes_surrogate():
+    """六轮修 B5 对赌：API JSON 体的 lone surrogate 进 add_message 不再
+    炸 sqlite bind（原 UnicodeEncodeError 会把 _finish 记账炸成 turn
+    永久 running）。"""
+    from loadn_webui import db as db_mod
+    bad = "读 caf\udce9.py 的结果"
+    with db_mod.conn() as c:
+        mid = db_mod.add_message(c, session_id="s-r6", turn_id=None,
+                                 role="user", content=bad)
+        row = c.execute("SELECT content FROM messages WHERE id=?",
+                        (mid,)).fetchone()
+    assert "caf?" in row["content"]

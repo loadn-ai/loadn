@@ -486,7 +486,9 @@ def advance_boundary(cwd: Path, message_id: str) -> None:
     # 二轮修#15：manifest RMW 入域锁（与 remember/forget 同款——否则与
     # 写入并发时丢 entries）
     dir_ = memory_dir(cwd)
-    with _domain_lock(dir_):
+    with _domain_lock(dir_) as locked:
+        if not locked:
+            return                   # 六轮修 B6：锁忙放弃（同族 fail-closed）
         m = _manifest(dir_)
         m["boundary"] = {"message_id": message_id}
         _save_manifest(dir_, m)

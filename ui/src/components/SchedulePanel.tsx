@@ -191,9 +191,13 @@ function JobRow({ job: j, onAct, onDel, onChanged }: {
           <div className="sched-prompt" title={j.prompt}>{j.prompt.slice(0, 60)}</div>
         </td>
         <td>
-          {j.kind === 'message' && j.session_id ? (
+          {j.session_id ? (
+            // 六轮修 A7：new_session job 回填最新实例 sid（调度侧三轮修）——
+            // 原来被 kind 门挡死，显示「新建 · title」不可点进实例
             <a className="link" onClick={() => openSession(j.session_id!)}
                title={j.session_id}>{j.session_title || j.session_id.slice(0, 18)}</a>
+          ) : j.kind === 'message' ? (
+            <span>（会话已删除）</span>
           ) : (
             <span>新建 · {j.title || '（默认标题）'}{j.engine ? ` · ${j.engine}` : ''}</span>
           )}

@@ -379,3 +379,43 @@ async def test_r3_offset_persisted_across_restart(client, monkeypatch):
     fake.updates = [[]]
     svc.api.call("getUpdates", {"offset": svc._offset, "timeout": 0})
     assert fake.sent[-1][1]["offset"] == 42
+
+
+async def test_r6_broadcast_publish_fans_out(client):
+    """六轮修 A3 对赌：publish('*') 广播 fan-out 给全部会话订阅者（原
+    _subs.get('*') 恒空=egress 面板 SSE 驱动从未生效）。"""
+
+    from loadn_webui.engine import ENGINE
+    qa = ENGINE.subscribe("sid-a")
+    qb = ENGINE.subscribe("sid-b")
+    try:
+        ENGINE.publish("*", "egress", {"host": "x.example", "allow": True})
+        got_a = qa.get_nowait()
+        got_b = qb.get_nowait()
+        assert got_a[1] == "egress" and got_b[1] == "egress"
+        assert got_a[2]["host"] == "x.example"
+    finally:
+        ENGINE.unsubscribe("sid-a", qa)
+        ENGINE.unsubscribe("sid-b", qb)
+
+
+async def test_r6_resync_carries_snapshot(client):
+    """六轮修 A1 对赌：删/改消息的 resync 事件带整包快照（原空 {}——
+    另一 tab / 断线回放路径消费 resync 时 messages/turns 全清成空）。"""
+    from loadn_webui import db as db_mod
+    from loadn_webui.engine import ENGINE
+    r = await client.post("/api/sessions", json={"title": "resync 快照"})
+    sid = r.json()["session"]["id"]
+    with db_mod.conn() as c:
+        mid = db_mod.add_message(c, session_id=sid, turn_id=None,
+                                 role="user", content="将被删")
+    q = ENGINE.subscribe(sid)
+    try:
+        resp = await client.delete(f"/api/messages/{mid}")
+        assert resp.status_code == 200
+        eid, type_, data = q.get_nowait()
+        assert type_ == "resync"
+        assert isinstance(data.get("messages"), list), "快照必带 messages"
+        assert "turns" in data and "session" in data
+    finally:
+        ENGINE.unsubscribe(sid, q)

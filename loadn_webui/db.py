@@ -365,6 +365,10 @@ def update_session(c: sqlite3.Connection, sid: str, touch: bool = True, **fields
 
 
 def delete_session(c: sqlite3.Connection, sid: str) -> None:
+    # 六轮修 B1：new_session 类 job 的 session_id 是「最新实例指针」（调度
+    # 回填）——purge 一个实例不得删掉整个递归 job/内置心跳（先摘指针）
+    c.execute("UPDATE scheduled_jobs SET session_id=NULL "
+              "WHERE session_id=? AND kind='new_session'", (sid,))
     for t in ("messages", "turns", "artifacts", "session_events", "scheduled_jobs"):
         c.execute(f"DELETE FROM {t} WHERE session_id=?", (sid,))
     c.execute("DELETE FROM sessions WHERE id=?", (sid,))
@@ -497,6 +501,13 @@ def active_turns(c: sqlite3.Connection, sid: str | None = None) -> list[sqlite3.
 
 # ---------------------------------------------------------------- messages / events / artifacts
 def add_message(c: sqlite3.Connection, **fields: Any) -> int:
+    # 六轮修 B5：lone surrogate 清洗（API JSON 体的 \udcXX 转义
+    # json.loads 照单全收——sqlite bind 抛 UnicodeEncodeError 会把
+    # _finish 内的记账炸成 turn 永久 running）
+    from loadn.util import sanitize_text
+    for k in ("content", "blocks_json"):
+        if isinstance(fields.get(k), str):
+            fields[k] = sanitize_text(fields[k])
     fields.setdefault("created_at", iso())
     cols = ", ".join(fields.keys())
     ph = ", ".join("?" for _ in fields)
@@ -609,10 +620,24 @@ def upsert_artifact(c: sqlite3.Connection, **fields: Any) -> None:
     sets = ", ".join(f"{k}=?" for k in fields)
     cols = ", ".join(fields.keys())
     ph = ", ".join("?" for _ in fields)
-    c.execute(
-        f"INSERT INTO artifacts({cols}) VALUES({ph}) "
-        f"ON CONFLICT(session_id, path) DO UPDATE SET {sets}",
-        (*fields.values(), *fields.values()))
+    try:
+        c.execute(
+            f"INSERT INTO artifacts({cols}) VALUES({ph}) "
+            f"ON CONFLICT(session_id, path) DO UPDATE SET {sets}",
+            (*fields.values(), *fields.values()))
+    except sqlite3.OperationalError:
+        # 六轮修 B2：唯一索引建置失败过的库（无 conflict target=SQL 拒）
+        # ——回落旧 SELECT→UPDATE/INSERT 路径（慢但正确，下轮 _migrate
+        # 建好索引自动回到原子路径）
+        row = c.execute(
+            "SELECT id FROM artifacts WHERE session_id=? AND path=?",
+            (fields["session_id"], fields["path"])).fetchone()
+        if row:
+            c.execute(f"UPDATE artifacts SET {sets} WHERE id=?",
+                      (*fields.values(), row["id"]))
+        else:
+            c.execute(f"INSERT INTO artifacts({cols}) VALUES({ph})",
+                      tuple(fields.values()))
 
 
 # ---------------------------------------------------------------- shares（产物分享）

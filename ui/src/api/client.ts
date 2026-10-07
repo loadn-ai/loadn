@@ -108,7 +108,11 @@ export async function connectSse(
 ): Promise<EventSource> {
   const events = ['turn_queued', 'turn_started', 'text', 'thinking', 'tool_use', 'tool_result',
     'todos', 'files', 'steer', 'turn_done', 'turn_error', 'turn_stopped', 'turn_deleted',
-    'session_rotated', 'session_meta', 'resync', 'egress', 'ping'];
+    'session_rotated', 'session_meta', 'resync', 'egress', 'ping',
+    // 六轮修 A2/A4：approval（审批卡实时出现——agent 请求审批时不刷新页面
+    // 就看不到卡，冻结等裁决）与 job_fired/interrupted_salvaged（定时触发
+    // /重启补记账的即时反馈）
+    'approval', 'job_fired', 'interrupted_salvaged'];
   let backoff = 1000;
   // 断点续传游标：手动重建的 EventSource 不带浏览器内建的 Last-Event-ID
   // 状态——不带上次见到的 eid，服务端每次重连都精准回放活跃 turn 尾部，

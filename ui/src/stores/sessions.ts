@@ -232,6 +232,9 @@ export const useStore = create<Store>((set, get) => ({
       const d = await api<{ ok: boolean; code?: string; status: string; error?: string }>(
         `/api/approvals/${id}/decide`, { method: 'POST', body: JSON.stringify({ approve }) });
       await get().loadApprovals();
+      // 六轮修 A6：ok:false 业务失败（host 非法/并发窗口/非 pending）原先
+      // 静默——卡片滞留 pending 用户反复点无效。alert 真实原因
+      if (!d.ok) alert(`裁决未生效：${d.error || d.status}`);
       return d.code ?? null;      // 批准时一次性明文码（给用户转述给 agent）
     } catch (e) {
       alert(String(e));
@@ -730,7 +733,8 @@ function handleEvent(
   set: (fn: (s: Store) => Partial<Store>) => void,
   get: () => Store, sid: string, type: string, data: any,
 ) {
-  if (get().currentSid !== sid) return;
+  // 六轮修 A3：sid='*' 是广播（egress 决策流水）——跳过会话匹配直入分发
+  if (get().currentSid !== sid && sid !== '*') return;
   if (type === 'approval') {
     // W1-2 审批卡片事件：request/decided → 拉最新列表
     void get().loadApprovals();
@@ -832,6 +836,17 @@ function handleEvent(
       // 数据流向推送（payload 带 sid）：本会话的外联变化 → 属性面板刷新信号
       if (data?.sid === sid) set(s => ({ egressTick: s.egressTick + 1 }));
       break;
+    case 'job_fired': {
+      // 六轮修 A4：定时触发即时反馈——会话列表/next_wake 徽章刷新
+      void get().loadSessions();
+      break;
+    }
+    case 'interrupted_salvaged': {
+      // 六轮修 A4：重启补记账落库——重开当前会话拉全量让
+      // 「⚠️ 服务重启中断」的部分输出可见
+      void get().openSession(get().currentSid!);
+      break;
+    }
     case 'turn_deleted':
       // 排队消息被撤回（本标签页或别处操作）→ 拉全量同步，乐观消息一并消失
       (async () => {

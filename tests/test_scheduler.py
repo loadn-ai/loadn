@@ -503,3 +503,28 @@ async def test_r3_broadcast_events_pruned(client, monkeypatch):
         n = c.execute("SELECT COUNT(*) n FROM session_events "
                       "WHERE session_id='*'").fetchone()["n"]
     assert n <= 10, f"hard_keep 兜底生效（实际 {n}）"
+
+
+async def test_r6_one_shot_failure_pauses_visible(client, monkeypatch):
+    """六轮修 B3 对赌：单次 job 投递失败 → paused + 审计（失败可见可恢复；
+    原 claim 预推 24h 后无任何告警面——「明天才补」且面板看不出异常）。"""
+    from loadn_webui.scheduler import Scheduler
+    from loadn_webui.util import iso
+
+    class _BoomEngine:
+        async def submit(self, sid, text, mode="foreground", attachments=None):
+            raise OSError("磁盘满（模拟）")
+
+    r = await client.post("/api/sessions", json={"title": "单次失败可见"})
+    sid = r.json()["session"]["id"]
+    with db_mod.conn() as c:
+        jid = db_mod.create_job(c, kind="message", label="20点开会",
+                                prompt="提醒", due_at=iso(),
+                                session_id=sid)
+    boom = Scheduler(_BoomEngine())
+    n = await boom.tick()
+    assert n == 0                                  # 投递失败无成功计数
+    with db_mod.conn() as c:
+        job = db_mod.get_job(c, jid)
+    assert job["status"] == "paused", "单次 job 失败须 paused（可见）"
+    assert job["due_at"] > iso()                   # claim 已推走（不风暴）
