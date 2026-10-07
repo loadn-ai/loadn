@@ -514,6 +514,37 @@ def recent_events_for_turn(c: sqlite3.Connection, sid: str, turn_id: int,
         (sid, turn_id, limit)).fetchall()
 
 
+def prune_broadcast(c: sqlite3.Connection, cutoff_iso: str,
+                    *, hard_keep: int = 5000) -> int:
+    """三轮修（backlog 清）：广播行（session_id='*'，egress 代理每请求
+    双写 audit+session_events）不挂任何 turn——prune_events 的 WHERE
+    session_id=? 永不匹配 → 无界增长（生产实证 2.5 万行，275MB 库体积
+    主因之一）。按保留窗清；hard_keep 兜底总量上限（0=不兜底）。挂
+    scheduler.tick（20s 一轮）与 prune_events 顺带。"""
+    import sqlite3 as _sq
+    try:
+        cur = c.execute(
+            "DELETE FROM session_events WHERE session_id='*' AND rowid IN ("
+            "SELECT rowid FROM session_events WHERE session_id='*' "
+            "AND COALESCE(created_at,'') != '' AND created_at < ? "
+            "LIMIT 20000)", (cutoff_iso,))
+        removed = cur.rowcount or 0
+        if hard_keep:
+            row = c.execute(
+                "SELECT COUNT(*) n FROM session_events "
+                "WHERE session_id='*'").fetchone()
+            if row and row["n"] > hard_keep:
+                c.execute(
+                    "DELETE FROM session_events WHERE session_id='*' AND "
+                    "rowid IN (SELECT rowid FROM session_events WHERE "
+                    "session_id='*' ORDER BY id LIMIT ?)",
+                    (row["n"] - hard_keep,))
+                removed += 1
+        return removed
+    except _sq.OperationalError:
+        return 0                                    # 旧库缺列等
+
+
 def prune_events(c: sqlite3.Connection, sid: str, retain_days: float,
                  hard_keep: int = 5000) -> int:
     """终态感知清理：终态超过 retain_days 天的 turn 的事件删除；
@@ -534,6 +565,8 @@ def prune_events(c: sqlite3.Connection, sid: str, retain_days: float,
         f"AND COALESCE(started_at,'') != '' AND COALESCE(started_at,'') < ?)",
         (sid, sid, *final, cutoff))
     removed = cur.rowcount or 0
+    # 三轮修（backlog 清）：广播行清理（见 prune_broadcast）
+    removed += prune_broadcast(c, cutoff, hard_keep=0)
     # 兜底：总量仍超 hard_keep → 从最老的**终态** turn 事件继续裁（活跃 turn 不动）
     row = c.execute("SELECT COUNT(*) n FROM session_events WHERE session_id=?", (sid,)).fetchone()
     if row and row["n"] > hard_keep:

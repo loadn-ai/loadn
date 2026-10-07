@@ -246,7 +246,10 @@ async def test_fire_message_steers_running_turn(client, ws_root, tmp_path, monke
                                 due_at=iso(), max_fires=1)
     assert await Scheduler(ENGINE).tick() == 1
     steer_file = ws_root / sid / f".steer.{sid}.jsonl"
-    assert "比赛开赛" in steer_file.read_text()      # 插话写入
+    # 三轮修后 turn 终态会清 steer 文件（消费完防无限累积）——慢时序下
+    # 文件可能已被 _finish 清理；存在时必须含插话（未消费不清）
+    if steer_file.exists():
+        assert "比赛开赛" in steer_file.read_text()
     with db_mod.conn() as c:
         n_turns = len(c.execute(
             "SELECT id FROM turns WHERE session_id=?", (sid,)).fetchall())
@@ -458,3 +461,45 @@ async def test_r3_fire_claim_prevents_storm(sched, client, monkeypatch):
     with db_mod.conn() as c:
         n2 = c.execute("SELECT COUNT(*) AS n FROM sessions").fetchone()["n"]
     assert n2 == n1, "due_at 已推走——不产生 20s 重投风暴"
+
+
+async def test_r3_broadcast_events_pruned(client, monkeypatch):
+    """三轮修（backlog 清）对赌：'*' 广播行（egress 逐请求双写，不挂
+    turn——prune 的会话路径永远够不着，生产 2.5 万行无界增长）按保留窗
+    清理；新行不动；hard_keep 兜底总量。"""
+    from datetime import datetime, timedelta, timezone
+
+    from loadn_webui import db as db_mod
+    old = (datetime.now(timezone.utc)
+           - timedelta(days=30)).isoformat(timespec="seconds")
+    fresh = datetime.now(timezone.utc).isoformat(timespec="seconds")
+    with db_mod.conn() as c:
+        for _ in range(5):
+            c.execute("INSERT INTO session_events(session_id, type, "
+                      "data_json, created_at) VALUES('*', 'egress', '{}', ?)",
+                      (old,))
+        c.execute("INSERT INTO session_events(session_id, type, "
+                  "data_json, created_at) VALUES('*', 'egress', '{}', ?)",
+                  (fresh,))
+        cutoff = (datetime.now(timezone.utc)
+                  - timedelta(days=8)).isoformat(timespec="seconds")
+        gone = db_mod.prune_broadcast(c, cutoff)
+        assert gone >= 5
+        n_old = c.execute(
+            "SELECT COUNT(*) n FROM session_events WHERE session_id='*' "
+            "AND created_at < ?", (cutoff,)).fetchone()["n"]
+        n_new = c.execute(
+            "SELECT COUNT(*) n FROM session_events WHERE session_id='*' "
+            "AND created_at >= ?", (cutoff,)).fetchone()["n"]
+    assert n_old == 0                            # 超窗全清
+    assert n_new >= 1                            # 新行保留
+    # hard_keep 兜底：总量超限从最老裁
+    with db_mod.conn() as c:
+        for _ in range(30):
+            c.execute("INSERT INTO session_events(session_id, type, "
+                      "data_json, created_at) VALUES('*', 'egress', '{}', ?)",
+                      (fresh,))
+        gone = db_mod.prune_broadcast(c, cutoff, hard_keep=10)
+        n = c.execute("SELECT COUNT(*) n FROM session_events "
+                      "WHERE session_id='*'").fetchone()["n"]
+    assert n <= 10, f"hard_keep 兜底生效（实际 {n}）"

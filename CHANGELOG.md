@@ -5,6 +5,20 @@
 
 ## [0.6.26] - 2026-10-07
 
+- **三轮 backlog 高优清偿批（5 项）**：①Telegram offset 持久化（kv
+  落盘，重启从确认位续拉——原归零重放 24h 内全部 updates：消息双投、
+  /new 重建会话重绑、旧会话孤儿化）②重启丢插话修复：salvage 现在读
+  steer 文件——输出日志重放时按 steer 回执摘除已注入的，未送达的回队
+  为新消息（原插话彻底丢失无提示）；turn 终态/salvage 后清 steer 文件
+  （原跨 turn 无限累积）③KILL_ALL 全局熔断 fail-closed 到 submit 面
+  （原只拦调度+已 lock 会话：应急制动期间聊天/API 对空闲会话照常驱动
+  agent——端点宣称的「拒绝新任务」半开）④backup restore 三守卫：源
+  须完成品（有 manifest）、主库 WAL 非空拒恢复（活库覆盖二次损坏）、
+  预备份失败中止+rsync 返回码必查（原半恢复=新 DB 配旧工作区）⑤广播
+  事件行（session_id='*'，egress 逐请求双写不挂 turn）按保留窗清理+
+  hard_keep 兜底挂调度 tick（生产 2.5 万行无界增长，275MB 库主因）。
+  对赌新增 5 条（offset 续拉/salvage 摘除+回队+清文件/熔断拒新+解除
+  恢复/restore 三守卫/广播清窗口+兜底）。
 - **三轮多方法论复查修复批（并发红线 6+高/中 5 项）**：故障注入/
   并发时序矩阵/序列化边界/重启幂等/生产数据逆向五路侦查——①**审批并发
   双写**（decide/consume 的 SELECT→UPDATE 无写事务无守卫：Telegram 轮询

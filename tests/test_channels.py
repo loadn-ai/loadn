@@ -355,3 +355,27 @@ async def test_r2_callback_race_already_decided(client, monkeypatch):
     assert replies and "他人已裁决" in replies[-1]["text"]
     assert "码已注回" not in replies[-1]["text"]
     assert not eng.steered, "已被裁决的回调不得再注入确认码（码已明文过一次）"
+
+
+async def test_r3_offset_persisted_across_restart(client, monkeypatch):
+    """三轮修（backlog 清）对赌：offset 落 kv——批处理完持久化，新实例
+    （重启模拟）从确认位续拉（原归零重放 24h updates：消息双投/重绑）。"""
+    from loadn_webui import db as db_mod
+    from loadn_webui.integrations.channels import ChannelsService
+    OFFSET_KV_KEY = ChannelsService.OFFSET_KV_KEY
+    _allow(monkeypatch, ("100",))
+    fake = FakeTG()
+    svc = _svc(fake)
+    svc._offset = 42                        # 模拟已处理到 41
+    svc._save_offset()
+    with db_mod.conn() as c:
+        v = c.execute("SELECT value FROM kv WHERE key=?",
+                      (OFFSET_KV_KEY,)).fetchone()["value"]
+    assert v == "42"
+    # 重启模拟：新实例读回确认位
+    svc2 = _svc(FakeTG())
+    assert svc2._offset == 42
+    # getUpdates 请求带确认位（Telegram 语义：确认 41 及以前）
+    fake.updates = [[]]
+    svc.api.call("getUpdates", {"offset": svc._offset, "timeout": 0})
+    assert fake.sent[-1][1]["offset"] == 42

@@ -148,6 +148,19 @@ class Scheduler:
                 log.info("审批过期清扫：%d 行 pending → expired", swept)
         except Exception:                              # noqa: BLE001
             pass
+        # 三轮修（backlog 清）：广播事件行清理（'*' 行不挂 turn，prune 的
+        # 会话路径永远够不着——生产 2.5 万行无界增长）
+        try:
+            from .config import CONFIG
+            cutoff = (datetime.now(timezone.utc)
+                      - _timedelta_s(86400 * (CONFIG.run.events_retain_days
+                                              + 1))).isoformat()
+            with db_mod.conn() as c:
+                gone = db_mod.prune_broadcast(c, cutoff)
+            if gone:
+                log.info("广播事件清理：%d 行", gone)
+        except Exception:                              # noqa: BLE001
+            pass
         n = 0
         for job in jobs:
             try:

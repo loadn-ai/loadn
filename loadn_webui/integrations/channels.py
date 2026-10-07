@@ -97,6 +97,8 @@ def split_message(text: str, limit: int = TG_LIMIT) -> list[str]:
 class ChannelsService:
     """轮询线程 + 命令路由 + 回信增量（单实例；get_service 取）。"""
 
+    OFFSET_KV_KEY = "tg_updates_offset"      # 三轮修：offset 持久化键
+
     def __init__(self, engine, api: TelegramAPI | None = None,
                  sleep=time.sleep) -> None:
         self.engine = engine
@@ -104,7 +106,7 @@ class ChannelsService:
         self._sleep = sleep
         self._stop = False
         self._thread = None
-        self._offset = 0
+        self._offset = self._load_offset()   # 三轮修：重启不重放已处理批
         self._backoff = 1.0
         self._rate: dict[str, list[float]] = {}
         self.status = {"running": False, "last_ok": "", "last_error": "",
@@ -122,6 +124,28 @@ class ChannelsService:
     def stop(self) -> None:
         self._stop = True
 
+    def _load_offset(self) -> int:
+        """三轮修：offset 落 kv——重启后从上次确认位续拉（原归零重放
+        24h 内全部 updates：消息双投、/new 重建会话+重绑，旧会话孤儿化）。"""
+        try:
+            from .. import db as db_mod
+            with db_mod.conn() as c:
+                row = c.execute(
+                    "SELECT value FROM kv WHERE key=?",
+                    (self.OFFSET_KV_KEY,)).fetchone()
+            return int(row["value"]) if row else 0
+        except Exception:                              # noqa: BLE001 — kv 缺表等
+            return 0
+
+    def _save_offset(self) -> None:
+        try:
+            from .. import db as db_mod
+            with db_mod.conn() as c:
+                c.execute("INSERT OR REPLACE INTO kv(key, value) VALUES(?,?)",
+                          (self.OFFSET_KV_KEY, str(self._offset)))
+        except Exception:                              # noqa: BLE001 — 写失败下轮再存
+            pass
+
     def _run(self) -> None:
         self.status["running"] = True
         while not self._stop:
@@ -136,6 +160,7 @@ class ChannelsService:
                     self._offset = max(self._offset,
                                        int(up.get("update_id", 0)) + 1)
                     self.handle_update(up)
+                self._save_offset()     # 三轮修：处理完整批才确认（at-least-once）
                 self.push_completed_turns()
             except Exception as e:                    # noqa: BLE001 — 断线退避
                 self.status["last_error"] = f"{e}"[:200]

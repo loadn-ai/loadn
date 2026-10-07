@@ -242,3 +242,34 @@ def test_cleanup_old(_iso):
 def test_backup_dir_form():
     assert bk._backup_dir("20260101-120000") == bk.BACKUP_ROOT / "20260101-120000"
     assert bk._backup_dir().parent == bk.BACKUP_ROOT
+
+
+def test_r3_restore_rejects_incomplete_and_locked(monkeypatch, tmp_path):
+    """三轮修（backlog 清）对赌：restore 三守卫——①源缺 manifest（半成品）
+    拒；②主库 WAL 非空（服务在跑）拒；③预备份失败中止（当前状态不动）。"""
+    import loadn_webui.backup as bk
+    from loadn_webui.config import PATHS
+    # 隔离数据根与备份根
+    root = tmp_path / "data"
+    root.mkdir()
+    monkeypatch.setitem(PATHS, "root", root)
+    monkeypatch.setattr(bk, "BACKUP_ROOT", tmp_path / "bk")
+    # ① 半成品源（无 manifest）
+    half = tmp_path / "bk" / "half"
+    half.mkdir(parents=True)
+    (half / "var").mkdir(parents=True)
+    (half / "var" / "loadn.db").write_bytes(b"sqlite-truncated")
+    monkeypatch.setattr("builtins.input", lambda: "yes")
+    assert bk.cmd_backup_restore("half") == 1
+    # ② WAL 非空（活库）
+    (root / "var").mkdir(parents=True, exist_ok=True)
+    (root / "var" / "loadn.db-wal").write_bytes(b"x" * 32)
+    full = tmp_path / "bk" / "full"
+    full.mkdir(parents=True)
+    (full / "manifest.json").write_text("{}")
+    assert bk.cmd_backup_restore("full") == 1
+    # ③ 预备份失败 → 中止（当前状态零改动）
+    (root / "var" / "loadn.db-wal").unlink()
+    monkeypatch.setattr(bk, "cmd_backup_run", lambda *a, **k: 1)
+    assert bk.cmd_backup_restore("full") == 1
+    assert not (root / "var" / "loadn.db").exists(), "失败中止：不得落任何恢复"

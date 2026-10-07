@@ -225,6 +225,20 @@ class Engine:
                 raise PermissionError(f"会话已熔断（{why}）——kill switch/canary 命中")
         except PermissionError:
             raise
+        # 三轮修（backlog 清）：全局熔断 fail-closed——kill-all 端点宣称
+        # 「拒绝新任务」但 submit 从不查标记（只拦调度+已 lock 会话）：
+        # 应急制动期间聊天/API 对空闲会话照常投递驱动 agent。守卫在
+        # canary 之后（会话级锁信息更具体），删除标记即恢复。
+        try:
+            from .config import PATHS as _P
+            if (_P["run"] / "KILL_ALL").exists():
+                raise PermissionError(
+                    "全局熔断生效中（KILL_ALL）——新任务暂停投递；"
+                    "解除请用 kill-all-clear")
+        except PermissionError:
+            raise
+        except (OSError, ImportError):
+            pass
         blocks_json = None
         if attachments:
             blocks_json = json.dumps(
@@ -815,6 +829,14 @@ class Engine:
                     await self.submit(sid, f"（运行中插话，转发处理）{text}")
                 except Exception:
                     log.exception("插话回队列失败 sid=%s", sid)
+            # 三轮修（backlog 清）：turn 终态清 steer 文件——原从不清理：
+            # 文件跨 turn 无限累积，且条目无人再消费（新引擎进程 offset=
+            # 文件大小，旧行永不读）
+            try:
+                (ws_mod.ws_of(sid) / f".steer.{sid}.jsonl").unlink(
+                    missing_ok=True)
+            except Exception:                              # noqa: BLE001
+                log.info("steer 文件清理失败（无碍）sid=%s", sid)
 
         # ---- 运维通知（fire-and-forget，永不拖垮主流程）
         try:
@@ -952,6 +974,27 @@ class Engine:
         tid = turn["id"]
         at = ActiveTurn(turn_id=tid, session_id=sid, stop=StopHandle(),
                         started_at=time.time(), quiet=True)
+        # 三轮修（backlog 清）：steer 文件行先灌进 at.steers——下方输出日志
+        # 重放时 transcript 的 steer 事件经 _consume 把已注入的标 consumed，
+        # 剩下的就是「重启时未送达」的插话，尾部回队（原 salvage 不读 steer
+        # 文件：用户插话彻底丢失无提示；且新引擎进程 offset=文件大小=残留
+        # 行永不消费）
+        steer_path = ws_mod.ws_of(sid) / f".steer.{sid}.jsonl"
+        try:
+            for ln in steer_path.read_text(encoding="utf-8").splitlines():
+                ln = ln.strip()
+                if not ln:
+                    continue
+                import json as _json
+                try:
+                    d = _json.loads(ln)
+                except ValueError:
+                    continue
+                if isinstance(d, dict) and d.get("text"):
+                    at.steers.append({"text": str(d["text"]),
+                                      "consumed": False})
+        except OSError:
+            pass
         try:
             with db_mod.conn() as c:
                 sess = db_mod.get_session(c, sid)
@@ -972,6 +1015,20 @@ class Engine:
                         await sink.feed_raw(raw)
             finally:
                 tail.close()
+            # 未消费插话回队（与 _finish 的 missed-steer 同款语义）
+            for st in at.steers:
+                if not st.get("consumed"):
+                    log.info("中断 turn %s 插话未送达，回队列: %s",
+                             tid, st["text"][:60])
+                    try:
+                        await self.submit(
+                            sid, f"（运行中插话，转发处理）{st['text']}")
+                    except Exception:                      # noqa: BLE001
+                        log.exception("中断插话回队失败 sid=%s", sid)
+            try:
+                steer_path.unlink(missing_ok=True)     # 回队完成清文件
+            except OSError:
+                pass
             content = "\n\n".join(t for t in at.texts if t.strip())
             if not (content or at.blocks):
                 return

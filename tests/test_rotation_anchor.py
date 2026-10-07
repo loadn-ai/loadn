@@ -215,3 +215,65 @@ async def test_interrupted_salvages_partial_output(client, ws_root, monkeypatch)
     assert "开始长任务" in salvaged["content"]      # hang 场景已流出的文本
     blocks = json.loads(salvaged["blocks_json"])
     assert any(b.get("type") == "text" for b in blocks)
+
+
+async def test_r3_salvage_recovers_unconsumed_steers(client, ws_root,
+                                                     monkeypatch):
+    """三轮修（backlog 清）对赌：中断 turn 的 steer 文件行——已注入的
+    （transcript 有 steer 事件）不重投，未注入的回队为新消息；回队后
+    steer 文件清空（防下次重复回队）。原 salvage 不读 steer 文件：插话
+    彻底丢失无提示。"""
+    from loadn_webui import workspace as ws_mod
+    from loadn_webui.engine import ENGINE
+    monkeypatch.setenv("LOADN_FAKE_HANG_S", "1")
+    r = await client.post("/api/sessions", json={"title": "插话抢救"})
+    sid = r.json()["session"]["id"]
+    ctrl = ws_root / sid / ".fake"
+    ctrl.mkdir(parents=True, exist_ok=True)
+    (ctrl / "hang").touch()
+    tid = (await client.post(f"/api/sessions/{sid}/messages",
+                            json={"text": "长任务"})).json()["turn"]["id"]
+    t0 = asyncio.get_running_loop().time()
+    while asyncio.get_running_loop().time() - t0 < 15:
+        d = (await client.get(f"/api/sessions/{sid}")).json()
+        if d["turns"] and d["turns"][-1]["status"] == "running":
+            break
+        await asyncio.sleep(0.2)
+    # 已注入的一条（log_out 有 steer 回执事件 → salvage 摘除）+ 未注入一条
+    from loadn_webui import db as db_mod
+    with db_mod.conn() as c:
+        log_out = db_mod.get_turn(c, tid)["log_out"]
+    with open(log_out, "a", encoding="utf-8") as f:
+        f.write(json.dumps({"type": "steer", "text": "已注入的"}) + "\n")
+    sp = ws_mod.ws_of(sid) / f".steer.{sid}.jsonl"
+    sp.write_text(
+        json.dumps({"ts": 1, "text": "已注入的"}) + "\n"
+        + json.dumps({"ts": 2, "text": "重启时未送达的插话"}) + "\n",
+        encoding="utf-8")
+    # 模拟 daemon 死：cancel worker（不杀子进程）
+    w = ENGINE._workers.get(sid)
+    assert w is not None and not w.done()
+    w.cancel()
+    ENGINE._workers.pop(sid, None)
+    ENGINE._queues.pop(sid, None)
+    ENGINE.active.pop(tid, None)
+    await asyncio.sleep(1.6)                  # hang 1s 自然结束（无 result 行）
+    ENGINE.recover_after_restart()
+    await wait_turn(client, sid, tid, timeout_s=15)
+    # salvage 任务跑完：新 turn 带「未送达」插话；「已注入的」不重投
+    t0 = asyncio.get_running_loop().time()
+    requeued = None
+    while asyncio.get_running_loop().time() - t0 < 15:
+        d = (await client.get(f"/api/sessions/{sid}")).json()
+        requeued = next((m for m in d["messages"]
+                         if m["role"] == "user"
+                         and "重启时未送达的插话" in m["content"]), None)
+        if requeued is not None:
+            break
+        await asyncio.sleep(0.2)
+    assert requeued is not None, "未送达插话须回队"
+    assert "运行中插话" in requeued["content"]
+    dup = [m for m in (await client.get(f"/api/sessions/{sid}")).json()["messages"]
+           if m["role"] == "user" and "已注入的" in m["content"]]
+    assert not dup, "已注入的插话不得重投"
+    assert not sp.exists(), "回队后 steer 文件须清空"
