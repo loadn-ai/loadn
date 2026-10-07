@@ -95,6 +95,31 @@ async def lifespan(app: FastAPI):
     _mig = migrate_legacy_db()   # R2.5：旧 var/workdaddy.db → var/loadn.db（copy）
     if _mig is not None:
         log.info("[R2.5] 旧库迁移完成 → %s", _mig)
+    # 三轮修（backlog 清）：session_events 启动全局清扫——保留策略原本
+    # 只在该会话下一 turn 收尾时触发（长期不活跃会话的存量永不收缩，
+    # 生产 63% 超期）。'*' 广播行由调度 tick 常态清（另一路）
+    try:
+        from datetime import datetime, timedelta, timezone
+
+        from .. import db as _db
+        cutoff = (datetime.now(timezone.utc)
+                  - timedelta(days=CONFIG.run.events_retain_days
+                              + 1)).isoformat()
+        final = ("done", "error", "stopped", "interrupted")
+        marks = ",".join("?" * len(final))
+        with _db.conn() as c:
+            cur = c.execute(
+                f"DELETE FROM session_events WHERE turn_id IN ("
+                f"SELECT id FROM turns WHERE status IN ({marks}) "
+                f"AND COALESCE(started_at,'') != '' "
+                f"AND COALESCE(started_at,'') < ?) AND session_id != '*'",
+                (*final, cutoff))
+            gone = cur.rowcount or 0
+            gone += _db.prune_broadcast(c, cutoff)
+        if gone:
+            log.info("启动清扫：过期事件行 %d", gone)
+    except Exception:                                      # noqa: BLE001
+        log.exception("启动事件清扫失败（不阻断启动）")
     # 资源密钥明文 → vault（一次性；迁移后 config.yaml 密钥字段清空）
     from ..security import vault as vault_mod
     _moved = vault_mod.migrate_res_secrets()

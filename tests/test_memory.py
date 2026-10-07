@@ -546,3 +546,27 @@ def test_r3_edit_entry_flattens_newlines(tmp_path):
     assert meta.get("id") == e["id"]           # 元数据未被注入挤掉
     assert meta.get("origin_session") == "s1"  # 溯源保留
     assert "fake" not in (meta.get("source") or "") and "source" not in meta
+
+
+def test_r3_edit_lock_busy_fail_closed(tmp_path, monkeypatch):
+    """三轮修（backlog 清）对赌：记忆域锁被占（5s 超时）时 edit/promote
+    fail-closed 拒绝——原"体照跑"的无锁 RMW 与持锁方互相整文件覆盖=丢
+    条目（remember/forget 四轮已修，edit/promote 本批补齐）。"""
+    import fcntl
+
+    from loadn import memorystore as ms
+    e = ms.remember(tmp_path, "条目", "内容", origin_session="s1")
+    dir_ = ms.memory_dir(tmp_path)
+    lock = dir_ / ".loadn-memory.lock"
+    fd = open(lock)
+    fcntl.flock(fd, fcntl.LOCK_EX)          # 外部占锁
+    monkeypatch.setattr(ms, "_LOCK_TIMEOUT_S", 0.2)
+    try:
+        with pytest.raises(ms.MemoryOpError, match="锁忙"):
+            ms.edit_entry(dir_, e["id"], content="并发写入")
+    finally:
+        fcntl.flock(fd, fcntl.LOCK_UN)
+        fd.close()
+    # 锁释放后正常可编辑
+    out = ms.edit_entry(dir_, e["id"], content="正常写入")
+    assert out["content"] == "正常写入"

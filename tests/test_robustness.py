@@ -137,3 +137,53 @@ async def test_resume_continuity_after_stop(client, ws_root):
     assert t2["status"] == "done"
     detail = (await client.get(f"/api/sessions/{sid}")).json()
     assert detail["session_fresh"] == 0
+
+
+def test_r3_surrogate_does_not_break_transcript(tmp_path):
+    """三轮修（backlog 清）对赌：工具结果含 lone surrogate（surrogateescape
+    非常规文件名）不再炸 transcript——原 UnicodeEncodeError 直穿顶层
+    except：整 turn 报 error、上下文丢失（resume 无法重建）。"""
+    bad = "caf\udce9-\udcff.py"
+    from loadn.core.session import SessionManager
+    session = SessionManager.create(tmp_path, home=tmp_path / "home")
+    session.append_event("user", {"content": [{"type": "text",
+                                               "text": f"读 {bad}"}]})
+    # 能无损读回（不抛 UnicodeEncodeError）且 surrogate 已替换为 ?
+    evs = session.transcript.read_events()
+    mine = next(e for e in evs if e["type"] == "user")
+    blob = json.dumps(mine, ensure_ascii=False)
+    assert "caf?" in blob and "\\udc" not in blob
+    # webui 侧 session_events 同款（db.add_event）
+    from loadn_webui import db as db_mod
+    with db_mod.conn() as c:
+        eid = db_mod.add_event(c, "s-r3", None, "files",
+                               {"paths": [bad, "normal.py"]})
+        row = c.execute("SELECT data_json FROM session_events WHERE id=?",
+                        (eid,)).fetchone()
+    assert "normal.py" in row["data_json"]       # 正常内容不受影响
+    assert "\\udc" not in row["data_json"]       # surrogate 已清洗
+
+
+async def test_r3_hooks_payload_with_surrogate(monkeypatch, tmp_path):
+    """三轮修对赌：外部命令钩子 payload 含 surrogate 时 communicate 不再
+    抛（原 encode 抛错被 fire() 的 continue 吞=安全钩子静默跳过 fail-open）。"""
+
+    from loadn.core import hooks as hk
+    captured = {}
+
+    class _FakeProc:
+        def communicate(self, data):
+            captured["data"] = data
+            return b"", b""
+
+        def wait(self):
+            return 0
+
+    async def _fake_exec(cmd, **kw):
+        return _FakeProc()
+
+    monkeypatch.setattr(hk.asyncio, "create_subprocess_shell", _fake_exec)
+    runner = hk.HookRunner(hooks={"PreToolUse": ["cat >/dev/null"]})
+    out = await runner.fire("PreToolUse", {"file": "x\udce9y"})
+    assert b"x" in captured["data"]              # encode 成功（不再抛）
+    assert not out.blocked                       # 钩子照常执行未跳过

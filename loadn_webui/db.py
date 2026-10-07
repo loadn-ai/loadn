@@ -293,9 +293,26 @@ def _migrate(c: sqlite3.Connection) -> None:
         if col not in pcols:
             # 任务/项目统一的侧栏分区位（置顶/收藏/自定义分类）
             c.execute(f"ALTER TABLE projects ADD COLUMN {col} {ddl}")
+    # 三轮修（backlog 清）：artifacts (session_id,path) 唯一索引——先清
+    # 存量重复行（保最新），建索引后 upsert_artifact 的 ON CONFLICT 原子化。
+    # 门禁：索引已在=零成本直过（DELETE 只在首建前跑一次——每连接都全表
+    # GROUP BY 是无谓写事务，与在途写并发时引发 busy 等待）
+    try:
+        has_idx = c.execute(
+            "SELECT 1 FROM sqlite_master WHERE type='index' "
+            "AND name='uq_art_session_path'").fetchone()
+        if not has_idx:
+            c.execute(
+                "DELETE FROM artifacts WHERE rowid NOT IN (SELECT MAX(rowid)"
+                " FROM artifacts GROUP BY session_id, path)")
+            c.execute("CREATE UNIQUE INDEX IF NOT EXISTS "
+                      "uq_art_session_path ON artifacts(session_id, path)")
+    except sqlite3.OperationalError:
+        pass        # 旧库容错（索引建失败时 upsert 走旧路径等值不炸）
 
 
 # ---------------------------------------------------------------- kv
+
 def kv_get(c: sqlite3.Connection, key: str) -> str | None:
     row = c.execute("SELECT value FROM kv WHERE key=?", (key,)).fetchone()
     return row["value"] if row else None
@@ -492,9 +509,12 @@ def list_messages(c: sqlite3.Connection, sid: str) -> list[sqlite3.Row]:
 
 
 def add_event(c: sqlite3.Connection, sid: str, turn_id: int | None, type_: str, data: dict) -> int:
+    from loadn.util import sanitize_text  # 三轮修：lone surrogate 清洗
     cur = c.execute(
         "INSERT INTO session_events(session_id,turn_id,type,data_json,created_at) VALUES(?,?,?,?,?)",
-        (sid, turn_id, type_, json.dumps(data, ensure_ascii=False, default=str), iso()))
+        (sid, turn_id, type_,
+         sanitize_text(json.dumps(data, ensure_ascii=False, default=str)),
+         iso()))
     return cur.lastrowid
 
 
@@ -581,17 +601,18 @@ def prune_events(c: sqlite3.Connection, sid: str, retain_days: float,
 
 
 def upsert_artifact(c: sqlite3.Connection, **fields: Any) -> None:
-    sid, path = fields["session_id"], fields["path"]
-    row = c.execute("SELECT id FROM artifacts WHERE session_id=? AND path=?", (sid, path)).fetchone()
+    """三轮修（backlog 清）：SELECT→INSERT 竞态改 ON CONFLICT 原子 upsert
+    （原两线程池路径并发扫同一新文件=双 INSERT 重复行，fetchone 永远只
+    命中第一行，mtime 更新丢失+摘要双计费）。依赖唯一索引（_migrate 建）。"""
     fields["updated_at"] = iso()
-    if row:
-        sets = ", ".join(f"{k}=?" for k in fields)
-        c.execute(f"UPDATE artifacts SET {sets} WHERE id=?", (*fields.values(), row["id"]))
-    else:
-        fields.setdefault("created_at", iso())
-        cols = ", ".join(fields.keys())
-        ph = ", ".join("?" for _ in fields)
-        c.execute(f"INSERT INTO artifacts({cols}) VALUES({ph})", tuple(fields.values()))
+    fields.setdefault("created_at", iso())
+    sets = ", ".join(f"{k}=?" for k in fields)
+    cols = ", ".join(fields.keys())
+    ph = ", ".join("?" for _ in fields)
+    c.execute(
+        f"INSERT INTO artifacts({cols}) VALUES({ph}) "
+        f"ON CONFLICT(session_id, path) DO UPDATE SET {sets}",
+        (*fields.values(), *fields.values()))
 
 
 # ---------------------------------------------------------------- shares（产物分享）

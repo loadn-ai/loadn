@@ -14,6 +14,7 @@ from pathlib import Path
 
 from loadn import loadn_home
 from loadn.types import Message
+from loadn.util import sanitize_text
 
 
 class TranscriptStore:
@@ -40,7 +41,8 @@ class TranscriptStore:
             "payload": payload or {},
         }
         with self.path.open("a", encoding="utf-8") as f:
-            f.write(json.dumps(ev, ensure_ascii=False) + "\n")
+            f.write(sanitize_text(
+                json.dumps(ev, ensure_ascii=False)) + "\n")
             if fsync:
                 f.flush()
                 import os as _os
@@ -197,7 +199,8 @@ class TranscriptStore:
         new._ensure_dir()
         with new.path.open("w", encoding="utf-8") as f:
             for ev in chain:
-                f.write(json.dumps(ev, ensure_ascii=False) + "\n")
+                f.write(sanitize_text(
+                    json.dumps(ev, ensure_ascii=False)) + "\n")
         new._last_uuid = chain[-1].get("uuid") if chain else None
         return new
 

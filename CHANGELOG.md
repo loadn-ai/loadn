@@ -5,6 +5,28 @@
 
 ## [0.6.26] - 2026-10-07
 
+- **三轮 backlog 中优清偿批（9 项）**：①lone surrogate 三通道清洗
+  （sanitize_text：transcript 两处写+session_events+外部命令钩子——原
+  surrogateescape 非常规文件名经工具结果进入事件流即 UnicodeEncodeError：
+  整 turn error/上下文丢失/PreToolUse 安全钩子 fail-open）②skills.create
+  的 description 单行化（多行值注入 source:=供应链锁 fail-closed=skill
+  被引擎拒索引自毁）③webui/引擎两套 frontmatter 解析器统一（原首键胜
+  vs 后键覆盖——重复键时管理页与引擎注册名错位）④artifacts (session,
+  path) 唯一索引+upsert 原子化 ON CONFLICT（原 SELECT→INSERT 竞态双行，
+  mtime 更新丢失+摘要双计费；migration 先清存量重复行）⑤DELETE 单条
+  消息级联置空 turns.message_id（生产 4 行悬挂）⑥_finish 启动即置
+  closing：收尾窗口内到达的 steer 拒收回落排队（原落在 missed 快照与
+  active.pop 之间=永久丢失）⑦收养闸挪到全局信号量外（原 gate 等待者
+  空占 max_concurrent 槽=收养期间全引擎新 turn 冻结）+loop/done 防御
+  （单例状态跨 loop 残留闸不再挂死）⑧submit 的事件发布失败不再让 turn
+  卡死 queued（SSE 丢一条可接受，turn 永久排队不可）⑨记忆域锁超时
+  fail-closed 补齐 edit/promote（remember/forget 之外的最后两处无锁
+  RMW）+session_events 启动全局清扫（原只在该会话下一 turn 收尾时触发，
+  长期不活跃会话存量永不收缩——生产 63% 超期）。**过程教训**：_migrate
+  热路径加的每连接 DELETE+CREATE INDEX 写事务与高频事件写并发=写锁排队
+  风暴（export 30s 超时实证）——索引建置加 sqlite_master 门禁后过。
+  对赌新增 7 条（surrogate 两面/skills 单行+解析统一/upsert 原子/steer
+  closing 拒收/消息级联/域锁 fail-closed）。
 - **三轮 backlog 高优清偿批（5 项）**：①Telegram offset 持久化（kv
   落盘，重启从确认位续拉——原归零重放 24h 内全部 updates：消息双投、
   /new 重建会话重绑、旧会话孤儿化）②重启丢插话修复：salvage 现在读

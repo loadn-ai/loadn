@@ -97,6 +97,9 @@ async def delete_message(mid: int):
         if row is None:
             raise HTTPException(404, "消息不存在")
         c.execute("DELETE FROM messages WHERE id=?", (mid,))
+        # 三轮修（backlog 清）：清 turns.message_id 反向引用（生产 4 行
+        # 悬挂实证——retract 路径成对删，此路漏）
+        c.execute("UPDATE turns SET message_id=NULL WHERE message_id=?", (mid,))
         sid = row["session_id"]
     ENGINE.publish(sid, "resync", {}, None)
     return {"ok": True}

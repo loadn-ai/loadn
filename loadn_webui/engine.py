@@ -137,6 +137,7 @@ class ActiveTurn:
     memory_hits: list = field(default_factory=list)   # P7：本 turn 注入记忆清单
     delta_buf: dict = field(default_factory=lambda: {"think": "", "text": ""})
     delta_last_flush: dict = field(default_factory=lambda: {"think": 0.0, "text": 0.0})
+    closing: bool = False     # 三轮修：_finish 已启动——新 steer 拒收回落排队
     streamed_kinds: set = field(default_factory=set)
     # 收养静默重放期：状态照常重建（at.texts/blocks/delta 抑制表）但 SSE 不
     # 重发（session_events 已有停机前的事件，重发=重连客户端看到双份）
@@ -196,6 +197,11 @@ class Engine:
         for tid, at in self.active.items():
             if at.session_id != sid:
                 continue
+            if at.closing:
+                # 三轮修（backlog 清）：_finish 已启动（missed 快照可能已
+                # 过）——此刻写入的 steer 会落在快照与 active.pop 之间=
+                # 永久丢失。拒收回落 submit 排队（插话不丢话）
+                return None
             with db_mod.conn() as c:
                 row = db_mod.get_turn(c, tid)
                 eng = row["engine"] if row is not None else None
@@ -256,7 +262,13 @@ class Engine:
             # 自动标题：标记在（未显式命名/未手动改名/尚未成功过）→ 后台生成
             want_title = CONFIG.titlegen.enabled and CONFIG.titlegen.api_key \
                 and db_mod.kv_get(c, f"title_auto:{sid}") is not None
-        self.publish(sid, "turn_queued", {"turn_id": tid, "mode": mode}, tid)
+        # 三轮修（backlog 清）：publish 失败（事件库抖动）不再上抛——原
+        # 异常发生在 create_turn 之后、入队之前：turn 行永久 queued 无
+        # worker 拾取（重启 requeue 前死排队）。SSE 丢一条可接受
+        try:
+            self.publish(sid, "turn_queued", {"turn_id": tid, "mode": mode}, tid)
+        except Exception:                              # noqa: BLE001
+            log.exception("turn_queued 事件发布失败（turn 照常入队）tid=%s", tid)
         if want_title:
             from .integrations import titlegen
             asyncio.create_task(titlegen.maybe_auto_title(sid, text))
@@ -273,10 +285,24 @@ class Engine:
         if t is None or t.done():
             self._workers[sid] = asyncio.create_task(self._session_worker(sid))
 
+    async def _wait_adopt_gate(self, sid: str) -> None:
+        """三轮修（backlog 清）：收养闸等待——loop/done 防御（_adopt_gates
+        是单例状态，测试隔离面会留下跨 loop 的脏 future：直接 await 轻则
+        RuntimeError 重则挂死；非本 loop 的残留闸不具约束力，跳过）。"""
+        gate = self._adopt_gates.get(sid)
+        if gate is not None and not gate.done() \
+                and gate.get_loop() is asyncio.get_running_loop():
+            await gate
+
     async def _session_worker(self, sid: str) -> None:
         q = self._queues[sid]
         while True:
             tid = await q.get()
+            # 三轮修（backlog 清）：收养闸在 sem **外**等——原在 _run_turn
+            # 第一步 await gate 且整段包在 sem 内：≥max_concurrent（默认3）
+            # 个会话各收养时，gate 等待者空占全部信号量槽=全引擎所有会话
+            # 新 turn 冻结（收养可跑数小时）。loop/done 防御见 helper
+            await self._wait_adopt_gate(sid)
             async with self._sem:
                 try:
                     await self._run_turn(sid, tid)
@@ -393,10 +419,9 @@ class Engine:
 
     async def _run_turn(self, sid: str, tid: int, _anchor: str = "") -> None:
         # 收养闸：该 session 有正在收养的幸存 turn 时等它放行（串行语义——
-        # 否则收养 turn 与 requeue/新 submit turn 同 session 双跑）
-        gate = self._adopt_gates.get(sid)
-        if gate is not None:
-            await gate
+        # 否则收养 turn 与 requeue/新 submit turn 同 session 双跑）。loop
+        # 防御见 _wait_adopt_gate（跨 loop 脏闸不挂死）
+        await self._wait_adopt_gate(sid)
         with db_mod.conn() as c:
             sess = db_mod.get_session(c, sid)
             turn = db_mod.get_turn(c, tid)
@@ -687,6 +712,7 @@ class Engine:
         return "\n\n".join(parts)
 
     async def _finish(self, sid: str, tid: int, at: ActiveTurn, sess, res, anchor: str) -> None:
+        at.closing = True     # 三轮修：收尾中拒新 steer（见 steer_if_running）
         status = "done"
         if res.stopped:
             status = "stopped"

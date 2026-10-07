@@ -459,6 +459,8 @@ def promote(cwd: Path, eid: str, *, event_sink=None) -> dict | None:
     # 复查修#6：manifest 读改写入域锁（与 remember/forget 同款——此前锁外
     # RMW，与引擎写入并发丢更新）
     with _domain_lock(dir_) as locked:
+        if not locked:
+            raise MemoryOpError("记忆域锁忙，稍后重试")
         m = _manifest(dir_)
         e = _remove_entry(dir_, m, eid)
         if e is None:
@@ -542,6 +544,8 @@ def edit_entry(dir_: Path, eid: str, *, content: str | None = None,
     # summary 使 parse_frontmatter 在首个 \n--- 提前闭合=元数据全灭/伪键注入）
     new_summary = " ".join((summary or "").split()) or None
     with _domain_lock(dir_) as locked:
+        if not locked:
+            raise MemoryOpError("记忆域锁忙，稍后重试")
         m = _manifest(dir_)
         e = next((x for x in m.get("entries") or [] if x.get("id") == eid), None)
         if e is None:
@@ -573,6 +577,8 @@ def delete_entry(dir_: Path, eid: str, *, actor: str = "webui",
                  event_sink=None) -> dict:
     """删除条目（git 史保留可恢复）。删除即 commit。"""
     with _domain_lock(dir_) as locked:
+        if not locked:
+            raise MemoryOpError("记忆域锁忙，稍后重试")
         m = _manifest(dir_)
         e = _remove_entry(dir_, m, eid)
         if e is None:

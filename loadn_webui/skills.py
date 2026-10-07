@@ -45,16 +45,15 @@ DISABLED_FILE = ".loadn-disabled"   # 存在即禁用：不挂载新会话 + 摘
 
 # ---------------------------------------------------------------- 读取
 def parse_frontmatter(md: str) -> dict:
-    """SKILL.md 头部 frontmatter（name/description，宽松解析，同 available() 口径）。"""
-    out = {"name": "", "description": ""}
-    parts = md.split("---", 2)
-    if len(parts) < 3:
-        return out
-    for ln in parts[1].splitlines():
-        m = re.match(r"^(name|description):\s*(.*)$", ln.strip())
-        if m and not out[m.group(1)]:
-            out[m.group(1)] = m.group(2).strip().strip('"').strip("'")
-    return out
+    """SKILL.md 头部 frontmatter（name/description）。
+
+    三轮修（backlog 清）：复用引擎侧 loadn.util.parse_frontmatter——原
+    自研 split 版与引擎语义相反（首键胜 vs 后键覆盖；--- 不锚定行首），
+    重复键时管理页显示 name=a、引擎注册 name=b，删除/引用按名错位。"""
+    from loadn.util import parse_frontmatter as _engine_parse
+    meta, _ = _engine_parse(md)
+    return {"name": str(meta.get("name") or ""),
+            "description": str(meta.get("description") or "")}
 
 
 _FM_SPLIT = re.compile(r"^---\s*\n(.*?)\n---\s*\n?", re.DOTALL)
@@ -266,12 +265,16 @@ description: {description}
 def create(name: str, description: str) -> dict:
     if not NAME_RE.match(name or ""):
         raise ValueError("名称需匹配 ^[a-z0-9][a-z0-9._-]{0,63}$（小写开头，限小写字母/数字/._-）")
+    # 三轮修（backlog 清）：description 单行化——多行值进 frontmatter 后：
+    # 引擎解析只取首行=丢数据；注入 source: 行=触发供应链锁 fail-closed
+    # =skill 被引擎拒索引（自毁）。name 已有 NAME_RE 白名单无需再洗。
+    description = " ".join((description or "").split()) or name
     d = _writable_root() / name
     if skill_dir(name) is not None or d.exists():
         raise FileExistsError(f"已存在: {name}")
     d.mkdir(parents=True)
     (d / "SKILL.md").write_text(
-        SKILL_TEMPLATE.format(name=name, description=description or name))
+        SKILL_TEMPLATE.format(name=name, description=description))
     return {"ok": True, "name": name}
 
 

@@ -277,3 +277,54 @@ async def test_r3_salvage_recovers_unconsumed_steers(client, ws_root,
            if m["role"] == "user" and "已注入的" in m["content"]]
     assert not dup, "已注入的插话不得重投"
     assert not sp.exists(), "回队后 steer 文件须清空"
+
+
+async def test_r3_steer_during_finish_falls_back_to_queue(client, ws_root):
+    """三轮修（backlog 清）对赌：_finish 启动后（closing）到达的 steer
+    拒收回落 submit 排队——不再落进 missed 快照与 active.pop 之间的丢失
+    窗口（单元级：直接构造 running 态，不跑真 turn）。"""
+    from loadn_webui.config import CONFIG
+    from loadn_webui.engine import ENGINE, ActiveTurn, StopHandle
+    monkeypatch_default = CONFIG.engines.default
+    CONFIG.engines.default = "hahaness"
+    try:
+        r = await client.post("/api/sessions", json={"title": "收尾竞态"})
+        sid = r.json()["session"]["id"]
+        from loadn_webui import db as db_mod
+        with db_mod.conn() as c:
+            tid = db_mod.create_turn(c, session_id=sid, status="running",
+                                     engine="hahaness")
+        at = ActiveTurn(turn_id=tid, session_id=sid, stop=StopHandle(),
+                        started_at=0.0)
+        ENGINE.active[tid] = at
+        try:
+            assert ENGINE.steer_if_running(sid, "正常插话") == tid  # 照常收
+            at.closing = True                        # 模拟 _finish 已启动
+            got = ENGINE.steer_if_running(sid, "收尾中来的插话")
+            assert got is None, "closing 后须拒收（回落 submit）"
+            assert not any(s_["text"] == "收尾中来的插话"
+                           for s_ in at.steers)
+        finally:
+            ENGINE.active.pop(tid, None)
+            with db_mod.conn() as c:
+                c.execute("DELETE FROM turns WHERE id=?", (tid,))
+    finally:
+        CONFIG.engines.default = monkeypatch_default
+
+
+async def test_r3_delete_message_clears_turn_ref(client):
+    """三轮修（backlog 清）对赌：删单条消息同步置空 turns.message_id 反向
+    引用（生产 4 行悬挂实证——后续按 message_id join 的面拿幽灵行）。"""
+    from loadn_webui import db as db_mod
+    r = await client.post("/api/sessions", json={"title": "消息悬挂"})
+    sid = r.json()["session"]["id"]
+    with db_mod.conn() as c:
+        tid = db_mod.create_turn(c, session_id=sid, status="done")
+        mid = db_mod.add_message(c, session_id=sid, turn_id=tid,
+                                 role="user", content="将被删")
+        db_mod.update_turn(c, tid, message_id=mid)
+    resp = await client.delete(f"/api/messages/{mid}")
+    assert resp.status_code == 200
+    with db_mod.conn() as c:
+        row = db_mod.get_turn(c, tid)
+    assert row["message_id"] is None             # 悬挂清除
