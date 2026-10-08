@@ -1,6 +1,7 @@
 """自定义 subagent（.claude/agents/*.md）：加载合并 / TaskTool 动态 enum / model。"""
 from __future__ import annotations
 
+import json
 from pathlib import Path
 
 import tests.helpers as H
@@ -127,6 +128,27 @@ def test_builtin_types_still_default(tmp_path: Path):
     assert set(SUBAGENT_TYPES) <= set(mgr.types)
 
 
+async def test_subagent_title_fallback_and_provider_choice(tmp_path: Path):
+    """title=description or sub_sid 兜底链 + 无 model 的类型不吃 model 工厂。"""
+    seen: list = []
+    mgr = SubagentManager(
+        registry=_Registry({"Echo": H.EchoTool()}),
+        provider_factory=lambda: H.ScriptedProvider([H.text_round("ok")]),
+        cwd=tmp_path, session_id="sess", home=tmp_path,
+        model_provider_factory=lambda m: seen.append(m) or H.ScriptedProvider([]))
+    out = await mgr.task("干活A", description="调研")
+    assert out.startswith("ok")
+    assert seen == []               # general 无 model → 不走 model_provider_factory
+    init = json.loads((tmp_path / "sessions" / "sess-sub1" / "transcript.jsonl")
+                      .read_text().splitlines()[0])
+    assert init["payload"]["title"] == "调研"
+    out2 = await mgr.task("干活B")   # 无 description → title 兜底 sub_sid
+    assert out2.startswith("ok")
+    init2 = json.loads((tmp_path / "sessions" / "sess-sub2" / "transcript.jsonl")
+                       .read_text().splitlines()[0])
+    assert init2["payload"]["title"] == "sess-sub2"
+
+
 async def test_build_agent_wires_skill_and_agents(tmp_path, monkeypatch):
     """build_agent 集成：skills 非空注册 Skill 工具；.claude/agents 进 Task enum。"""
     from loadn.core.build import build_agent
@@ -175,8 +197,9 @@ async def test_planner_gather_emits_task_cards(tmp_path):
     card = blocks[0].to_dict() if hasattr(blocks[0], "to_dict") else blocks[0]
     assert card["type"] == "tool_use" and card["name"] == "Task"
     assert card["id"] == "sub_1" and "调研比赛A" in card["input"]["prompt"]
-    # 自动人名：池内取值、随 Task input 外发（宿主 UI 拟人展示）
-    assert card["input"]["agent_name"] in AGENT_NAME_POOL
+    # 自动人名：池内取值、随 Task input 外发（宿主 UI 拟人展示）；
+    # 首个子代理取池首（确定性起点——轮转索引可复现）
+    assert card["input"]["agent_name"] == AGENT_NAME_POOL[0]
     res = events[1]["block"]
     assert res.tool_use_id == "sub_1" and events[1]["name"] == "Task"
     assert "子任务1结果" in res.content and not res.is_error
