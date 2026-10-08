@@ -421,6 +421,10 @@ def create_schedule(sid: str, body: dict):
     _get_session_or_404(sid)
     body = {**body, "kind": "message"}
     fields = _job_fields(body, sid)
+    from ...security import userauth as _ua
+    _u = _ua.current_user()
+    if _u is not None:
+        fields["owner_id"] = _u["id"]
     with db_mod.conn() as c:
         jid = db_mod.create_job(c, **fields)
         job = db_mod.to_dict(db_mod.get_job(c, jid))

@@ -76,12 +76,19 @@ async def test_hook_crud_validation(client):
     assert (await client.delete(f"/api/hooks/{h['id']}")).status_code == 404
 
 
-async def test_admin_plane_requires_admin_header(server_url):
-    """W0 管理面：裸 client（无 token 头）POST /api/hooks → 401/403。"""
-    async with httpx.AsyncClient(base_url=server_url, timeout=10) as c:
-        r = await c.post("/api/hooks", json={"name": "x",
-                                             "prompt_template": _TPL})
-        assert r.status_code in (401, 403)
+async def test_hooks_write_requires_auth(server_url, monkeypatch):
+    """hooks 写面降普通面（多用户批2）后仍需认证：token 强制期（宽限
+    归零模拟）裸 client POST → 401。"""
+    from loadn_webui.config import CONFIG
+    old_grace = CONFIG.server.token_grace_until
+    CONFIG.server.token_grace_until = 0.0
+    try:
+        async with httpx.AsyncClient(base_url=server_url, timeout=10) as c:
+            r = await c.post("/api/hooks", json={"name": "x",
+                                                 "prompt_template": _TPL})
+            assert r.status_code == 401
+    finally:
+        CONFIG.server.token_grace_until = old_grace
 
 
 # ---------------------------------------------------------------- 验收①②

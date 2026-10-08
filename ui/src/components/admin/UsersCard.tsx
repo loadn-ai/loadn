@@ -1,0 +1,119 @@
+import { useEffect, useState } from 'react';
+import { api } from '../../api/client';
+
+/** 多用户批2：用户管理卡（admin）——列表/建号/角色/启停/重置密码。
+ *  禁用即时踢下线（服务端删会话）；不能禁用/降级自己（防锁死管理面）。 */
+interface UserRow {
+  id: number; username: string; role: string; display_name?: string | null;
+  disabled: number; created_at?: string; last_login_at?: string | null;
+  active_sessions: number;
+}
+
+export default function UsersCard() {
+  const [users, setUsers] = useState<UserRow[]>([]);
+  const [me, setMe] = useState<{ id: number; username: string; role: string } | null>(null);
+  const [msg, setMsg] = useState('');
+  const [adding, setAdding] = useState({ username: '', password: '', role: 'user' });
+
+  const load = async () => {
+    try {
+      const d = await api<{ users: UserRow[] }>('/api/auth/users');
+      setUsers(d.users);
+    } catch (e) {
+      setMsg(`加载失败：${e instanceof Error ? e.message : e}`);
+    }
+  };
+  useEffect(() => {
+    void load();
+    api<{ id: number; username: string; role: string }>('/api/auth/me')
+      .then(setMe).catch(() => setMe(null));
+  }, []);
+
+  const patch = async (uid: number, body: Record<string, unknown>, what: string) => {
+    try {
+      await api(`/api/auth/users/${uid}`, { method: 'PATCH',
+        body: JSON.stringify(body) });
+      setMsg(what + ' ✓');
+      await load();
+    } catch (e) {
+      setMsg(`${what} 失败：${e instanceof Error ? e.message : e}`);
+    }
+  };
+
+  if (me !== null && me.role !== 'admin') return (
+    <div className="setting-card">
+      <h4>用户与账号</h4>
+      <div className="muted">用户管理需要管理员权限。</div>
+    </div>
+  );
+  return (
+    <div className="setting-card">
+      <h4>用户与账号</h4>
+      <div className="muted" style={{ fontSize: 12 }}>
+        账号密码登录（token 通道继续可用于 CLI/旧部署）。属主隔离：普通用户
+        只见自己的任务/项目/调度/webhook；admin 全见。
+      </div>
+      {users.map(u => (
+        <div key={u.id} className="setting-row"
+             style={{ justifyContent: 'space-between', alignItems: 'center' }}>
+          <span>
+            <b>{u.username}</b>
+            {u.display_name ? <span className="muted">（{u.display_name}）</span> : null}
+            <span className="muted"> · {u.role === 'admin' ? '管理员' : '用户'}</span>
+            {u.disabled ? <span className="chip">已禁用</span> : null}
+            {u.active_sessions > 0
+              ? <span className="muted"> · {u.active_sessions} 活跃会话</span> : null}
+            {me?.id === u.id ? <span className="muted"> · 这是我</span> : null}
+          </span>
+          <span>
+            {u.role === 'admin'
+              ? <button className="btn ghost sm" title="降为普通用户"
+                        onClick={() => void patch(u.id, { role: 'user' }, '降级')}>降为用户</button>
+              : <button className="btn ghost sm" title="升为管理员"
+                        onClick={() => void patch(u.id, { role: 'admin' }, '升级')}>升为管理员</button>}
+            {u.disabled
+              ? <button className="btn ghost sm"
+                        onClick={() => void patch(u.id, { disabled: false }, '启用')}>启用</button>
+              : <button className="btn ghost sm danger-link"
+                        title="禁用并踢下线全部会话"
+                        onClick={() => {
+                          if (!confirm(`禁用 ${u.username}？其全部登录会话立即失效。`)) return;
+                          void patch(u.id, { disabled: true }, '禁用');
+                        }}>禁用</button>}
+            <button className="btn ghost sm"
+                    onClick={() => {
+                      const pw = prompt(`为 ${u.username} 设置新密码（≥8 位，重置后其会话全部失效）：`);
+                      if (pw && pw.length >= 8) void patch(u.id, { password: pw }, '重置密码');
+                      else if (pw) setMsg('密码至少 8 位');
+                    }}>重置密码</button>
+          </span>
+        </div>
+      ))}
+      <div className="setting-row" style={{ gap: 6 }}>
+        <input placeholder="新用户名" value={adding.username}
+               onChange={e => setAdding(a => ({ ...a, username: e.target.value }))} />
+        <input placeholder="初始密码（≥8 位）" type="password" value={adding.password}
+               onChange={e => setAdding(a => ({ ...a, password: e.target.value }))} />
+        <select value={adding.role}
+                onChange={e => setAdding(a => ({ ...a, role: e.target.value }))}>
+          <option value="user">用户</option>
+          <option value="admin">管理员</option>
+        </select>
+        <button className="btn sm" disabled={!adding.username.trim()
+          || adding.password.length < 8}
+          onClick={async () => {
+            try {
+              await api('/api/auth/users', { method: 'POST',
+                body: JSON.stringify(adding) });
+              setAdding(a => ({ ...a, username: '', password: '' }));
+              setMsg('建号 ✓');
+              await load();
+            } catch (e) {
+              setMsg(`建号失败：${e instanceof Error ? e.message : e}`);
+            }
+          }}>建号</button>
+      </div>
+      {msg ? <div className="form-msg">{msg}</div> : null}
+    </div>
+  );
+}

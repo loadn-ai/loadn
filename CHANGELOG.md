@@ -5,6 +5,18 @@
 
 ## [0.6.26] - 2026-10-07
 
+- **多用户批2：用户管理面+隔离收口**：①用户管理（admin）：
+  /api/auth/users 列表（带活跃会话数）/建号/改角色/启停/重置密码——
+  禁用即时踢下线（删全部会话）、不能禁用/降级自己（防锁死管理面）、
+  全操作入审计；前端 SettingsTab「用户与账号」卡（非 admin 显示权限
+  提示）②属主接线补齐：webhooks/projects/schedules/categories 四面
+  （建号落主+列表过滤+patch/delete 属主 404——categories 补 owner_id
+  列）③hooks/schedules 写面从 admin 双头降为普通面（多用户语义：
+  普通用户自管自己的自动化；owner 复核在路由内；W0 钉版与 hooks
+  认证测试同步更新）④审批 decide 属主复核（cookie 普通用户裁决他人
+  会话的审批=404；Telegram 渠道线程 user=None 放行不变）⑤内置心跳
+  job：普通用户可见可暂停（全员有意义）但删除需 admin。对赌：批2
+  e2e（四资源过滤/越权裁决 404/禁用踢下线/防自禁）+W0 钉版 regen。
 - **多用户账号密码登录与空间隔离（批1：认证内核+核心面）**：用户
   反馈「让用户记 token 不合理」——按方向评审定完整多用户+隔离。本批：
   ①users/auth_sessions 表（pbkdf2-sha256 260k 轮标准库哈希——依赖红线

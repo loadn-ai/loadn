@@ -313,7 +313,7 @@ def _migrate(c: sqlite3.Connection) -> None:
     # 八轮（多用户）：属主列——cookie 会话通道的隔离判定（NULL=legacy
     # token 时代，setup 首个 admin 建立时归并）
     for tbl in ("sessions", "projects", "scheduled_jobs", "webhooks",
-                "channel_bindings"):
+                "channel_bindings", "categories"):
         tinfo = {r["name"] for r in c.execute(f"PRAGMA table_info({tbl})")}
         if "owner_id" not in tinfo:
             c.execute(f"ALTER TABLE {tbl} ADD COLUMN owner_id INTEGER")

@@ -39,8 +39,12 @@ def _norm_ips(val) -> str | None:
 
 @router.get("/hooks")
 def list_hooks():
+    from ...security import userauth as _ua
+    _u = _ua.current_user()
     with db_mod.conn() as c:
         rows = [db_mod.to_dict(r) for r in db_mod.list_hooks(c)]
+    if _u is not None and _u["role"] != "admin":
+        rows = [r for r in rows if r.get("owner_id") in (None, _u["id"])]
     return {"hooks": rows}
 
 
@@ -65,13 +69,16 @@ def create_hook(body: dict):
         raise HTTPException(400, "rate_limit_per_min 须为整数") from None
     if not 1 <= rate <= 600:
         raise HTTPException(400, "rate_limit_per_min 需在 1-600")
+    from ...security import userauth as _ua
+    _u = _ua.current_user()
     token = hooks_mod.mint_token()
     with db_mod.conn() as c:
         hid = db_mod.create_hook(
             c, token=token, name=name, profile=prof or None,
             prompt_template=tpl, enabled=1 if body.get("enabled", True) else 0,
             allowed_ips_json=_norm_ips(body.get("allowed_ips")),
-            rate_limit_per_min=rate)
+            rate_limit_per_min=rate,
+            owner_id=(_u["id"] if _u is not None else None))
         row = db_mod.to_dict(db_mod.get_hook(c, hid))
     return {"ok": True, "hook": row}
 
@@ -111,8 +118,10 @@ def patch_hook(hid: int, body: dict):
         updates["rate_limit_per_min"] = rate
     if not updates:
         raise HTTPException(400, "无可更新字段")
+    from ...security import userauth as _ua
     with db_mod.conn() as c:
-        if db_mod.get_hook(c, hid) is None:
+        h = db_mod.get_hook(c, hid)
+        if h is None or not _ua.owner_ok(h, _ua.current_user()):
             raise HTTPException(404, f"webhook 不存在: {hid}")
         db_mod.update_hook(c, hid, **updates)
         row = db_mod.to_dict(db_mod.get_hook(c, hid))
@@ -121,9 +130,12 @@ def patch_hook(hid: int, body: dict):
 
 @router.delete("/hooks/{hid}")
 def delete_hook(hid: int):
+    from ...security import userauth as _ua
     with db_mod.conn() as c:
-        if not db_mod.delete_hook(c, hid):
+        h = db_mod.get_hook(c, hid)
+        if h is None or not _ua.owner_ok(h, _ua.current_user()):
             raise HTTPException(404, f"webhook 不存在: {hid}")
+        db_mod.delete_hook(c, hid)
     return {"ok": True}
 
 

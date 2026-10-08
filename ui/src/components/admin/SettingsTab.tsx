@@ -3,6 +3,7 @@ import { useEffect, useState } from 'react';
 import { api } from '../../api/client';
 import { useStore } from '../../stores/sessions';
 import { Sun, Moon } from '../icons';
+import UsersCard from './UsersCard';
 
 /* ================= 平台设置 ================= */
 interface TitleGenCfg {
@@ -364,7 +365,8 @@ export default function SettingsTab() {
   if (!tg || !run) return <div className="admin-body muted">加载中…</div>;
   const groupNav = [
     { id: 'g-basic', label: '基础' }, { id: 'g-engine', label: '引擎与模型' },
-    { id: 'g-notify', label: '通知与分享' }, { id: 'g-res', label: '外部资源' },
+    { id: 'g-notify', label: '通知与分享' }, { id: 'g-users', label: '用户与账号' },
+    { id: 'g-res', label: '外部资源' },
   ];
   const G = ({ id, title }: { id: string; title: string }) => (
     <div id={id} className="settings-group-h">
@@ -599,6 +601,8 @@ export default function SettingsTab() {
           运行中 turn 不受影响，下一 turn 生效。</div>
       </div>}
 
+      <G id="g-users" title="用户与账号" />
+      <UsersCard />
       <G id="g-res" title="外部资源与服务器" />
       {res &&
       <div className="setting-card">

@@ -50,6 +50,8 @@ EXPECTED = {
     ("/api/auth/password", "post"),
     ("/api/auth/setup", "post"),
     ("/api/auth/status", "get"),
+    ("/api/auth/users", "get,post"),
+    ("/api/auth/users/{uid}", "patch"),
     ("/api/categories", "get,post"),
     ("/api/categories/{cid}", "delete,patch"),
     ("/api/health", "get"),
