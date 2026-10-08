@@ -5,6 +5,12 @@
 
 ## [0.7.7] - 2026-10-09
 
+- **多 Agent 工作台**：子代理自动人名 + Task 卡 agent_name 归属、子任务
+  标签页、派发卡、agent chips、产物按 agent 归属分组、分类图标
+  （SCHEMA_REV=9）；webui 多 Agent 工作台前端（icon rail 空间侧栏）。
+
+## [0.7.8] - 2026-10-09
+
 - **循环熔断双修：同名连败守卫 + 死工具不上面**（第四起生产实证）：
   venv 缺 playwright 使 9 个 browser 工具调用必死，模型陷入
   browser_click 逐像素递增 50 连败的搅动循环（两 turn 手动停）。根因：
