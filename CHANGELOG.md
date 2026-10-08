@@ -3,6 +3,18 @@
 本项目的全部显著变更记录于此。格式遵循 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/)，
 版本遵循 [SemVer](https://semver.org/lang/zh-CN/)。
 
+## [0.7.7] - 2026-10-09
+
+- **循环熔断双修：同名连败守卫 + 死工具不上面**（第四起生产实证）：
+  venv 缺 playwright 使 9 个 browser 工具调用必死，模型陷入
+  browser_click 逐像素递增 50 连败的搅动循环（两 turn 手动停）。根因：
+  ①LoopGuard 指纹=name+参数，参数搅动即指纹变化，计数永远重置守卫全程
+  沉默；②browser_mcp tools/list 无能力探测，死工具照常广告=纯诱饵。
+  修复：LoopGuard 新增同名连败维度（`LOOP_NAME_FAIL_LIMIT=8`——同名工具
+  无论参数怎么换连续失败即硬打断，文案带最近错误与环境缺失指引；本名
+  成功才清零、交错免疫）；browser_mcp 能力缺失时 tools/list 空表不广告
+  （tools/call 兜底错误保留）。
+
 ## [0.7.6] - 2026-10-09
 
 - **直跑档位 MCP 执行域门**（三起生产实证的结构性收口）：冷启动模型反复

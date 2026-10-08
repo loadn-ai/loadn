@@ -324,6 +324,32 @@ TOOLS = {
 
 
 # ---------------------------------------------------------------- stdio MCP server
+def _playwright_ok() -> bool:
+    """运行能力探测：venv 无 playwright 时浏览器工具全部不可用。"""
+    try:
+        import playwright.sync_api  # noqa: F401
+        return True
+    except ImportError:
+        return False
+
+
+def _tools_payload() -> list:
+    """tools/list 载荷——能力缺失时**空表**（死工具不上工具面）。
+
+    2026-10-09 生产实证：venv 缺 playwright 时 9 个浏览器工具照常广告，
+    模型调用必死（not_installed）——诱发了逐像素递增 50 连败的搅动循环
+    （守卫盲区另修）。死工具在场=纯诱饵，fail-closed 不广告；tools/call
+    兜底错误保留（防陈旧枚举残留）。
+    """
+    if not _playwright_ok():
+        print("browser-mcp: playwright 缺失（webui extras），工具面空置",
+              file=sys.stderr, flush=True)
+        return []
+    return [{"name": v[0], "description": v[2],
+             "inputSchema": {"type": "object", "properties": v[3]}}
+            for v in TOOLS.values()]
+
+
 def main() -> int:
     """极简 stdio JSON-RPC（与 StdioMCPConnection 协议对话）。"""
     def send(obj: dict) -> None:
@@ -351,10 +377,8 @@ def main() -> int:
             # id）——回空 result 防对端 30s 等待（实测发现）
             send({"jsonrpc": "2.0", "id": rid, "result": {}})
         elif method == "tools/list":
-            tools = [{"name": v[0], "description": v[2],
-                      "inputSchema": {"type": "object", "properties": v[3]}}
-                     for v in TOOLS.values()]
-            send({"jsonrpc": "2.0", "id": rid, "result": {"tools": tools}})
+            send({"jsonrpc": "2.0", "id": rid,
+                  "result": {"tools": _tools_payload()}})
         elif method == "tools/call":
             name = (req.get("params") or {}).get("name") or ""
             args = (req.get("params") or {}).get("arguments") or {}

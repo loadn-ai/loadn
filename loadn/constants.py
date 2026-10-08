@@ -40,6 +40,9 @@ SHELL_TOTAL_BUDGET_S = 900.0      # 单次调用累计预算（先于 loop 层�
 MAX_TURNS_DEFAULT = 200           # None/0 = 不限
 LOOP_REPEAT_LIMIT = 3             # 同指纹调用连续 N 次且结果相同 → 硬打断
 LOOP_REMIND_AT = 2                # 连续 N 次先轻提醒（dsh repeat-tool-reminder）
+LOOP_NAME_FAIL_LIMIT = 8          # 同名工具连续 N 次失败（无论参数怎么换）→ 硬打断
+                                 # （2026-10-09 实证：browser_click 逐像素递增 50 连败，
+                                 # 指纹每轮都变=同指纹守卫全程重置，参数搅动盲区）
 GRIND_MAX_NUDGES = 8              # 完工自检关卡最多续战次数（TB 实测 3 次太早放行：coq 15 分钟假交付）
 GRIND_MIN_TURNS = 6               # 前 N 轮纯文本直接放行（聊天/简单问答不受关卡影响）
 REFLECT_EVERY_TURNS = 25          # 反思检查点：每 N 轮注入进展/死角总结

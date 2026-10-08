@@ -40,6 +40,42 @@ def test_loop_guard_resets_on_change():
         assert lv is None
 
 
+def test_loop_guard_name_fail_streak_breaks_arg_churning():
+    """同名连败×参数搅动（2026-10-09 生产实证：browser_click 逐像素递增
+    50 连败，指纹每轮都变=指纹段全程重置）。同名第 LOOP_NAME_FAIL_LIMIT
+    次失败硬打断，文案带工具名/最近错误/环境缺失指引；此前静默。"""
+    from loadn.constants import LOOP_NAME_FAIL_LIMIT
+    g = LoopGuard()
+    out = [g.record("mcp__browser__browser_click", {"x": i, "y": i},
+                    "not_installed: 平台 venv 缺 playwright", is_error=True)
+           for i in range(LOOP_NAME_FAIL_LIMIT)]
+    assert all(lv is None for lv in out[:-1])
+    brk = out[-1]
+    assert brk[0] == "break"
+    assert "browser_click" in brk[1] and "not_installed" in brk[1]
+    # 打断即重置：紧接的下一败重新计数（不再连环打断）
+    assert g.record("mcp__browser__browser_click", {"x": 99, "y": 99},
+                    "not_installed", is_error=True) is None
+
+
+def test_loop_guard_name_streak_interleave_and_success_reset():
+    """连败段两否定路径：①交错免疫——其他工具的成败不清本名计数（or 反转
+    =交织重试的死人工具永远打不断）；②本名成功一次即清零（or 反转=误伤
+    偶发失败后恢复的工具）。"""
+    from loadn.constants import LOOP_NAME_FAIL_LIMIT
+    g = LoopGuard()
+    for i in range(LOOP_NAME_FAIL_LIMIT - 1):
+        assert g.record("Bad", {"i": i}, "err", is_error=True) is None
+        assert g.record("Other", {"i": i}, "ok") is None   # 他人成功不清
+    assert g.record("Bad", {"i": 99}, "err", is_error=True)[0] == "break"
+
+    g2 = LoopGuard()
+    for i in range(LOOP_NAME_FAIL_LIMIT - 2):
+        g2.record("Bad", {"i": i}, "err", is_error=True)
+    g2.record("Bad", {"i": 98}, "成功")                    # 本名成功清零
+    assert g2.record("Bad", {"i": 99}, "err", is_error=True) is None
+
+
 def test_turn_summary_ok_gate():
     assert TurnSummary(subtype="success").ok is True
     assert TurnSummary(subtype="error_during_execution").ok is False

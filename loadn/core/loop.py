@@ -24,6 +24,7 @@ from pathlib import Path
 from loadn.constants import (
     GRIND_MAX_NUDGES,
     GRIND_MIN_TURNS,
+    LOOP_NAME_FAIL_LIMIT,
     LOOP_REMIND_AT,
     LOOP_REPEAT_LIMIT,
     MAX_TURNS_DEFAULT,
@@ -166,22 +167,43 @@ class ChunkAssembler:
 
 # ---------------------------------------------------------------- LoopGuard
 class LoopGuard:
-    """同指纹（name+规范化 input）调用两段式防循环：先轻提醒后硬打断。
-    任何一次不同指纹/不同结果即重置。"""
+    """防循环双维度：①同指纹（name+规范化 input）两段式（轻提醒→硬打断）；
+    ②同名连败（参数搅动免疫，2026-10-09 实证补）。指纹段任何一次不同
+    指纹/不同结果即重置；连败段按工具名累计失败，该工具成功一次才清零。"""
 
     def __init__(self) -> None:
         self._last_fp: str | None = None
         self._last_result: str | None = None
         self._count = 0
+        self._fail_streak: dict[str, int] = {}
         self.nudges = 0
 
-    def record(self, name: str, args: dict,
-               result: str) -> tuple[str, str] | None:
+    def record(self, name: str, args: dict, result: str, *,
+               is_error: bool = False) -> tuple[str, str] | None:
         """返回 (level, text)：level ∈ remind|break；None = 无事。
 
         两段式（dsh repeat-tool-reminder）：连续 LOOP_REMIND_AT 次同结果先
         轻提醒（省 token 的第一道闸），LOOP_REPEAT_LIMIT 次才硬打断。
+
+        同名连败段：同名工具无论参数怎么换，连续失败 LOOP_NAME_FAIL_LIMIT
+        次 → 硬打断（生产实证：browser_click 逐像素递增 50 连败——指纹每轮
+        都变使指纹段全程重置；死工具 not_installed/权限拒绝与搅动循环都在
+        此形态下）。交错免疫：其他工具的成败不影响本名计数。
         """
+        if is_error:
+            n = self._fail_streak.get(name, 0) + 1
+            self._fail_streak[name] = n
+            if n >= LOOP_NAME_FAIL_LIMIT:
+                self._fail_streak[name] = 0
+                self.nudges += 1
+                return ("break",
+                        f"工具 {name} 已连续 {n} 次调用失败（参数怎么换都失败）。"
+                        f"最近错误：{result[:160]}。若错误是环境缺失"
+                        "（not_installed）或权限拒绝，说明该工具在本环境"
+                        "不可用——继续换参数重试无意义：换正交路线，或直接"
+                        "向用户汇报阻塞原因。")
+        else:
+            self._fail_streak.pop(name, None)
         fp = hashlib.sha1(
             (name + "|" + json.dumps(args, sort_keys=True, ensure_ascii=False))
             .encode()).hexdigest()[:16]
@@ -598,8 +620,9 @@ class AgentCore:
                         continue
                     blk, name = await self._exec_tool(tu, emit)
                     result_blocks.append(blk)
-                    nudge = self.loop_guard.record(name, tu.input,
-                                                   _inline(blk.content))
+                    nudge = self.loop_guard.record(
+                        name, tu.input, _inline(blk.content),
+                        is_error=bool(blk.is_error))
                     if nudge is not None:
                         level, nudge_text = nudge
                         if level == "break":

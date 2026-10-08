@@ -170,3 +170,15 @@ async def test_require_approval_creates_card(tmp_path, monkeypatch):
     rows = ap.list_pending(sid)
     assert rows and rows[0]["action_type"] == "browser_open"
     assert "novel.example" in rows[0]["summary"]
+
+
+# ---------------------------------------------------------------- 能力门
+def test_tools_payload_empty_without_playwright(monkeypatch):
+    """能力门对赌（2026-10-09 生产实证）：venv 缺 playwright 时 tools/list
+    必须空表——死工具不上工具面（9 工具广告+调用必死曾诱发逐像素 50 连败
+    搅动循环）；能力在时全量广告。"""
+    monkeypatch.setattr(bm, "_playwright_ok", lambda: False)
+    assert bm._tools_payload() == []
+    monkeypatch.setattr(bm, "_playwright_ok", lambda: True)
+    names = [t["name"] for t in bm._tools_payload()]
+    assert names and "browser_click" in names

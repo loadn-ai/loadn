@@ -179,6 +179,22 @@ async def test_loop_guard_nudge(tmp_path):
                for m in prov.calls[3])
 
 
+async def test_loop_guard_name_streak_wiring(tmp_path):
+    """同名连败接线对赌（2026-10-09 生产实证形态）：参数逐次搅动的同名
+    失败（指纹守卫全程重置免疫）在 LOOP_NAME_FAIL_LIMIT 处触发硬打断
+    nudge。走完整 _exec_tool 链——is_error 接线变异（恒 False）在此被杀。
+    """
+    rounds = [H.tool_round(f"tu_{i}", "Boom", {"x": i}) for i in range(8)]
+    rounds.append(H.text_round("已汇报阻塞"))
+    core, _ = await _core(tmp_path, rounds, tools={"Boom": H.BoomTool()})
+    summary = await core.run_turn("死工具搅动")
+    assert summary.subtype == "success"
+    assert core.loop_guard.nudges >= 1
+    prov = core.provider
+    assert any("Boom" in (m.text_parts() or "") and "连续" in (m.text_parts() or "")
+               for chat in prov.calls for m in chat)
+
+
 async def test_permission_denied(tmp_path):
     from loadn.core.permissions import PermissionEngine
     rounds = [H.tool_round("tu_1", "Echo", {"msg": "x"}),
