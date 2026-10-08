@@ -210,6 +210,15 @@ class SecurityConfig:
     # node 等）。rw=任务可写宿主该路径——显式配置即显式授权，默认空。
     # shared_readonly 是 ro 特例（兼容保留）；env $LOADN_HOST_BRIDGES 全量指路
     resource_bridges: list = field(default_factory=list)
+    # 直跑档位（sandbox=off）下禁用的 MCP 工具（写进会话 settings 的 deny——
+    # 调用即权限拒绝回填改道，非面级隐藏）。三起生产实证（2026-10-08
+    # 7227×2/c45d）：冷启动模型反复被 sandbox 容器 bash 的「在场感」吸进
+    # 外置容器，把「容器里看不到宿主路径」误诊成「工具未注入/执行域降级」
+    # ——宪法与轮换 anchor 的文字路标拦不住（第三起 thinking 引用了路标原文
+    # 仍进容器）。off 档的 sanctioned 用途是浏览器/OCR 资源桥接，容器 bash
+    # 不在其列，fail-closed 默认拦。隔离档不受影响（内建 Bash 本就在沙箱内）
+    off_tier_mcp_disallow: list = field(default_factory=lambda: [
+        "mcp__sandbox__sandbox_execute_bash"])
 
 
 @dataclass
@@ -395,6 +404,13 @@ def load_config() -> Config:
             raise ValueError(f"security.resource_bridges 条目非法 {b!r}"
                              "（需 {path: 绝对路径, mode: ro|rw|dev}，"
                              "config.yaml）——拒绝启动")
+    if cfg.security.off_tier_mcp_disallow is None \
+            or not isinstance(cfg.security.off_tier_mcp_disallow, list) \
+            or not all(isinstance(t, str) and t.strip()
+                       for t in cfg.security.off_tier_mcp_disallow):
+        raise ValueError("security.off_tier_mcp_disallow 需为非空字符串列表"
+                         "（config.yaml；None/非列表/空串条目会静默失效——"
+                         "拒绝启动）")
     cs = cfg.resources.custom_services
     if cs is None or not isinstance(cs, list):
         raise ValueError("resources.custom_services 需为列表"

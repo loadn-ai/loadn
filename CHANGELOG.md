@@ -3,6 +3,20 @@
 本项目的全部显著变更记录于此。格式遵循 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/)，
 版本遵循 [SemVer](https://semver.org/lang/zh-CN/)。
 
+## [0.7.6] - 2026-10-09
+
+- **直跑档位 MCP 执行域门**（三起生产实证的结构性收口）：冷启动模型反复
+  被 sandbox 容器 bash 的「在场感」吸进外置容器，把「容器里看不到宿主
+  路径」误诊成「工具未注入/执行域降级」——第三起（2026-10-09）thinking
+  引用宪法路标原文仍进容器，宣告 prompt 层防线（宪法 §2.5/轮换 anchor/
+  平台更正）到顶。结构性门：`security.off_tier_mcp_disallow`（默认
+  `["mcp__sandbox__sandbox_execute_bash"]`，fail-closed 校验）在 sandbox=off
+  档写进会话 settings 的 deny——引擎 PermissionEngine 执行时回填
+  「权限规则拒绝」把模型推回内建 Bash（与 claude CLI deny 语义同构，
+  WebSearch/WebFetch 禁用的同机制先例）；隔离档不受影响。升级流程新增
+  存量会话 settings 重刷扫描（单会话失败跳过不阻断）。三落点同步：
+  .claude disallow / .loadn / .agent。
+
 ## [0.7.5] - 2026-10-08
 
 - **修 upgrade healthcheck 无凭证必 401**（发版被卡实证）：token 生效的

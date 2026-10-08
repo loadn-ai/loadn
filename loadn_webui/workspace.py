@@ -33,6 +33,25 @@ TASK_DIRS = ["artifacts", "work", "notes", "logs"]
 ZAI_INJECTED_TOOLS = ["mcp__web_reader", "mcp__4_5v_mcp"]
 
 
+def _off_tier_mcp_gate() -> list[str]:
+    """直跑档位的 MCP 执行域门：sandbox=off 时返回禁用清单（空档返回空）。
+
+    三起生产实证（2026-10-08）：冷启动模型被 sandbox 容器 bash 吸进外置
+    容器后误诊「工具未注入/执行域降级」，宪法与轮换 anchor 的文字路标
+    拦不住（第三起 thinking 引用路标原文仍进容器）——容器 bash 在 off 档
+    本就无 sanctioned 用途（资源桥接=浏览器/OCR），deny 回填让权限拒绝
+    把模型推回内建 Bash。隔离档内建 Bash 本就在沙箱内，无需此门。
+    """
+    try:
+        from .security.sandbox import resolve_tier
+        eff, _why = resolve_tier()
+    except Exception:                                  # noqa: BLE001
+        return []
+    if eff not in ("off", ""):
+        return []
+    return [str(t) for t in CONFIG.security.off_tier_mcp_disallow or []]
+
+
 def new_session_id(title: str) -> str:
     base = "".join(w for w in slugify(title).split("-")[:4]) or "task"
     rand = uuid.uuid4().hex[:4]
@@ -291,7 +310,8 @@ def write_settings(ws: Path, sid: str, prof: profile_mod.Profile,
     # ask 引擎侧原生（.loadn permissions.ask），claude 侧由 hook 拦截提示。
     tools = getattr(prof, "tools", None) or {}
     disallow = ["AskUserQuestion", *ZAI_INJECTED_TOOLS,
-                *prof.disallowed_tools, *tools.get("deny", [])]
+                *prof.disallowed_tools, *tools.get("deny", []),
+                *_off_tier_mcp_gate()]
     allow = tools.get("allow", [])
     perm = {"disallow": disallow}
     if allow:
@@ -310,7 +330,8 @@ def write_settings(ws: Path, sid: str, prof: profile_mod.Profile,
     (d / "settings.json").write_text(json.dumps(settings, ensure_ascii=False, indent=2))
     # loadn 引擎规则（PermissionEngine 三态原生；hooks 同体）
     agent = {"permissions": {"deny": ["AskUserQuestion", *prof.disallowed_tools,
-                                      *tools.get("deny", [])]}}
+                                      *tools.get("deny", []),
+                                      *_off_tier_mcp_gate()]}}
     if allow:
         agent["permissions"]["allow"] = allow
     if tools.get("ask"):

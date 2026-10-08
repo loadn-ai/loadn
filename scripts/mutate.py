@@ -347,6 +347,16 @@ TARGET_TESTS: dict[str, list[str]] = {
         "tests/test_egress_align.py",
         "tests/test_admin.py",
         "tests/test_m7_units.py",
+        "tests/test_exec_domain_gate.py",
+    ],
+    # M8 执行域门批（2026-10-09 起）——ops/config 此前映射缺席（假存活面）
+    "loadn_webui/ops.py": [
+        "tests/test_ops.py",
+        "tests/test_web_ops.py",
+    ],
+    "loadn_webui/config.py": [
+        "tests/test_security_knobs.py",
+        "tests/test_settings_admin.py",
     ],
     "loadn_webui/backup.py": [
         "tests/test_backup.py",

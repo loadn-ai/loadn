@@ -173,6 +173,56 @@ def test_healthcheck_unreachable(fake_env, monkeypatch):
     assert not ops._healthcheck(1)
 
 
+def test_refresh_session_settings_sweep(fake_env, monkeypatch, tmp_path):
+    """升级扫描：全部会话 settings 重刷（执行域门补写）；单会话失败跳过
+    不拖累整体（否定路径对赌）。"""
+    import types
+
+    from loadn_webui import db as db_mod
+    from loadn_webui import profile as profile_mod
+    from loadn_webui import workspace as ws_mod
+
+    rows = [{"id": "s1", "profile": "assistant",
+             "workspace": str(tmp_path / "s1")},
+            {"id": "bad", "profile": None,
+             "workspace": str(tmp_path / "gone")},
+            {"id": "s2", "profile": "assistant",
+             "workspace": str(tmp_path / "s2")}]
+
+    class _Ctx:
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *a):
+            return False
+
+        def execute(self, *a, **k):
+            class _R:
+                @staticmethod
+                def fetchall():
+                    return rows
+            return _R()
+
+    calls = []
+    monkeypatch.setattr(db_mod, "conn", lambda: _Ctx())
+    monkeypatch.setattr(profile_mod, "get",
+                        lambda name: types.SimpleNamespace(disabled=True))
+    monkeypatch.setattr(ws_mod, "write_settings",
+                        lambda ws, sid, prof: calls.append(sid))
+    n = ops._refresh_session_settings()
+    assert n == 3 and calls == ["s1", "bad", "s2"]   # profile 缺省回落 assistant
+
+    # 单会话写失败：跳过但不炸整体（计数只含成功）
+    def _boom(ws, sid, prof):
+        if sid == "s1":
+            raise RuntimeError("disk full")
+        calls.append(sid)
+    monkeypatch.setattr(ws_mod, "write_settings", _boom)
+    calls.clear()
+    n = ops._refresh_session_settings()
+    assert n == 2 and "s1" not in calls
+
+
 def test_healthcheck_sends_bearer_token(fake_env, monkeypatch):
     """healthcheck 必带 Bearer 凭证（否定路径对赌：服务面 token 生效后
     裸探测 401——曾致 upgrade 误判回滚，新版本实际已在跑）。人配

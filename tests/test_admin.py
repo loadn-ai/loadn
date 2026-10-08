@@ -450,14 +450,16 @@ async def test_profile_builtin_tools(client):
     # AskUserQuestion 是平台级禁用（无头无弹窗），始终在 disallow 首位；
     # mcp__web_reader/mcp__4_5v_mcp 是 Z.AI 网关注入工具的平台级兜底禁用
     assert st["permissions"]["disallow"] == ["AskUserQuestion", "mcp__web_reader",
-                                             "mcp__4_5v_mcp", "WebSearch"]
+                                             "mcp__4_5v_mcp", "WebSearch",
+                                             "mcp__sandbox__sandbox_execute_bash"]
     # 关掉后恢复
     await client.put("/api/tools/profile/researcher", json={"disallowed_tools": []})
     r = await client.post("/api/sessions", json={"title": "工具开关2", "profile": "researcher"})
     sid2 = r.json()["session"]["id"]
     st2 = json.loads((PATHS["workspace"] / sid2 / ".claude" / "settings.json").read_text())
     assert st2["permissions"]["disallow"] == ["AskUserQuestion", "mcp__web_reader",
-                                               "mcp__4_5v_mcp"]
+                                               "mcp__4_5v_mcp",
+                                               "mcp__sandbox__sandbox_execute_bash"]
 
 
 # ---------------------------------------------------------------- 收敛度设置

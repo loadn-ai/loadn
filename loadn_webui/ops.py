@@ -460,6 +460,34 @@ def refresh_default_assets(new_root: Path) -> int:
     return n
 
 
+def _refresh_session_settings() -> int:
+    """存量会话 settings 重刷（v0.7.6 执行域门：直跑档位 deny sandbox 容器
+    bash）。write_settings 是 settings 唯一真源，重写幂等——scaffold/rerender
+    只覆盖新会话与 profile 变更路径，存量会话靠升级时本扫描补写。"""
+    try:
+        from . import db as db_mod
+        from . import profile as profile_mod
+        from . import workspace as ws_mod
+    except Exception:                                   # noqa: BLE001 — 扫描失败不阻断升级
+        return 0
+    n = 0
+    try:
+        with db_mod.conn() as c:
+            rows = c.execute(
+                "SELECT id, profile, workspace FROM sessions"
+                " WHERE workspace IS NOT NULL").fetchall()
+        for row in rows:
+            try:
+                prof = profile_mod.get(row["profile"] or "assistant")
+                ws_mod.write_settings(Path(row["workspace"]), row["id"], prof)
+                n += 1
+            except Exception:                           # noqa: BLE001 — 单会话失败不拖累整体
+                continue
+    except Exception:                                   # noqa: BLE001
+        return n
+    return n
+
+
 def cmd_upgrade(version: str | None = None, *, wait_idle: int = 1800,
                 health_timeout: int = 90, no_backup: bool = False,
                 yes: bool = False) -> int:
@@ -499,6 +527,13 @@ def cmd_upgrade(version: str | None = None, *, wait_idle: int = 1800,
                 print(f"     默认资产刷新 { _n } 项（未定制拷贝）")
         except Exception as e:                          # noqa: BLE001
             print(f"  ⚠️ 默认资产刷新失败（不阻断）：{e}")
+        # 2.6) 存量会话 settings 补写（执行域门——v0.7.6 起 off 档 deny
+        # sandbox 容器 bash；三起生产实证的结构性防线）
+        try:
+            _m = _refresh_session_settings()
+            print(f"     会话 settings 重刷 {_m} 个（执行域门）")
+        except Exception as e:                          # noqa: BLE001
+            print(f"  ⚠️ 会话 settings 重刷失败（不阻断）：{e}")
 
         # 3) 等 idle
         print(f"[3/5] 等 idle（超时 {wait_idle}s，--wait-idle 0 跳过）")
