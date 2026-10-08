@@ -13,7 +13,7 @@ from __future__ import annotations
 import asyncio
 from pathlib import Path
 
-from loadn.constants import SUBAGENT_CONCURRENCY, TASK_OUTPUT_MAX_CHARS
+from loadn.constants import AGENT_NAME_POOL, SUBAGENT_CONCURRENCY, TASK_OUTPUT_MAX_CHARS
 from loadn.core.loop import AgentCore, LoopSettings
 from loadn.tools.base import Tool, ToolContext, ToolError
 
@@ -62,6 +62,14 @@ class SubagentManager:
         self.model_provider_factory = model_provider_factory
         self._sem = asyncio.Semaphore(SUBAGENT_CONCURRENCY)
         self._n = 0
+        self._used_names: set[str] = set()
+
+    def _pick_name(self) -> str:
+        """确定性取人名（AGENT_NAME_POOL 按序轮转；同回合撞名追加「·N」）。"""
+        base = AGENT_NAME_POOL[(self._n - 1) % len(AGENT_NAME_POOL)]
+        name = base if base not in self._used_names else f"{base}·{self._n}"
+        self._used_names.add(name)
+        return name
 
     async def task(self, prompt: str, subagent_type: str = "general",
                    description: str = "", emit=None) -> str:
@@ -75,6 +83,7 @@ class SubagentManager:
             self._n += 1
             sub_sid = f"{self.session_id}-sub{self._n}"
             card_id = f"sub_{self._n}"
+            agent_name = self._pick_name()
             if emit is not None:
                 # 形状纪律：主 emit 是 StreamJsonEmitter——message 必须是
                 # Message 对象、块必须带 to_dict()（裸 dict 会 AttributeError
@@ -86,7 +95,8 @@ class SubagentManager:
                     content=[_TUB(id=card_id, name="Task",
                                    input={"prompt": prompt[:300],
                                           "subagent_type": subagent_type,
-                                          "description": description})])})
+                                          "description": description,
+                                          "agent_name": agent_name})])})
             session = SessionManager.create(
                 self.cwd, title=description or sub_sid, home=self.home,
                 parent_id=self.session_id, session_id=sub_sid)

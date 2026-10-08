@@ -238,10 +238,17 @@ TARGET_TESTS: dict[str, list[str]] = {
     "loadn/tools/interactive.py": [
         "tests/test_tools_interactive.py",
     ],
+    "loadn/core/subagent.py": [
+        "tests/test_subagent_custom.py",
+        "tests/test_subagent_streamjson.py",
+        "tests/test_plan.py",
+        "tests/test_task_registry.py",
+    ],
     "loadn_webui/engine.py": [
         "tests/test_w0_security.py",
         "tests/test_engine_switch.py",
         "tests/test_rotation_anchor.py",
+        "tests/test_agent_attrs.py",
     ],
     "loadn_webui/claude_runner.py": [
         "tests/test_w0_security.py",

@@ -11,6 +11,7 @@ from __future__ import annotations
 import asyncio
 import json
 import os
+import re
 import time
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -60,6 +61,8 @@ def _attachment_block(atts: list[dict], inputs_dir: Path | None = None) -> str:
 _BRIEF_KEYS = ("query", "command", "file_path", "path", "pattern", "url",
                "description", "prompt", "skill")
 _FILE_TOOLS = {"Write", "Edit", "NotebookEdit", "Bash"}
+# 子代理归属：引擎把子代理工具块改名为「子N·<tool>」转发（PROTOCOL §2.1）
+_SUB_TAG_RE = re.compile(r"^子(\d+)·")
 # 详情展示的截断上限（SSE 事件与 blocks_json 同一份，防大 payload 打爆前端）
 _THINK_CAP = 20000        # 单个 thinking 块
 _RESULT_CAP = 4000        # 单个 tool_result 内容（保留换行）
@@ -95,6 +98,34 @@ def _tool_brief(name: str, inp: dict) -> str:
         if v:
             return str(v)[:110]
     return ""
+
+
+def _agent_attrs(name: str, tool_id: Any, inp: Any, names: dict) -> dict:
+    """工具块/事件的子代理归属字段（宿主派生，非引擎契约——PROTOCOL §2.1）。
+
+    Task 开始卡（name="Task"，input 含 agent_name/description）→
+    agent_id/agent_name/agent_role/subagent_type，并把人名记进 turn 内学习表；
+    「子N·<tool>」转发块 → agent_id/agent_n（人名查学习表，转发块自身不带）。
+    顺序保证：Task 卡先于其子活动转发（subagent.py 先 emit 开始卡再跑子代理）。
+    """
+    if name == "Task" and tool_id:
+        nm = stype = role = ""
+        if isinstance(inp, dict):
+            nm = str(inp.get("agent_name") or "")[:24]
+            role = str(inp.get("description") or "")[:110]
+            stype = str(inp.get("subagent_type") or "")[:40]
+        if nm:
+            names[tool_id] = nm
+        return {"agent_id": tool_id, "agent_name": nm or None,
+                "agent_role": role or None, "subagent_type": stype or None}
+    m = _SUB_TAG_RE.match(name or "")
+    if m:
+        aid = f"sub_{m.group(1)}"
+        nm = names.get(aid)
+        return {"agent_id": aid, "agent_n": int(m.group(1)),
+                "agent_name": nm} if nm else \
+            {"agent_id": aid, "agent_n": int(m.group(1))}
+    return {}
 
 
 def _clip_input(inp: Any) -> dict:
@@ -146,6 +177,9 @@ class ActiveTurn:
     # loadn 注入上下文时回 steer 事件标记 consumed——turn 结束仍未
     # 消费的（插话落在最后一轮后）由 _finish 回队列为新 turn，不丢话
     steers: list = field(default_factory=list)
+    # 子代理人名学习表：Task 卡 tool_use_id（sub_N）→ agent_name（引擎取名）。
+    # 「子N·」转发块自身不带人名，靠本表回填（Task 卡先到的顺序保证）
+    agent_names: dict = field(default_factory=dict)
 
 
 class Engine:
@@ -592,8 +626,9 @@ class Engine:
                     inp = b.get("input") or {}
                     brief = _tool_brief(name, inp)
                     detail = _clip_input(inp)
+                    agent = _agent_attrs(name, b.get("id"), inp, at.agent_names)
                     at.blocks.append({"type": "tool", "id": b.get("id"), "name": name,
-                                      "brief": brief, "input": detail})
+                                      "brief": brief, "input": detail, **agent})
                     if b.get("id"):
                         at.tool_names[b["id"]] = name
                     if name == "TaskCreate":
@@ -618,7 +653,7 @@ class Engine:
                     # tool_use（session_events 已有停机前的事件，重发=双份）
                     self._emit(at, sid, "tool_use",
                                {"turn_id": tid, "id": b.get("id"), "name": name,
-                                "brief": brief, "input": detail})
+                                "brief": brief, "input": detail, **agent})
         elif t == "user":
             for b in (ev.get("message") or {}).get("content") or []:
                 if not (isinstance(b, dict) and b.get("type") == "tool_result"):
@@ -641,8 +676,10 @@ class Engine:
                             hit = True
                             break
                 if not hit and is_err and brief:
+                    agent = _agent_attrs(name, tuid, None, at.agent_names)
                     at.blocks.append({"type": "tool", "id": tuid, "name": name,
-                                      "brief": brief, "is_error": True, "result": result})
+                                      "brief": brief, "is_error": True,
+                                      "result": result, **agent})
                 # 文件类工具完成后推工作区新文件（右侧面板实时刷新）
                 if name in _FILE_TOOLS:
                     await self._publish_files(sid, tid, at)

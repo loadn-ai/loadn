@@ -8,6 +8,7 @@
       reply       自定义回复文本
       tools       工具调用场景：Bash echo + Write artifacts/report.md
       todos       TaskCreate/TaskUpdate 事件
+      subagent    Task 工具卡 + 子1·Write 转发 + 结束卡（多 agent UI 测试）
       artifacts   额外写 artifacts/report.md + citations-audit.json（产物扫描）
       hang        睡 120s（测 stop）
       fail        exit 1 + stderr（测 turn_error）
@@ -98,6 +99,43 @@ def main() -> int:
                                  "input": {"taskId": "1", "status": "in_progress"}}]))
         _emit({"type": "user", "message": {"role": "user", "content": [
             {"type": "tool_result", "tool_use_id": "tu_2", "content": "updated", "is_error": False}]}})
+
+    if has("subagent"):
+        # 子代理场景：Task 开始卡（带引擎人名）→ 子1·Write 转发 → Task 结束卡。
+        # 形状对齐 loadn/core/subagent.py 的三段外发（PROTOCOL §2.1）
+        art_dir = Path.cwd() / "artifacts"
+        art_dir.mkdir(parents=True, exist_ok=True)
+        (art_dir / "sub-report.md").write_text("# 子代理产物\n\n由子代理写入。\n")
+        _emit(_assistant_event([{"type": "tool_use", "id": "sub_1", "name": "Task",
+                                 "input": {"prompt": "调研子课题X并写报告",
+                                           "subagent_type": "general",
+                                           "description": "子课题调研",
+                                           "agent_name": "马洛"}}]))
+        _emit(_assistant_event([{"type": "tool_use", "id": "tu_s1", "name": "子1·Write",
+                                 "input": {"file_path": "artifacts/sub-report.md",
+                                           "content": "# 子代理产物"}}]))
+        _emit({"type": "user", "message": {"role": "user", "content": [
+            {"type": "tool_result", "tool_use_id": "tu_s1", "content": "File written",
+             "is_error": False}]}})
+        sub_pause = float(os.environ.get("LOADN_FAKE_SUB_PAUSE_S") or 0)
+        if sub_pause:
+            # live 快照测试道具：停顿窗口内 /live 应含带 agent 字段的 tool 项
+            time.sleep(sub_pause)
+        _emit(_assistant_event([{"type": "tool_use", "id": "sub_2", "name": "Task",
+                                 "input": {"prompt": "汇总成总报告", "subagent_type": "explore",
+                                           "description": "汇总报告",
+                                           "agent_name": "波洛"}}]))
+        _emit({"type": "user", "message": {"role": "user", "content": [
+            {"type": "tool_result", "tool_use_id": "sub_1", "content": "子课题X调研完成，产物 artifacts/sub-report.md",
+             "is_error": False}]}})
+        _emit({"type": "user", "message": {"role": "user", "content": [
+            {"type": "tool_result", "tool_use_id": "sub_2", "content": "总报告已汇总",
+             "is_error": False}]}})
+        _emit(_assistant_event([{"type": "tool_use", "id": "tu_e1", "name": "子1·Bash",
+                                 "input": {"command": "echo done"}}]))
+        _emit({"type": "user", "message": {"role": "user", "content": [
+            {"type": "tool_result", "tool_use_id": "tu_e1", "content": "done",
+             "is_error": False}]}})
 
     if has("tools") or has("artifacts"):
         _emit(_assistant_event([{"type": "thinking", "thinking": "需要跑一条命令验证环境，然后再写产物文件。"}]))

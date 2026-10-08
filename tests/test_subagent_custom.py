@@ -4,6 +4,7 @@ from __future__ import annotations
 from pathlib import Path
 
 import tests.helpers as H
+from loadn.constants import AGENT_NAME_POOL
 from loadn.core.agent_defs import load_agent_defs
 from loadn.core.subagent import GENERAL_TOOLS, SUBAGENT_TYPES, SubagentManager, TaskTool
 
@@ -174,9 +175,41 @@ async def test_planner_gather_emits_task_cards(tmp_path):
     card = blocks[0].to_dict() if hasattr(blocks[0], "to_dict") else blocks[0]
     assert card["type"] == "tool_use" and card["name"] == "Task"
     assert card["id"] == "sub_1" and "调研比赛A" in card["input"]["prompt"]
+    # 自动人名：池内取值、随 Task input 外发（宿主 UI 拟人展示）
+    assert card["input"]["agent_name"] in AGENT_NAME_POOL
     res = events[1]["block"]
     assert res.tool_use_id == "sub_1" and events[1]["name"] == "Task"
     assert "子任务1结果" in res.content and not res.is_error
+
+
+async def test_agent_names_unique_within_turn(tmp_path):
+    """回合内取名互异；池轮转撞名时追加「·N」消歧。"""
+    events = []
+    mgr = _mk_mgr(tmp_path, provider=H.ScriptedProvider([H.text_round("完成")]))
+    # 池仅 1 人：第 2 个子代理必然撞名 → 应得「<名>·2」
+    monkey_pool = ("独眼龙",)
+    import loadn.core.subagent as sub
+    orig = sub.AGENT_NAME_POOL
+    sub.AGENT_NAME_POOL = monkey_pool
+    try:
+        await mgr.gather(
+            [type("ST", (), {"prompt": f"任务{i}", "subagent_type": "general"})()
+             for i in range(3)],
+            emit=events.append)
+    finally:
+        sub.AGENT_NAME_POOL = orig
+    names = []
+    for e in events:
+        if e["type"] != "assistant":
+            continue
+        msg = e["message"]
+        blocks = msg.content if hasattr(msg, "content") else msg["content"]
+        b0 = blocks[0]
+        card = b0.to_dict() if hasattr(b0, "to_dict") else b0
+        names.append(card["input"]["agent_name"])
+    assert names[0] == "独眼龙"
+    assert len(set(names)) == 3           # 互异
+    assert names[1] == "独眼龙·2" and names[2] == "独眼龙·3"
 
 
 async def test_subagent_activity_forwarded_with_tag(tmp_path):

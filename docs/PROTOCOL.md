@@ -41,6 +41,23 @@ loadn -p --verbose --output-format stream-json \
 
 判死兜底信号之一：15s 内 exit 1 且无 usage → webui 判 fresh 会话秒拒。
 
+### 2.1 Task 工具卡与子代理归属（v1.1 增补，纯增量）
+
+Task 工具（SubagentManager）在 `assistant`/`user` 事件里以三段形状外发：
+
+| 阶段 | 事件/块 | 形状 |
+|---|---|---|
+| 开始卡 | `assistant` → `tool_use` | `id="sub_N"`（N=回合内序号）、`name="Task"`、`input={prompt≤300, subagent_type, description, agent_name}` |
+| 子活动转发 | `assistant` → `tool_use` / `user` → `tool_result` | 块名改 `子N·<原工具名>`，id 保持子代理内部 id（结果回填按原 id 配对） |
+| 结束卡 | `user` → `tool_result` | `tool_use_id="sub_N"`、`content=text≤2000`、`is_error=(subtype≠success)` |
+
+- `agent_name`（v1.1 起）：引擎从 `AGENT_NAME_POOL`（小说人物人名池，
+  `loadn/constants.py`）确定性轮转取名，回合内撞名追加 `·N` 后缀——供宿主
+  UI 拟人展示。缺该键的旧流按 `子N` 回退展示。
+- `子N·` 前缀与 `sub_N` id 体系是归属配对的唯一约定，**不随版本变更**。
+- 宿主（webui）派生的 `agent_id`/`agent_n`/`agent_role` 等结构化字段不属
+  本契约——宿主内部消费面，随宿主版本演进。
+
 ## 3. 会话语义
 
 - session id 域：**UUIDv4**（webui 侧非法值换新 UUID 再传）。

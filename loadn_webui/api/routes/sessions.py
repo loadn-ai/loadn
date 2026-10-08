@@ -177,7 +177,9 @@ def session_live(sid: str):
                 items.append({"kind": "text", "text": b.get("text", "")})
             elif b.get("type") == "tool":
                 items.append({"kind": "tool", **{k: b.get(k) for k in
-                            ("id", "name", "brief", "input", "result", "is_error")}})
+                            ("id", "name", "brief", "input", "result", "is_error",
+                             "agent_id", "agent_name", "agent_n", "agent_role",
+                             "subagent_type")}})
     # 截尾：深度研究一小时能积累数百节点（实测 627 条/860KB），全量下发会把
     # 重进会话的首帧渲染压垮；前端 live 只渲染尾部窗口，完整过程结束落库可回看
     items = items[-200:]
