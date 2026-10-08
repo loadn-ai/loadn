@@ -83,21 +83,7 @@ export default function TokenGate() {
     }
   };
 
-  // 已登录：右下角用户徽标（登出）——不打扰主界面
-  if (st?.logged_in && !open) return (
-    <div className="stale-pill" style={{
-      right: 14, bottom: 44, top: undefined, left: undefined,
-      display: 'flex', gap: 8, alignItems: 'center',
-    }}>
-      <span title={st.user?.role === 'admin' ? '管理员' : '用户'}>
-        👤 {st.user?.username}
-      </span>
-      <button className="link" onClick={async () => {
-        await api('/api/auth/logout', { method: 'POST' });
-        location.reload();
-      }}>登出</button>
-    </div>
-  );
+  // 已登录的用户身份展示在侧栏底部（sidebar-foot）——这里只管登录门
   if (!open) return null;
   return (
     <div style={box}>
