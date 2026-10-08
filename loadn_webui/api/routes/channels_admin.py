@@ -17,14 +17,43 @@ def channels_overview():
     token_set = bool((vault.get(VAULT_KEY) or {}).get("password"))
     with db_mod.conn() as c:
         binds = [db_mod.to_dict(r) for r in c.execute(
-            "SELECT chat_id, session_id, last_turn_id, created_at "
-            "FROM channel_bindings ORDER BY created_at")]
+            "SELECT b.chat_id, b.session_id, b.last_turn_id, b.created_at, "
+            "b.owner_id, u.username AS owner_name "
+            "FROM channel_bindings b "
+            "LEFT JOIN users u ON u.id=b.owner_id "
+            "ORDER BY b.created_at")]
     from ...integrations.channels import get_service
     return {"config": {"telegram_enabled": CONFIG.channels.telegram_enabled,
                        "telegram_allow": CONFIG.channels.telegram_allow,
                        "token_set": token_set},
             "status": get_service(None).status,
             "bindings": binds}
+
+
+@router.put("/channels/bindings/{chat_id}")
+def set_binding_owner(chat_id: str, body: dict):
+    """多用户批3：把 chat 绑定认领给用户（admin）——该 chat 经渠道建的
+    会话/回信归属此用户（渠道线程无 cookie，归属由认领表决定）。"""
+    from ... import db as db_mod
+    from ...security import userauth as ua
+    from ...security.audit import audit
+    username = str(body.get("owner") or "").strip()
+    uid = None
+    if username:
+        row = ua.get_user_by_name(username)
+        if row is None:
+            raise HTTPException(404, f"用户不存在: {username}")
+        uid = row["id"]
+    with db_mod.conn() as c:
+        cur = c.execute(
+            "UPDATE channel_bindings SET owner_id=? WHERE chat_id=?",
+            (uid, chat_id))
+        if cur.rowcount == 0:
+            raise HTTPException(404, f"绑定不存在: {chat_id}（先在 Telegram "
+                                     "侧 /new 或 /bind 建立）")
+    audit("channel", {"action": "binding_owner_set", "chat_id": chat_id,
+                      "owner": username or None})
+    return {"ok": True}
 
 
 @router.put("/channels")

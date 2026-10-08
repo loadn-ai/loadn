@@ -25,7 +25,37 @@ def ws_of(sid: str):
     return ws_mod.ws_of(sid)        # 二轮修#5：DB 感知（项目子任务≠默认路径）
 
 
+def _guard_domain(domain: str) -> None:
+    """多用户批3：记忆域属主收口（token/宽限通道 user=None 放行）。
+
+    - user 域=全局用户记忆 → admin 维护（普通用户 403）
+    - p: 域=项目记忆 → 反查 projects（hex 缓存映射）→ 属主；无映射域
+      → admin（不暴露存在性以外信息）
+    """
+    from ...security import userauth as _ua
+    u = _ua.current_user()
+    if u is None or u["role"] == "admin":
+        return
+    if domain == "user":
+        raise HTTPException(403, "用户记忆域是全局知识库——由管理员维护")
+    if domain.startswith("p:") and len(domain) == 14:
+        from loadn import memorystore as _ms
+
+        from ... import db as _db
+        hex_ = domain[2:]
+        with _db.conn() as _c:
+            projs = _c.execute(
+                "SELECT id, owner_id, workspace FROM projects").fetchall()
+        for pr in projs:
+            ws = pr["workspace"]
+            if ws and _ms.cached_project_key(ws) == hex_ \
+                    and _ua.owner_ok(pr, u):
+                return
+    raise HTTPException(404, f"记忆域不存在: {domain}（先有写入才有域）")
+
+
 def _dir_of(domain: str, *, create: bool = False):
+    _guard_domain(domain)          # 多用户批3：属主收口（读写同门）
     d = mstore.domain_dir_by_key(domain or "", create=create)
     if d is None:
         raise HTTPException(404, f"记忆域不存在: {domain}（先有写入才有域）")

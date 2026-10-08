@@ -6,7 +6,7 @@ import { useStore } from '../../stores/sessions';
 
 interface ChanCfg { telegram_enabled: boolean; telegram_allow: string[]; token_set: boolean }
 interface ChanStat { running: boolean; last_ok: string; last_error: string; processed: number; backoff_s: number }
-interface ChanBind { chat_id: string; session_id: string; last_turn_id: number; created_at: string }
+interface ChanBind { chat_id: string; session_id: string; last_turn_id: number; created_at: string; owner_id?: number | null; owner_name?: string | null }
 
 export default function ChannelsCard() {
   const [cfg, setCfg] = useState<ChanCfg | null>(null);
@@ -93,10 +93,26 @@ export default function ChannelsCard() {
                  title={b.session_id}>
                 chat {b.chat_id} → {b.session_id.slice(0, 18)}
               </a>
-              <span className="muted">游标 turn #{b.last_turn_id}</span>
+              <span>
+                <span className="muted">游标 #{b.last_turn_id} · </span>
+                <a className="link" title="把该 chat 经渠道建的会话归属此用户（admin）"
+                   onClick={async () => {
+                     const name = prompt(`chat ${b.chat_id} 归属哪个用户？（留空=无主，输用户名）`,
+                                         b.owner_name ?? '');
+                     if (name === null) return;
+                     try {
+                       await api(`/api/admin/channels/bindings/${b.chat_id}`,
+                         { method: 'PUT', body: JSON.stringify({ owner: name }) });
+                       await reload();
+                     } catch (e) {
+                       alert(`设置失败：${e instanceof Error ? e.message : e}`);
+                     }
+                   }}>{b.owner_name ? `👤 ${b.owner_name}` : '👤 认领'}</a>
+              </span>
             </div>
           ))}
-          <span className="muted">解绑在 Telegram 侧发 /unbind</span>
+          <span className="muted">解绑在 Telegram 侧发 /unbind；认领后该
+            chat 经渠道新建的会话归属该用户</span>
         </div>
       )}
     </div>

@@ -228,12 +228,18 @@ class ChannelsService:
         from ..util import iso
         if cmd == "/new":
             title = f"[tg] {arg[:40]}" if arg else "[tg] 渠道会话"
-            sid = self._create_session(title)
+            sid = self._create_session(title, chat_id=chat_id)
             with db_mod.conn() as c:
+                # 认领延续：已有绑定的 owner 落到新 binding 行（换绑保留）
+                own = c.execute(
+                    "SELECT owner_id FROM channel_bindings WHERE chat_id=?",
+                    (chat_id,)).fetchone()
                 c.execute(
                     "INSERT OR REPLACE INTO channel_bindings"
-                    "(chat_id, session_id, last_turn_id, created_at)"
-                    " VALUES(?,?,0,?)", (chat_id, sid, iso()))
+                    "(chat_id, session_id, last_turn_id, created_at, owner_id)"
+                    " VALUES(?,?,0,?,?)",
+                    (chat_id, sid, iso(),
+                     own["owner_id"] if own is not None else None))
             self.api.call("sendMessage", {
                 "chat_id": chat_id,
                 "text": f"已新建并绑定会话 `{sid}`。\n直接发消息即可；"
@@ -277,13 +283,25 @@ class ChannelsService:
                 (chat_id,)).fetchone()
         return row["session_id"] if row else None
 
-    def _create_session(self, title: str) -> str:
+    def _create_session(self, title: str, chat_id: str = "") -> str:
         """线程安全建会话（复用 scheduler._fire_new_session 的路径——
-        profile auto + workspace 脚手架）。"""
+        profile auto + workspace 脚手架）。
+
+        多用户批3：chat 已被 admin 认领（binding 行 owner_id）→ 新会话
+        归属该用户（渠道线程无 cookie，归属由认领表决定）。"""
         from .. import profile as profile_mod
         from .. import workspace as ws_mod
         prof = profile_mod.auto_match(title)
         sid, _ = ws_mod.create_session(title, prof, None, None)
+        if chat_id:
+            from .. import db as db_mod
+            with db_mod.conn() as c:
+                row = c.execute(
+                    "SELECT owner_id FROM channel_bindings WHERE chat_id=?",
+                    (chat_id,)).fetchone()
+                if row is not None and row["owner_id"] is not None:
+                    c.execute("UPDATE sessions SET owner_id=? WHERE id=?",
+                              (row["owner_id"], sid))
         return sid
 
     def _submit(self, sid: str, text: str, chat_id: str = "") -> None:

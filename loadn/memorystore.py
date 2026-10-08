@@ -111,6 +111,18 @@ def project_key(cwd: Path) -> str:
     return hashlib.sha1(root.encode()).hexdigest()[:12]
 
 
+_PROJECT_KEY_CACHE: dict = {}       # workspace 路径 → hex（git 根探测贵）
+
+
+def cached_project_key(workspace: str) -> str:
+    k = _PROJECT_KEY_CACHE.get(workspace)
+    if k is None:
+        from pathlib import Path as _P
+        k = project_key(_P(workspace))
+        _PROJECT_KEY_CACHE[workspace] = k
+    return k
+
+
 def memory_root() -> Path:
     return loadn_home() / "memory"
 

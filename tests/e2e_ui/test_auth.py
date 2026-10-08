@@ -208,3 +208,120 @@ async def test_multiuser_batch2_isolation(server_url):
     finally:
         await admin.aclose()
         await userc.aclose()
+
+
+async def test_multiuser_batch3_domain_and_channel(server_url):
+    """批3对赌：①memory 管理面属主（user 域普通用户 403；他人项目域 404；
+    自己项目域 200）②渠道认领：admin 把 chat 认领给 userc → 该 chat 经
+    渠道 /new 建的会话归属 userc。"""
+    import httpx
+
+    async with httpx.AsyncClient(base_url=server_url, timeout=10) as c:
+        if (await c.get("/api/auth/status")).json()["needs_setup"]:
+            pytest.skip("内核测试在前会建号；单独跑无账号体系")
+        r = await c.post("/api/auth/login", json={
+            "username": "admin", "password": "admin-pass-123"})
+        assert r.status_code == 200
+        admin_cookies = r.cookies
+    admin = httpx.AsyncClient(base_url=server_url, timeout=10,
+                              cookies=admin_cookies)
+    userc = httpx.AsyncClient(base_url=server_url, timeout=10)
+    try:
+        # userc 登录（批2 测试建过）
+        assert (await userc.post("/api/auth/login", json={
+            "username": "userc", "password": "userc-pass-123"})).status_code == 200
+        # ① user 域：普通用户被属主门拦（403）；admin 过门（域未写过
+        # → 404「先有写入才有域」——与 403 区分即 guard 生效证据）
+        assert (await userc.get(
+            "/api/memory/entries", params={"domain": "user"})
+        ).status_code == 403
+        assert (await admin.get(
+            "/api/memory/entries", params={"domain": "user"})).status_code == 404
+        # 他人/不存在项目域 → 404（不暴露）
+        assert (await userc.get(
+            "/api/memory/entries", params={"domain": "p:000000000000"})
+        ).status_code == 404
+
+        # ② 渠道认领：造 binding（chat 777）→ admin 认领给 userc →
+        # 渠道 /new 建会话归属 userc
+        from loadn_webui import db as db_mod
+        from loadn_webui.integrations.channels import ChannelsService, TelegramAPI
+        fake = _FakeTGForNew()
+        svc = ChannelsService(_FakeEngineCh(), api=TelegramAPI(
+            client=fake.client()))
+        _restore_allow = _allow_ch({"777"})
+        svc.handle_update({"update_id": 900,
+                           "message": {"chat": {"id": 777},
+                                       "from": {"id": 9, "username": "u"},
+                                       "text": "/new 认领会话", "date": 0}})
+        with db_mod.conn() as c:
+            row = c.execute("SELECT session_id FROM channel_bindings "
+                            "WHERE chat_id='777'").fetchone()
+        assert row is not None
+        sid0 = row["session_id"]
+        with db_mod.conn() as c:
+            assert c.execute("SELECT owner_id FROM sessions WHERE id=?",
+                             (sid0,)).fetchone()["owner_id"] is None  # 未认领
+        # admin 认领
+        r = await admin.put("/api/admin/channels/bindings/777",
+                            json={"owner": "userc"})
+        assert r.status_code == 200, r.text
+        # 渠道再 /new（换绑保留认领）→ 新会话归属 userc
+        svc.handle_update({"update_id": 901,
+                           "message": {"chat": {"id": 777},
+                                       "from": {"id": 9, "username": "u"},
+                                       "text": "/new 第二个", "date": 0}})
+        with db_mod.conn() as c:
+            b = c.execute("SELECT session_id FROM channel_bindings "
+                          "WHERE chat_id='777'").fetchone()
+            own = c.execute("SELECT owner_id FROM sessions WHERE id=?",
+                            (b["session_id"],)).fetchone()["owner_id"]
+        assert own is not None, "认领后渠道新会话须落属主"
+        with db_mod.conn() as c:
+            uid_c = c.execute("SELECT id FROM users WHERE username='userc'"
+                              ).fetchone()["id"]
+        assert own == uid_c
+        # userc 现在能在自己列表看到渠道会话
+        sids_c = (await userc.get("/api/sessions")).json()["sessions"]
+        assert b["session_id"] in [s["id"] for s in sids_c]
+    finally:
+        _restore_allow()
+        from loadn_webui import db as _dbm
+        with _dbm.conn() as _c:      # 清 chat 777 的测试 binding（防污染
+            _c.execute("DELETE FROM channel_bindings "  # 后续 channels 测试
+                       "WHERE chat_id='777'")            # 的 fetchone 取行）
+        await admin.aclose()
+        await userc.aclose()
+
+
+class _FakeTGForNew:
+    def __init__(self):
+        import httpx
+        self._httpx = httpx
+
+    def client(self):
+        return self._httpx.Client(transport=self._httpx.MockTransport(
+            self._handler))
+
+    def _handler(self, request):
+        return self._httpx.Response(200, json={"ok": True, "result": {}})
+
+
+class _FakeEngineCh:
+    async def submit(self, sid, text, mode="foreground", attachments=None):
+        return 1
+
+    def steer_if_running(self, sid, text):
+        return None
+
+    def publish(self, *a, **k):
+        return 0
+
+
+def _allow_ch(ids):
+    """全量序卫生：改完即还原（直改 CONFIG 不还原会污染后续 channels
+    测试的白名单 monkeypatch 面）。"""
+    from loadn_webui.config import CONFIG
+    old = CONFIG.channels.telegram_allow
+    CONFIG.channels.telegram_allow = list(ids)
+    return lambda: setattr(CONFIG.channels, "telegram_allow", old)

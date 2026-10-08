@@ -17,6 +17,7 @@ EXPECTED = {
     ("/api/admin/audit", "get"),
     ("/api/admin/audit/verify", "post"),
     ("/api/admin/channels", "get,put"),
+    ("/api/admin/channels/bindings/{chat_id}", "put"),
     ("/api/admin/channels/probe", "get"),
     ("/api/admin/channels/token", "put"),
     ("/api/admin/egress", "get"),

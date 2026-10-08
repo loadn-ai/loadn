@@ -104,7 +104,8 @@ async def test_commands_and_roundtrip(client, monkeypatch):
     assert fake.sent[-1][0] == "sendMessage" and "已新建并绑定" in fake.sent[-1][1]["text"]
     from loadn_webui import db as db_mod
     with db_mod.conn() as c:
-        bind = c.execute("SELECT * FROM channel_bindings").fetchone()
+        bind = c.execute("SELECT * FROM channel_bindings "
+                         "WHERE chat_id='100'").fetchone()
     assert bind is not None and bind["chat_id"] == "100"
     sid = bind["session_id"]
     # 普通文本 → 绑定会话 submit（渠道消息=用户消息，不解析系统操作）
@@ -206,7 +207,7 @@ async def test_approval_keyboard_and_callback(client, monkeypatch):
     svc.handle_update(_upd(text="/new"))
     from loadn_webui import db as db_mod
     with db_mod.conn() as c:
-        sid = c.execute("SELECT session_id FROM channel_bindings").fetchone()["session_id"]
+        sid = c.execute("SELECT session_id FROM channel_bindings WHERE chat_id='100'").fetchone()["session_id"]
     out = approve_mod.create(sid, "mail_send", {"to": "x@y.z"}, note="P9b")
     # 钩子经 get_service 单例（生产=轮询线程实例）；此处直接驱动本实例验证推送
     svc.notify_approval(out["id"], sid, out["summary"])
@@ -241,7 +242,7 @@ async def test_guards_not_running_and_empty_text(client, monkeypatch):
     from loadn_webui import db as db_mod
     with db_mod.conn() as c:
         sid = c.execute(
-            "SELECT session_id FROM channel_bindings").fetchone()["session_id"]
+            "SELECT session_id FROM channel_bindings WHERE chat_id='100'").fetchone()["session_id"]
     out = approve_mod.create(sid, "mail_send", {"to": "x@y.z"})
     svc.notify_approval(out["id"], sid, out["summary"])
     assert not any("reply_markup" in b for _, b in fake.sent)  # 未运行不推
@@ -266,7 +267,7 @@ async def test_r2_callback_binding_guard(client, monkeypatch):
     from loadn_webui import db as db_mod
     with db_mod.conn() as c:
         sidA = c.execute(
-            "SELECT session_id FROM channel_bindings").fetchone()["session_id"]
+            "SELECT session_id FROM channel_bindings WHERE chat_id='100'").fetchone()["session_id"]
     out = approve_mod.create(sidA, "mail_send", {"to": "x@y.z"})
     aid = out["id"]
     # create 的钩子经 get_service(None) 单例（生产=轮询线程实例，此处
@@ -342,7 +343,7 @@ async def test_r2_callback_race_already_decided(client, monkeypatch):
     svc.handle_update(_upd(text="/new"))
     with db_mod.conn() as c:
         sidA = c.execute(
-            "SELECT session_id FROM channel_bindings").fetchone()["session_id"]
+            "SELECT session_id FROM channel_bindings WHERE chat_id='100'").fetchone()["session_id"]
     out = approve_mod.create(sidA, "mail_send", {"to": "x@y.z"})
     aid = out["id"]
     # webui 面抢先裁决（并发窗口的另一头）
