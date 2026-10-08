@@ -666,12 +666,39 @@ def _active_turns() -> list[dict]:
         return []
 
 
+def _health_token() -> str:
+    """healthcheck 鉴权 token：人配 server.token > 机生 var/server_token。
+
+    token 生效的生产面裸请求必 401（机生 token 14 天宽限期一过）——曾致
+    upgrade healthcheck 误判失败连滚两级（2026-10-08 v0.7.0/v0.7.3/v0.7.5
+    三连实证：新版本实际已在跑，纯探测无凭证）。
+    """
+    try:
+        from .config import CONFIG
+        if CONFIG.server.token:
+            return CONFIG.server.token
+    except Exception:                                   # noqa: BLE001 — 探测辅助
+        pass
+    p = DATA_ROOT / "var" / "server_token"
+    try:
+        return p.read_text().strip() if p.exists() else ""
+    except OSError:
+        return ""
+
+
 def _healthcheck(timeout_s: int, *, expect: str | None = None) -> bool:
-    """轮询 /api/health 至 200；expect 时验证 release 版本字段。"""
+    """轮询 /api/health 至 200；expect 时验证 release 版本字段。
+
+    带 Bearer 凭证（服务面 token 生效后裸探测 401，见 _health_token）。
+    """
+    tok = _health_token()
     t0 = time.monotonic()
     while time.monotonic() - t0 < timeout_s:
         try:
-            resp = urllib.request.urlopen(_health_url(), timeout=5)
+            req = urllib.request.Request(_health_url())
+            if tok:
+                req.add_header("Authorization", f"Bearer {tok}")
+            resp = urllib.request.urlopen(req, timeout=5)
             if resp.status == 200:
                 if expect:
                     data = json.loads(resp.read())

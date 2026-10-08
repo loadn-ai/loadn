@@ -173,6 +173,59 @@ def test_healthcheck_unreachable(fake_env, monkeypatch):
     assert not ops._healthcheck(1)
 
 
+def test_healthcheck_sends_bearer_token(fake_env, monkeypatch):
+    """healthcheck 必带 Bearer 凭证（否定路径对赌：服务面 token 生效后
+    裸探测 401——曾致 upgrade 误判回滚，新版本实际已在跑）。人配
+    server.token 优先；清空回落机生 var/server_token 文件。"""
+    captured = {}
+
+    class _Resp:
+        status = 200
+
+        def read(self):
+            return json.dumps({"release": {"version": "v1.0.0"}}).encode()
+
+    def _fake_urlopen(req, timeout=0):
+        captured["auth"] = req.headers.get("Authorization")
+        return _Resp()
+
+    monkeypatch.setattr(ops, "_health_url",
+                        lambda: "http://fake/api/health")
+    monkeypatch.setattr(ops.urllib.request, "urlopen", _fake_urlopen)
+    from loadn_webui.config import CONFIG
+    monkeypatch.setattr(CONFIG.server, "token", "human-tk")
+    assert ops._healthcheck(2, expect="v1.0.0")
+    assert captured["auth"] == "Bearer human-tk"
+    monkeypatch.setattr(CONFIG.server, "token", "")   # 回落机生文件
+    assert ops._healthcheck(2, expect="v1.0.0")
+    assert captured["auth"] == "Bearer test-token"    # fake_env 已备
+
+
+def test_healthcheck_no_token_no_header(fake_env, monkeypatch):
+    """无任何 token（fresh 开源部署首启）→ 不带 Authorization 头
+    （空值头不发——服务端空 Bearer 也是脏请求），200 语义照判。"""
+    captured = {}
+
+    class _Resp:
+        status = 200
+
+        def read(self):
+            return b"{}"
+
+    def _fake_urlopen(req, timeout=0):
+        captured["auth"] = req.headers.get("Authorization")
+        return _Resp()
+
+    monkeypatch.setattr(ops, "_health_url",
+                        lambda: "http://fake/api/health")
+    monkeypatch.setattr(ops.urllib.request, "urlopen", _fake_urlopen)
+    (fake_env["data"] / "var" / "server_token").unlink()
+    from loadn_webui.config import CONFIG
+    monkeypatch.setattr(CONFIG.server, "token", "")
+    assert ops._healthcheck(2)
+    assert not captured["auth"]
+
+
 # ---------------------------------------------------------------- preflight
 
 def test_preflight_missing_venv(fake_env):

@@ -5,6 +5,11 @@
 
 ## [0.7.5] - 2026-10-08
 
+- **修 upgrade healthcheck 无凭证必 401**（发版被卡实证）：token 生效的
+  生产面裸 urllib 探测必 unauthorized（机生 var/server_token 14 天宽限期
+  一过），曾致 v0.7.0/v0.7.3 升级误判失败连滚两级（新版本实际已在跑，
+  只能手动切指针）。healthcheck 现带 Bearer 凭证：人配 server.token
+  优先，回落机生 var/server_token。
 - **轮换 anchor 补执行域路标**（生产实证续修）：v0.7.2 的宪法路标对轮换
   冷启动无效——context_inflation 轮换后模型无「内建 Bash 曾成功」的历史
   惯性，anchor 只说「去读盘」不说「在哪个域读」，任务第一步物化
