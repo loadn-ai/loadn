@@ -705,7 +705,13 @@ class Engine:
         """会话轮换的交接 anchor：磁盘台账指引 + 旧会话 transcript 尾部摘要
         （用户最后指令/todos 终态/最后输出）——新会话冷启动也能无损接力，
         不再是纯「去读盘」的一句话。transcript 不可得（resume 被拒的本就
-        没有）→ 摘要段留空，仅剩磁盘指引。"""
+        没有）→ 摘要段留空，仅剩磁盘指引。
+
+        执行域路标（2026-10-08 实证）：轮换冷启动恰是模型最没有历史惯性的
+        时刻——anchor 只说「去读盘」不说「在哪个域读」，任务第一步物化了
+        mcp__sandbox__ 的 bash 在外置容器打转三轮，误诊「内建工具未注入」。
+        路标复用宪法 §2.5 同一真源（workspace._exec_env_block）防两处漂移。
+        """
         tail = ""
         if old_session_id:
             try:
@@ -715,6 +721,11 @@ class Engine:
         parts = [f"（上一 {spec.name} 会话已轮换（{reason}）。"]
         if tail:
             parts.append(f"旧会话收尾时的状态：\n{tail}")
+        try:
+            parts.append("执行域路标（操作本会话文件前必读）：\n"
+                         + ws_mod._exec_env_block())
+        except Exception:  # noqa: BLE001 — anchor 组装永不抛
+            log.exception("执行域路标渲染失败（anchor 降级为纯台账指引）")
         parts.append("请先读工作区 PROGRESS.md、state.json 与 notes/，结合以上信息"
                      "无损续作当前请求，不要重做已完成步骤。）")
         return "\n\n".join(parts)

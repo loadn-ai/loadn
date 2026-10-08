@@ -114,6 +114,23 @@ def test_spec_session_tail_claude(tmp_path: Path, monkeypatch):
 
 
 # ---------------------------------------------------------------- token 轮换 anchor
+def test_rotation_anchor_exec_domain_signpost_tiers(monkeypatch):
+    """轮换 anchor 执行域路标按档位分形（单元级直接构造，不跑真 turn）：
+    off=直跑（内建 Bash 在宿主）/ bwrap=隔离（内建 Bash 在平台沙箱）——
+    两种形态都必须点名 mcp__sandbox__* 是另一个域。路标渲染条件反转
+    （如 eff 判定写反、路标段被吞）须被此测试杀死。"""
+    from loadn_webui.engine import Engine
+    from loadn_webui.security import sandbox as sbx
+    monkeypatch.setattr(sbx, "resolve_tier", lambda req=None: ("off", ""))
+    a = Engine._rotation_anchor(LoadnSpec(), "", "context_inflation")
+    assert "直跑档位" in a and "内建 Bash" in a
+    assert "mcp__sandbox__" in a and "PROGRESS.md" in a
+    monkeypatch.setattr(sbx, "resolve_tier", lambda req=None: ("bwrap", ""))
+    b = Engine._rotation_anchor(LoadnSpec(), "", "context_inflation")
+    assert "隔离档位（bwrap）" in b and "mcp__sandbox__" in b
+    assert "直跑档位" not in b          # 档位文案不得串台
+
+
 async def test_rotation_stores_pending_anchor_and_consumes(client, ws_root,
                                                             fake_calls):
     """bigusage 轮换 → pending_anchor 暂存（含磁盘台账指引）；下一 turn 注入
@@ -131,6 +148,10 @@ async def test_rotation_stores_pending_anchor_and_consumes(client, ws_root,
     with db_mod.conn() as c:
         anchor = db_mod.get_session(c, sid)["pending_anchor"]
     assert anchor and "已轮换" in anchor and "PROGRESS.md" in anchor
+    # 执行域路标（2026-10-08 实证对赌）：anchor 只说「去读盘」不说域，
+    # 冷启动任务物化 sandbox bash 在外置容器打转、误诊内建工具未注入
+    assert "直跑档位" in anchor and "内建 Bash" in anchor \
+        and "mcp__sandbox__" in anchor
 
     # 撤掉 bigusage：第二轮正常用量，不再轮换——单测 pending_anchor 消费链
     (ctrl / "bigusage").unlink()
