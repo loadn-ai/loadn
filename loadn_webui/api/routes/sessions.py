@@ -49,6 +49,12 @@ async def create_session(body: dict):
     if category_id is not None:
         with db_mod.conn() as c:
             db_mod.update_session(c, sid, touch=False, category_id=category_id)
+    # 八轮（多用户）：cookie 通道建的会话落属主（token 通道 None=legacy 归并）
+    from ...security import userauth as _ua
+    _u = _ua.current_user()
+    if _u is not None:
+        with db_mod.conn() as c:
+            db_mod.update_session(c, sid, owner_id=_u["id"])
     with db_mod.conn() as c:
         # 未显式命名 → 允许自动标题（成功生成或手动改名后清标记）
         if not (body.get("title") or "").strip():
@@ -64,9 +70,15 @@ async def create_session(body: dict):
 @router.get("/sessions")
 def list_sessions():
     from ...scheduler import next_wake
+    from ...security import userauth as _ua
+    _u = _ua.current_user()
     with db_mod.conn() as c:
         rows = [db_mod.to_dict(r) for r in db_mod.list_sessions(c)]
-        for r in rows:
+    if _u is not None and _u["role"] != "admin":
+        # 八轮：cookie 普通用户只见自己的（admin/owner=NULL legacy 由 admin 见）
+        rows = [r for r in rows if r.get("owner_id") == _u["id"]]
+    for r in rows:
+        with db_mod.conn() as c:
             act = db_mod.active_turns(c, r["id"])
             r["active_turn"] = db_mod.to_dict(act[-1]) if act else None
             r["usage"] = db_mod.usage_totals(c, r["id"])

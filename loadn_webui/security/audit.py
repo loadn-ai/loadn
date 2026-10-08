@@ -28,6 +28,7 @@ log = get_logger(__name__)
 
 # 事件类型枚举（v1.1 §6.7）
 TYPES = (
+    "auth",                  # 八轮多用户：登录/登出/建号/改密（失败也留痕）
     "permission_decision",   # policy.py 判定（allow/block/warn）
     "approval_request", "approval_decision",
     "tool_call_blocked",

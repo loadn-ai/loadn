@@ -1,108 +1,150 @@
 import { useEffect, useState } from 'react';
-import { setToken } from '../api/client';
+import { api, setToken } from '../api/client';
 
-/** W0 token 门：任何 API 401/403（token 缺失/过期/轮换）时弹出输入框。
- * 保存后整页刷新——所有已建立的 fetch/SSE 通道按新 token 重建。
+/** 八轮（多用户）：账号密码登录门（替代裸 token 输入）。
  *
- * 「稍后再说」本浏览器会话记忆（sessionStorage）：同一会话内不再自动弹，
- * 右下角留 🔑 浮标可手动重开（管理操作仍需 token 时从这里进）。 */
-const DISMISS_KEY = 'wd_gate_dismissed';
+ * 形态探测 /api/auth/status：
+ * - needs_setup → 安装向导（建首个管理员账号；存量数据自动归并到该号）
+ * - 有账号体系且 API 401 → 登录表单（用户名+密码 → httpOnly cookie）
+ * - 已登录 → 右下角用户徽标（登出）
+ * token 输入保留为「高级」折叠（API/CLI 场景与旧部署兼容）。
+ *
+ * 宽限期（无 token 配置）与 token 通道行为不变——cookie 是叠加通道。 */
+interface AuthStatus {
+  needs_setup: boolean; auth_required?: boolean; logged_in: boolean;
+  user: { id: number; username: string; role: string } | null;
+}
+
+const box: React.CSSProperties = {
+  position: 'fixed', inset: 0, zIndex: 999, display: 'flex',
+  alignItems: 'center', justifyContent: 'center',
+  background: 'rgba(0,0,0,.45)', backdropFilter: 'blur(2px)',
+};
+const card: React.CSSProperties = {
+  background: 'var(--panel,#fff)', borderRadius: 14, padding: 28,
+  width: 'min(92vw,380px)', boxShadow: '0 18px 50px rgba(0,0,0,.3)',
+  display: 'flex', flexDirection: 'column', gap: 12,
+};
+const input: React.CSSProperties = {
+  padding: '10px 12px', borderRadius: 8, fontSize: 14,
+  border: '1px solid rgba(127,127,127,.35)', background: 'transparent',
+  color: 'inherit', outline: 'none',
+};
+const btn: React.CSSProperties = {
+  padding: '10px 0', borderRadius: 8, fontSize: 14, fontWeight: 600,
+  border: 'none', background: 'var(--accent,#4f6bf0)', color: '#fff',
+};
 
 export default function TokenGate() {
+  const [st, setSt] = useState<AuthStatus | null>(null);
   const [open, setOpen] = useState(false);
-  const [dismissed, setDismissed] = useState(false);
-  const [val, setVal] = useState('');
+  const [mode, setMode] = useState<'login' | 'setup'>('login');
+  const [user, setUser] = useState('');
+  const [pass, setPass] = useState('');
+  const [pass2, setPass2] = useState('');
+  const [err, setErr] = useState('');
+  const [advanced, setAdvanced] = useState(false);
+  const [tok, setTok] = useState('');
 
+  const probe = async () => {
+    try {
+      const d = await api<AuthStatus>('/api/auth/status');
+      setSt(d);
+      if (d.needs_setup) { setMode('setup'); setOpen(true); }
+      else if (d.auth_required) { setMode('login'); setOpen(true); }
+    } catch { /* 探测失败保持沉默（旧版兼容） */ }
+  };
   useEffect(() => {
+    void probe();
     const on401 = () => {
-      // 不再拦「无存量 token」：宽限期内 GET 全放行，浏览器可能从没存过
-      // token，直到第一个管理面操作（403 admin required）才暴露——此刻必须弹；
-      // 已「稍后再说」的本会话静默（浮标在）
-      if (sessionStorage.getItem(DISMISS_KEY)) { setDismissed(true); return; }
-      setOpen(true);
+      if (!st?.needs_setup) { setMode('login'); setOpen(true); void probe(); }
     };
     window.addEventListener('wd-unauthorized', on401);
     return () => window.removeEventListener('wd-unauthorized', on401);
   }, []);
 
-  const dismiss = () => {
-    sessionStorage.setItem(DISMISS_KEY, '1');
-    setOpen(false);
-    setDismissed(true);
+  const submit = async () => {
+    setErr('');
+    try {
+      if (mode === 'setup') {
+        if (pass !== pass2) { setErr('两次密码不一致'); return; }
+        await api('/api/auth/setup', {
+          method: 'POST', body: JSON.stringify(
+            { username: user.trim(), password: pass }) });
+      } else {
+        await api('/api/auth/login', {
+          method: 'POST', body: JSON.stringify(
+            { username: user.trim(), password: pass }) });
+      }
+      location.reload();          // cookie 已 Set——整页重建 fetch/SSE 通道
+    } catch (e) {
+      const msg = await (e instanceof Error ? e.message : String(e));
+      setErr(String(msg));
+    }
   };
 
-  const save = (v: string) => {
-    sessionStorage.removeItem(DISMISS_KEY);
-    setToken(v);
-    location.reload();
-  };
-
-  if (!open) return dismissed ? (
-    <button className="stale-pill" style={{ right: 14, bottom: 14, top: undefined, left: undefined }}
-      title="连接 API token（管理操作需要）"
-      onClick={() => { sessionStorage.removeItem(DISMISS_KEY); setDismissed(false); setOpen(true); }}>
-      🔑 连接
-    </button>
-  ) : null;
-  return (
-    <div style={{
-      position: 'fixed', inset: 0, zIndex: 999, display: 'flex',
-      alignItems: 'center', justifyContent: 'center',
-      background: 'rgba(0,0,0,.45)', backdropFilter: 'blur(2px)',
+  // 已登录：右下角用户徽标（登出）——不打扰主界面
+  if (st?.logged_in && !open) return (
+    <div className="stale-pill" style={{
+      right: 14, bottom: 44, top: undefined, left: undefined,
+      display: 'flex', gap: 8, alignItems: 'center',
     }}>
-      <div style={{
-        background: 'var(--panel,#fff)', borderRadius: 14, padding: 28,
-        width: 'min(92vw,380px)', boxShadow: '0 18px 50px rgba(0,0,0,.3)',
-        display: 'flex', flexDirection: 'column', gap: 14,
-      }}>
-        <div style={{ fontSize: 16, fontWeight: 600 }}>需要 API Token</div>
-        <div style={{ fontSize: 13, opacity: 0.75, lineHeight: 1.6 }}>
-          认证未通过（token 缺失或已轮换）。在服务器上执行
-          <code style={{ background: 'rgba(127,127,127,.15)', padding: '2px 6px',
-                         borderRadius: 4, margin: '0 4px' }}>loadn-web token show</code>
-          查看，或用带 <code>?token=…</code> 的链接打开。
-          <span style={{ display: 'block', marginTop: 6, fontSize: 12 }}>
-            浏览（只读）在宽限期内仍可用；管理操作需要 token。
-            <span style={{ display: 'block', marginTop: 4 }}>
-              不想每次输入：服务器 config.yaml 的 server.token 置空即完全免认证
-              （前提：已有外层防护，如反代 basic auth / 仅本机访问）。
-            </span>
-          </span>
+      <span title={st.user?.role === 'admin' ? '管理员' : '用户'}>
+        👤 {st.user?.username}
+      </span>
+      <button className="link" onClick={async () => {
+        await api('/api/auth/logout', { method: 'POST' });
+        location.reload();
+      }}>登出</button>
+    </div>
+  );
+  if (!open) return null;
+  return (
+    <div style={box}>
+      <div style={card}>
+        <div style={{ fontSize: 16, fontWeight: 600 }}>
+          {mode === 'setup' ? '创建管理员账号' : '登录'}
         </div>
-        <input
-          autoFocus type="password" placeholder="粘贴 token" value={val}
-          onChange={e => setVal(e.target.value)}
-          onKeyDown={e => { if (e.key === 'Enter' && val.trim()) {
-            save(val.trim());
-          } }}
-          style={{
-            padding: '10px 12px', borderRadius: 8, fontSize: 14,
-            border: '1px solid rgba(127,127,127,.35)', background: 'transparent',
-            color: 'inherit', outline: 'none',
-          }}
-        />
-        <button
-          disabled={!val.trim()}
-          onClick={() => save(val.trim())}
-          style={{
-            padding: '10px 0', borderRadius: 8, fontSize: 14, fontWeight: 600,
-            border: 'none', cursor: val.trim() ? 'pointer' : 'default',
-            background: 'var(--accent,#4f6bf0)', color: '#fff',
-            opacity: val.trim() ? 1 : 0.5,
-          }}
-        >
-          保存并重连
-        </button>
-        <button
-          onClick={dismiss}
-          style={{
-            padding: '6px 0', borderRadius: 8, fontSize: 12,
-            border: 'none', cursor: 'pointer', background: 'transparent',
-            color: 'inherit', opacity: 0.6,
-          }}
-        >
-          稍后再说（本会话不再弹，右下角 🔑 可重开）
-        </button>
+        {mode === 'setup' && (
+          <div style={{ fontSize: 13, opacity: 0.75, lineHeight: 1.6 }}>
+            首次使用：创建你的账号（密码至少 8 位）。已有的任务/数据会自动
+            归并到这个账号下。
+          </div>
+        )}
+        <input autoFocus placeholder="用户名" value={user}
+               onChange={e => setUser(e.target.value)} style={input} />
+        <input type="password" placeholder="密码" value={pass}
+               onChange={e => setPass(e.target.value)} style={input}
+               onKeyDown={e => { if (e.key === 'Enter' && mode === 'login') void submit(); }} />
+        {mode === 'setup' && (
+          <input type="password" placeholder="确认密码" value={pass2}
+                 onChange={e => setPass2(e.target.value)} style={input}
+                 onKeyDown={e => { if (e.key === 'Enter') void submit(); }} />
+        )}
+        {err ? <div style={{ color: '#e5484d', fontSize: 13 }}>{err}</div> : null}
+        <button disabled={!user.trim() || !pass}
+                onClick={() => void submit()} style={{
+                  ...btn, opacity: user.trim() && pass ? 1 : 0.5,
+                  cursor: user.trim() && pass ? 'pointer' : 'default',
+                }}>{mode === 'setup' ? '创建并登录' : '登录'}</button>
+        {!st?.needs_setup && (
+          <>
+            <button className="link" style={{ fontSize: 12, border: 'none', background: 'none' }}
+                    onClick={() => setAdvanced(a => !a)}>
+              {advanced ? '收起' : '使用 API token（CLI/旧部署）'}
+            </button>
+            {advanced && (
+              <>
+                <input placeholder="粘贴 token" value={tok}
+                       onChange={e => setTok(e.target.value)} style={input} />
+                <button disabled={!tok.trim()} style={{ ...btn, opacity: tok.trim() ? 1 : 0.5 }}
+                        onClick={() => { setToken(tok.trim()); location.reload(); }}>
+                  用 token 连接
+                </button>
+              </>
+            )}
+          </>
+        )}
       </div>
     </div>
   );

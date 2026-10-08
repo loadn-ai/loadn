@@ -25,9 +25,14 @@ def _apply_partition_mutex(body: dict, updates: dict) -> None:
             if k not in updates:
                 updates[k] = None if k == "category_id" else 0
 def _get_session_or_404(sid: str) -> dict:
+    from ...security import userauth as _ua
     with db_mod.conn() as c:
         sess = db_mod.get_session(c, sid)
         if sess is None:
+            raise HTTPException(404, f"session not found: {sid}")
+        # 八轮（多用户）：属主检查单点收口——cookie 用户访问他人会话=404
+        # （不暴露存在性）；token/宽限通道 user=None 放行（兼容）
+        if not _ua.owner_ok(sess, _ua.current_user()):
             raise HTTPException(404, f"session not found: {sid}")
         d = db_mod.to_dict(sess)
         d["usage"] = db_mod.usage_totals(c, sid)

@@ -5,6 +5,23 @@
 
 ## [0.6.26] - 2026-10-07
 
+- **多用户账号密码登录与空间隔离（批1：认证内核+核心面）**：用户
+  反馈「让用户记 token 不合理」——按方向评审定完整多用户+隔离。本批：
+  ①users/auth_sessions 表（pbkdf2-sha256 260k 轮标准库哈希——依赖红线
+  内）+sessions/projects/scheduled_jobs/webhooks/channel_bindings 加
+  owner_id 列（migration）②登录/登出/安装向导/改密/me/status 端点：
+  httpOnly SameSite cookie 会话（30 天滑动续期、UA 留痕、登录失败恒定
+  耗时、审计 auth 全入账）③中间件双通道：cookie 会话优先（管理面要求
+  admin 角色），token/宽限通道原语义不变（CLI/存量部署与全部既有测试
+  零破坏——通道 user=None 时属主检查放行）④属主隔离核心面：
+  _get_session_or_404 单点收口（五路由文件共用——越权=404 不暴露存在
+  性）+会话列表按属主过滤+建会话落 owner；contextvars 贯穿 sync 路由
+  线程池⑤setup 安装向导：首账号=admin 且存量数据自动归并（legacy
+  owner NULL 行 claim）；账号体系建立后未登录访客主动弹登录门
+  （auth_required——不靠等第一个 401）⑥前端 TokenGate 重写：安装向导/
+  登录表单/已登录用户徽标（登出）+token 输入降级为「高级」折叠。
+  e2e：内核全链（setup 归并/登录/列表过滤/越权 404/B 非管理面 403/
+  登出失效）+浏览器登录门渲染与错误反馈。
 - **浏览器级 e2e 补面 + 设定↔UI 全量审计补齐（9 项 UI 能力）**：
   ①新增 tests/e2e_ui/（playwright chromium headless 连真 uvicorn+fake
   引擎，零 token）三条旅程：SSE 流渲染+resync 快照消费不清空（六轮修

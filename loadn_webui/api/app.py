@@ -239,6 +239,21 @@ async def auth_middleware(request: Request, call_next):
     """
     path = request.url.path
     token = CONFIG.server.token
+    # 八轮（多用户）：cookie 会话通道——有效会话即认证通过（user 挂
+    # request.state 供属主判定）；/api/auth/* 自带校验不在此拦
+    from ..security import userauth as _ua
+    request.state.user = _ua.session_user(
+        request.cookies.get(_ua.COOKIE_NAME, ""))
+    _ua.set_current_user(request.state.user)   # sync 路由线程池取上下文
+    if path.startswith("/api/auth/"):
+        return await call_next(request)
+    if request.state.user is not None:
+        # 已登录：普通面放行；管理面要求 admin 角色（token 双头通道继续
+        # 兼容——CLI/存量部署不经 cookie）
+        if _is_admin_plane(path, request.method) \
+                and request.state.user["role"] != "admin":
+            return JSONResponse({"error": "admin required"}, status_code=403)
+        return await call_next(request)
     protected = (path.startswith("/api") or path in ("/docs", "/openapi.json")
                  or path.startswith(("/docs", "/redoc")))
     if token and protected:
@@ -305,6 +320,9 @@ async def gzip_json_middleware(request: Request, call_next):
                     media_type="application/json", headers=headers)
 
 
+from .routes import auth as auth_routes  # noqa: E402
+
+app.include_router(auth_routes.router)
 app.include_router(routes.router)
 # /share 公开只读路由（auth 中间件只护 /api）：注册须早于下方 spa_fallback
 app.include_router(share_router)

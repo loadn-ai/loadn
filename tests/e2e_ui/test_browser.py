@@ -26,13 +26,14 @@ async def _latest_sid(base: str) -> str:
         return d["sessions"][0]["id"]
 
 
-async def test_browser_sse_stream_and_resync_keeps_state(server_url, ws_root):
+async def test_browser_sse_stream_and_resync_keeps_state(server_url, ws_root,
+                                                         logged_context):
     from playwright.async_api import async_playwright
 
     async with async_playwright() as pw:
         browser = await pw.chromium.launch()
         try:
-            page = await browser.new_page()
+            page = await (await logged_context(browser)).new_page()
             page.set_default_timeout(20000)
             await page.goto(server_url)
             # ① 侧栏渲染（token 宽限期内无凭证放行）
@@ -74,7 +75,8 @@ async def test_browser_sse_stream_and_resync_keeps_state(server_url, ws_root):
             await browser.close()
 
 
-async def test_browser_approval_card_live(server_url, ws_root):
+async def test_browser_approval_card_live(server_url, ws_root,
+                                          logged_context):
     """审批卡实时出现（六轮修 A2 的浏览器对赌）：agent 侧发起审批 →
     SSE approval 事件 → 前端 loadApprovals → 卡片渲染——**不刷新页面**。
     """
@@ -83,7 +85,7 @@ async def test_browser_approval_card_live(server_url, ws_root):
     async with async_playwright() as pw:
         browser = await pw.chromium.launch()
         try:
-            page = await browser.new_page()
+            page = await (await logged_context(browser)).new_page()
             page.set_default_timeout(20000)
             await page.goto(server_url)
             await page.wait_for_selector("text=新任务")
@@ -102,23 +104,20 @@ async def test_browser_approval_card_live(server_url, ws_root):
             await browser.close()
 
 
-async def test_browser_always_allow_creates_policy(server_url, ws_root):
+async def test_browser_always_allow_creates_policy(server_url, ws_root,
+                                                         logged_context):
     """七轮 P10 补 UI 对赌：审批卡「始终允许·确切」→ from-approval →
     策略落库（list 可见）——此前 per-target 三档全链零 UI。
     from-approval 在 admin 面：先往浏览器注入 token（前端 api() 自动带
     双头——生产用户配 token 后即此形态）。"""
     from playwright.async_api import async_playwright
 
-    from loadn_webui.config import CONFIG
-    tok = CONFIG.server.token or "test-token"
     async with async_playwright() as pw:
         browser = await pw.chromium.launch()
         try:
-            page = await browser.new_page()
+            page = await (await logged_context(browser)).new_page()
             page.set_default_timeout(20000)
             await page.goto(server_url)
-            await page.evaluate(f"localStorage.setItem('loadn_token', {tok!r})")
-            await page.reload()
             await page.wait_for_selector("text=新任务")
             await page.click("text=新任务")
             await page.wait_for_selector("textarea.cinput")

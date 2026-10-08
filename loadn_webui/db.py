@@ -127,6 +127,23 @@ CREATE TABLE IF NOT EXISTS categories (
 
 CREATE TABLE IF NOT EXISTS kv (key TEXT PRIMARY KEY, value TEXT);
 
+CREATE TABLE IF NOT EXISTS users (           -- 多用户（八轮）：账号密码登录
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  username TEXT UNIQUE NOT NULL,
+  password_hash TEXT NOT NULL,               -- pbkdf2$iter$salt$hash（标准库）
+  role TEXT CHECK(role IN ('admin','user')) DEFAULT 'user',
+  display_name TEXT,
+  disabled INTEGER DEFAULT 0,
+  created_at TEXT, last_login_at TEXT
+);
+
+CREATE TABLE IF NOT EXISTS auth_sessions (   -- 登录会话（cookie sid → user）
+  id TEXT PRIMARY KEY,                       -- 32B urlsafe 随机
+  user_id INTEGER REFERENCES users(id),
+  created_at TEXT, expires_at TEXT, last_seen_at TEXT,
+  agent TEXT                                 -- 登录时 UA 摘要（审计可读）
+);
+
 CREATE TABLE IF NOT EXISTS scheduled_jobs (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
   session_id TEXT REFERENCES sessions(id),   -- 到点向该会话投递一条 turn（new_session 恒 NULL）
@@ -293,6 +310,14 @@ def _migrate(c: sqlite3.Connection) -> None:
         if col not in pcols:
             # 任务/项目统一的侧栏分区位（置顶/收藏/自定义分类）
             c.execute(f"ALTER TABLE projects ADD COLUMN {col} {ddl}")
+    # 八轮（多用户）：属主列——cookie 会话通道的隔离判定（NULL=legacy
+    # token 时代，setup 首个 admin 建立时归并）
+    for tbl in ("sessions", "projects", "scheduled_jobs", "webhooks",
+                "channel_bindings"):
+        tinfo = {r["name"] for r in c.execute(f"PRAGMA table_info({tbl})")}
+        if "owner_id" not in tinfo:
+            c.execute(f"ALTER TABLE {tbl} ADD COLUMN owner_id INTEGER")
+
     # 三轮修（backlog 清）：artifacts (session_id,path) 唯一索引——先清
     # 存量重复行（保最新），建索引后 upsert_artifact 的 ON CONFLICT 原子化。
     # 门禁：索引已在=零成本直过（DELETE 只在首建前跑一次——每连接都全表
