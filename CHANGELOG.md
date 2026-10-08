@@ -3,6 +3,17 @@
 本项目的全部显著变更记录于此。格式遵循 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/)，
 版本遵循 [SemVer](https://semver.org/lang/zh-CN/)。
 
+## [0.7.5] - 2026-10-08
+
+- **轮换 anchor 补执行域路标**（生产实证续修）：v0.7.2 的宪法路标对轮换
+  冷启动无效——context_inflation 轮换后模型无「内建 Bash 曾成功」的历史
+  惯性，anchor 只说「去读盘」不说「在哪个域读」，任务第一步物化
+  `mcp__sandbox__` 的 bash 在外置容器打转三轮、误诊「内建工具未注入」
+  报无法自救（内建工具一直在工具面）。现轮换 anchor 复用宪法 §2.5 同源
+  真源按档位分形渲染路标（直跑=宿主全机/隔离=平台沙箱，均点名 sandbox
+  MCP 是另一个域），渲染失败降级纯台账指引不阻断。二道防线（ToolSearch
+  物化域警告/跨域混淆探测）记 backlog。
+
 ## [0.7.4] - 2026-10-08
 
 - 修 refresh_default_assets 的 PATHS 取值形态（dict 键索引——首版
