@@ -24,7 +24,8 @@ from .config import PATHS
 
 # R7 回滚门禁：每次加列/加表 +1；RELEASE.json 记此值，rollback 时比对。
 # additive-only 契约：只加列/加表（旧代码可跑新 schema，多余列无害）。
-SCHEMA_REV = 8
+# rev9：categories.icon（侧栏空间图标）+ artifacts 归属三列 + agent_files 表
+SCHEMA_REV = 9
 from .util import iso
 
 SCHEMA = """
@@ -93,6 +94,9 @@ CREATE TABLE IF NOT EXISTS artifacts (
   summary TEXT,                     -- 一行中文摘要（titlegen 回填；NULL=未回填）
   size INTEGER, mtime REAL,
   created_by TEXT DEFAULT 'agent',  -- agent|skill|user|export
+  turn_id INTEGER,                  -- 归属 turn（agent_files 轨迹合并；NULL=未知）
+  agent_id TEXT,                    -- 归属子代理（sub_N；NULL=主代理/全局产物）
+  agent_name TEXT,                  -- 子代理人名（引擎取名；NULL 同上）
   created_at TEXT, updated_at TEXT
 );
 
@@ -122,7 +126,19 @@ CREATE TABLE IF NOT EXISTS projects (
 CREATE TABLE IF NOT EXISTS categories (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
   name TEXT NOT NULL,                    -- 侧栏自定义分区名（唯一）
+  icon TEXT,                             -- 空间图标（前端图标键或 emoji 字符；NULL=Tag 兜底）
   created_at TEXT, updated_at TEXT
+);
+
+CREATE TABLE IF NOT EXISTS agent_files (       -- 子代理文件写入轨迹（产物归属真源）
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  session_id TEXT REFERENCES sessions(id),
+  turn_id INTEGER,                      -- 关联 turns.id
+  agent_id TEXT,                        -- sub_N（NULL=主代理写入，仅 turn 级轨迹）
+  agent_name TEXT,                      -- 子代理人名
+  path TEXT,                            -- 工作区相对路径（tool input file_path）
+  seen_at TEXT,
+  UNIQUE(turn_id, path)                 -- 同 turn 同路径后写覆盖（最后写者归属）
 );
 
 CREATE TABLE IF NOT EXISTS kv (key TEXT PRIMARY KEY, value TEXT);
@@ -318,6 +334,16 @@ def _migrate(c: sqlite3.Connection) -> None:
         if "owner_id" not in tinfo:
             c.execute(f"ALTER TABLE {tbl} ADD COLUMN owner_id INTEGER")
 
+    # rev9（多 Agent 工作台）：categories.icon + artifacts 归属三列
+    cc = {r["name"] for r in c.execute("PRAGMA table_info(categories)")}
+    if "icon" not in cc:
+        c.execute("ALTER TABLE categories ADD COLUMN icon TEXT")
+    acols = {r["name"] for r in c.execute("PRAGMA table_info(artifacts)")}
+    for col, ddl in (("turn_id", "INTEGER"), ("agent_id", "TEXT"),
+                     ("agent_name", "TEXT")):
+        if col not in acols:
+            c.execute(f"ALTER TABLE artifacts ADD COLUMN {col} {ddl}")
+
     # 三轮修（backlog 清）：artifacts (session_id,path) 唯一索引——先清
     # 存量重复行（保最新），建索引后 upsert_artifact 的 ON CONFLICT 原子化。
     # 门禁：索引已在=零成本直过（DELETE 只在首建前跑一次——每连接都全表
@@ -461,10 +487,11 @@ def workspace_refcount(c: sqlite3.Connection, ws: str, *,
 
 
 # ---------------------------------------------------------------- categories（侧栏自定义分区）
-def create_category(c: sqlite3.Connection, name: str) -> int:
+def create_category(c: sqlite3.Connection, name: str, icon: str | None = None) -> int:
     now = iso()
-    return c.execute("INSERT INTO categories(name, created_at, updated_at) VALUES(?,?,?)",
-                     (name, now, now)).lastrowid
+    return c.execute(
+        "INSERT INTO categories(name, icon, created_at, updated_at) VALUES(?,?,?,?)",
+        (name, icon, now, now)).lastrowid
 
 
 def get_category(c: sqlite3.Connection, cid: int) -> sqlite3.Row | None:
@@ -475,8 +502,17 @@ def list_categories(c: sqlite3.Connection) -> list[sqlite3.Row]:
     return c.execute("SELECT * FROM categories ORDER BY id").fetchall()
 
 
-def rename_category(c: sqlite3.Connection, cid: int, name: str) -> None:
-    c.execute("UPDATE categories SET name=?, updated_at=? WHERE id=?", (name, iso(), cid))
+def update_category(c: sqlite3.Connection, cid: int, *, name: str | None = None,
+                    icon: str | None = ...) -> None:
+    """改名/改图标（icon 哨兵 ... = 不动；显式 None = 清回兜底 Tag）。"""
+    sets, vals = ["updated_at=?"], [iso()]
+    if name is not None:
+        sets.append("name=?")
+        vals.append(name)
+    if icon is not ...:
+        sets.append("icon=?")
+        vals.append(icon)
+    c.execute(f"UPDATE categories SET {', '.join(sets)} WHERE id=?", (*vals, cid))
 
 
 def delete_category(c: sqlite3.Connection, cid: int) -> None:
@@ -663,6 +699,20 @@ def upsert_artifact(c: sqlite3.Connection, **fields: Any) -> None:
         else:
             c.execute(f"INSERT INTO artifacts({cols}) VALUES({ph})",
                       tuple(fields.values()))
+
+
+# ---------------------------------------------------------------- agent_files（产物归属轨迹）
+def record_agent_file(c: sqlite3.Connection, sid: str, turn_id: int, path: str,
+                      agent_id: str | None = None,
+                      agent_name: str | None = None) -> None:
+    """tool_use 写入轨迹（_consume 原子 upsert）：同 turn 同路径最后写者归属。
+    agent_id=NULL 是主代理写入——只贡献 turn 级轨迹，不参与 agent 归属。"""
+    c.execute(
+        "INSERT INTO agent_files(session_id, turn_id, agent_id, agent_name,"
+        " path, seen_at) VALUES(?,?,?,?,?,?) ON CONFLICT(turn_id, path) DO"
+        " UPDATE SET agent_id=excluded.agent_id,"
+        " agent_name=excluded.agent_name, seen_at=excluded.seen_at",
+        (sid, turn_id, agent_id, agent_name, path, iso()))
 
 
 # ---------------------------------------------------------------- shares（产物分享）

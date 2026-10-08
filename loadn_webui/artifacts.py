@@ -33,6 +33,60 @@ def kind_of(path: Path) -> str:
     return _KIND_BY_EXT.get(path.suffix.lower(), "other")
 
 
+def _parse_ts(s: str | None) -> float | None:
+    """ISO 时间串 → epoch（失败/空 → None）。"""
+    if not s:
+        return None
+    import datetime as _dt
+    try:
+        return _dt.datetime.fromisoformat(s).timestamp()
+    except ValueError:
+        try:
+            return _dt.datetime.fromisoformat(s.replace("Z", "+00:00")).timestamp()
+        except ValueError:
+            return None
+
+
+def _attribution(c, sid: str) -> tuple[dict, list]:
+    """产物归属数据（多 Agent 工作台）：
+
+    - explicit: path → (turn_id, agent_id, agent_name)——子代理 Write/Edit
+      的 file_path 显式轨迹（同路径多写取最后写者，扫描时按 rowid 序覆盖）
+    - windows: [(start, end, turn_id, agent_id, agent_name)]——单 agent 的
+      turn 时间窗（Bash 产的文件兜底：mtime 落窗内且该 turn 只有一个
+      子代理活跃 → 归它；多 agent 并行窗口不兜底，留 session 级——诚实上限）
+    """
+    explicit: dict = {}
+    for r in c.execute(
+            "SELECT path, turn_id, agent_id, agent_name FROM agent_files"
+            " WHERE session_id=? AND agent_id IS NOT NULL ORDER BY rowid",
+            (sid,)):
+        explicit[r["path"]] = (r["turn_id"], r["agent_id"], r["agent_name"])
+    windows = []
+    for r in c.execute(
+            "SELECT t.id AS tid, t.started_at AS s, t.finished_at AS f,"
+            " af.agent_id AS aid, af.agent_name AS nm FROM turns t JOIN ("
+            "  SELECT turn_id, agent_id, agent_name FROM agent_files"
+            "  WHERE session_id=? AND agent_id IS NOT NULL"
+            "  GROUP BY turn_id HAVING COUNT(DISTINCT agent_id)=1"
+            ") af ON af.turn_id=t.id WHERE t.session_id=?"
+            " AND t.started_at IS NOT NULL", (sid, sid)):
+        st, en = _parse_ts(r["s"]), _parse_ts(r["f"]) or time.time()
+        if st is not None:
+            windows.append((st, en, r["tid"], r["aid"], r["nm"]))
+    windows.sort()
+    return explicit, windows
+
+
+def _window_attr(mtime: float, windows: list) -> tuple | None:
+    for st, en, tid, aid, nm in windows:
+        if st - 1 <= mtime <= en + 60:      # 扫描晚于收尾的宽容
+            return (tid, aid, nm)
+        if mtime < st:                       # 窗按 start 升序——更早的窗已过
+            return None
+    return None
+
+
 def safe_resolve(ws: Path, rel: str) -> Path | None:
     """防路径穿越（承袭前身 webapp._safe_file）：resolve 后必须在 ws 内。"""
     try:
@@ -85,6 +139,7 @@ def scan_session(sid: str) -> int:
         done = {r["path"] for r in c.execute(
             "SELECT path FROM artifacts WHERE session_id=? AND summary IS NOT NULL",
             (sid,))}
+        explicit, windows = _attribution(c, sid)
         for p in sorted(ws.rglob("*")):
             if not p.is_file():
                 continue
@@ -97,6 +152,9 @@ def scan_session(sid: str) -> int:
             fields: dict = {"session_id": sid, "path": rel,  # 文件名不清洗会
                             "kind": sanitize_text(kind_of(p)),  # 炸 sqlite bind
                             "size": st.st_size, "mtime": st.st_mtime}
+            attr = explicit.get(rel) or _window_attr(st.st_mtime, windows)
+            if attr:
+                fields["turn_id"], fields["agent_id"], fields["agent_name"] = attr
             if rel not in done:
                 fields["title"] = sanitize_text(
                     p.stem.replace("_", " ").replace("-", " ").strip()

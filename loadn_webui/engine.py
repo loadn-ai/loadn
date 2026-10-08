@@ -654,6 +654,22 @@ class Engine:
                     self._emit(at, sid, "tool_use",
                                {"turn_id": tid, "id": b.get("id"), "name": name,
                                 "brief": brief, "input": detail, **agent})
+                    # 产物归属轨迹：Write/Edit/NotebookEdit 的 file_path 落
+                    # agent_files（子N· 前缀剥离后判定；主代理写入记
+                    # agent_id=None 的 turn 级轨迹——只喂单 agent 窗口兜底）
+                    fp = inp.get("file_path") if isinstance(inp, dict) else None
+                    _m = _SUB_TAG_RE.match(name or "")
+                    if fp and (_m and name[_m.end():] or name) in \
+                            ("Write", "Edit", "NotebookEdit"):
+                        try:
+                            with db_mod.conn() as c:
+                                db_mod.record_agent_file(
+                                    c, sid, tid, str(fp)[:300],
+                                    agent.get("agent_id"),
+                                    agent.get("agent_name"))
+                        except Exception:  # noqa: BLE001 — 轨迹非关键路径
+                            log.warning("agent_files 轨迹落库失败 sid=%s", sid,
+                                        exc_info=True)
         elif t == "user":
             for b in (ev.get("message") or {}).get("content") or []:
                 if not (isinstance(b, dict) and b.get("type") == "tool_result"):

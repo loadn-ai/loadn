@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import asyncio
+import time
 
 import pytest
 
@@ -118,3 +119,87 @@ def test_r3_upsert_artifact_atomic_no_dup(tmp_path):
             "AND path='a.md'").fetchall()
     assert len(rows) == 1
     assert tuple(rows[0]) == ("t2", 2)
+
+
+def _mk_turn(c, sid, tid, *, started, finished, status="done"):
+    c.execute(
+        "INSERT INTO turns(id, session_id, status, started_at, finished_at,"
+        " updated_at) VALUES(?,?,?,?,?,?)",
+        (tid, sid, status, started, finished, finished))
+
+
+def test_agent_attribution_explicit_and_window(aw):
+    """产物按 agent 归属（rev9）：显式轨迹优先；单 agent turn 窗口兜底；
+    多 agent turn 不兜底（诚实上限）。"""
+    import datetime as _dt
+
+    def iso_at(sec_ago: float) -> str:
+        return (_dt.datetime.now(_dt.timezone.utc)
+                - _dt.timedelta(seconds=sec_ago)).isoformat()
+
+    # turn1：单 agent（马洛）窗口 [100s 前, 10s 前]
+    # turn2：双 agent（显式轨迹各写一文件）
+    with db_mod.conn() as c:
+        _mk_turn(c, "s1", 1, started=iso_at(100), finished=iso_at(10))
+        _mk_turn(c, "s1", 2, started=iso_at(9), finished=iso_at(1))
+        # turn1 单 agent（马洛）：一条显式轨迹让它进单 agent 窗口集合，
+        # Bash 产的文件（无轨迹）走窗口兜底
+        db_mod.record_agent_file(c, "s1", 1, "artifacts/turn1-direct.md",
+                                 "sub_1", "马洛")
+        # turn2 显式轨迹：两个 agent 各写一文件（双 agent → 窗口不兜底）
+        db_mod.record_agent_file(c, "s1", 2, "artifacts/by-depp.md",
+                                 "sub_1", "马洛")
+        db_mod.record_agent_file(c, "s1", 2, "artifacts/by-poirot.md",
+                                 "sub_2", "波洛")
+    # 四份产物：显式×3 + 窗口兜底×1（mtime 在 turn1 窗口内）
+    import os
+    _mk("s1", "turn1-direct.md")
+    _mk("s1", "by-depp.md")
+    _mk("s1", "by-poirot.md")
+    bash_made = _mk("s1", "bash-made.md")
+    past = time.time() - 50
+    os.utime(bash_made, (past, past))
+    art.scan_session("s1")
+    with db_mod.conn() as c:
+        rows = {r["path"]: r for r in
+                c.execute("SELECT * FROM artifacts WHERE session_id='s1'")}
+    assert rows["artifacts/by-depp.md"]["agent_name"] == "马洛"
+    assert rows["artifacts/by-depp.md"]["agent_id"] == "sub_1"
+    assert rows["artifacts/by-depp.md"]["turn_id"] == 2
+    assert rows["artifacts/by-poirot.md"]["agent_name"] == "波洛"
+    # 窗口兜底：turn1 只有马洛一个 agent → bash-made 归马洛
+    assert rows["artifacts/bash-made.md"]["agent_name"] == "马洛"
+    assert rows["artifacts/bash-made.md"]["turn_id"] == 1
+
+
+def test_agent_attribution_multi_agent_no_window_fallback(aw):
+    """>>> 守卫对赌：turn 内两个 agent 轨迹 → 无显式轨迹的文件不瞎归属（留 NULL）。"""
+    import datetime as _dt
+
+    def iso_at(sec_ago: float) -> str:
+        return (_dt.datetime.now(_dt.timezone.utc)
+                - _dt.timedelta(seconds=sec_ago)).isoformat()
+
+    with db_mod.conn() as c:
+        _mk_turn(c, "s1", 5, started=iso_at(60), finished=iso_at(5))
+        db_mod.record_agent_file(c, "s1", 5, "artifacts/a.md", "sub_1", "马洛")
+        db_mod.record_agent_file(c, "s1", 5, "artifacts/b.md", "sub_2", "波洛")
+    _mk("s1", "a.md")
+    _mk("s1", "b.md")
+    _mk("s1", "mystery.md")           # 无轨迹且多 agent → 不兜底
+    art.scan_session("s1")
+    with db_mod.conn() as c:
+        row = c.execute("SELECT * FROM artifacts WHERE session_id='s1'"
+                        " AND path='artifacts/mystery.md'").fetchone()
+    assert row["agent_id"] is None and row["agent_name"] is None
+
+
+def test_record_agent_file_last_writer_wins(aw):
+    """>>> 对赌：同 (turn,path) 重复记录取最后写者（upsert 原子，非双行）。"""
+    with db_mod.conn() as c:
+        db_mod.record_agent_file(c, "s1", 7, "artifacts/x.md", "sub_1", "马洛")
+        db_mod.record_agent_file(c, "s1", 7, "artifacts/x.md", "sub_2", "波洛")
+        rows = c.execute("SELECT agent_id, agent_name FROM agent_files"
+                         " WHERE session_id='s1'").fetchall()
+    assert len(rows) == 1
+    assert tuple(rows[0]) == ("sub_2", "波洛")

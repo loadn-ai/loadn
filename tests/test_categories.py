@@ -117,6 +117,38 @@ async def test_create_in_category(client):
                               json={"title": "x", "category_id": 9999})).status_code == 404
 
 
+async def test_category_icon_crud(client):
+    """icon 列（rev9）：POST 带 icon 落库回显；PATCH 只改 icon 不 400；null 清回兜底。"""
+    r = await client.post("/api/categories",
+                          json={"name": "研发空间", "icon": "brain"})
+    assert r.status_code == 200
+    cid = r.json()["category"]["id"]
+    assert r.json()["category"]["icon"] == "brain"
+    # emoji 字符也合法
+    r2 = await client.post("/api/categories", json={"name": "调研", "icon": "🔬"})
+    assert r2.json()["category"]["icon"] == "🔬"
+    # 不带 icon → NULL（前端 Tag 兜底）
+    r3 = await client.post("/api/categories", json={"name": "默认"})
+    assert r3.json()["category"]["icon"] is None
+    # 只改 icon（无 name）不 400
+    r4 = await client.patch(f"/api/categories/{cid}", json={"icon": "chart"})
+    assert r4.status_code == 200 and r4.json()["category"]["icon"] == "chart"
+    assert r4.json()["category"]["name"] == "研发空间"
+    # name+icon 一起改
+    r5 = await client.patch(f"/api/categories/{cid}",
+                            json={"name": "研发改", "icon": "🧠"})
+    assert r5.json()["category"]["name"] == "研发改"
+    assert r5.json()["category"]["icon"] == "🧠"
+    # icon 显式 null = 清回兜底（仍需 name 或 icon 之一——null 本身算提供了 icon 键）
+    r6 = await client.patch(f"/api/categories/{cid}", json={"icon": None})
+    assert r6.status_code == 200 and r6.json()["category"]["icon"] is None
+    # 两者都缺 → 400（守卫否定路径）
+    assert (await client.patch(f"/api/categories/{cid}",
+                               json={})).status_code == 400
+    with db_mod.conn() as c:
+        assert db_mod.get_category(c, cid)["icon"] is None
+
+
 async def test_queue_touch_and_noop_semantics(client):
     """update_session 语义钉死：无字段+touch=纯触碰（排队置顶——旧实现死代码）；
     无字段+touch=False=完全 no-op（守卫反转可杀）。"""

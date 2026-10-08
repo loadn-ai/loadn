@@ -141,10 +141,11 @@ def create_category(body: dict):
     name = (body.get("name") or "").strip()[:40]
     if not name:
         raise HTTPException(400, "name 不能为空")
+    icon = (body.get("icon") or "").strip()[:16] or None   # 图标键或 emoji 字符
     with db_mod.conn() as c:
         if db_mod.category_name_taken(c, name):
             raise HTTPException(409, f"分类已存在：{name}")
-        cid = db_mod.create_category(c, name)
+        cid = db_mod.create_category(c, name, icon)
         from ...security import userauth as _ua
         _u = _ua.current_user()
         if _u is not None:
@@ -153,16 +154,22 @@ def create_category(body: dict):
         row = db_mod.get_category(c, cid)
     return {"category": db_mod.to_dict(row)}
 @router.patch("/categories/{cid}")
-def rename_category(cid: int, body: dict):
-    name = (body.get("name") or "").strip()[:40]
-    if not name:
+def update_category(cid: int, body: dict):
+    """改名/改图标（icon 显式 null=清回兜底；两者都缺 400）。"""
+    has_name = "name" in body
+    has_icon = "icon" in body
+    if not has_name and not has_icon:
+        raise HTTPException(400, "name/icon 至少提供一个")
+    name = (body.get("name") or "").strip()[:40] if has_name else None
+    if has_name and not name:
         raise HTTPException(400, "name 不能为空")
+    icon = (body.get("icon") or "").strip()[:16] or None if has_icon else ...
     with db_mod.conn() as c:
         if db_mod.get_category(c, cid) is None:
             raise HTTPException(404, f"category 不存在: {cid}")
-        if db_mod.category_name_taken(c, name):
+        if has_name and db_mod.category_name_taken(c, name):
             raise HTTPException(409, f"分类已存在：{name}")
-        db_mod.rename_category(c, cid, name)
+        db_mod.update_category(c, cid, name=name, icon=icon)
         row = db_mod.get_category(c, cid)
     return {"category": db_mod.to_dict(row)}
 @router.delete("/categories/{cid}")

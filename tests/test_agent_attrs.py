@@ -80,6 +80,12 @@ async def test_agent_fields_in_blocks_and_sse(client, ws_root):
     tb_bash = next(b for b in blocks if b.get("name") == "子1·Bash")
     assert tb_bash.get("agent_name") == "马洛"
 
+    # ---- 产物按 agent 归属：子1·Write 的 file_path 轨迹 → artifacts 行带归属
+    arts = (await client.get(f"/api/sessions/{sid}/artifacts")).json()["artifacts"]
+    sub = next(a for a in arts if a["path"].endswith("sub-report.md"))
+    assert sub["agent_name"] == "马洛" and sub["agent_id"] == "sub_1"
+    assert sub["turn_id"] == t["id"]
+
 
 async def test_agent_fields_in_live_snapshot(client, ws_root, monkeypatch):
     """运行中 /live 快照：items 白名单扩键后 agent 字段不丢。"""
