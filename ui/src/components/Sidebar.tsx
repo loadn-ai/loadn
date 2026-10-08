@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react';
 import type { ComponentType, ReactNode } from 'react';
 import { useStore } from '../stores/sessions';
 import type { ProjectInfo, CategoryInfo, MoveDest } from '../stores/sessions';
-import { fmtTokens } from '../api/client';
+import { api, fmtTokens } from '../api/client';
 import PopupMenu from './Menu';
 import type { MenuEntry } from './Menu';
 import {
@@ -362,12 +362,41 @@ export default function Sidebar({ onNew, onAdmin, onNav, adminActive }: {
         ]} />;
       })()}
       <div className="sidebar-foot">
+        <UserBadge />
         <button className={`btn ghost sm admin-btn ${adminActive ? 'on' : ''}`}
           onClick={() => onAdmin()}>
           <Settings size={14} /> 管理中心
         </button>
       </div>
     </aside>
+  );
+}
+
+/** 用户徽标（多用户批1）：登录态展示在侧栏底部（原右下角悬浮被反馈
+ *  突兀）——用户名+角色标+登出；未登录/无账号体系时隐藏（登录门在
+ *  TokenGate 弹）。 */
+function UserBadge() {
+  const [me, setMe] = useState<{ username: string; role: string } | null>(null);
+  useEffect(() => {
+    api<{ logged_in: boolean; user: { username: string; role: string } | null }>(
+      '/api/auth/status')
+      .then(d => setMe(d.logged_in ? d.user : null))
+      .catch(() => setMe(null));
+  }, []);
+  if (!me) return null;
+  return (
+    <div className="side-user" title={me.role === 'admin' ? '管理员' : '用户'}
+         style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 12,
+                  padding: '2px 8px', opacity: 0.85 }}>
+      <span style={{ flex: 1, overflow: 'hidden', textOverflow: 'ellipsis',
+                     whiteSpace: 'nowrap' }}>
+        👤 {me.username}{me.role === 'admin' ? ' · 管理员' : ''}
+      </span>
+      <button className="link" style={{ fontSize: 12 }} onClick={async () => {
+        await api('/api/auth/logout', { method: 'POST' });
+        location.reload();
+      }}>登出</button>
+    </div>
   );
 }
 
