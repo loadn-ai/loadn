@@ -39,6 +39,33 @@ def new_session_id(title: str) -> str:
     return f"{datetime.now().strftime('%Y%m%d_%H%M')}-{base}{rand}"[:60]
 
 
+def _exec_env_block() -> str:
+    """执行环境说明（十二轮修）：内建 Bash 与 mcp__sandbox__* 是**两个
+    执行域**——模型不知道会踩错（实证：直跑档位下任务选了 sandbox MCP 的
+    bash 进了外置容器，找不到宿主代码仓）。按档位渲染路标。"""
+    try:
+        from .security.sandbox import resolve_tier
+        eff, _why = resolve_tier()
+    except Exception:                                  # noqa: BLE001
+        eff, _why = "off", ""
+    if eff in ("off", ""):
+        return (
+            "- 本会话**直跑档位**：内建 Bash/Read/Write/Grep 就在**宿主机**，"
+            "cwd 是本工作区，宿主全机可访问（/data / /mnt / /home 等真实路径）。\n"
+            "- `mcp__sandbox__*` 是**外置资源容器**（独立文件系统，home 在 "
+            "/home/gem——里面没有宿主机代码/数据）。它只是浏览器/OCR 等资源"
+            "桥接，**要读本机代码或文件时绝不用它**——用内建 Bash。\n"
+            "- 两者井水不犯河水：在 sandbox 容器里找不到的路径≠路径不存在，"
+            "先回到内建 Bash 再下结论。")
+    return (
+        f"- 本会话**隔离档位（{eff}）**：内建 Bash 在平台沙箱内——宿主文件"
+        "系统按沙箱挂载表可见（工作区可写，其余按只读/不可见）。\n"
+        "- `mcp__sandbox__*` 是**另一个外置资源容器**（独立文件系统）——"
+        "与沙箱不同域，只作浏览器/OCR 等资源桥接。\n"
+        "- 需要沙箱外的宿主资源时：声明需求停下等用户，不要在两个容器间"
+        "来回猜路径。")
+
+
 def render_claude_md(sid: str, title: str, prof: profile_mod.Profile,
                      skills: list[str]) -> str:
     from .config import behavior_file
@@ -51,6 +78,7 @@ def render_claude_md(sid: str, title: str, prof: profile_mod.Profile,
         "{{PROFILE_MD}}": prof.render_context(),
         "{{SKILLS_LIST}}": ", ".join(f"`{s}`" for s in skills) or "（本会话未挂载 skill）",
         "{{FETCH_PAGE}}": str(fetch) if fetch.exists() else "（未部署）",
+        "{{EXEC_ENV}}": _exec_env_block(),
     }
     out = tmpl
     for k, v in repl.items():

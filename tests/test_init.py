@@ -46,3 +46,18 @@ def test_init_force_regenerates(tmp_path):
     assert init_cmd.cmd_init(str(root), force=True) == 0
     token2 = (root / "var" / "server_token").read_text()
     assert token1 != token2       # --force 重新生成
+
+
+def test_r12_constitution_has_exec_env_block():
+    """十二轮对赌（生产实证：直跑档位下模型选了 sandbox MCP 的 bash 进
+    外置容器找不到宿主代码仓）：新建会话宪法必须带「执行环境与 Bash
+    路标」节，且直跑档位下明确「内建 Bash=宿主 / mcp__sandbox__*=容器，
+    读本机代码不用它」。"""
+    from loadn_webui import profile as profile_mod
+    from loadn_webui.workspace import render_claude_md
+    prof = profile_mod.get("coder") or profile_mod.auto_match("整理代码")
+    md = render_claude_md("test-r12", "架构整理", prof, [])
+    assert "执行环境与 Bash 路标" in md
+    assert "直跑档位" in md
+    assert "mcp__sandbox__" in md and "内建 Bash" in md
+    assert "绝不用它" in md          # 读本机代码不走 sandbox MCP
