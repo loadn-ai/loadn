@@ -5,7 +5,7 @@
 
 ## [0.7.0] - 2026-10-08
 
-- **生产实证修复：非 ASCII token 头 500**（work.woldy.net 隧道链路
+- **生产实证修复：非 ASCII token 头 500**（生产隧道链路
   ERR_HTTP2_PROTOCOL_ERROR 排查定位）：客户端存了含非 ASCII 的坏
   token（latin-1 高位字节经 h11 放行进 str）→ hmac.compare_digest 抛
   TypeError → 500，经 HTTP/2 隧道层（花生壳云端）表现为流 RST=浏览器
