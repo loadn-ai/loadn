@@ -5,6 +5,14 @@
 
 ## [0.6.26] - 2026-10-07
 
+- **生产实证修复：非 ASCII token 头 500**（work.woldy.net 隧道链路
+  ERR_HTTP2_PROTOCOL_ERROR 排查定位）：客户端存了含非 ASCII 的坏
+  token（latin-1 高位字节经 h11 放行进 str）→ hmac.compare_digest 抛
+  TypeError → 500，经 HTTP/2 隧道层（花生壳云端）表现为流 RST=浏览器
+  报 ERR_HTTP2_PROTOCOL_ERROR 200 (OK)。修：三通道比较统一 utf-8/
+  replace 编码 bytes（恒定耗时保持）；对赌：单元级坏 token 双通道
+  （头/query）安全拒。排查结论：服务端三端点毫秒级完整 200、gzip/
+  长度正确——隧道 RST 的直接诱因是 500 响应被云端转成协议错。
 - **多用户批3：记忆域收口+渠道认领归属**：①记忆管理面属主收口
   （隔离缺口修复：domain key 直读无复核——user 域=全局知识库改 admin
   维护（普通用户 403）；p: 项目域经 hex→projects 反查（git 根探测

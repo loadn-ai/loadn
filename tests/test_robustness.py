@@ -201,3 +201,30 @@ def test_r6_add_message_sanitizes_surrogate():
         row = c.execute("SELECT content FROM messages WHERE id=?",
                         (mid,)).fetchone()
     assert "caf?" in row["content"]
+
+
+def test_r8_nonascii_token_gets_401_not_500():
+    """八轮（生产实证）对赌：带含非 ASCII 的坏 token（latin-1 高位字节
+    经 h11 放行的真实形态——httpx 客户端拒发、但浏览器/隧道层可发）→
+    check_auth 安全返回 False（原 hmac.compare_digest 对非 ASCII str 抛
+    TypeError → 500 + 隧道层表现为 HTTP/2 RST）。单元级直调（HTTP 客户
+    端层拒发非 ASCII 头，模拟不了）。"""
+    from starlette.requests import Request
+
+    from loadn_webui.api.app import check_auth
+    from loadn_webui.config import CONFIG
+    old = (CONFIG.server.token, CONFIG.server.token_grace_until)
+    CONFIG.server.token = "real-token"
+    CONFIG.server.token_grace_until = 0.0
+    bad = "\u00e5\u00e6-\u5bbd"          # latin-1 高位 + CJK 混合形态
+    try:
+        r = Request({"type": "http", "method": "GET", "path": "/api/sessions",
+                     "headers": [(b"x-loadn-token", bad.encode("utf-8"))],
+                     "query_string": b""})
+        assert check_auth(r) is False           # 不抛 TypeError
+        r2 = Request({"type": "http", "method": "GET", "path": "/",
+                      "headers": [], "query_string":
+                      b"token=" + bad.encode("utf-8")})
+        assert check_auth(r2) is False
+    finally:
+        CONFIG.server.token, CONFIG.server.token_grace_until = old

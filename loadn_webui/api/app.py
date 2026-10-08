@@ -190,15 +190,25 @@ def check_auth(request: Request) -> bool:
     if tk is not None:
         exp = _TICKETS.pop(tk, None)          # single-use：取出即消费
         return exp is not None and exp >= time.time()
+    # 生产实证（2026-10-08）：客户端存了含非 ASCII 的坏 token（粘贴整段
+    # 提示文字进 token 框）→ compare_digest 对非 ASCII str 抛 TypeError
+    # → 500。防御：统一 utf-8/replace 编码为 bytes 再比较（恒定耗时不减）
+    def _cmp(supplied: str) -> bool:
+        try:
+            return hmac.compare_digest(
+                supplied.encode("utf-8", "replace"), token.encode())
+        except (AttributeError, UnicodeError):
+            return False
+
     auth = request.headers.get("Authorization", "")
-    if auth.startswith("Bearer ") and hmac.compare_digest(auth[7:], token):
+    if auth.startswith("Bearer ") and _cmp(auth[7:]):
         return True
     # 双名：X-Loadn-*（R9 品牌名）+ X-Workdaddy-*（存量 CLI/脚本兼容层）
     supplied = (request.headers.get("X-Loadn-Token", "")
                 or request.headers.get("X-Workdaddy-Token", ""))
-    if hmac.compare_digest(supplied, token):
+    if _cmp(supplied):
         return True
-    if hmac.compare_digest(request.query_params.get("token", ""), token):
+    if _cmp(request.query_params.get("token", "")):
         return True
     return False
 
