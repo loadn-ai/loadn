@@ -3,7 +3,7 @@
 本项目的全部显著变更记录于此。格式遵循 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/)，
 版本遵循 [SemVer](https://semver.org/lang/zh-CN/)。
 
-## [0.6.26] - 2026-10-07
+## [0.7.0] - 2026-10-08
 
 - **生产实证修复：非 ASCII token 头 500**（work.woldy.net 隧道链路
   ERR_HTTP2_PROTOCOL_ERROR 排查定位）：客户端存了含非 ASCII 的坏

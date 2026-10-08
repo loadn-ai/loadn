@@ -155,7 +155,12 @@ async def lifespan(app: FastAPI):
     recovered = ENGINE.recover_after_restart()
     reaped = reap_orphans(skip=recovered["claimed_pids"])
     sched = get_scheduler(ENGINE)
-    sched.start()          # durable：停机期间到期的 job 重启后由首轮扫描补投
+    # 测试树禁服务端循环（LOADN_TEST_NO_SCHEDULER）：测试自己 tick——
+    # 服务端 20s 扫描与测试 tick 的 due_jobs/claim 窗口竞态是 fire_once
+    # 等 flaky 的根因（CAS 已堵双 fire，窗口仍窄存）
+    import os as _os
+    if not _os.environ.get("LOADN_TEST_NO_SCHEDULER"):
+        sched.start()      # durable：停机期间到期的 job 重启后由首轮扫描补投
     # P11：内置 heartbeat 巡检 schedule（幂等；删 job 即关）
     from ..scheduler import ensure_heartbeat
     ensure_heartbeat(ENGINE)

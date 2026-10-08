@@ -356,6 +356,10 @@ async def test_r6_purge_instance_keeps_new_session_job(client, monkeypatch):
         job = db_mod.get_job(c, jid)
     assert job is not None, "purge 实例不得删掉递归 job"
     assert job["session_id"] is None, "实例指针摘除（下次 fire 重回填）"
+    # 全量序卫生：本测试的 due job 清掉（残留会被后续调度测试的
+    # tick 扫到一起 fire——fire_once 的 ==1 对赌被污染）
+    with db_mod.conn() as c:
+        c.execute("DELETE FROM scheduled_jobs WHERE id=?", (jid,))
 
 
 class _FakeEngine:

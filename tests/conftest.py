@@ -36,6 +36,9 @@ os.environ.setdefault("LOADN_HOME", str(_ENGINE_HOME))
 
 # 平台根隔离（loadn_webui 测试用）
 _HOME = Path(tempfile.mkdtemp(prefix="loadn_webui_test_home_"))
+# 测试树禁服务端调度循环（fire_once 类 flaky 的根因——服务端 20s 扫描
+# 与测试 tick 的竞态；测试全部显式 tick）
+os.environ.setdefault("LOADN_TEST_NO_SCHEDULER", "1")
 for _name in ("profiles", "prompts"):
     _src = REPO / _name
     if _src.exists():
