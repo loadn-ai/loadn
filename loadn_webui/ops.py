@@ -426,6 +426,40 @@ def _smoke_test(release_dir: Path) -> int:
 
 # ---------------------------------------------------------------- upgrade
 
+def refresh_default_assets(new_root: Path) -> int:
+    """升级时刷新数据根**未定制**的默认行为资产（prompts/——十三轮修）。
+
+    数据根同名文件覆盖代码根（behavior_dirs 数据根优先），但部署期复制
+    的默认拷贝从不跟随版本更新——v0.7.2 的执行环境节曾被 v0.6.x 旧拷贝
+    遮蔽（生产实证：新会话宪法缺节，agent 全程在 sandbox 容器打转）。
+    判定：数据根文件与**任一历史 release 的同名原版**逐字节相同 = 未
+    定制的旧拷贝 → 用新版覆盖；全部不同 = 用户定制 → 保留不动。
+    """
+    import filecmp
+
+    from .config import PATHS
+    data_dir = PATHS["root"] / "prompts"
+    if not data_dir.is_dir() or not (new_root / "prompts").is_dir():
+        return 0
+    n = 0
+    for f in sorted((new_root / "prompts").iterdir()):
+        if not f.is_file():
+            continue
+        dst = data_dir / f.name
+        if not dst.exists():
+            continue
+        pristine = any(
+            (rel / "prompts" / f.name).is_file()
+            and filecmp.cmp(dst, rel / "prompts" / f.name, shallow=False)
+            for rel in RELEASES_DIR.iterdir() if rel.is_dir())
+        if pristine:
+            shutil.copy2(f, dst)
+            n += 1
+    if n:
+        _log(f"refresh_default_assets: {n} 个未定制默认资产已跟随新版")
+    return n
+
+
 def cmd_upgrade(version: str | None = None, *, wait_idle: int = 1800,
                 health_timeout: int = 90, no_backup: bool = False,
                 yes: bool = False) -> int:
@@ -457,6 +491,14 @@ def cmd_upgrade(version: str | None = None, *, wait_idle: int = 1800,
         if not no_backup:
             print("[2/5] DB 备份（backup API，保留 3 份）")
             _backup_db(target)
+        # 2.5) 默认行为资产刷新（未定制的数据根 prompts 跟随新版——
+        # 十三轮修：防旧拷贝遮蔽 release 模板）
+        try:
+            _n = refresh_default_assets(RELEASES_DIR / target)
+            if _n:
+                print(f"     默认资产刷新 { _n } 项（未定制拷贝）")
+        except Exception as e:                          # noqa: BLE001
+            print(f"  ⚠️ 默认资产刷新失败（不阻断）：{e}")
 
         # 3) 等 idle
         print(f"[3/5] 等 idle（超时 {wait_idle}s，--wait-idle 0 跳过）")
