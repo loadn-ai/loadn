@@ -73,7 +73,53 @@ function fileUrl(sid: string, path: string): string {
 function ArtifactsTab({ onOpenFile }: { onOpenFile: (path: string) => void }) {
   const artifacts = useStore(s => s.artifacts);
   const currentSid = useStore(s => s.currentSid);
+  const live = useStore(s => s.live);
   if (artifacts.length === 0) return <div className="panel-empty">还没有产物<br />agent 的交付物会出现在 workspace/artifacts/</div>;
+  // 分组（多 Agent 工作台）：有归属的产物按 agent 分组（turn 降序，最近在前）；
+  // 运行中 turn 的组挂「写入中」徽标（mtime ≥ turn 开始）。其余落全局组
+  const runningTurn = live?.status === 'running' ? live.turnId : null;
+  const startedAt = live?.startedAt ?? 0;
+  const attributed = artifacts.filter(a => a.agent_id);
+  const globals = artifacts.filter(a => !a.agent_id);
+  const groups: { key: string; title: string; arts: typeof artifacts; writing: boolean }[] = [];
+  for (const a of attributed) {
+    const gk = `${a.turn_id}:${a.agent_id}`;
+    let g = groups.find(x => x.key === gk);
+    if (!g) {
+      g = { key: gk, title: `${a.agent_name ?? a.agent_id} 的输出`, arts: [],
+            writing: runningTurn === a.turn_id };
+      groups.push(g);
+    }
+    g.arts.push(a);
+  }
+  // 写入中判定：运行中 turn 的组里 mtime 新于 turn 开始的卡片
+  const isWriting = (a: (typeof artifacts)[number]) =>
+    !!runningTurn && a.turn_id === runningTurn && (a.mtime ?? 0) * 1000 >= startedAt - 2000;
+  const artCard = (a: (typeof artifacts)[number], writing = false) => (
+    <div key={a.id} className={`artifact-card ${writing ? 'writing' : ''}`}>
+      <div className="art-main">
+        <span className={`kind k-${a.kind}`}>{a.kind}</span>
+        <span className="art-title" title={a.path}>{a.title}</span>
+        {writing
+          ? <span className="writing-badge" title="本轮运行中产生/更新">写入中</span>
+          : a.created_by === 'export'
+            ? <span className="art-src" title="由用户在界面导出">导出</span>
+            : <span className="art-src" title="任务运行中生成">任务</span>}
+        <span className="art-size">{Math.max(1, Math.round(a.size / 1024))}KB</span>
+      </div>
+      {a.summary && (
+        <div className="art-summary" title={a.path}>{a.summary}</div>
+      )}
+      <div className="art-actions">
+        <button className="link" onClick={() => onOpenFile(a.path)}>预览</button>
+        {writing
+          ? <span className="art-action-off" title="写入中，等本轮结束后下载">下载</span>
+          : <a href={withToken(`/api/artifacts/${a.id}/download`)} download>下载</a>}
+        {!writing && <ShareBtn sid={currentSid!} path={a.path} />}
+        {!writing && a.kind === 'md' && <ExportBtn sid={currentSid!} path={a.path} />}
+      </div>
+    </div>
+  );
   return (
     <div className="artifact-list">
       <div className="pack-bar">
@@ -81,25 +127,19 @@ function ArtifactsTab({ onOpenFile }: { onOpenFile: (path: string) => void }) {
           <Download size={13} /> 打包下载全部产物（zip）
         </a>
       </div>
-      {artifacts.map(a => (
-        <div key={a.id} className="artifact-card">
-          <div className="art-main">
-            <span className={`kind k-${a.kind}`}>{a.kind}</span>
-            <span className="art-title" title={a.path}>{a.title}</span>
-            {a.created_by === 'export'
-              ? <span className="art-src" title="由用户在界面导出">导出</span>
-              : <span className="art-src" title="任务运行中生成">任务</span>}
-            <span className="art-size">{Math.max(1, Math.round(a.size / 1024))}KB</span>
+      {globals.length > 0 && (
+        <>
+          <div className="art-group-head">全局 Session 产物（{globals.length}）</div>
+          {globals.map(a => artCard(a))}
+        </>
+      )}
+      {groups.map(g => (
+        <div key={g.key} className="art-agent-group">
+          <div className="art-group-head dim">
+            {g.title}（{g.arts.length}）
+            {g.writing && <span className="writing-badge">写入中</span>}
           </div>
-          {a.summary && (
-            <div className="art-summary" title={a.path}>{a.summary}</div>
-          )}
-          <div className="art-actions">
-            <button className="link" onClick={() => onOpenFile(a.path)}>预览</button>
-            <a href={withToken(`/api/artifacts/${a.id}/download`)} download>下载</a>
-            <ShareBtn sid={currentSid!} path={a.path} />
-            {a.kind === 'md' && <ExportBtn sid={currentSid!} path={a.path} />}
-          </div>
+          {g.arts.map(a => artCard(a, isWriting(a)))}
         </div>
       ))}
     </div>

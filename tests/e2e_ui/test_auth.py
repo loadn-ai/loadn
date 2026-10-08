@@ -327,9 +327,9 @@ def _allow_ch(ids):
     return lambda: setattr(CONFIG.channels, "telegram_allow", old)
 
 
-async def test_user_badge_lives_in_sidebar(server_url, logged_context):
-    """UI 反馈修复对赌：登录后用户徽标在**侧栏底部**（sidebar-foot），
-    页面不再出现右下角悬浮的 stale-pill 用户块。"""
+async def test_user_badge_lives_in_rail(server_url, logged_context):
+    """UI 反馈修复对赌（多 Agent 工作台改版更新）：登录后用户徽标在
+    **icon rail 底部**（rail-user），页面不再出现右下角悬浮的 stale-pill 用户块。"""
     from playwright.async_api import async_playwright
 
     async with async_playwright() as pw:
@@ -339,10 +339,10 @@ async def test_user_badge_lives_in_sidebar(server_url, logged_context):
             page.set_default_timeout(15000)
             await page.goto(server_url)
             await page.wait_for_selector("text=新任务")
-            # 徽标在侧栏底部（与管理中心同容器）
-            badge = page.locator(".sidebar-foot .side-user")
+            # 徽标在 rail 底部（与管理中心同容器）
+            badge = page.locator(".icon-rail .rail-user")
             await badge.wait_for()
-            assert "👤" in (await badge.inner_text())
+            assert (await badge.inner_text()).strip(), "徽标应显示用户名首字"
             # 右下角悬浮形态不存在
             pills = await page.locator(".stale-pill:has-text('👤')").count()
             assert pills == 0, "悬浮用户块应已移除"

@@ -69,6 +69,24 @@ export default function Composer() {
     if (ta) { ta.style.height = 'auto'; ta.style.height = Math.min(ta.scrollHeight, 240) + 'px'; }
   }, [text]);
 
+  // 模板注入（「新建子任务/招募」按钮 → store.requestCompose）：seq 递增，
+  // 同文本重复请求也能触发；追加到现有草稿尾部并聚焦
+  useEffect(() => {
+    let lastSeq = 0;
+    return useStore.subscribe((s, prev) => {
+      const req = s.composeReq;
+      if (req && req.seq !== lastSeq && req.seq !== prev.composeReq?.seq) {
+        lastSeq = req.seq;
+        const cur = useStore.getState().currentSid;
+        const base = cur ? getDraft(cur) : '';
+        const merged = base ? `${base}\n${req.text}` : req.text;
+        setText(merged);
+        if (cur) setDraft(cur, merged);
+        requestAnimationFrame(() => taRef.current?.focus());
+      }
+    });
+  }, []);
+
   function addFiles(files: FileList | File[]) {
     const items: Pending[] = [];
     for (const f of Array.from(files)) {

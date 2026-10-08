@@ -2,15 +2,16 @@ import { memo, useEffect, useState } from 'react';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import { useStore } from '../stores/sessions';
-import type { StreamItem, ToolEvent } from '../stores/sessions';
+import type { StreamItem, ToolEvent, ToolItem } from '../stores/sessions';
 import { api, fmtTime } from '../api/client';
 import {
   FileImage, Cloud, Tool, CheckSquare, Check, ChevronDown, ChevronRight,
   Terminal, Search, Globe, BookOpen, Pencil, PenLine, Plus, RotateCw, Star,
-  Trash, Copy,
+  Trash, Copy, Users,
 } from './icons';
 import type { ComponentType } from 'react';
 import { useAutoScroll } from './SessionView';
+import { DispatchCard } from './AgentTab';
 
 /** 历史消息尾窗：大会话百余条带完整过程块的消息全量渲染，打开要卡好几秒
  *  （2.7MB DOM 一次进页面）；默认只铺尾部，更早的按需「加载更早」展开 */
@@ -40,7 +41,7 @@ export default function ChatStream({ onOpenFile }: { onOpenFile?: (path: string)
         m.role === 'user'
           ? <UserMsg key={m.id} mid={m.id} text={m.content} blocks={m.blocks_json} ts={m.created_at}
                      onOpenFile={onOpenFile} />
-          : <AssistantMsg key={m.id} mid={m.id} text={m.content} blocks={parseBlocks(m.blocks_json)} ts={m.created_at} hits={m.memory_hits_json} />)}
+          : <AssistantMsg key={m.id} mid={m.id} text={m.content} blocks={parseBlocks(m.blocks_json)} ts={m.created_at} hits={m.memory_hits_json} turnId={m.turn_id} />)}
       {live && <LiveTurn key={`live-${live.turnId}`} live={live} />}
       {queued.length > 0 && (
         <div className="queue-zone">
@@ -65,8 +66,9 @@ function parseAttachments(json: string | null | undefined) {
 }
 
 /** blocks_json → 过程流水（穿插时间线：thinking/tool/text 按真实顺序；
- * 旧格式无 text 块 = 纯过程面板 + 合并正文，由调用方分形态渲染） */
-function parseBlocks(json: string | null | undefined): StreamItem[] {
+ * 旧格式无 text 块 = 纯过程面板 + 合并正文，由调用方分形态渲染）。
+ *  agent 归属字段透传（Task 卡/子N· 转发块，AgentTab/派发卡消费）。 */
+export function parseBlocks(json: string | null | undefined): StreamItem[] {
   if (!json) return [];
   let raw: any[];
   try { raw = JSON.parse(json); } catch { return []; }
@@ -83,7 +85,22 @@ function parseBlocks(json: string | null | undefined): StreamItem[] {
         input: b?.input,
         result: b?.result,
         is_error: b?.is_error,
-      });
+        agent_id: b?.agent_id ?? null,
+        agent_name: b?.agent_name ?? null,
+        agent_n: b?.agent_n ?? null,
+        agent_role: b?.agent_role ?? null,
+        subagent_type: b?.subagent_type ?? null,
+      } as ToolItem);
+}
+
+/** Task 卡升级为拟人派发卡；其余走普通工具卡（含 子N· 归属徽标） */
+function ToolLine({ b, done, turnId }: {
+  b: ToolEvent; done?: boolean; turnId: number | null;
+}) {
+  if (b.name === 'Task') {
+    return <DispatchCard tool={b} turnId={turnId} />;
+  }
+  return <ToolCard tool={b} done={done} />;
 }
 
 /** 气泡操作条：复制 / 编辑 / 删除（hover 浮现）。文本为空时全隐藏。 */
@@ -205,8 +222,9 @@ function AttachChip({ a, onOpenFile }: {
   );
 }
 
-function AssistantMsg({ text, blocks, ts, mid, hits }:
-  { text: string; blocks: StreamItem[]; ts: string; mid?: number; hits?: string | null }) {
+function AssistantMsg({ text, blocks, ts, mid, hits, turnId }:
+  { text: string; blocks: StreamItem[]; ts: string; mid?: number;
+    hits?: string | null; turnId?: number | null }) {
   const [open, setOpen] = useState(blocks.length <= 6);
   const { editMessage } = useStore();
   const [editing, setEditing] = useState(false);
@@ -231,7 +249,7 @@ function AssistantMsg({ text, blocks, ts, mid, hits }:
         <div className="replay">
           {blocks.map((b, i) => {
             if (b.kind === 'thinking') return <ThinkingCard key={i} text={b.text} />;
-            if (b.kind === 'tool') return <ToolCard key={i} tool={b} done />;
+            if (b.kind === 'tool') return <ToolLine key={i} b={b} done turnId={turnId ?? null} />;
             return <MdText key={i} text={b.text} />;
           })}
         </div>
@@ -244,7 +262,7 @@ function AssistantMsg({ text, blocks, ts, mid, hits }:
           </div>
           {open && blocks.map((b, i) => {
             if (b.kind === 'thinking') return <ThinkingCard key={i} text={b.text} />;
-            if (b.kind === 'tool') return <ToolCard key={i} tool={b} done />;
+            if (b.kind === 'tool') return <ToolLine key={i} b={b} done turnId={turnId ?? null} />;
             return null;
           })}
         </div>
@@ -292,7 +310,7 @@ function LiveTurn({ live }: { live: NonNullable<ReturnType<typeof useStore.getSt
       {shown.map((it, i) => {
         // key 用绝对索引（hidden+i）：窗口滑动时已有项 key 不变，memo 才能跳过重渲染
         if (it.kind === 'thinking') return <ThinkingCard key={hidden + i} text={it.text} live />;
-        if (it.kind === 'tool') return <ToolCard key={hidden + i} tool={it} />;
+        if (it.kind === 'tool') return <ToolLine key={hidden + i} b={it} turnId={live.turnId} />;
         if (it.kind === 'steer') return <SteerNote key={hidden + i} text={it.text} />;
         return <MdText key={hidden + i} text={it.text} />;
       })}
@@ -336,8 +354,15 @@ export function TodoList({ todos }: { todos: { subject: string; status: string }
 const TOOL_ICON: Record<string, ComponentType<{ size?: number }>> = {
   Bash: Terminal, WebSearch: Search, WebFetch: Globe, Read: BookOpen,
   Write: Pencil, Edit: PenLine, TaskCreate: Plus, TaskUpdate: RotateCw,
-  Glob: Search, Grep: Search,
+  Glob: Search, Grep: Search, Task: Users,
 };
+
+/** 工具名前缀「子N·」→ 归属徽标 + 原工具名（设计稿 子1-Bash 形态） */
+const SUB_PREFIX = /^子(\d+)·/;
+function splitSubTag(name: string): { tag?: string; base: string } {
+  const m = SUB_PREFIX.exec(name);
+  return m ? { tag: `子${m[1]}`, base: name.slice(m[0].length) } : { base: name };
+}
 
 /** 思考卡：live 默认展开（看过程），历史默认收起（留一行预览）；memo 防整列表重渲染 */
 export const ThinkingCard = memo(function ThinkingCard({ text, live }: { text: string; live?: boolean }) {
@@ -360,12 +385,14 @@ export const ToolCard = memo(function ToolCard({ tool, done }: { tool: ToolEvent
   const state = tool.is_error ? 'err' : pending ? 'pending' : 'ok';
   const input = tool.input ?? {};
   const inputKeys = Object.keys(input);
-  const Ico = TOOL_ICON[tool.name] ?? Tool;
+  const { tag, base } = splitSubTag(tool.name);
+  const Ico = TOOL_ICON[base] ?? TOOL_ICON[tool.name] ?? Tool;
   return (
-    <div className={`tool-card ${state} ${open ? 'open' : ''}`}>
+    <div className={`tool-card ${state} ${open ? 'open' : ''} ${tag ? 'sub' : ''}`}>
       <div className="tool-row" onClick={() => setOpen(!open)}>
         <span className="tool-icon"><Ico size={13} /></span>
-        <span className="tool-name">{tool.name}</span>
+        {tag && <span className="tool-subtag" title="子代理归属">{tag}</span>}
+        <span className="tool-name">{base}</span>
         {tool.brief && <code className="tool-brief">{tool.brief}</code>}
         <span className="tool-state">{state === 'ok' ? '✓' : state === 'err' ? '✗' : '…'}</span>
       </div>

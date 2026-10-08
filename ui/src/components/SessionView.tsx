@@ -8,7 +8,10 @@ import ChatStream from './ChatStream';
 import Composer from './Composer';
 import RightPanel from './RightPanel';
 import FilePreview from './FilePreview';
-import { Menu, Chat, FileDoc } from './icons';
+import AgentTab from './AgentTab';
+import { AgentAvatar, } from './AgentTab';
+import { AgentChips, DISPATCH_TEMPLATE } from './AgentChips';
+import { Menu, Chat, FileDoc, Plus } from './icons';
 
 interface MainTab { key: string; path?: string }   // key 'chat' 或 `f:<path>`
 
@@ -20,9 +23,23 @@ export default function SessionView({ onMenu }: { onMenu: () => void }) {
   // 「属性」入口要能从外部强开（移动端抽屉同路滑出）
   const showPanel = useStore(s => s.panelOpen);
   const setPanelOpen = useStore(s => s.setPanelOpen);
-  const [tabs, setTabs] = useState<MainTab[]>([{ key: 'chat' }]);
-  const [active, setActive] = useState('chat');
+  // 主区 tab 活动态在 store（chips/派发卡要能从外部跳过来）；文件 tab 开合
+  // 仍是本地态（agent tab 派生自 agents，不落本地）
+  const active = useStore(s => s.mainTab);
+  const setActive = useStore(s => s.setMainTab);
+  const agents = useStore(s => s.agents);
+  const live = useStore(s => s.live);
+  const requestCompose = useStore(s => s.requestCompose);
+  const [tabs, setTabs] = useState<MainTab[]>([]);
   const s = useStore(st => st.sessions.find(x => x.id === st.currentSid));
+  // agent tab 指向已被清理的 key（极旧 turn 等）→ 回主控。
+  // （hook 必须在早退 return 之前——否则条件 hook 违反规则）
+  useEffect(() => {
+    const a = useStore.getState().mainTab;
+    if (a.startsWith('a:') && !useStore.getState().agents.some(x => `a:${x.key}` === a)) {
+      setActive('chat');
+    }
+  }, [agents, active]);
   if (!currentSid || !s) return null;
 
   const wake = s.next_wake;
@@ -46,10 +63,18 @@ export default function SessionView({ onMenu }: { onMenu: () => void }) {
     const i = tabs.findIndex(t => t.key === key);
     const next = tabs.filter(t => t.key !== key);
     setTabs(next);
-    if (active === key && next.length) setActive(next[Math.min(Math.max(0, i - 1), next.length - 1)].key);
+    if (active === key) {
+      setActive(next.length
+        ? next[Math.min(Math.max(0, i - 1), next.length - 1)].key : 'chat');
+    }
   };
 
   const activeFile = tabs.find(t => t.key === active)?.path;
+  const activeAgent = active.startsWith('a:')
+    ? agents.find(a => a.key === active.slice(2)) : undefined;
+
+  const agentRunning = (turnId: number) =>
+    live?.turnId === turnId && live.status === 'running';
 
   return (
     <div className="session-view">
@@ -58,7 +83,11 @@ export default function SessionView({ onMenu }: { onMenu: () => void }) {
       <header className="session-head">
         <div className="head-left">
           <button className="menu-btn" title="任务列表" onClick={onMenu}><Menu size={18} /></button>
-          <h2>{s.title}</h2>
+          <div className="crumbs" title={`${s.project_title ?? '工作台'} / ${s.title}`}>
+            <span className="crumb-space">{s.project_title ?? '工作台'}</span>
+            <span className="crumb-sep">/</span>
+            <span className="crumb-session">{s.title}</span>
+          </div>
           {wake && (
             <button className="badge" title={`定时唤醒：${wake.label ?? '（无标签）'} · ${wake.due_at}${wake.cron ? ` · ${wake.cron}` : wake.every_s ? ` · 递归 ${Math.round(wake.every_s / 60)}min ×${wake.max_fires}` : ' · 单次'} · 点击管理`}
                     onClick={() => { location.hash = `#/admin/schedules?sid=${s.id}`; }}>
@@ -79,25 +108,46 @@ export default function SessionView({ onMenu }: { onMenu: () => void }) {
       <div className="session-body">
         <div className="chat-col">
           <CompactTimeline />
-          {tabs.length > 1 && (
-            <div className="main-tabs">
-              {tabs.map(t => (
-                <div key={t.key} className={`mtab ${active === t.key ? 'on' : ''}`}
-                  title={t.path ?? '对话'}
-                  onClick={() => setActive(t.key)}>
-                  <span className="mtab-name">
-                    {t.key === 'chat'
-                      ? <><Chat size={13} /> 对话</>
-                      : <><FileDoc size={13} /> {t.path!.split('/').pop()}</>}
-                  </span>
-                  {t.key !== 'chat' &&
-                    <span className="mtab-x" onClick={e => { e.stopPropagation(); closeTab(t.key); }}>×</span>}
-                </div>
-              ))}
+          <div className="main-tabs">
+            <div className={`mtab ${active === 'chat' ? 'on' : ''}`}
+                 title="主控对话" onClick={() => setActive('chat')}>
+              <span className="mtab-name"><Chat size={13} /> 主控与规划</span>
             </div>
-          )}
+            {agents.map(a => (
+              <div key={a.key} className={`mtab agent ${active === `a:${a.key}` ? 'on' : ''}`}
+                   title={`${a.name}${a.role ? ` · 负责：${a.role}` : ''}（子任务）`}
+                   onClick={() => setActive(`a:${a.key}`)}>
+                <span className="mtab-name">
+                  <AgentAvatar name={a.name} size={16} />
+                  <span className="mtab-agent-name">{a.name}</span>
+                </span>
+                {a.status === 'running' && agentRunning(a.turnId)
+                  && <span className="mtab-dot pulse" />}
+                {a.status === 'error' && <span className="mtab-dot err" />}
+              </div>
+            ))}
+            {tabs.map(t => (
+              <div key={t.key} className={`mtab ${active === t.key ? 'on' : ''}`}
+                title={t.path ?? '对话'}
+                onClick={() => setActive(t.key)}>
+                <span className="mtab-name">
+                  <FileDoc size={13} /> {t.path!.split('/').pop()}</span>
+                <span className="mtab-x" onClick={e => { e.stopPropagation(); closeTab(t.key); }}>×</span>
+              </div>
+            ))}
+            <button className="mtab add" title="新建子任务（往输入框注入派发模板，由主代理派发）"
+                    onClick={() => { setActive('chat'); requestCompose(DISPATCH_TEMPLATE); }}>
+              <Plus size={12} /> 新建子任务
+            </button>
+          </div>
           {active === 'chat' || !activeFile
-            ? <><ChatStream onOpenFile={openFile} /><Composer /></>
+            ? <>
+                {activeAgent
+                  ? <div className="agent-tab-scroll"><AgentTab agent={activeAgent} onOpenFile={openFile} /></div>
+                  : <ChatStream onOpenFile={openFile} />}
+                <AgentChips />
+                <Composer />
+              </>
             : <FilePreview key={activeFile} sid={currentSid} path={activeFile} />}
         </div>
         {showPanel && <div className="scrim panel" onClick={() => setPanelOpen(false)} />}

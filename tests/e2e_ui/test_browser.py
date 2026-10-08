@@ -135,3 +135,39 @@ async def test_browser_always_allow_creates_policy(server_url, ws_root,
                        for p in d["policies"]), d["policies"]
         finally:
             await browser.close()
+
+
+async def test_browser_subagent_dispatch_card_and_tab(server_url, ws_root,
+                                                       logged_context):
+    """多 Agent 工作台 UI 对赌：.fake/subagent 场景 → SSE 带归属字段 →
+    派发卡（人名+状态）+ 子任务标签页 + agent chips 渲染，点击 tab 可看
+    该子代理的工具流水。"""
+    from playwright.async_api import async_playwright
+
+    async with async_playwright() as pw:
+        browser = await pw.chromium.launch()
+        try:
+            page = await (await logged_context(browser)).new_page()
+            page.set_default_timeout(20000)
+            await page.goto(server_url)
+            await page.wait_for_selector("text=新任务")
+            await page.click("text=新任务")
+            await page.wait_for_selector("textarea.cinput")
+            sid = await _latest_sid(server_url)
+            ctrl = ws_root / sid / ".fake"
+            ctrl.mkdir(parents=True, exist_ok=True)
+            (ctrl / "subagent").touch()
+            await page.fill("textarea.cinput", "派两个子代理")
+            await page.keyboard.press("Enter")
+            # 派发卡：引擎人名渲染（马洛）
+            await page.wait_for_selector(".dispatch-card:has-text('马洛')")
+            # 子任务标签页 + agent chips 出现
+            await page.wait_for_selector(".mtab.agent:has-text('马洛')")
+            await page.wait_for_selector(".chip-agent:has-text('马洛')")
+            # 点击马洛的 tab → 该子代理的工具流水（子1·Write → Write + 子1 徽标）
+            await page.click(".mtab.agent:has-text('马洛')")
+            await page.wait_for_selector(".agent-head:has-text('马洛')")
+            await page.wait_for_selector(".agent-tab .tool-card .tool-subtag:"
+                                         "has-text('子1')")
+        finally:
+            await browser.close()

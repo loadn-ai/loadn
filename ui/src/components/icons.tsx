@@ -227,3 +227,40 @@ export const Tag = (p: IconProps) => (
 export const ArrowRight = (p: IconProps) => (
   <Svg {...p}><path d="M5 12h14" /><path d="M12 5l7 7-7 7" /></Svg>
 );
+
+// ---- 分类空间图标（icon rail / IconPicker 候选集） ----
+export const Brain = (p: IconProps) => (
+  <Svg {...p}><path d="M9.5 2A2.5 2.5 0 0 1 12 4.5v15a2.5 2.5 0 0 1-4.96.44A2.5 2.5 0 0 1 4.5 18 2.5 2.5 0 0 1 2 15.5a2.5 2.5 0 0 1 1.42-2.25A2.5 2.5 0 0 1 2 11a2.5 2.5 0 0 1 2-2.45A2.5 2.5 0 0 1 6 5.2 2.5 2.5 0 0 1 9.5 2z" /><path d="M14.5 2A2.5 2.5 0 0 0 12 4.5v15a2.5 2.5 0 0 0 4.96.44A2.5 2.5 0 0 0 19.5 18a2.5 2.5 0 0 0 2.5-2.5 2.5 2.5 0 0 0-1.42-2.25A2.5 2.5 0 0 0 22 11a2.5 2.5 0 0 0-2-2.45A2.5 2.5 0 0 0 18 5.2 2.5 2.5 0 0 0 14.5 2z" /></Svg>
+);
+
+export const PieChart = (p: IconProps) => (
+  <Svg {...p}><path d="M21.2 15.9A10 10 0 1 1 8 2.8" /><path d="M22 12A10 10 0 0 0 12 2v10z" /></Svg>
+);
+
+export const Zap = (p: IconProps) => (
+  <Svg {...p}><path d="M13 2L3 14h9l-1 8 10-12h-9l1-8z" /></Svg>
+);
+
+export const Heart = (p: IconProps) => (
+  <Svg {...p}><path d="M20.8 4.6a5.5 5.5 0 0 0-7.8 0L12 5.7l-1-1.1a5.5 5.5 0 0 0-7.8 7.8l1 1L12 21.2l7.8-7.8 1-1a5.5 5.5 0 0 0 0-7.8z" /></Svg>
+);
+
+export const Cpu = (p: IconProps) => (
+  <Svg {...p}><rect x="4" y="4" width="16" height="16" rx="2" /><rect x="9" y="9" width="6" height="6" /><path d="M9 1v3M15 1v3M9 20v3M15 20v3M1 9h3M1 15h3M20 9h3M20 15h3" /></Svg>
+);
+
+export const Database = (p: IconProps) => (
+  <Svg {...p}><ellipse cx="12" cy="5" rx="9" ry="3" /><path d="M21 12c0 1.66-4 3-9 3s-9-1.34-9-3" /><path d="M3 5v14c0 1.66 4 3 9 3s9-1.34 9-3V5" /></Svg>
+);
+
+export const Compass = (p: IconProps) => (
+  <Svg {...p}><circle cx="12" cy="12" r="10" /><path d="M16.2 7.8l-2.1 6.3-6.3 2.1 2.1-6.3z" /></Svg>
+);
+
+export const Layers = (p: IconProps) => (
+  <Svg {...p}><path d="M12 2L2 7l10 5 10-5z" /><path d="M2 17l10 5 10-5" /><path d="M2 12l10 5 10-5" /></Svg>
+);
+
+export const Users = (p: IconProps) => (
+  <Svg {...p}><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2" /><circle cx="9" cy="7" r="4" /><path d="M23 21v-2a4 4 0 0 0-3-3.87" /><path d="M16 3.13a4 4 0 0 1 0 7.75" /></Svg>
+);

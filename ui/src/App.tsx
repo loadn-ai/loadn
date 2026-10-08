@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react';
 import { useStore } from './stores/sessions';
+import IconRail from './components/IconRail';
 import Sidebar from './components/Sidebar';
 import SessionView from './components/SessionView';
 import AdminPanel from './components/AdminPanel';
@@ -57,7 +58,7 @@ export default function App() {
   useEffect(() => {
     document.documentElement.dataset.theme = theme;
     document.querySelector('meta[name="theme-color"]')
-      ?.setAttribute('content', theme === 'light' ? '#f3f4f6' : '#16181d');
+      ?.setAttribute('content', theme === 'light' ? '#f8fafc' : '#16181d');
   }, [theme]);
 
   // 刷新/重开恢复上次会话（PWA 点 Dock 直达 + 任务跑着时刷新不失联）
@@ -129,15 +130,24 @@ export default function App() {
         </button>
       )}
       {navOpen && <div className="scrim nav" onClick={() => setNavOpen(false)} />}
-      <Sidebar
-        onNew={() => void quickNew()}
-        onAdmin={tab => {
-          setNavOpen(false);
-          const target = tab === 'cost' ? '#/admin/cost' : '#/admin';
-          setHash(admin && path === target ? '' : target);
-        }}
-        onNav={() => setNavOpen(false)}
-        adminActive={admin} />
+      <div className="nav-col">
+        <IconRail
+          onAdmin={tab => {
+            setNavOpen(false);
+            const target = tab === 'cost' ? '#/admin/cost' : '#/admin';
+            setHash(admin && path === target ? '' : target);
+          }}
+          adminActive={admin} />
+        <Sidebar
+          onNew={() => void quickNew()}
+          onAdmin={tab => {
+            setNavOpen(false);
+            const target = tab === 'cost' ? '#/admin/cost' : '#/admin';
+            setHash(admin && path === target ? '' : target);
+          }}
+          onNav={() => setNavOpen(false)}
+          adminActive={admin} />
+      </div>
       <main className="main">
         {admin
           ? <AdminPanel key={adminTab ?? 'default'} onClose={() => { setHash(''); void loadMeta(); }}

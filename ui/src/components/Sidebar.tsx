@@ -2,13 +2,15 @@ import { useEffect, useState } from 'react';
 import type { ComponentType, ReactNode } from 'react';
 import { useStore } from '../stores/sessions';
 import type { ProjectInfo, CategoryInfo, MoveDest } from '../stores/sessions';
-import { api, fmtTokens } from '../api/client';
+import { fmtTokens } from '../api/client';
 import PopupMenu from './Menu';
 import type { MenuEntry } from './Menu';
 import {
-  Flask, Code, Chat, Bot, Settings, Plus, Star, Pencil, Undo, Trash,
-  Folder, ChevronDown, ChevronRight, Box, MoreVertical, Pin, Archive, Tag, Clock, ArrowRight,
+  Flask, Code, Chat, Bot, Plus, Star, Pencil, Undo, Trash,
+  Folder, ChevronDown, ChevronRight, Box, MoreVertical, Pin, Archive, Tag, Clock,
+  ArrowRight, Settings,
 } from './icons';
+import CategoryIcon from './CategoryIcon';
 
 const PROFILE_ICON: Record<string, ComponentType<{ size?: number }>> = {
   researcher: Flask, coder: Code, assistant: Chat,
@@ -43,7 +45,7 @@ const mkRowOrder = (kidsRunning: Set<string>) => (a: TopRow, b: TopRow) => {
 /** 「移动到」二级面板：置顶/最近/收藏/自定义分类（含内联新建），当前分区打勾 */
 function moveEntries(cur: RowBucket, onMove: (d: MoveDest) => void,
                      categories: CategoryInfo[],
-                     createCategory: (n: string) => Promise<CategoryInfo | null>): MenuEntry[] {
+                     createCategory: (n: string, icon?: string) => Promise<CategoryInfo | null>): MenuEntry[] {
   const item = (key: string, label: string,
                 icon: ComponentType<{ size?: number }>, dest: MoveDest): MenuEntry => ({
     kind: 'item', key, label, icon,
@@ -69,6 +71,18 @@ function moveEntries(cur: RowBucket, onMove: (d: MoveDest) => void,
   ];
 }
 
+/** 空间元信息：activeSpace → 标题/副题/图标 */
+function spaceMeta(activeSpace: string, categories: CategoryInfo[]): {
+  title: string; sub: string; icon?: ReactNode;
+} {
+  if (activeSpace === 'pinned') return { title: '置顶关注', sub: '钉住的重要任务' };
+  if (activeSpace === 'starred') return { title: '收藏', sub: '打过星标的任务与项目' };
+  if (activeSpace === 'archive') return { title: '归档', sub: '已收起的任务（可恢复）' };
+  const cat = categories.find(c => `cat:${c.id}` === activeSpace);
+  if (cat) return { title: cat.name, sub: '自定义空间', icon: <CategoryIcon icon={cat.icon} size={13} /> };
+  return { title: '最近', sub: '全部进行中的任务与项目' };
+}
+
 export default function Sidebar({ onNew, onAdmin, onNav, adminActive }: {
   onNew: () => void; onAdmin: (tab?: 'cost') => void;
   onNav?: () => void; adminActive?: boolean;
@@ -79,43 +93,16 @@ export default function Sidebar({ onNew, onAdmin, onNav, adminActive }: {
   const openSession = useStore(s => s.openSession);
   const projects = useStore(s => s.projects);
   const categories = useStore(s => s.categories);
+  const activeSpace = useStore(s => s.activeSpace);
   const [limit, setLimit] = useState(PAGE);
   const [q, setQ] = useState('');
   const [newProj, setNewProj] = useState(false);
   const [projTitle, setProjTitle] = useState('');
-  const [newCat, setNewCat] = useState(false);
-  const [catTitle, setCatTitle] = useState('');
-  // 分类内新建项目（内联输入；任务零选择直接建，无需输入）
-  const [catProj, setCatProj] = useState<{ cid: number; title: string } | null>(null);
-  const [catMenu, setCatMenu] = useState<{ cid: number; el: HTMLElement } | null>(null);
-  const [collapsed, setCollapsed] = useState<Set<string>>(() => {
-    try { return new Set(JSON.parse(localStorage.getItem('wd_collapsed_projects') || '[]')); }
-    catch { return new Set(); }
-  });
-  // 分区折叠态（含用户显式展开归档等覆盖默认的记忆）
-  const [secState, setSecState] = useState<Record<string, boolean>>(() => {
-    try { return JSON.parse(localStorage.getItem('wd_section_state') || '{}'); }
-    catch { return {}; }
-  });
 
   useEffect(() => {
     void useStore.getState().loadProjects();
     void useStore.getState().loadCategories();
   }, []);
-  const toggleProject = (pid: string) => {
-    setCollapsed(prev => {
-      const next = new Set(prev);
-      next.has(pid) ? next.delete(pid) : next.add(pid);
-      localStorage.setItem('wd_collapsed_projects', JSON.stringify([...next]));
-      return next;
-    });
-  };
-  const secOpen = (key: string, dflt: boolean) => key in secState ? secState[key] : dflt;
-  const toggleSec = (key: string, dflt: boolean) => setSecState(prev => {
-    const next = { ...prev, [key]: !(key in prev ? prev[key] : dflt) };
-    localStorage.setItem('wd_section_state', JSON.stringify(next));
-    return next;
-  });
 
   // ---- 分区归桶 ----
   const activeSessions = sessions.filter(s => s.status === 'active');
@@ -139,10 +126,6 @@ export default function Sidebar({ onNew, onAdmin, onNav, adminActive }: {
     ...activeProjects.map(p => ({ kind: 'project', p }) as TopRow),
   ].sort(mkRowOrder(kidsRunning));
   const rowsIn = (rows: TopRow[], b: RowBucket) => rows.filter(r => rowBucket(r) === b);
-  const pinnedRows = rowsIn(topRows, 'pinned');
-  const starredRows = rowsIn(topRows, 'starred');
-  const recentRows = rowsIn(topRows, 'recent');
-  const catRowCount = (cid: number) => topRows.filter(r => rowBucket(r) === cid).length;
 
   // 归档：独立任务平铺；归档项目成组（子任务收进组里不重复平铺）
   const archivedByProject = new Map<string, typeof archivedSessions>();
@@ -158,7 +141,17 @@ export default function Sidebar({ onNew, onAdmin, onNav, adminActive }: {
     ...archivedProjects.map(p => ({ kind: 'project', p }) as TopRow),
   ].sort((a, b) => rowTs(b) - rowTs(a));
 
-  const shownRows = recentRows.slice(0, limit);
+  // ---- 当前空间的行（单桶渲染） ----
+  const cat = categories.find(c => `cat:${c.id}` === activeSpace);
+  const spaceRows: TopRow[] = activeSpace === 'archive' ? archivedTop
+    : activeSpace === 'pinned' ? rowsIn(topRows, 'pinned')
+    : activeSpace === 'starred' ? rowsIn(topRows, 'starred')
+    : cat ? rowsIn(topRows, cat.id)
+    : rowsIn(topRows, 'recent');
+  const shownRows = activeSpace === 'recent'
+    ? spaceRows.slice(0, limit) : spaceRows;
+  const meta = spaceMeta(activeSpace, categories);
+
   // 真实口径：z.ai API 按量价（旧数据无该键时回落 CLI 口径）；total_all 含 cache read
   const allCost = sessions.reduce(
     (a, s) => a + (s.usage?.cost_api_usd ?? s.usage?.cost_usd ?? 0), 0);
@@ -182,23 +175,20 @@ export default function Sidebar({ onNew, onAdmin, onNav, adminActive }: {
     void openSession(sid);
   };
 
-  const createCategory = useStore(s => s.createCategory);
-  const renameCategory = useStore(s => s.renameCategory);
-  const deleteCategory = useStore(s => s.deleteCategory);
-
   // 分类内直接新建：任务零选择建完即进（title 自动），项目走内联输入
-  const addTaskInCat = async (cid: number) => {
+  const addTaskInSpace = async () => {
     try {
-      const s = await useStore.getState().createSession({ category_id: cid });
+      const s = await useStore.getState().createSession(
+        cat ? { category_id: cat.id } : {});
       if (overlay) location.hash = '';
       void useStore.getState().openSession(s.id);
     } catch (e) {
       alert(`新建任务失败：${e instanceof Error ? e.message : e}`);
     }
   };
-  const addProjectInCat = async (cid: number, title: string) => {
+  const addProjectInSpace = async (title: string) => {
     try {
-      await useStore.getState().createProject(title, cid);
+      await useStore.getState().createProject(title.slice(0, 80), cat?.id);
     } catch (e) {
       alert(`新建项目失败：${e instanceof Error ? e.message : e}`);
     }
@@ -209,17 +199,30 @@ export default function Sidebar({ onNew, onAdmin, onNav, adminActive }: {
         onClick={() => openAndLeaveAdmin(r.s.id)} current={r.s.id === currentSid && !overlay} />
     : <ProjectGroup key={r.p.id} project={r.p}
         kids={(archived ? archivedByProject.get(r.p.id) : byProject.get(r.p.id)) ?? []}
-        collapsed={collapsed.has(r.p.id)} onToggle={() => toggleProject(r.p.id)}
+        collapsed={archivedByProject.has(r.p.id) && archived ? true : undefined}
+        onToggle={() => {}}
         onOpen={openAndLeaveAdmin} currentSid={currentSid} overlay={overlay} archived={archived} />;
 
   return (
     <aside className="sidebar">
-      <div className="sidebar-head">
-        <div className="brand"><img className="brand-mark" src="/icons/apple-touch-icon.png" alt="loadn" /> loadn</div>
-        <button className="btn primary new-btn" onClick={onNew}><Plus size={15} /> 新任务</button>
-        <button className="btn ghost sm new-project-btn" onClick={() => setNewProj(v => !v)}>
-          <Folder size={13} /> {newProj ? '收起' : '新建项目'}
-        </button>
+      <div className="space-head">
+        <div className="space-title-row">
+          <span className="space-ico">{meta.icon ?? <Clock size={13} />}</span>
+          <div className="space-names">
+            <span className="space-kicker">当前空间</span>
+            <span className="space-name">{meta.title}</span>
+          </div>
+        </div>
+        {activeSpace !== 'archive' && (
+          <div className="space-actions">
+            <button className="btn primary space-new" onClick={() => (cat ? void addTaskInSpace() : onNew())}>
+              <Plus size={14} /> 新任务
+            </button>
+            <button className="btn ghost sm" onClick={() => setNewProj(v => !v)}>
+              <Folder size={13} /> {newProj ? '收起' : '新建项目'}
+            </button>
+          </div>
+        )}
         {newProj && (
           <input className="new-project-input" value={projTitle} autoFocus maxLength={80}
                  placeholder="项目名（回车创建，共享工作区的任务容器）"
@@ -230,15 +233,11 @@ export default function Sidebar({ onNew, onAdmin, onNav, adminActive }: {
                      const t = projTitle.trim();
                      if (!t) return;
                      setNewProj(false); setProjTitle('');
-                     await useStore.getState().createProject(t);
+                     await addProjectInSpace(t);
                    }
                  }} />
         )}
       </div>
-      <button className="sidebar-usage" title="真实成本（z.ai API 按量价）· 点击到管理中心的成本分析"
-        onClick={() => onAdmin('cost')}>
-        累计 <b>{fmtTokens(allTokens)}</b> tokens · <b>${allCost.toFixed(2)}</b>
-      </button>
       <div className="sidebar-search">
         <input value={q} placeholder="搜索任务…" maxLength={80}
           onChange={e => setQ(e.target.value)}
@@ -260,171 +259,38 @@ export default function Sidebar({ onNew, onAdmin, onNav, adminActive }: {
           </>
         ) : (
           <>
-            {pinnedRows.length > 0 && (
-              <Section icon={Pin} title="置顶" tone="pinned" count={pinnedRows.length}
-                open={secOpen('pinned', true)} onToggle={() => toggleSec('pinned', true)}>
-                {pinnedRows.map(r => renderRow(r))}
-              </Section>
-            )}
-            <Section icon={Clock} title="最近" count={recentRows.length}
-              open={secOpen('recent', true)} onToggle={() => toggleSec('recent', true)}>
-              {shownRows.map(r => renderRow(r))}
-              {shownRows.length < recentRows.length && (
-                <button className="more-btn" onClick={() => setLimit(l => l + PAGE)}>
-                  更多（还有 {recentRows.length - shownRows.length} 个）
-                </button>
-              )}
-              {shownRows.length >= recentRows.length && limit > PAGE && (
-                <button className="more-btn" onClick={() => setLimit(PAGE)}>收起</button>
-              )}
-              {recentRows.length === 0 && <div className="sidebar-empty">还没有任务</div>}
-            </Section>
-            {starredRows.length > 0 && (
-              <Section icon={Star} title="收藏" tone="starred" count={starredRows.length}
-                open={secOpen('starred', true)} onToggle={() => toggleSec('starred', true)}>
-                {starredRows.map(r => renderRow(r))}
-              </Section>
-            )}
-            {categories.map(cat => (
-              <Section key={cat.id} icon={Tag} title={cat.name} count={catRowCount(cat.id)}
-                open={secOpen(`cat:${cat.id}`, true)} onToggle={() => toggleSec(`cat:${cat.id}`, true)}
-                extra={
-                  <button className="section-menu-btn" title="分类操作"
-                          onClick={e => { e.stopPropagation(); setCatMenu({ cid: cat.id, el: e.currentTarget }); }}>
-                    <MoreVertical size={13} />
-                  </button>}>
-                {topRows.filter(r => rowBucket(r) === cat.id).map(r => renderRow(r))}
-                {catProj?.cid === cat.id ? (
-                  <input className="new-cat-input" autoFocus maxLength={80} value={catProj.title}
-                         placeholder="项目名（回车创建，共享工作区）"
-                         onChange={e => setCatProj({ cid: cat.id, title: e.target.value })}
-                         onKeyDown={e => {
-                           if (e.key === 'Escape') { setCatProj(null); }
-                           else if (e.key === 'Enter') {
-                             const t = catProj.title.trim();
-                             if (!t) return;
-                             setCatProj(null);
-                             void addProjectInCat(cat.id, t.slice(0, 80));
-                           }
-                         }} />
-                ) : (
-                  <div className="cat-add-row">
-                    <button className="cat-add" onClick={() => void addTaskInCat(cat.id)}>
-                      <Plus size={12} /> 新任务
-                    </button>
-                    <button className="cat-add" onClick={() => setCatProj({ cid: cat.id, title: '' })}>
-                      <Plus size={12} /> 新项目
-                    </button>
-                  </div>
-                )}
-              </Section>
-            ))}
-            {newCat ? (
-              <input className="new-cat-input" autoFocus maxLength={40} value={catTitle}
-                     placeholder="分类名（回车创建，Esc 取消）"
-                     onChange={e => setCatTitle(e.target.value)}
-                     onKeyDown={e => {
-                       if (e.key === 'Escape') { setNewCat(false); setCatTitle(''); }
-                       else if (e.key === 'Enter') {
-                         const t = catTitle.trim();
-                         if (!t) return;
-                         setNewCat(false); setCatTitle('');
-                         void createCategory(t.slice(0, 40));
-                       }
-                     }} />
-            ) : (
-              <button className="new-cat-btn" onClick={() => { setNewCat(true); setCatTitle(''); }}>
-                <Plus size={12} /> 新增分类
+            {shownRows.map(r => renderRow(r, activeSpace === 'archive'))}
+            {activeSpace === 'recent' && shownRows.length < spaceRows.length && (
+              <button className="more-btn" onClick={() => setLimit(l => l + PAGE)}>
+                更多（还有 {spaceRows.length - shownRows.length} 个）
               </button>
             )}
-            {archivedTop.length > 0 && (
-              <Section icon={Archive} title="归档" count={archivedTop.length}
-                open={secOpen('archive', false)} onToggle={() => toggleSec('archive', false)}>
-                {archivedTop.map(r => renderRow(r, true))}
-              </Section>
+            {activeSpace === 'recent' && shownRows.length >= spaceRows.length && limit > PAGE && (
+              <button className="more-btn" onClick={() => setLimit(PAGE)}>收起</button>
+            )}
+            {!searching && spaceRows.length === 0 && (
+              <div className="sidebar-empty">
+                {activeSpace === 'archive' ? '没有归档任务' : '这个空间还没有任务'}
+              </div>
             )}
           </>
         )}
       </div>
-      {catMenu && (() => {
-        const cat = categories.find(c => c.id === catMenu.cid);
-        if (!cat) return null;
-        return <PopupMenu anchor={catMenu.el} onClose={() => setCatMenu(null)} items={[
-          { key: 'rename', label: '改名分类', icon: Pencil, onClick: () => {
-              const v = prompt('分类新名称', cat.name);
-              const t = (v ?? '').trim().slice(0, 40);
-              if (t && t !== cat.name) void renameCategory(cat.id, t);
-            } },
-          { key: 'del', label: '删除分类（成员回「最近」）', icon: Trash, danger: true, onClick: () => {
-              if (confirm(`删除分类「${cat.name}」？分类内的任务/项目回到「最近」，本身不受影响。`))
-                void deleteCategory(cat.id);
-            } },
-        ]} />;
-      })()}
       <div className="sidebar-foot">
-        <UserBadge />
-        <button className={`btn ghost sm admin-btn ${adminActive ? 'on' : ''}`}
-          onClick={() => onAdmin()}>
-          <Settings size={14} /> 管理中心
+        <button className="sidebar-usage" title="真实成本（z.ai API 按量价）· 点击到管理中心的成本分析"
+          onClick={() => onAdmin('cost')}>
+          累计 <b>{fmtTokens(allTokens)}</b> tokens · <b>${allCost.toFixed(2)}</b>
         </button>
       </div>
     </aside>
   );
 }
 
-/** 用户徽标（多用户批1）：登录态展示在侧栏底部（原右下角悬浮被反馈
- *  突兀）——用户名+角色标+登出；未登录/无账号体系时隐藏（登录门在
- *  TokenGate 弹）。 */
-function UserBadge() {
-  const [me, setMe] = useState<{ username: string; role: string } | null>(null);
-  useEffect(() => {
-    api<{ logged_in: boolean; user: { username: string; role: string } | null }>(
-      '/api/auth/status')
-      .then(d => setMe(d.logged_in ? d.user : null))
-      .catch(() => setMe(null));
-  }, []);
-  if (!me) return null;
-  return (
-    <div className="side-user" title={me.role === 'admin' ? '管理员' : '用户'}
-         style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 12,
-                  padding: '2px 8px', opacity: 0.85 }}>
-      <span style={{ flex: 1, overflow: 'hidden', textOverflow: 'ellipsis',
-                     whiteSpace: 'nowrap' }}>
-        👤 {me.username}{me.role === 'admin' ? ' · 管理员' : ''}
-      </span>
-      <button className="link" style={{ fontSize: 12 }} onClick={async () => {
-        await api('/api/auth/logout', { method: 'POST' });
-        location.reload();
-      }}>登出</button>
-    </div>
-  );
-}
-
-/** 侧栏分区：可折叠分组（置顶/最近/收藏/自定义分类/归档共用的壳） */
-function Section({ icon: Icon, title, count, open, onToggle, tone, extra, children }: {
-  icon: ComponentType<{ size?: number }>; title: string; count: number;
-  open: boolean; onToggle: () => void; tone?: string;
-  extra?: ReactNode; children: ReactNode;
-}) {
-  return (
-    <div className={`side-section ${tone ?? ''} ${open ? '' : 'closed'}`}>
-      <div className="section-head" onClick={onToggle}>
-        <span className="section-chev">{open ? <ChevronDown size={12} /> : <ChevronRight size={12} />}</span>
-        <Icon size={12} />
-        <span className="section-title">{title}</span>
-        {count > 0 && <span className="section-count">{count}</span>}
-        <span className="section-extra" onClick={e => e.stopPropagation}>{extra}</span>
-      </div>
-      {open && <div className="section-body">{children}</div>}
-    </div>
-  );
-}
-
 /** 项目组行：折叠箭头 + 标题 + 计数 + 「…」菜单（子任务/改名/移动/归档）。
  *  子任务行缩进渲染在组内；归档项目在归档分区成组展示。 */
-function ProjectGroup({ project, kids, collapsed, onToggle, onOpen, currentSid, overlay, archived = false }: {
+function ProjectGroup({ project, kids, collapsed: collapsedProp, onToggle, onOpen, currentSid, overlay, archived = false }: {
   project: ProjectInfo; kids: any[];
-  collapsed: boolean; onToggle: () => void;
+  collapsed?: boolean; onToggle: () => void;
   onOpen: (sid: string) => void; currentSid: string | null; overlay: boolean;
   archived?: boolean;
 }) {
@@ -439,6 +305,12 @@ function ProjectGroup({ project, kids, collapsed, onToggle, onOpen, currentSid, 
   const [editing, setEditing] = useState(false);
   const [busy, setBusy] = useState(false);
   const [menuEl, setMenuEl] = useState<HTMLElement | null>(null);
+  const [collapsedLocal, setCollapsedLocal] = useState(false);
+  const collapsed = collapsedProp ?? collapsedLocal;
+  const toggle = () => {
+    if (collapsedProp === undefined) setCollapsedLocal(v => !v);
+    else onToggle();
+  };
   const commit = (v: string) => {
     const t = v.trim();
     if (t && t !== project.title) void renameProject(project.id, t.slice(0, 80));
@@ -480,7 +352,7 @@ function ProjectGroup({ project, kids, collapsed, onToggle, onOpen, currentSid, 
   return (
     <div className={`project-group ${collapsed ? 'collapsed' : ''}`}>
       <div className={`project-row ${menuEl ? 'menu-open' : ''}`} title="项目：同工作区多任务容器（双击改名）"
-           onClick={onToggle}
+           onClick={toggle}
            onDoubleClick={e => { e.stopPropagation(); if (!archived) setEditing(true); }}>
         <span className="proj-chevron">{collapsed ? <ChevronRight size={12} /> : <ChevronDown size={12} />}</span>
         <Folder size={13} />

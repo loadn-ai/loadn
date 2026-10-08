@@ -1,6 +1,7 @@
 // 全局状态（zustand）：会话列表 / 当前会话 / SSE 实时流
 import { create } from 'zustand';
 import { api, apiUpload, connectSse } from '../api/client';
+import { applyResult, applyTool, deriveAgents, type AgentInfo } from './agents';
 import { clearDraft, getDraft, setDraft } from './drafts';
 
 /** 用户附件（消息 blocks_json 里的 attachment 条目） */
@@ -62,6 +63,8 @@ export interface ProjectInfo {
 /** 侧栏自定义分区（任务/项目通用，与置顶/收藏/归档并列） */
 export interface CategoryInfo {
   id: number; name: string;
+  /** 空间图标：icons.tsx 图标键或 emoji 字符；空回退 Tag */
+  icon?: string | null;
 }
 
 /** 「移动到」目标分区：三标记位互斥（由 move* 负责清位），归档走 status */
@@ -71,11 +74,22 @@ export interface ArtifactInfo {
   id: number; path: string; kind: string; title: string;
   summary?: string | null;
   size: number; created_by: string;
+  /** 归属（agent_files 轨迹合并）：epoch 秒 */
+  mtime?: number;
+  turn_id?: number | null;
+  agent_id?: string | null;
+  agent_name?: string | null;
 }
 
 export interface ToolEvent {
   id: string | null; name: string; brief: string; is_error?: boolean;
   input?: Record<string, string | number | boolean>; result?: string;
+  /** 子代理归属（宿主派生，PROTOCOL §2.1）：Task 卡带全套，子N· 转发带 id/n/name */
+  agent_id?: string | null;
+  agent_name?: string | null;
+  agent_n?: number | null;
+  agent_role?: string | null;
+  subagent_type?: string | null;
 }
 
 /** 过程流水项：思考 / 工具调用 / 文本 / 运行中插话，按真实顺序穿插渲染 */
@@ -130,6 +144,8 @@ interface Store {
   messages: MessageInfo[];
   turns: TurnInfo[];
   artifacts: ArtifactInfo[];
+  /** 当前会话的子代理注册表（turn 域复合键，见 stores/agents.ts） */
+  agents: AgentInfo[];
   live: LiveTurn | null;
   approvals: ApprovalInfo[];
   timeline: TimelineMarker[];
@@ -141,6 +157,12 @@ interface Store {
   rightTab: 'properties' | 'artifacts' | 'files';
   panelOpen: boolean;
   egressTick: number;
+  /** 主区活动 tab：'chat' | 'a:<agentKey>' | 'f:<path>'（agent/文件 tab 的开合态） */
+  mainTab: string;
+  /** 侧栏当前空间：'recent' | 'starred' | 'archive' | 'cat:<id>' */
+  activeSpace: string;
+  /** Composer 注入请求（「新建子任务/招募」模板）：seq 递增防同文本去重失效 */
+  composeReq: { seq: number; text: string } | null;
 
   loadSessions: () => Promise<void>;
   loadMeta: () => Promise<void>;
@@ -171,8 +193,9 @@ interface Store {
   restoreProject: (pid: string) => Promise<void>;
   purgeProject: (pid: string) => Promise<void>;
   loadCategories: () => Promise<void>;
-  createCategory: (name: string) => Promise<CategoryInfo | null>;
-  renameCategory: (cid: number, name: string) => Promise<void>;
+  createCategory: (name: string, icon?: string) => Promise<CategoryInfo | null>;
+  /** 改名/改图标（icon 省略=不动；显式 null=清回兜底） */
+  updateCategory: (cid: number, name: string | null, icon?: string | null) => Promise<void>;
   deleteCategory: (cid: number) => Promise<void>;
   /** 统一移动（任务/项目同款）：置顶/最近/收藏/分类三标记位互斥；archive 走归档 */
   moveSession: (sid: string, dest: MoveDest) => Promise<void>;
@@ -192,19 +215,29 @@ interface Store {
   restoreSession: (sid: string) => Promise<void>;
   purgeSession: (sid: string) => Promise<void>;
   toggleTheme: () => void;
+  setMainTab: (t: string) => void;
+  setActiveSpace: (s: string) => void;
+  /** 往 Composer 注入模板文本（「新建子任务/招募」按钮） */
+  requestCompose: (text: string) => void;
 }
 
-/** 主题初值：显式选择 > 系统偏好 */
+/** 主题初值：显式选择 > 默认亮色（多 Agent 工作台改版——设计稿为亮色） */
 function initialTheme(): 'dark' | 'light' {
   const saved = localStorage.getItem('wd_theme');
   if (saved === 'light' || saved === 'dark') return saved;
-  return matchMedia('(prefers-color-scheme: light)').matches ? 'light' : 'dark';
+  return 'light';
+}
+
+/** 侧栏空间初值：上次选择 > 'recent' */
+function initialSpace(): string {
+  return localStorage.getItem('wd_space') || 'recent';
 }
 
 export const useStore = create<Store>((set, get) => ({
   sessions: [], projects: [], categories: [], profiles: [], skills: [], engines: {},
   defaultEngine: 'claude',
   currentSid: null, messages: [], turns: [], artifacts: [],
+  agents: [],
   live: null,
   approvals: [], timeline: [], es: null, connected: false,
   theme: initialTheme(),
@@ -213,9 +246,20 @@ export const useStore = create<Store>((set, get) => ({
   // 桌面默认开右面板；窄屏它是遮盖式抽屉，默认收起（原 SessionView 本地态）
   panelOpen: typeof window !== 'undefined' && window.innerWidth > 900,
   egressTick: 0,
+  mainTab: 'chat',
+  activeSpace: initialSpace(),
+  composeReq: null,
 
   setRightTab(t) { set({ rightTab: t }); },
   setPanelOpen(v) { set({ panelOpen: v }); },
+  setMainTab(t) { set({ mainTab: t }); },
+  setActiveSpace(s) {
+    localStorage.setItem('wd_space', s);
+    set({ activeSpace: s });
+  },
+  requestCompose(text) {
+    set(s => ({ composeReq: { seq: (s.composeReq?.seq ?? 0) + 1, text } }));
+  },
 
   async loadApprovals() {
     const sid = get().currentSid;
@@ -281,12 +325,13 @@ export const useStore = create<Store>((set, get) => ({
   async openSession(sid) {
     get().closeSession();
     set({ currentSid: sid, messages: [], turns: [], artifacts: [], live: null,
-          sessionExtras: null, timeline: [] });
+          sessionExtras: null, timeline: [], agents: [], mainTab: 'chat' });
     localStorage.setItem('loadn_sid', sid);   // 刷新/重开恢复
     localStorage.removeItem('wd_sid');        // 旧键清理（迁移遗留）
     const d = await api<{ messages: MessageInfo[]; turns: TurnInfo[]; artifacts: ArtifactInfo[] } & SessionExtras>(
       `/api/sessions/${encodeURIComponent(sid)}`);
-    set({ messages: d.messages, turns: d.turns, artifacts: d.artifacts });
+    set({ messages: d.messages, turns: d.turns, artifacts: d.artifacts,
+          agents: deriveAgents(d.messages, d.turns) });
     fillExtras(set, sid, d);
     // 进行中 turn：凭 /live 重建元信息（turnId/status/startedAt/todos——计时与停止按钮）。
     // 过程节点（items）不播种：SSE 新连接会精准回放本 turn 尾部事件（sse.py：
@@ -336,7 +381,7 @@ export const useStore = create<Store>((set, get) => ({
     if (es) { es.close(); }
     localStorage.removeItem('loadn_sid'); localStorage.removeItem('wd_sid');
     set({ es: null, connected: false, currentSid: null, sessionExtras: null,
-          timeline: [] });
+          timeline: [], agents: [], live: null, mainTab: 'chat' });
   },
 
   /** 前台恢复拉新（visibilitychange/focus 调用）。iOS PWA 后台冻结定时器与
@@ -358,7 +403,8 @@ export const useStore = create<Store>((set, get) => ({
                               artifacts: ArtifactInfo[] }>(
           `/api/sessions/${encodeURIComponent(sid)}`);
         if (get().currentSid !== sid) return;
-        set({ messages: d.messages, turns: d.turns, artifacts: d.artifacts });
+        set({ messages: d.messages, turns: d.turns, artifacts: d.artifacts,
+              agents: deriveAgents(d.messages, d.turns) });
         const wasConnected = get().connected;
         const act = d.turns.find(t => t.status === 'running')
                  ?? d.turns.find(t => t.status === 'queued');
@@ -480,10 +526,11 @@ export const useStore = create<Store>((set, get) => ({
     } catch { /* 分类列表失败不阻塞侧栏 */}
   },
 
-  async createCategory(name) {
+  async createCategory(name, icon) {
     try {
       const d = await api<{ category: CategoryInfo }>('/api/categories', {
-        method: 'POST', body: JSON.stringify({ name }) });
+        method: 'POST',
+        body: JSON.stringify(icon != null ? { name, icon } : { name }) });
       await get().loadCategories();
       return d.category;
     } catch (e) {
@@ -492,9 +539,12 @@ export const useStore = create<Store>((set, get) => ({
     }
   },
 
-  async renameCategory(cid, name) {
+  async updateCategory(cid, name, icon) {
+    const body: Record<string, unknown> = {};
+    if (name != null) body.name = name;
+    if (icon !== undefined) body.icon = icon;
     await api(`/api/categories/${encodeURIComponent(cid)}`, {
-      method: 'PATCH', body: JSON.stringify({ name }) });
+      method: 'PATCH', body: JSON.stringify(body) });
     await get().loadCategories();
   },
 
@@ -616,7 +666,8 @@ export const useStore = create<Store>((set, get) => ({
     const d = await api<{ messages: MessageInfo[]; turns: TurnInfo[]; artifacts: ArtifactInfo[] }>(
       `/api/sessions/${encodeURIComponent(sid)}`);
     if (get().currentSid === sid) {
-      set({ messages: d.messages, turns: d.turns, artifacts: d.artifacts });
+      set({ messages: d.messages, turns: d.turns, artifacts: d.artifacts,
+            agents: deriveAgents(d.messages, d.turns) });
     }
     void get().loadSessions();
   },
@@ -783,20 +834,30 @@ function handleEvent(
         ? { live: { ...s.live, items: appendText(s.live.items, 'thinking', data.text, data.delta) } } : {}));
       break;
     case 'tool_use':
-      set(s => (s.live && s.live.turnId === data.turn_id
-        ? { live: { ...s.live, items: [...s.live.items, {
-            kind: 'tool', id: data.id, name: data.name, brief: data.brief, input: data.input,
-          }] } }
-        : {}));
+      set(s => {
+        const agents = applyTool(s.agents, data.turn_id, data);
+        const live = s.live && s.live.turnId === data.turn_id
+          ? { live: { ...s.live, items: [...s.live.items, {
+              kind: 'tool', id: data.id, name: data.name, brief: data.brief, input: data.input,
+              agent_id: data.agent_id, agent_name: data.agent_name,
+              agent_n: data.agent_n, agent_role: data.agent_role,
+              subagent_type: data.subagent_type } as ToolItem] } }
+          : {};
+        return agents === s.agents ? live : { ...live, agents };
+      });
       break;
     case 'tool_result':
       set(s => {
-        if (!s.live || s.live.turnId !== data.turn_id) return {};
+        const agents = applyResult(s.agents, data.turn_id, data.id, !!data.is_error);
+        if (!s.live || s.live.turnId !== data.turn_id) {
+          return agents === s.agents ? {} : { agents };
+        }
         const items = s.live.items.map(it =>
           it.kind === 'tool' && it.id === data.id
             ? { ...it, is_error: data.is_error, result: data.result }
             : it);
-        return { live: { ...s.live, items } };
+        return { live: { ...s.live, items },
+                 ...(agents === s.agents ? {} : { agents }) };
       });
       break;
     case 'todos':
@@ -824,6 +885,7 @@ function handleEvent(
         const cur = get().live;
         // 旧 turn 的终态：不清当前活跃 turn 的 live；自己的终态：清（消息已落库渲染）
         set(() => ({ messages: d.messages, turns: d.turns, artifacts: d.artifacts,
+                     agents: deriveAgents(d.messages, d.turns),
                      live: cur && cur.turnId !== data.turn_id ? cur : null }));
         void get().loadSessions();
         void get().loadTimeline();   // P3-7：compact/turn 标记可能新增
@@ -867,7 +929,8 @@ function handleEvent(
       }
       break;
     case 'resync':
-      set(() => ({ messages: data.messages ?? [], turns: data.turns ?? [], artifacts: [] }));
+      set(() => ({ messages: data.messages ?? [], turns: data.turns ?? [], artifacts: [],
+                   agents: deriveAgents(data.messages ?? [], data.turns ?? []) }));
       break;
     default:
       break;
