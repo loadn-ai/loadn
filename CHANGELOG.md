@@ -3,6 +3,11 @@
 本项目的全部显著变更记录于此。格式遵循 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/)，
 版本遵循 [SemVer](https://semver.org/lang/zh-CN/)。
 
+## [0.7.4] - 2026-10-08
+
+- 修 refresh_default_assets 的 PATHS 取值形态（dict 键索引——首版
+  属性访问在生产炸 AttributeError 且被不阻断捕获掩盖）。
+
 ## [0.7.3] - 2026-10-08
 
 - **数据根模板遮蔽根治**（生产实证续：v0.7.2 的执行环境节修复被数据根

@@ -438,7 +438,7 @@ def refresh_default_assets(new_root: Path) -> int:
     import filecmp
 
     from .config import PATHS
-    data_dir = PATHS.root / "prompts"
+    data_dir = PATHS["root"] / "prompts"
     if not data_dir.is_dir() or not (new_root / "prompts").is_dir():
         return 0
     n = 0

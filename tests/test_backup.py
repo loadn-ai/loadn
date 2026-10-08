@@ -299,8 +299,8 @@ def test_r13_refresh_default_assets(tmp_path, monkeypatch):
         "旧 other", encoding="utf-8")
     import loadn_webui.config as cfg_mod
     monkeypatch.setattr(ops, "RELEASES_DIR", rels)
-    monkeypatch.setattr(cfg_mod, "PATHS", type("P", (), {
-        "root": tmp_path / "data"}))
+    # 真实形态：PATHS 是 dict（首版写成 .root 假对象——测试绿生产炸）
+    monkeypatch.setattr(cfg_mod, "PATHS", {"root": tmp_path / "data"})
 
     n = ops.refresh_default_assets(new_root)
     # 只刷新「新版有同名文件」的未定制拷贝；other 在新版已不存在→不动
