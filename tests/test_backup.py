@@ -273,3 +273,39 @@ def test_r3_restore_rejects_incomplete_and_locked(monkeypatch, tmp_path):
     monkeypatch.setattr(bk, "cmd_backup_run", lambda *a, **k: 1)
     assert bk.cmd_backup_restore("full") == 1
     assert not (root / "var" / "loadn.db").exists(), "失败中止：不得落任何恢复"
+
+
+def test_r13_refresh_default_assets(tmp_path, monkeypatch):
+    """十三轮对赌（生产实证：v0.7.2 执行环境节被数据根 v0.6.x 旧拷贝
+    遮蔽）：refresh_default_assets——与历史 release 原版相同的未定制
+    拷贝被新版覆盖；用户定制版（与全部历史版不同）原样保留。"""
+    import loadn_webui.ops as ops
+
+    rels = tmp_path / "releases"
+    # 历史 release vOld：旧模板；新 release vNew：新模板
+    old_dir = rels / "vOld" / "prompts"
+    old_dir.mkdir(parents=True)
+    (old_dir / "workspace.md.tmpl").write_text("旧模板内容", encoding="utf-8")
+    new_root = rels / "vNew"
+    (new_root / "prompts").mkdir(parents=True)
+    (new_root / "prompts" / "workspace.md.tmpl").write_text(
+        "新模板内容+执行环境节", encoding="utf-8")
+    # 数据根：一份旧拷贝（未定制）+ 一份定制（与历史都不同）
+    data = tmp_path / "data" / "prompts"
+    data.mkdir(parents=True)
+    (data / "workspace.md.tmpl").write_text("旧模板内容", encoding="utf-8")
+    (data / "other.md.tmpl").write_text("用户定制版", encoding="utf-8")
+    (rels / "vOld" / "prompts" / "other.md.tmpl").write_text(
+        "旧 other", encoding="utf-8")
+    import loadn_webui.config as cfg_mod
+    monkeypatch.setattr(ops, "RELEASES_DIR", rels)
+    monkeypatch.setattr(cfg_mod, "PATHS", type("P", (), {
+        "root": tmp_path / "data"}))
+
+    n = ops.refresh_default_assets(new_root)
+    # 只刷新「新版有同名文件」的未定制拷贝；other 在新版已不存在→不动
+    assert n == 1
+    assert (data / "workspace.md.tmpl").read_text(
+        encoding="utf-8") == "新模板内容+执行环境节"
+    assert (data / "other.md.tmpl").read_text(
+        encoding="utf-8") == "用户定制版"
