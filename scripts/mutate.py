@@ -241,6 +241,7 @@ TARGET_TESTS: dict[str, list[str]] = {
     "loadn_webui/engine.py": [
         "tests/test_w0_security.py",
         "tests/test_engine_switch.py",
+        "tests/test_rotation_anchor.py",
     ],
     "loadn_webui/claude_runner.py": [
         "tests/test_w0_security.py",
