@@ -16,9 +16,17 @@ from ._common import _job_fields
 def list_schedules(sid: str = ""):
     """全局定时任务列表（每行带 session_title/cron_desc，前端直显）。"""
     from ...cron import describe
+    from ...security import userauth as _ua
+    _u = _ua.current_user()
     with db_mod.conn() as c:
         rows = [db_mod.to_dict(r) for r in db_mod.list_jobs(c, sid or None)]
-        titles = {r["id"]: r["title"] for r in c.execute("SELECT id, title FROM sessions")}
+        titles = {r["id"]: r["title"]
+                  for r in c.execute("SELECT id, title FROM sessions")}
+    if _u is not None and _u["role"] != "admin":
+        # 多用户批2：普通用户见自己的 + 系统内置（心跳对全员有意义且
+        # 已被 403 守卫不可编辑）+ 无主 legacy（归并前窗口）
+        rows = [r for r in rows if r.get("is_system")
+                or r.get("owner_id") in (None, _u["id"])]
     for row in rows:
         row["session_title"] = titles.get(row.get("session_id"))
         row["cron_desc"] = describe(row["cron"]) if row.get("cron") else None
@@ -27,12 +35,36 @@ def list_schedules(sid: str = ""):
 def create_schedule_global(body: dict):
     """全局建 job：body 带 kind（message 需 session_id；new_session 到点新建）。"""
     fields = _job_fields(body, None)
+    from ...security import userauth as _ua
+    _u = _ua.current_user()
+    if _u is not None:
+        fields["owner_id"] = _u["id"]
     with db_mod.conn() as c:
         jid = db_mod.create_job(c, **fields)
         job = db_mod.to_dict(db_mod.get_job(c, jid))
     return {"ok": True, "job": job}
 @router.patch("/schedules/{jid}")
 def patch_schedule(jid: int, body: dict):
+    # 二轮修#13：内置 system job（🫀心跳）禁改——label/cron/max_fires
+    # 是三防的档位参数，改动即绕过降频语义；去重键=恒定形态而非 label。
+    # 唯一放行：status-only（暂停/恢复）——提示语「停用走暂停」的兑现，
+    # 暂停心跳 ≠ 永久关闭是两档能力
+    from ... import db as _db
+    from ...security import userauth as _ua
+    _u = _ua.current_user()
+    with _db.conn() as _c:
+        row = _db.get_job(_c, jid)
+    if row is not None and not _ua.owner_ok(row, _u) and not row["is_system"]:
+        raise HTTPException(404, f"schedule 不存在: {jid}")   # 越权不暴露
+    if row is not None and row["is_system"] \
+            and set(body.keys()) - {"status"}:
+        raise HTTPException(403, "内置任务（🫀 心跳巡检）不可编辑——"
+                                 "停用走暂停，永久关闭删除后即不重建")
+    if row is not None and row["is_system"] and _u is not None \
+            and _u["role"] != "admin":
+        # 内置 job 的暂停/恢复对普通用户保持可用（全员有意义）——
+        # 上面 403 只拦档位字段；这里放行 status-only
+        pass
     """改 label/prompt/max_fires/status/触发时刻（cron|at|in|every_s）与
     new_session 的 title/profile/engine。触发字段改动会重算 due_at（cron
     真源）；done 是终态不复活——要重跑就删了重建。"""
@@ -117,7 +149,27 @@ def patch_schedule(jid: int, body: dict):
     return {"ok": True, "job": job}
 @router.delete("/schedules/{jid}")
 def delete_schedule(jid: int):
+    from ...security import userauth as _ua
+    _u = _ua.current_user()
     with db_mod.conn() as c:
-        if not db_mod.delete_job(c, jid):
+        row = db_mod.get_job(c, jid)
+        if row is None or (not row["is_system"]
+                           and not _ua.owner_ok(row, _u)):
             raise HTTPException(404, f"schedule 不存在: {jid}")
+        was_system = row["is_system"]
+        # 内置心跳删除=永久关闭：仅 admin（普通用户误删会让全员心跳停摆）
+        if was_system and _u is not None and _u["role"] != "admin":
+            raise HTTPException(403, "内置任务删除需要管理员")
+        db_mod.delete_job(c, jid)
+    if was_system:
+        # 二轮修#13：删除内置心跳 = 显式永久关闭（记 kv 哨兵——重启的
+        # ensure_heartbeat 见哨兵不重建；原「删即关」重启就复活）
+        c2 = None
+        try:
+            c2 = db_mod.conn()
+            with c2 as cc:
+                cc.execute("INSERT OR REPLACE INTO kv(key, value) "
+                           "VALUES('heartbeat_disabled', '1')")
+        except Exception:                              # noqa: BLE001 — kv 缺表等
+            pass
     return {"ok": True}

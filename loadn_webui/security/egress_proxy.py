@@ -337,6 +337,22 @@ class EgressProxy:
             return True, "allow-warn"
         # enforce：未列域。deny=旧形态直接拒；ask=弹卡确认（默认）——
         # 拦了不给用户选择的机会，比多问一次更糟
+        # P10 目标策略三档（在 ask 门之前）：never=直接拒；always=直接放行
+        # （临时授权落账，与批准 egress 审批同一回收语义）；ask=原弹卡门
+        from . import target_policy as _tp
+        _pol = _tp.decide("host", host)
+        if _pol == "never":
+            _record(host, "deny", mode, port, sid)
+            audit("policy_decision", {"policy": "target_never",
+                                      "host": host, "sid": sid})
+            return False, "blocked-by-target-policy(never)"
+        if _pol == "always":
+            from . import egress_grants as _eg
+            _eg.grant(sid, host, 0)      # ttl=默认（钳制语义同审批批准）
+            _record(host, "allow", mode, port, sid)
+            audit("policy_decision", {"policy": "target_always",
+                                      "host": host, "sid": sid})
+            return True, "allowed-by-target-policy"
         if CONFIG.security.egress_on_deny == "ask" and sid:
             ok, why = await self._ask_and_wait(sid, host, port, mode)
             return ok, why

@@ -245,6 +245,14 @@ class PricingConfig:
 
 
 @dataclass
+class ChannelsConfig:
+    """P9 双向对话渠道。token 只进 vault（键 telegram-bot），不进 config/日志。
+    telegram_allow=白名单 chat_id（fail-closed：非白名单忽略+审计）。"""
+    telegram_enabled: bool = False
+    telegram_allow: list = field(default_factory=list)
+
+
+@dataclass
 class ResourcesConfig:
     # 外部资源接入（agent 动手能力）：端点默认即本机部署地址，密钥默认空、
     # 经设置 API 灌入 config.yaml。vlm 复用 titlegen 的 ark 接口，key 留空=继承。
@@ -289,6 +297,7 @@ class Config:
     resources: ResourcesConfig = field(default_factory=ResourcesConfig)
     share: ShareConfig = field(default_factory=ShareConfig)
     notify: NotifyConfig = field(default_factory=NotifyConfig)
+    channels: ChannelsConfig = field(default_factory=ChannelsConfig)
     pricing: PricingConfig = field(default_factory=PricingConfig)
     security: SecurityConfig = field(default_factory=SecurityConfig)
 

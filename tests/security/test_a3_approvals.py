@@ -168,3 +168,77 @@ async def test_a3_cli_request_approval_pends_then_expires(client, sid, server_ur
     d = approve.decide(a["id"], True)
     assert d["status"] == "expired"           # 挂起中的请求超时即 expired
     # 而 CLI 的拒绝路径（enforce+无码）已在上一用例覆盖
+
+
+def test_r3_consume_concurrent_single_execution(tmp_path):
+    """三轮修对赌：两线程带同码并发 consume → 恰一个 ok（原 SELECT→UPDATE
+    无写事务无守卫=双 ok，不可逆动作双执行：双付费/双发信）。BEGIN
+    IMMEDIATE 串行化后第二方 SELECT 见 executed 走拒绝分支。"""
+    import threading
+
+    from loadn_webui.security import approve as ap
+    out = ap.create("s-r3c", "mail_send", {"to": "x@y.z"})
+    aid = out["id"]
+    code = ap.decide(aid, True, by="t-setup")["code"]
+    results = []
+
+    def run():
+        try:
+            results.append(ap.consume("s-r3c", "mail_send",
+                                      {"to": "x@y.z"}, code))
+        except Exception as e:                     # noqa: BLE001
+            results.append({"ok": False, "error": str(e)})
+    t1 = threading.Thread(target=run)
+    t2 = threading.Thread(target=run)
+    t1.start(); t2.start(); t1.join(15); t2.join(15)
+    assert sum(1 for r in results if r.get("ok")) == 1, results
+    assert ap.status(aid)["status"] == "executed"
+
+
+def test_r3_decide_concurrent_threads_serialized(tmp_path):
+    """三轮修对赌（多线程面）：两线程同时 decide 同一审批（一批准一
+    否决）——BEGIN IMMEDIATE 串行化：恰一个 ok 且终态与赢家一致。"""
+    import threading
+
+    from loadn_webui.security import approve as ap
+    out = ap.create("s-r3t", "mail_send", {"to": "x@y.z"})
+    aid = out["id"]
+    results = {}
+
+    def run(key, approve_):
+        try:
+            results[key] = ap.decide(aid, approve_, by=f"t-{key}")
+        except Exception as e:                     # noqa: BLE001
+            results[key] = {"ok": False, "error": str(e)}
+    t1 = threading.Thread(target=run, args=("approve", True))
+    t2 = threading.Thread(target=run, args=("deny", False))
+    t1.start(); t2.start(); t1.join(15); t2.join(15)
+    ok = [k for k, r in results.items() if r.get("ok")]
+    assert len(ok) == 1, results
+    real = ap.status(aid)["status"]
+    assert real == ("approved" if ok[0] == "approve" else "denied")
+
+
+def test_r3_sweep_expired_clears_zombies(tmp_path):
+    """三轮修对赌：过期清扫——真超 TTL 的 pending 翻 expired 且补
+    decided_at（生产 23 行僵尸实证）；未过期的原样保留（否定路径）。"""
+    from loadn_webui.security import approve as ap
+    fresh = ap.create("s-sw", "mail_send", {"to": "a@b.c"})   # TTL 600s 未到
+    # 造一条已过期的：created_at 拨回 2 天前
+    stale = ap.create("s-sw", "mail_send", {"to": "d@e.f"})
+    with ap._conn() as c:
+        from datetime import datetime, timedelta, timezone
+        old_t = (datetime.now(timezone.utc)
+                 - timedelta(days=2)).isoformat(timespec="seconds")
+        c.execute("UPDATE approvals SET created_at=? WHERE id=?",
+                  (old_t, stale["id"]))
+    n = ap.sweep_expired()
+    assert n >= 1
+    assert ap.status(stale["id"])["status"] == "expired"
+    with ap._conn() as c:
+        decided = c.execute(
+            "SELECT decided_at FROM approvals WHERE id=?",
+            (stale["id"],)).fetchone()["decided_at"]
+    assert decided, "清扫须补 decided_at（P8 时间轴残缺根因）"
+    assert ap.status(fresh["id"])["status"] == "pending"   # 未过期不动
+    assert ap.sweep_expired() == 0                          # 幂等

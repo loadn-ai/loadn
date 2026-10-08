@@ -27,6 +27,8 @@ def create_project(body: dict):
         with db_mod.conn() as c:
             if not isinstance(category_id, int) or db_mod.get_category(c, category_id) is None:
                 raise HTTPException(404, f"category 不存在: {category_id}")
+    from ...security import userauth as _ua
+    _u = _ua.current_user()
     prof_name = body.get("profile") or "auto"
     prof = (profile_mod.get(prof_name) if prof_name != "auto"
             else profile_mod.auto_match(title))
@@ -34,24 +36,35 @@ def create_project(body: dict):
     if category_id is not None:
         with db_mod.conn() as c:
             db_mod.update_project(c, pid, touch=False, category_id=category_id)
+    if _u is not None:                       # 多用户批2：cookie 通道落属主
+        with db_mod.conn() as c:
+            c.execute("UPDATE projects SET owner_id=? WHERE id=?", (_u["id"], pid))
     with db_mod.conn() as c:
         proj = db_mod.to_dict(db_mod.get_project(c, pid))
     return {"project": proj}
 @router.get("/projects")
 def list_projects():
     """项目列表 + 每项目子任务计数（一条 GROUP BY）。"""
+    from ...security import userauth as _ua
+    _u = _ua.current_user()
     with db_mod.conn() as c:
         rows = [db_mod.to_dict(r) for r in db_mod.list_projects(c, include_archived=True)]
         counts = db_mod.project_session_counts(c)
+    if _u is not None and _u["role"] != "admin":
+        from ...security.userauth import owner_ok
+        rows = [r for r in rows if r.get("owner_id") is None
+                or owner_ok(r, _u)]
     for r in rows:
         r["n_sessions"] = counts.get(r["id"], {}).get("active", 0)
     return {"projects": rows}
 @router.patch("/projects/{pid}")
 def patch_project(pid: str, body: dict):
     """项目改名（重渲染项目宪法）+ 侧栏分区标记（置顶/收藏/分类，任务同款语义）。"""
+    from ...security import userauth as _ua
+    _u = _ua.current_user()
     with db_mod.conn() as c:
         proj = db_mod.get_project(c, pid)
-        if proj is None:
+        if proj is None or not _ua.owner_ok(proj, _u):
             raise HTTPException(404, f"project 不存在: {pid}")
     updates: dict = {}
     if "title" in body:
@@ -84,9 +97,10 @@ def patch_project(pid: str, body: dict):
 def delete_project(pid: str, purge: bool = False):
     """归档项目 = 项目 + 全部子任务连坐 archived（恢复反向连坐）；
     purge=true = 物理删除（任一子任务有 active turn → 409）。"""
+    from ...security import userauth as _ua
     with db_mod.conn() as c:
         proj = db_mod.get_project(c, pid)
-        if proj is None:
+        if proj is None or not _ua.owner_ok(proj, _ua.current_user()):
             raise HTTPException(404, f"project 不存在: {pid}")
         kids = [r["id"] for r in c.execute(
             "SELECT id FROM sessions WHERE project_id=?", (pid,)).fetchall()]
@@ -115,8 +129,12 @@ def restore_project(pid: str):
     return {"ok": True}
 @router.get("/categories")
 def list_categories():
+    from ...security import userauth as _ua
+    _u = _ua.current_user()
     with db_mod.conn() as c:
         rows = [db_mod.to_dict(r) for r in db_mod.list_categories(c)]
+    if _u is not None and _u["role"] != "admin":
+        rows = [r for r in rows if r.get("owner_id") in (None, _u["id"])]
     return {"categories": rows}
 @router.post("/categories")
 def create_category(body: dict):
@@ -127,6 +145,11 @@ def create_category(body: dict):
         if db_mod.category_name_taken(c, name):
             raise HTTPException(409, f"分类已存在：{name}")
         cid = db_mod.create_category(c, name)
+        from ...security import userauth as _ua
+        _u = _ua.current_user()
+        if _u is not None:
+            c.execute("UPDATE categories SET owner_id=? WHERE id=?",
+                      (_u["id"], cid))
         row = db_mod.get_category(c, cid)
     return {"category": db_mod.to_dict(row)}
 @router.patch("/categories/{cid}")

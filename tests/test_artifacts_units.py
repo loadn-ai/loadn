@@ -102,3 +102,19 @@ def test_inflight_dedup(aw):
     art._SUMMARY_INFLIGHT.add("s1")
     assert asyncio.run(art.ensure_summaries("s1")) == 0
     art._SUMMARY_INFLIGHT.discard("s1")
+
+
+def test_r3_upsert_artifact_atomic_no_dup(tmp_path):
+    """三轮修（backlog 清）对赌：同 (sid,path) 两次 upsert 恰一行且值取
+    后写（原 SELECT→INSERT 竞态=双行，fetchone 恒命中旧行 mtime 丢失）。"""
+    from loadn_webui import db as db_mod
+    with db_mod.conn() as c:
+        db_mod.upsert_artifact(c, session_id="s-r3", path="a.md", kind="md",
+                               title="t1", size=1, mtime=1.0)
+        db_mod.upsert_artifact(c, session_id="s-r3", path="a.md", kind="md",
+                               title="t2", size=2, mtime=2.0)
+        rows = c.execute(
+            "SELECT title, size FROM artifacts WHERE session_id='s-r3' "
+            "AND path='a.md'").fetchall()
+    assert len(rows) == 1
+    assert tuple(rows[0]) == ("t2", 2)

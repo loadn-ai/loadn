@@ -71,16 +71,28 @@ Anthropic 形网关（任何兼容端点）与 OpenAI 兼容端点（vLLM/LiteLL
 ## 3. 写一个 Skill（最常用的扩展）
 
 Skill = 目录 + `SKILL.md`（frontmatter `name` + `description`，正文是
-给 AI 的操作手册）。放置位置任一：
+给 AI 的操作手册；缺字段自动回落——name→目录名、description→空串，
+兼容 [agentskills.io](https://agentskills.io) 开放标准的 frontmatter
+形状，`allowed-tools`/`metadata` 等额外字段忽略不炸）。放置位置任一：
 
-- 项目内：`.claude/skills/` / `.agent/skills/`（随仓库走）
-- 用户级：`$LOADN_HOME/skills`（引擎侧全局）
+- 项目内：`.agents/skills/`（agentskills.io 标准目录，`npx skills add`
+  等工具的落点，同名优先级最高）> `.claude/skills/` > `.loadn/skills/`
+  / `.agent/skills/`（随仓库走；项目级四根都过 P0-2 信任门）
+- 用户级：`~/.claude/skills`（与 Claude CLI 共享）/ `$LOADN_HOME/skills`
+  （引擎侧全局，不受信任门）
 - 平台级：数据根 `skills/`（webui 管理中心可视化管理、可安装/上传）
 
 私有 skill 不进仓库：设 `LOADN_SKILLS_EXTRA=/path/to/dir` 即整目录
 overlay 进平台（开源部署与私有资产分离的设计）。
-安装第三方 skill 走管理中心——先过供应链扫描（W4 八类检查），能力
-声明会展示给用户。
+
+安装第三方 skill 走管理中心（三来源：GitHub repo/tree URL 或
+`owner/repo/path` 简写、任意 `https://….zip` / `.tar.gz` 归档 URL、
+zip 上传）——先过供应链扫描（W4 八类检查），能力声明会展示给用户。
+GitHub/URL 两类远程来源装完即 pin：`SKILL.md` 盖 `source` 戳并写入
+`$LOADN_HOME/skills.lock.json` 供应链锁，此后文件被 out-of-band 篡改
+→ 引擎拒索引（fail-closed）；经管理面编辑/重装则自动刷新锁。上传的
+zip 视作用户自备，不 pin。管理中心可把任一 skill 导出为 agentskills.io
+兼容 zip（frontmatter 规范化、剥内部元数据），供其他 agent 使用。
 
 ## 4. 接外部工具服务（MCP）
 
@@ -88,6 +100,31 @@ overlay 进平台（开源部署与私有资产分离的设计）。
 出现在引擎工具面。首次使用按哈希锁定（防替换）。平台侧的外部资源
 （OCR/浏览器沙箱/短信/邮箱…）在 config.yaml `resources:` 配端点与密钥
 ——密钥只进 config.yaml，永不入库。
+
+**工具懒加载（P2）**：单 server 工具数超过阈值（`MCP_LAZY_TOOL_THRESHOLD`
+=15，env `LOADN_MCP_LAZY_TOOL_THRESHOLD` 覆盖，0=关）时不全量注入工具面
+——大 server 单家可吃十几万 token。改为只注册 `ToolSearch` 工具：其参数
+enum 即索引（name + description 首句 + 来源 server），模型点名后当场物化
+并返回完整 inputSchema（一次往返），同轮即可正确构造调用；直接调用索引
+内的工具也会被 loop 当场物化执行。延迟索引持有全量 spec（连接与会话同
+寿命 = 会话内 schema 缓存）；transcript 的 result 事件带可选
+`mcp_deferred` 字段（延迟工具数与估算 token）供观测。引擎内部直用的
+工具（如 `mcp__lsp__diagnostics`）永不延迟。
+
+## 4b. Webhook 事件触发（P3）
+
+外部事件（PR / 支付回调 / 表单提交）→ agent 会话：管理中心「Webhooks」
+tab 建钩（name / profile / prompt 模板 / 限流 / IP 白名单），得到
+`POST /hooks/{token}` 触发地址——token 即凭证（20 hex 高熵，删行即吊销）。
+payload 是**不可信事件数据**：仅 `{{payload}}` 字面替换（禁求值）、≤64KB
+超限截断标注、整体作为用户消息投递（带来源标注包装，不解析为系统操作）。
+响应 `202 + {session_id, run_id}`，`GET /hooks/{token}/runs/{run_id}` 轮询
+结果。命中/拒绝全部入审计账本（哈希链）。默认限流 6/min（per-hook）。
+
+部署注意：公开触发端点在 `/api` 外（W0 认证不护，token 即凭证），但
+**host_guard 照守全部路径**——外网源须走已配域名（`share.base_url`）或在
+`server.extra_hosts` 加白；IP 白名单匹配 `client.host`，不信任
+X-Forwarded-For（fail-closed）。签名校验（HMAC）为后续卡。
 
 ## 5. Hooks：拦截与审计工具调用
 

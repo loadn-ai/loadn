@@ -56,7 +56,7 @@ export default function InstallDialog({ onClose }: { onClose: () => void }) {
       <div className="admin-tabs">
         <button className={`tab ${tab === 'search' ? 'on' : ''}`} onClick={() => setTab('search')}><Search size={13} /> 搜索市场</button>
         <button className={`tab ${tab === 'official' ? 'on' : ''}`} onClick={() => setTab('official')}><Box size={13} /> 官方库</button>
-        <button className={`tab ${tab === 'url' ? 'on' : ''}`} onClick={() => setTab('url')}><Link size={13} /> GitHub 链接</button>
+        <button className={`tab ${tab === 'url' ? 'on' : ''}`} onClick={() => setTab('url')}><Link size={13} /> 链接直装</button>
       </div>
 
       {tab === 'search' && (
@@ -116,11 +116,16 @@ export default function InstallDialog({ onClose }: { onClose: () => void }) {
 
       {tab === 'url' && (
         <div className="url-install">
-          <label>GitHub 仓库地址（支持三种形态）</label>
-          <textarea className="mono" rows={3} value={url} onChange={e => setUrl(e.target.value)}
-            placeholder={'github.com/owner/repo#skills~my-skill\ngithub.com/owner/repo#/skills/my-skill\ngithub.com/owner/repo/tree/main/skills/my-skill'} />
+          <label>GitHub 地址 / owner/repo 简写 / 任意 https 归档 URL（.zip/.tar.gz，agentskills.io 兼容）</label>
+          <textarea className="mono" rows={4} value={url} onChange={e => setUrl(e.target.value)}
+            placeholder={'anthropics/skills/skills/docx\ngithub.com/owner/repo#skills~my-skill\ngithub.com/owner/repo/tree/main/skills/my-skill\nhttps://example.com/my-skill.zip'} />
           <button className="btn primary sm" disabled={!url.trim() || !!busy}
-            onClick={() => void install({ repo_url: url.trim() }, '__url')}>
+            onClick={() => {
+              // github.com 地址与无协议简写走 repo_url；其余 https 归档走 url
+              const u = url.trim();
+              const archive = /^https:\/\//.test(u) && !/^https:\/\/(www\.)?github\.com\//.test(u);
+              void install(archive ? { url: u } : { repo_url: u }, '__url');
+            }}>
             {busy === '__url' ? '下载安装中…' : '安装'}
           </button>
         </div>

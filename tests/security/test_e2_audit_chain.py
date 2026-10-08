@@ -124,3 +124,23 @@ def test_e2_cross_table_chain(tmp_path, monkeypatch):
     audit_mod.audit("anomaly", {"i": 11})
     problems = audit_mod.verify()
     assert problems == [], f"跨表链断裂: {problems[:3]}"
+
+
+def test_r3_concurrent_audit_chain_intact(monkeypatch, tmp_path):
+    """三轮修对赌：8 线程并发 audit —— 链不分叉（原 SELECT 链尾与 INSERT
+    之间无写锁：生产审计库实证 3 处两行 prev_hash 相同=分叉，verify 永久
+    报警）。"""
+    import concurrent.futures
+    import threading
+
+    from loadn_webui.security import audit as am
+    barrier = threading.Barrier(8)
+
+    def fire(i):
+        barrier.wait(timeout=5)              # 8 方同时冲链尾
+        am.audit("permission_decision", {"action": f"r3-{i}", "i": i})
+
+    with concurrent.futures.ThreadPoolExecutor(max_workers=8) as ex:
+        list(ex.map(fire, range(8)))
+    problems = am.verify()
+    assert problems == [], problems          # 链全连续（无分叉）

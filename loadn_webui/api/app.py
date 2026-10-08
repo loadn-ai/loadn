@@ -45,7 +45,11 @@ _TICKETS: dict[str, float] = {}
 
 # 管理面前缀（W0.4）：非 GET/HEAD/OPTIONS 一律要求 X-Workdaddy-Admin。
 _ADMIN_PREFIXES = ("/api/skills", "/api/skillhub", "/api/tools",
-                   "/api/settings", "/api/schedules", "/api/admin")
+                   "/api/settings", "/api/admin",
+                   "/api/memory")
+# 多用户批2：/api/hooks 与 /api/schedules 写面降为普通面——owner 复核在
+# 路由内（建号落主/列表过滤/patch+delete 属主 404）；hooks 触发面 token
+# 即凭证不变
 
 # 会话级破坏性端点（W6.4）：路径形如 /api/sessions/{sid}/kill，前缀表
 # 表达不了通配，按末段判定（kill/rollback/unlock 非法 GET 一律双头）
@@ -93,6 +97,31 @@ async def lifespan(app: FastAPI):
     _mig = migrate_legacy_db()   # R2.5：旧 var/workdaddy.db → var/loadn.db（copy）
     if _mig is not None:
         log.info("[R2.5] 旧库迁移完成 → %s", _mig)
+    # 三轮修（backlog 清）：session_events 启动全局清扫——保留策略原本
+    # 只在该会话下一 turn 收尾时触发（长期不活跃会话的存量永不收缩，
+    # 生产 63% 超期）。'*' 广播行由调度 tick 常态清（另一路）
+    try:
+        from datetime import datetime, timedelta, timezone
+
+        from .. import db as _db
+        cutoff = (datetime.now(timezone.utc)
+                  - timedelta(days=CONFIG.run.events_retain_days
+                              + 1)).isoformat()
+        final = ("done", "error", "stopped", "interrupted")
+        marks = ",".join("?" * len(final))
+        with _db.conn() as c:
+            cur = c.execute(
+                f"DELETE FROM session_events WHERE turn_id IN ("
+                f"SELECT id FROM turns WHERE status IN ({marks}) "
+                f"AND COALESCE(started_at,'') != '' "
+                f"AND COALESCE(started_at,'') < ?) AND session_id != '*'",
+                (*final, cutoff))
+            gone = cur.rowcount or 0
+            gone += _db.prune_broadcast(c, cutoff)
+        if gone:
+            log.info("启动清扫：过期事件行 %d", gone)
+    except Exception:                                      # noqa: BLE001
+        log.exception("启动事件清扫失败（不阻断启动）")
     # 资源密钥明文 → vault（一次性；迁移后 config.yaml 密钥字段清空）
     from ..security import vault as vault_mod
     _moved = vault_mod.migrate_res_secrets()
@@ -126,12 +155,27 @@ async def lifespan(app: FastAPI):
     recovered = ENGINE.recover_after_restart()
     reaped = reap_orphans(skip=recovered["claimed_pids"])
     sched = get_scheduler(ENGINE)
-    sched.start()          # durable：停机期间到期的 job 重启后由首轮扫描补投
+    # 测试树禁服务端循环（LOADN_TEST_NO_SCHEDULER）：测试自己 tick——
+    # 服务端 20s 扫描与测试 tick 的 due_jobs/claim 窗口竞态是 fire_once
+    # 等 flaky 的根因（CAS 已堵双 fire，窗口仍窄存）
+    import os as _os
+    if not _os.environ.get("LOADN_TEST_NO_SCHEDULER"):
+        sched.start()      # durable：停机期间到期的 job 重启后由首轮扫描补投
+    # P11：内置 heartbeat 巡检 schedule（幂等；删 job 即关）
+    from ..scheduler import ensure_heartbeat
+    ensure_heartbeat(ENGINE)
+    # P9 双向渠道：配置启用才起轮询线程（token 在 vault，白名单在 config）
+    from ..integrations.channels import get_service
+    _ch = get_service(ENGINE)
+    if CONFIG.channels.telegram_enabled:
+        _ch.start(loop=app.state.loop)
     log.info("loadn webui 启动：孤儿清理 %d，收养 %s 补记账 %s interrupted %d requeue %s",
              reaped, recovered["adopted"], recovered["finished"],
              recovered["interrupted"], recovered["requeued"])
     yield
     await sched.stop()
+    from ..integrations.channels import get_service as _gs
+    _gs(ENGINE).stop()
     if _EGRESS[0] is not None:
         await _EGRESS[0].stop()
     # 优雅停：turn 子进程独立 session 存活（配 systemd KillMode=process），
@@ -151,15 +195,25 @@ def check_auth(request: Request) -> bool:
     if tk is not None:
         exp = _TICKETS.pop(tk, None)          # single-use：取出即消费
         return exp is not None and exp >= time.time()
+    # 生产实证（2026-10-08）：客户端存了含非 ASCII 的坏 token（粘贴整段
+    # 提示文字进 token 框）→ compare_digest 对非 ASCII str 抛 TypeError
+    # → 500。防御：统一 utf-8/replace 编码为 bytes 再比较（恒定耗时不减）
+    def _cmp(supplied: str) -> bool:
+        try:
+            return hmac.compare_digest(
+                supplied.encode("utf-8", "replace"), token.encode())
+        except (AttributeError, UnicodeError):
+            return False
+
     auth = request.headers.get("Authorization", "")
-    if auth.startswith("Bearer ") and hmac.compare_digest(auth[7:], token):
+    if auth.startswith("Bearer ") and _cmp(auth[7:]):
         return True
     # 双名：X-Loadn-*（R9 品牌名）+ X-Workdaddy-*（存量 CLI/脚本兼容层）
     supplied = (request.headers.get("X-Loadn-Token", "")
                 or request.headers.get("X-Workdaddy-Token", ""))
-    if hmac.compare_digest(supplied, token):
+    if _cmp(supplied):
         return True
-    if hmac.compare_digest(request.query_params.get("token", ""), token):
+    if _cmp(request.query_params.get("token", "")):
         return True
     return False
 
@@ -202,6 +256,21 @@ async def auth_middleware(request: Request, call_next):
     """
     path = request.url.path
     token = CONFIG.server.token
+    # 八轮（多用户）：cookie 会话通道——有效会话即认证通过（user 挂
+    # request.state 供属主判定）；/api/auth/* 自带校验不在此拦
+    from ..security import userauth as _ua
+    request.state.user = _ua.session_user(
+        request.cookies.get(_ua.COOKIE_NAME, ""))
+    _ua.set_current_user(request.state.user)   # sync 路由线程池取上下文
+    if path.startswith("/api/auth/"):
+        return await call_next(request)
+    if request.state.user is not None:
+        # 已登录：普通面放行；管理面要求 admin 角色（token 双头通道继续
+        # 兼容——CLI/存量部署不经 cookie）
+        if _is_admin_plane(path, request.method) \
+                and request.state.user["role"] != "admin":
+            return JSONResponse({"error": "admin required"}, status_code=403)
+        return await call_next(request)
     protected = (path.startswith("/api") or path in ("/docs", "/openapi.json")
                  or path.startswith(("/docs", "/redoc")))
     if token and protected:
@@ -268,9 +337,17 @@ async def gzip_json_middleware(request: Request, call_next):
                     media_type="application/json", headers=headers)
 
 
+from .routes import auth as auth_routes  # noqa: E402
+
+app.include_router(auth_routes.router)
 app.include_router(routes.router)
 # /share 公开只读路由（auth 中间件只护 /api）：注册须早于下方 spa_fallback
 app.include_router(share_router)
+# P3：webhook 公开触发面（/hooks/{token}，token 即凭证——在 /api 外，
+# auth 中间件不护；host_guard 照守）。须早于 spa_fallback 注册。
+from .routes.hooks import pub as hooks_pub_router  # noqa: E402
+
+app.include_router(hooks_pub_router)
 
 
 @app.get("/api/sessions/{sid}/events")

@@ -18,6 +18,18 @@ def get_logger(name: str) -> logging.Logger:
     return lg
 
 
+def sanitize_text(text: str) -> str:
+    r"""lone surrogate 清洗（三轮修）：文件系统 surrogateescape 产物
+    （\udcXX——工具读到的非常规文件名）在 utf-8 encode 时抛
+    UnicodeEncodeError——不清洗会把整条事件/turn 炸成 error（transcript
+    丢上下文、session_events 写失败、安全钩子 fail-open）。替换为 U+FFFD
+    问号形态（内容可见性保留，编码安全）。"""
+    try:
+        return text.encode("utf-8", errors="replace").decode("utf-8")
+    except (UnicodeDecodeError, AttributeError):
+        return str(text)
+
+
 def parse_frontmatter(text: str) -> tuple[dict, str]:
     """Markdown frontmatter 解析：返回 (meta, 正文)。
 

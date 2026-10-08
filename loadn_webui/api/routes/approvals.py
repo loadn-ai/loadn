@@ -3,6 +3,7 @@ from __future__ import annotations
 
 from fastapi import APIRouter, HTTPException
 
+from ... import db as db_mod
 from ...engine import ENGINE
 
 router = APIRouter(prefix="/api")
@@ -11,6 +12,19 @@ router = APIRouter(prefix="/api")
 def decide_approval(aid: int, body: dict):
     """用户裁决（token 面）：{approve: bool}。批准响应携带一次性明文码。"""
     from ...security import approve as approve_mod
+    from ...security import userauth as _ua
+    # 多用户批2：裁决权=会话属主（越权=404 不暴露存在性；token/宽限通道
+    # user=None 放行——CLI 与渠道线程兼容）
+    _u = _ua.current_user()
+    if _u is not None:
+        try:
+            _sid = approve_mod.status(aid)["sid"]
+        except LookupError as e:
+            raise HTTPException(404, str(e))
+        with db_mod.conn() as _c:
+            _sess = db_mod.get_session(_c, _sid)
+        if _sess is None or not _ua.owner_ok(_sess, _u):
+            raise HTTPException(404, f"approval not found: {aid}")
     try:
         out = approve_mod.decide(aid, bool(body.get("approve")))
     except LookupError as e:

@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 import ApprovalBanner from './ApprovalBanner';
+import SkillSuggestCard from './SkillSuggestCard';
 import CompactTimeline from './CompactTimeline';
 import { useStore } from '../stores/sessions';
 import { fmtTokens, fmtTime } from '../api/client';
@@ -53,6 +54,7 @@ export default function SessionView({ onMenu }: { onMenu: () => void }) {
   return (
     <div className="session-view">
       <ApprovalBanner />
+      <SkillSuggestCard />
       <header className="session-head">
         <div className="head-left">
           <button className="menu-btn" title="任务列表" onClick={onMenu}><Menu size={18} /></button>

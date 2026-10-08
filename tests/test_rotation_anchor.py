@@ -215,3 +215,163 @@ async def test_interrupted_salvages_partial_output(client, ws_root, monkeypatch)
     assert "开始长任务" in salvaged["content"]      # hang 场景已流出的文本
     blocks = json.loads(salvaged["blocks_json"])
     assert any(b.get("type") == "text" for b in blocks)
+
+
+async def test_r3_salvage_recovers_unconsumed_steers(client, ws_root,
+                                                     monkeypatch):
+    """三轮修（backlog 清）对赌：中断 turn 的 steer 文件行——已注入的
+    （transcript 有 steer 事件）不重投，未注入的回队为新消息；回队后
+    steer 文件清空（防下次重复回队）。原 salvage 不读 steer 文件：插话
+    彻底丢失无提示。"""
+    from loadn_webui import workspace as ws_mod
+    from loadn_webui.engine import ENGINE
+    monkeypatch.setenv("LOADN_FAKE_HANG_S", "1")
+    r = await client.post("/api/sessions", json={"title": "插话抢救"})
+    sid = r.json()["session"]["id"]
+    ctrl = ws_root / sid / ".fake"
+    ctrl.mkdir(parents=True, exist_ok=True)
+    (ctrl / "hang").touch()
+    tid = (await client.post(f"/api/sessions/{sid}/messages",
+                            json={"text": "长任务"})).json()["turn"]["id"]
+    t0 = asyncio.get_running_loop().time()
+    while asyncio.get_running_loop().time() - t0 < 15:
+        d = (await client.get(f"/api/sessions/{sid}")).json()
+        if d["turns"] and d["turns"][-1]["status"] == "running":
+            break
+        await asyncio.sleep(0.2)
+    # 已注入的一条（log_out 有 steer 回执事件 → salvage 摘除）+ 未注入一条
+    from loadn_webui import db as db_mod
+    with db_mod.conn() as c:
+        log_out = db_mod.get_turn(c, tid)["log_out"]
+    with open(log_out, "a", encoding="utf-8") as f:
+        f.write(json.dumps({"type": "steer", "text": "已注入的"}) + "\n")
+    sp = ws_mod.ws_of(sid) / f".steer.{sid}.jsonl"
+    sp.write_text(
+        json.dumps({"ts": 1, "text": "已注入的"}) + "\n"
+        + json.dumps({"ts": 2, "text": "重启时未送达的插话"}) + "\n",
+        encoding="utf-8")
+    # 模拟 daemon 死：cancel worker（不杀子进程）
+    w = ENGINE._workers.get(sid)
+    assert w is not None and not w.done()
+    w.cancel()
+    ENGINE._workers.pop(sid, None)
+    ENGINE._queues.pop(sid, None)
+    ENGINE.active.pop(tid, None)
+    await asyncio.sleep(1.6)                  # hang 1s 自然结束（无 result 行）
+    ENGINE.recover_after_restart()
+    await wait_turn(client, sid, tid, timeout_s=15)
+    # salvage 任务跑完：新 turn 带「未送达」插话；「已注入的」不重投
+    t0 = asyncio.get_running_loop().time()
+    requeued = None
+    while asyncio.get_running_loop().time() - t0 < 15:
+        d = (await client.get(f"/api/sessions/{sid}")).json()
+        requeued = next((m for m in d["messages"]
+                         if m["role"] == "user"
+                         and "重启时未送达的插话" in m["content"]), None)
+        if requeued is not None:
+            break
+        await asyncio.sleep(0.2)
+    assert requeued is not None, "未送达插话须回队"
+    assert "运行中插话" in requeued["content"]
+    dup = [m for m in (await client.get(f"/api/sessions/{sid}")).json()["messages"]
+           if m["role"] == "user" and "已注入的" in m["content"]]
+    assert not dup, "已注入的插话不得重投"
+    assert not sp.exists(), "回队后 steer 文件须清空"
+
+
+async def test_r3_steer_during_finish_falls_back_to_queue(client, ws_root):
+    """三轮修（backlog 清）对赌：_finish 启动后（closing）到达的 steer
+    拒收回落 submit 排队——不再落进 missed 快照与 active.pop 之间的丢失
+    窗口（单元级：直接构造 running 态，不跑真 turn）。"""
+    from loadn_webui.config import CONFIG
+    from loadn_webui.engine import ENGINE, ActiveTurn, StopHandle
+    monkeypatch_default = CONFIG.engines.default
+    CONFIG.engines.default = "hahaness"
+    try:
+        r = await client.post("/api/sessions", json={"title": "收尾竞态"})
+        sid = r.json()["session"]["id"]
+        from loadn_webui import db as db_mod
+        with db_mod.conn() as c:
+            tid = db_mod.create_turn(c, session_id=sid, status="running",
+                                     engine="hahaness")
+        at = ActiveTurn(turn_id=tid, session_id=sid, stop=StopHandle(),
+                        started_at=0.0)
+        ENGINE.active[tid] = at
+        try:
+            assert ENGINE.steer_if_running(sid, "正常插话") == tid  # 照常收
+            at.closing = True                        # 模拟 _finish 已启动
+            got = ENGINE.steer_if_running(sid, "收尾中来的插话")
+            assert got is None, "closing 后须拒收（回落 submit）"
+            assert not any(s_["text"] == "收尾中来的插话"
+                           for s_ in at.steers)
+        finally:
+            ENGINE.active.pop(tid, None)
+            with db_mod.conn() as c:
+                c.execute("DELETE FROM turns WHERE id=?", (tid,))
+    finally:
+        CONFIG.engines.default = monkeypatch_default
+
+
+async def test_r3_delete_message_clears_turn_ref(client):
+    """三轮修（backlog 清）对赌：删单条消息同步置空 turns.message_id 反向
+    引用（生产 4 行悬挂实证——后续按 message_id join 的面拿幽灵行）。"""
+    from loadn_webui import db as db_mod
+    r = await client.post("/api/sessions", json={"title": "消息悬挂"})
+    sid = r.json()["session"]["id"]
+    with db_mod.conn() as c:
+        tid = db_mod.create_turn(c, session_id=sid, status="done")
+        mid = db_mod.add_message(c, session_id=sid, turn_id=tid,
+                                 role="user", content="将被删")
+        db_mod.update_turn(c, tid, message_id=mid)
+    resp = await client.delete(f"/api/messages/{mid}")
+    assert resp.status_code == 200
+    with db_mod.conn() as c:
+        row = db_mod.get_turn(c, tid)
+    assert row["message_id"] is None             # 悬挂清除
+
+
+async def test_r6_purge_instance_keeps_new_session_job(client, monkeypatch):
+    """六轮修 B1 对赌：purge 一个 new_session job 的实例会话——job 存活
+    （session_id 只是最新实例指针；原 delete_session 级联把整个递归 job/
+    内置心跳静默删掉=数据丢失+机制停摆）。"""
+    from loadn_webui import db as db_mod
+    from loadn_webui.scheduler import Scheduler
+    from loadn_webui.util import iso
+    eng = _FakeEngine()
+    sched = Scheduler(eng)
+    jid = db_mod.create_job.__wrapped__(None) if False else None
+    with db_mod.conn() as c:
+        jid = db_mod.create_job(c, kind="new_session", label="日更",
+                                prompt="p", due_at=iso(), title="日更")
+    job_row = None
+    with db_mod.conn() as c:
+        job_row = db_mod.get_job(c, jid)
+    # 模拟 fire 回填实例指针（三轮修行为）
+    with db_mod.conn() as c:
+        db_mod.update_job(c, jid, session_id="20260101_0000-实例sid000")
+    # purge 该实例
+    with db_mod.conn() as c:
+        db_mod.delete_session(c, "20260101_0000-实例sid000")
+    with db_mod.conn() as c:
+        job = db_mod.get_job(c, jid)
+    assert job is not None, "purge 实例不得删掉递归 job"
+    assert job["session_id"] is None, "实例指针摘除（下次 fire 重回填）"
+    # 全量序卫生：本测试的 due job 清掉（残留会被后续调度测试的
+    # tick 扫到一起 fire——fire_once 的 ==1 对赌被污染）
+    with db_mod.conn() as c:
+        c.execute("DELETE FROM scheduled_jobs WHERE id=?", (jid,))
+
+
+class _FakeEngine:
+    def __init__(self):
+        self.submitted = []
+
+    async def submit(self, sid, text, mode="foreground", attachments=None):
+        self.submitted.append((sid, text))
+        return 1
+
+    def steer_if_running(self, sid, text):
+        return None
+
+    def publish(self, *a, **k):
+        return 0

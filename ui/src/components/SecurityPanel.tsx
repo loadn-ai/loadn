@@ -143,7 +143,7 @@ function SessionLink({ sid, jump, truncate = false }: {
 }
 
 const card = { border: '1px solid var(--border,#333)', borderRadius: 8, padding: '10px 12px' };
-type CardKey = 'sandbox' | 'approvals' | 'egress' | 'vault' | 'audit' | 'canary';
+type CardKey = 'sandbox' | 'approvals' | 'egress' | 'vault' | 'audit' | 'canary' | 'target';
 
 export default function SecurityPanel({ onClose }: { onClose: () => void }) {
   const [posture, setPosture] = useState<Posture | null>(null);
@@ -276,6 +276,13 @@ export default function SecurityPanel({ onClose }: { onClose: () => void }) {
       hint: policyOk ? undefined : '当前不拦截：在下方明细把 approval_enforce 切为 enforce。',
     },
     {
+      // 七轮补 UI（设定审计#1）：P10 per-target 三档策略的管理面——此前
+      // 全链零 UI（只能直接调 API），「始终允许」建了策略也没处看/删
+      key: 'target', name: '目标放行策略', ok: true, icon: '🎯',
+      top: '常设放行/拒绝清单',
+      sub: '审批卡的「始终允许」落在这里：按目标域名/动作类/确切参数三档窄化，可改档可删。',
+    },
+    {
       key: 'egress', name: '网络出口管控', ok: egressOk, warn: egressWarn, icon: '🌐',
       top: egressTop,
       sub: 'AI 的所有对外请求经过代理；模型调用走内部网关，凭证不进沙箱。策略在下方「出口策略」即时可调。',
@@ -352,6 +359,7 @@ export default function SecurityPanel({ onClose }: { onClose: () => void }) {
             <OpsDetail ops={posture.ops} reload={load}
               approvalEnforce={posture.policy.approval_enforce} />)}
           {open === 'approvals' && <ApprovalsDetail events={events} jump={jump} />}
+          {open === 'target' && <TargetPolicyDetail />}
           {open === 'egress' && <EgressDetail />}
           {open === 'vault' && <VaultDetail />}
           {open === 'canary' && <CanaryDetail locked={posture.canary.locked_sessions} reload={load} jump={jump} />}
@@ -983,6 +991,104 @@ function CanaryDetail({ locked, reload, jump }: {
           ))}
         </tbody>
       </table>
+    </div>
+  );
+}
+
+
+/** 七轮补 UI：P10 per-target 三档策略管理卡（list/改档/删——全链此前
+ *  零 UI；suggestions 是 SKILL.md targets 声明的只读建议）。 */
+function TargetPolicyDetail() {
+  interface Policy {
+    id: number; match: string; kind: string; mode: string;
+    scope_note?: string; created_from?: string;
+  }
+  const [policies, setPolicies] = useState<Policy[]>([]);
+  const [suggestions, setSuggestions] = useState<Policy[]>([]);
+  const [msg, setMsg] = useState('');
+  const [adding, setAdding] = useState({ match: '', kind: 'host', mode: 'always' });
+  const load = async () => {
+    try {
+      const d = await api<{ policies: Policy[]; suggestions: Policy[] }>(
+        '/api/admin/target-policy');
+      setPolicies(d.policies);
+      setSuggestions(d.suggestions || []);
+    } catch (e) {
+      setMsg(`加载失败：${e instanceof Error ? e.message : e}`);
+    }
+  };
+  useEffect(() => { void load(); }, []);
+  const modeZh: Record<string, string> = { always: '常设放行', never: '永久拒绝', ask: '每次询问' };
+  const kindZh: Record<string, string> = { host: '域名', action: '动作' };
+  return (
+    <div style={{ ...card, marginTop: 8 }}>
+      <div className="row" style={{ justifyContent: 'space-between' }}>
+        <b>目标放行/拒绝策略（{policies.length}）</b>
+        <button className="btn ghost sm" onClick={() => void load()}>刷新</button>
+      </div>
+      {policies.map(p => (
+        <div key={p.id} className="row policy-row"
+             style={{ justifyContent: 'space-between', alignItems: 'center' }}>
+          <span>
+            <span className="muted">[{kindZh[p.kind] || p.kind}]</span> {p.match}
+            {p.scope_note ? <span className="muted">（{p.scope_note}）</span> : null}
+            {p.created_from?.startsWith('approval:')
+              ? <span className="muted"> · 来自审批卡</span> : null}
+          </span>
+          <span>
+            {(['always', 'ask', 'never'] as const).map(m => (
+              <button key={m} className={`btn ghost sm${p.mode === m ? ' on' : ''}`}
+                      onClick={async () => {
+                        await api(`/api/admin/target-policy/${p.id}`,
+                          { method: 'PATCH', body: JSON.stringify({ mode: m }) });
+                        await load();
+                      }}>{modeZh[m]}</button>
+            ))}
+            <button className="btn ghost sm danger-link"
+                    onClick={async () => {
+                      if (!confirm(`删除策略「${p.match}」？`)) return;
+                      await api(`/api/admin/target-policy/${p.id}`, { method: 'DELETE' });
+                      await load();
+                    }}>删</button>
+          </span>
+        </div>
+      ))}
+      {!policies.length && <div className="muted">暂无策略——审批卡「始终允许」或下方手工添加。</div>}
+      <div className="row" style={{ gap: 6, marginTop: 8 }}>
+        <input value={adding.match} placeholder="host 或 动作:指纹"
+               onChange={e => setAdding(a => ({ ...a, match: e.target.value }))}
+               style={{ flex: 1 }} />
+        <select value={adding.kind}
+                onChange={e => setAdding(a => ({ ...a, kind: e.target.value }))}>
+          <option value="host">域名</option>
+          <option value="action">动作</option>
+        </select>
+        <select value={adding.mode}
+                onChange={e => setAdding(a => ({ ...a, mode: e.target.value }))}>
+          <option value="always">常设放行</option>
+          <option value="ask">每次询问</option>
+          <option value="never">永久拒绝</option>
+        </select>
+        <button className="btn sm" onClick={async () => {
+          if (!adding.match.trim()) return;
+          try {
+            await api('/api/admin/target-policy',
+              { method: 'POST', body: JSON.stringify(adding) });
+            setAdding(a => ({ ...a, match: '' }));
+            await load();
+          } catch (e) { setMsg(`添加失败：${e instanceof Error ? e.message : e}`); }
+        }}>添加</button>
+      </div>
+      {suggestions.length > 0 && (
+        <div style={{ marginTop: 8 }}>
+          <span className="muted">skill 声明的网络目标（只读参考）：</span>
+          {suggestions.slice(0, 8).map(s => (
+            <span key={s.match} className="chip"
+                  title={`来自 ${s.created_from}`}>{s.match}</span>
+          ))}
+        </div>
+      )}
+      {msg ? <div className="form-msg">{msg}</div> : null}
     </div>
   );
 }

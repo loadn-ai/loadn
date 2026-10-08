@@ -89,7 +89,7 @@ def test_opencode_argv_flag_face(monkeypatch, tmp_path):
     call = _call(engine="opencode")
     cmd, env = spec.build_argv(call)
     assert cmd == [fake_bin, "run", "--format", "json", "--auto",
-                   "--variant", "high", "PROMPT"]
+                   "--variant", "high", "--", "PROMPT"]
     assert "-p" not in cmd
     # env 注入：snapshot 必关 + share 字符串枚举 + permission map（v1.18 实测 schema：
     # share 要 "manual"|"auto"|"disabled"，deny 是 工具键→规则 map 非字符串数组）
@@ -363,3 +363,16 @@ def test_adapter_real_v118_flat_stream():
     ad2 = _adapter()
     _feed_all("opencode_real_v1.18.ndjson", ad2)
     assert ad2.finalize(1, 5.0)[0]["subtype"] == "error_during_execution"
+
+
+def test_r3_flag_like_prompt_not_hijacked():
+    """三轮修对赌：单词 flag 形态的用户消息（--version/-h/--fork）经 --
+    终结符后仍是 prompt（原 argv[-1] 无 --：argparse 把它当 flag——消息
+    静默丢失/turn 行为被劫持）。"""
+    from loadn_webui.engines import ENGINES
+    for key in ("loadn", "claude"):
+        spec = ENGINES[key]
+        call = _call(engine=key)
+        call.prompt = "--version"
+        cmd, _ = spec.build_argv(call)
+        assert cmd[-1] == "--version" and cmd[-2] == "--", cmd[-3:]

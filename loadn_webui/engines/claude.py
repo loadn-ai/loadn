@@ -69,8 +69,8 @@ class ClaudeSpec(EngineSpec):
             cmd += ["--resume", session]
         else:
             cmd += ["--session-id", session]
-        cmd.append(call.prompt)
-        return cmd, {}
+        cmd += ["--", call.prompt]   # 三轮修：-- 终结符（单词消息
+        return cmd, {}                  # 如 --version 不被当 flag 劫持）
 
     def transcript_age(self, session_id: str) -> float | None:
         """session transcript（claude CLI 持续追加的 jsonl）年龄——独立于 stdout 的活跃信号。"""

@@ -24,7 +24,7 @@ from .config import PATHS
 
 # R7 回滚门禁：每次加列/加表 +1；RELEASE.json 记此值，rollback 时比对。
 # additive-only 契约：只加列/加表（旧代码可跑新 schema，多余列无害）。
-SCHEMA_REV = 3
+SCHEMA_REV = 8
 from .util import iso
 
 SCHEMA = """
@@ -59,6 +59,7 @@ CREATE TABLE IF NOT EXISTS messages (
   role TEXT,                        -- user|assistant
   content TEXT,
   blocks_json TEXT,                 -- assistant 的工具卡片摘要 [{name,brief,is_error}]
+  memory_hits_json TEXT,            -- P7 本 turn 注入记忆清单 [{id,domain,reason,hash}]
   created_at TEXT
 );
 
@@ -126,6 +127,23 @@ CREATE TABLE IF NOT EXISTS categories (
 
 CREATE TABLE IF NOT EXISTS kv (key TEXT PRIMARY KEY, value TEXT);
 
+CREATE TABLE IF NOT EXISTS users (           -- 多用户（八轮）：账号密码登录
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  username TEXT UNIQUE NOT NULL,
+  password_hash TEXT NOT NULL,               -- pbkdf2$iter$salt$hash（标准库）
+  role TEXT CHECK(role IN ('admin','user')) DEFAULT 'user',
+  display_name TEXT,
+  disabled INTEGER DEFAULT 0,
+  created_at TEXT, last_login_at TEXT
+);
+
+CREATE TABLE IF NOT EXISTS auth_sessions (   -- 登录会话（cookie sid → user）
+  id TEXT PRIMARY KEY,                       -- 32B urlsafe 随机
+  user_id INTEGER REFERENCES users(id),
+  created_at TEXT, expires_at TEXT, last_seen_at TEXT,
+  agent TEXT                                 -- 登录时 UA 摘要（审计可读）
+);
+
 CREATE TABLE IF NOT EXISTS scheduled_jobs (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
   session_id TEXT REFERENCES sessions(id),   -- 到点向该会话投递一条 turn（new_session 恒 NULL）
@@ -141,7 +159,9 @@ CREATE TABLE IF NOT EXISTS scheduled_jobs (
   last_fired_at TEXT,
   title TEXT,                                -- new_session：会话标题（缺省用 label）
   profile TEXT,                              -- new_session：profile 名（空 = auto 匹配）
-  engine TEXT,                               -- new_session：写新会话 engine_override（空 = 跟随默认）
+  engine TEXT,                              -- new_session：写新会话 engine_override（空 = 跟随默认）
+  destination TEXT DEFAULT 'dashboard',    -- P11: dashboard|notify|notify+artifact
+  is_system INTEGER DEFAULT 0,             -- P11: 内置 heartbeat 标记（面板区分）
   created_at TEXT, updated_at TEXT
 );
 
@@ -159,6 +179,45 @@ CREATE INDEX IF NOT EXISTS idx_evt_session ON session_events(session_id, id);
 CREATE INDEX IF NOT EXISTS idx_evt_turn ON session_events(turn_id, id);
 CREATE INDEX IF NOT EXISTS idx_art_session ON artifacts(session_id, id);
 CREATE INDEX IF NOT EXISTS idx_job_due ON scheduled_jobs(status, due_at);
+
+CREATE TABLE IF NOT EXISTS webhooks (          -- P3 事件触发（token 即凭证，删行即吊销）
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  token TEXT UNIQUE NOT NULL,        -- 20 hex 高熵（share 同构）
+  name TEXT NOT NULL,
+  profile TEXT,                      -- 空 = auto（关键词匹配）
+  prompt_template TEXT NOT NULL,     -- 须含 {{payload}}（仅字面替换，禁求值）
+  enabled INTEGER DEFAULT 1,
+  allowed_ips_json TEXT,             -- JSON 数组；空 = 不限（client.host 直配，不信 XFF）
+  rate_limit_per_min INTEGER DEFAULT 6,
+  last_fired_at TEXT,
+  created_at TEXT,
+  updated_at TEXT
+);
+
+CREATE TABLE IF NOT EXISTS webhook_runs (      -- 触发→会话映射（外部按 run id 轮询结果）
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  hook_id INTEGER REFERENCES webhooks(id),
+  session_id TEXT REFERENCES sessions(id),
+  created_at TEXT
+);
+CREATE INDEX IF NOT EXISTS idx_hook_run ON webhook_runs(hook_id, id);
+
+CREATE TABLE IF NOT EXISTS target_policies (     -- P10 按目标权限三档
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  match TEXT NOT NULL,             -- 域名（精确/*.suffix）或动作类名
+  kind TEXT CHECK(kind IN ('host','action')),
+  mode TEXT CHECK(mode IN ('always','ask','never')),
+  scope_note TEXT,                 -- 窄化说明（exact/domain-action/target）
+  created_from TEXT,               -- manual | approval:<id> | skill-suggestion
+  created_at TEXT, updated_at TEXT
+);
+
+CREATE TABLE IF NOT EXISTS channel_bindings (    -- P9 渠道 chat↔会话绑定
+  chat_id TEXT PRIMARY KEY,
+  session_id TEXT REFERENCES sessions(id),
+  last_turn_id INTEGER DEFAULT 0,    -- 回信增量游标（已推送的 turn id）
+  created_at TEXT
+);
 """
 
 ACTIVE_TURN_STATUSES = ("queued", "running")
@@ -202,6 +261,13 @@ def _migrate(c: sqlite3.Connection) -> None:
     if "engine_override" not in cols:
         # 聊天框引擎切换的会话级覆盖（NULL = 跟随 profile/全局默认）
         c.execute("ALTER TABLE sessions ADD COLUMN engine_override TEXT")
+    jcols = {r["name"] for r in c.execute("PRAGMA table_info(scheduled_jobs)")}
+    if "destination" not in jcols:      # P11 投递档
+        c.execute("ALTER TABLE scheduled_jobs ADD COLUMN destination TEXT "
+                  "DEFAULT 'dashboard'")
+    if "is_system" not in jcols:        # P11 内置 heartbeat 标记
+        c.execute("ALTER TABLE scheduled_jobs ADD COLUMN is_system INTEGER "
+                  "DEFAULT 0")
     tcols = {r["name"] for r in c.execute("PRAGMA table_info(turns)")}
     if "models_json" not in tcols:
         c.execute("ALTER TABLE turns ADD COLUMN models_json TEXT")
@@ -244,9 +310,34 @@ def _migrate(c: sqlite3.Connection) -> None:
         if col not in pcols:
             # 任务/项目统一的侧栏分区位（置顶/收藏/自定义分类）
             c.execute(f"ALTER TABLE projects ADD COLUMN {col} {ddl}")
+    # 八轮（多用户）：属主列——cookie 会话通道的隔离判定（NULL=legacy
+    # token 时代，setup 首个 admin 建立时归并）
+    for tbl in ("sessions", "projects", "scheduled_jobs", "webhooks",
+                "channel_bindings", "categories"):
+        tinfo = {r["name"] for r in c.execute(f"PRAGMA table_info({tbl})")}
+        if "owner_id" not in tinfo:
+            c.execute(f"ALTER TABLE {tbl} ADD COLUMN owner_id INTEGER")
+
+    # 三轮修（backlog 清）：artifacts (session_id,path) 唯一索引——先清
+    # 存量重复行（保最新），建索引后 upsert_artifact 的 ON CONFLICT 原子化。
+    # 门禁：索引已在=零成本直过（DELETE 只在首建前跑一次——每连接都全表
+    # GROUP BY 是无谓写事务，与在途写并发时引发 busy 等待）
+    try:
+        has_idx = c.execute(
+            "SELECT 1 FROM sqlite_master WHERE type='index' "
+            "AND name='uq_art_session_path'").fetchone()
+        if not has_idx:
+            c.execute(
+                "DELETE FROM artifacts WHERE rowid NOT IN (SELECT MAX(rowid)"
+                " FROM artifacts GROUP BY session_id, path)")
+            c.execute("CREATE UNIQUE INDEX IF NOT EXISTS "
+                      "uq_art_session_path ON artifacts(session_id, path)")
+    except sqlite3.OperationalError:
+        pass        # 旧库容错（索引建失败时 upsert 走旧路径等值不炸）
 
 
 # ---------------------------------------------------------------- kv
+
 def kv_get(c: sqlite3.Connection, key: str) -> str | None:
     row = c.execute("SELECT value FROM kv WHERE key=?", (key,)).fetchone()
     return row["value"] if row else None
@@ -299,6 +390,10 @@ def update_session(c: sqlite3.Connection, sid: str, touch: bool = True, **fields
 
 
 def delete_session(c: sqlite3.Connection, sid: str) -> None:
+    # 六轮修 B1：new_session 类 job 的 session_id 是「最新实例指针」（调度
+    # 回填）——purge 一个实例不得删掉整个递归 job/内置心跳（先摘指针）
+    c.execute("UPDATE scheduled_jobs SET session_id=NULL "
+              "WHERE session_id=? AND kind='new_session'", (sid,))
     for t in ("messages", "turns", "artifacts", "session_events", "scheduled_jobs"):
         c.execute(f"DELETE FROM {t} WHERE session_id=?", (sid,))
     c.execute("DELETE FROM sessions WHERE id=?", (sid,))
@@ -431,6 +526,13 @@ def active_turns(c: sqlite3.Connection, sid: str | None = None) -> list[sqlite3.
 
 # ---------------------------------------------------------------- messages / events / artifacts
 def add_message(c: sqlite3.Connection, **fields: Any) -> int:
+    # 六轮修 B5：lone surrogate 清洗（API JSON 体的 \udcXX 转义
+    # json.loads 照单全收——sqlite bind 抛 UnicodeEncodeError 会把
+    # _finish 内的记账炸成 turn 永久 running）
+    from loadn.util import sanitize_text
+    for k in ("content", "blocks_json"):
+        if isinstance(fields.get(k), str):
+            fields[k] = sanitize_text(fields[k])
     fields.setdefault("created_at", iso())
     cols = ", ".join(fields.keys())
     ph = ", ".join("?" for _ in fields)
@@ -443,9 +545,12 @@ def list_messages(c: sqlite3.Connection, sid: str) -> list[sqlite3.Row]:
 
 
 def add_event(c: sqlite3.Connection, sid: str, turn_id: int | None, type_: str, data: dict) -> int:
+    from loadn.util import sanitize_text  # 三轮修：lone surrogate 清洗
     cur = c.execute(
         "INSERT INTO session_events(session_id,turn_id,type,data_json,created_at) VALUES(?,?,?,?,?)",
-        (sid, turn_id, type_, json.dumps(data, ensure_ascii=False, default=str), iso()))
+        (sid, turn_id, type_,
+         sanitize_text(json.dumps(data, ensure_ascii=False, default=str)),
+         iso()))
     return cur.lastrowid
 
 
@@ -463,6 +568,37 @@ def recent_events_for_turn(c: sqlite3.Connection, sid: str, turn_id: int,
         "SELECT * FROM (SELECT * FROM session_events WHERE session_id=? AND turn_id=? "
         "ORDER BY id DESC LIMIT ?) ORDER BY id",
         (sid, turn_id, limit)).fetchall()
+
+
+def prune_broadcast(c: sqlite3.Connection, cutoff_iso: str,
+                    *, hard_keep: int = 5000) -> int:
+    """三轮修（backlog 清）：广播行（session_id='*'，egress 代理每请求
+    双写 audit+session_events）不挂任何 turn——prune_events 的 WHERE
+    session_id=? 永不匹配 → 无界增长（生产实证 2.5 万行，275MB 库体积
+    主因之一）。按保留窗清；hard_keep 兜底总量上限（0=不兜底）。挂
+    scheduler.tick（20s 一轮）与 prune_events 顺带。"""
+    import sqlite3 as _sq
+    try:
+        cur = c.execute(
+            "DELETE FROM session_events WHERE session_id='*' AND rowid IN ("
+            "SELECT rowid FROM session_events WHERE session_id='*' "
+            "AND COALESCE(created_at,'') != '' AND created_at < ? "
+            "LIMIT 20000)", (cutoff_iso,))
+        removed = cur.rowcount or 0
+        if hard_keep:
+            row = c.execute(
+                "SELECT COUNT(*) n FROM session_events "
+                "WHERE session_id='*'").fetchone()
+            if row and row["n"] > hard_keep:
+                c.execute(
+                    "DELETE FROM session_events WHERE session_id='*' AND "
+                    "rowid IN (SELECT rowid FROM session_events WHERE "
+                    "session_id='*' ORDER BY id LIMIT ?)",
+                    (row["n"] - hard_keep,))
+                removed += 1
+        return removed
+    except _sq.OperationalError:
+        return 0                                    # 旧库缺列等
 
 
 def prune_events(c: sqlite3.Connection, sid: str, retain_days: float,
@@ -485,6 +621,8 @@ def prune_events(c: sqlite3.Connection, sid: str, retain_days: float,
         f"AND COALESCE(started_at,'') != '' AND COALESCE(started_at,'') < ?)",
         (sid, sid, *final, cutoff))
     removed = cur.rowcount or 0
+    # 三轮修（backlog 清）：广播行清理（见 prune_broadcast）
+    removed += prune_broadcast(c, cutoff, hard_keep=0)
     # 兜底：总量仍超 hard_keep → 从最老的**终态** turn 事件继续裁（活跃 turn 不动）
     row = c.execute("SELECT COUNT(*) n FROM session_events WHERE session_id=?", (sid,)).fetchone()
     if row and row["n"] > hard_keep:
@@ -499,17 +637,32 @@ def prune_events(c: sqlite3.Connection, sid: str, retain_days: float,
 
 
 def upsert_artifact(c: sqlite3.Connection, **fields: Any) -> None:
-    sid, path = fields["session_id"], fields["path"]
-    row = c.execute("SELECT id FROM artifacts WHERE session_id=? AND path=?", (sid, path)).fetchone()
+    """三轮修（backlog 清）：SELECT→INSERT 竞态改 ON CONFLICT 原子 upsert
+    （原两线程池路径并发扫同一新文件=双 INSERT 重复行，fetchone 永远只
+    命中第一行，mtime 更新丢失+摘要双计费）。依赖唯一索引（_migrate 建）。"""
     fields["updated_at"] = iso()
-    if row:
-        sets = ", ".join(f"{k}=?" for k in fields)
-        c.execute(f"UPDATE artifacts SET {sets} WHERE id=?", (*fields.values(), row["id"]))
-    else:
-        fields.setdefault("created_at", iso())
-        cols = ", ".join(fields.keys())
-        ph = ", ".join("?" for _ in fields)
-        c.execute(f"INSERT INTO artifacts({cols}) VALUES({ph})", tuple(fields.values()))
+    fields.setdefault("created_at", iso())
+    sets = ", ".join(f"{k}=?" for k in fields)
+    cols = ", ".join(fields.keys())
+    ph = ", ".join("?" for _ in fields)
+    try:
+        c.execute(
+            f"INSERT INTO artifacts({cols}) VALUES({ph}) "
+            f"ON CONFLICT(session_id, path) DO UPDATE SET {sets}",
+            (*fields.values(), *fields.values()))
+    except sqlite3.OperationalError:
+        # 六轮修 B2：唯一索引建置失败过的库（无 conflict target=SQL 拒）
+        # ——回落旧 SELECT→UPDATE/INSERT 路径（慢但正确，下轮 _migrate
+        # 建好索引自动回到原子路径）
+        row = c.execute(
+            "SELECT id FROM artifacts WHERE session_id=? AND path=?",
+            (fields["session_id"], fields["path"])).fetchone()
+        if row:
+            c.execute(f"UPDATE artifacts SET {sets} WHERE id=?",
+                      (*fields.values(), row["id"]))
+        else:
+            c.execute(f"INSERT INTO artifacts({cols}) VALUES({ph})",
+                      tuple(fields.values()))
 
 
 # ---------------------------------------------------------------- shares（产物分享）
@@ -574,6 +727,55 @@ def due_jobs(c: sqlite3.Connection, now_iso: str) -> list[sqlite3.Row]:
     return c.execute(
         "SELECT * FROM scheduled_jobs WHERE status='active' AND due_at<=? ORDER BY due_at",
         (now_iso,)).fetchall()
+
+
+# ---------------------------------------------------------------- webhooks（P3 事件触发）
+def create_hook(c: sqlite3.Connection, **fields: Any) -> int:
+    fields.setdefault("enabled", 1)
+    fields.setdefault("rate_limit_per_min", 6)
+    now = iso()
+    fields.update(created_at=now, updated_at=now)
+    cols = ", ".join(fields.keys())
+    ph = ", ".join("?" for _ in fields)
+    return c.execute(f"INSERT INTO webhooks({cols}) VALUES({ph})",
+                     tuple(fields.values())).lastrowid
+
+
+def get_hook(c: sqlite3.Connection, hid: int) -> sqlite3.Row | None:
+    return c.execute("SELECT * FROM webhooks WHERE id=?", (hid,)).fetchone()
+
+
+def get_hook_by_token(c: sqlite3.Connection, token: str) -> sqlite3.Row | None:
+    return c.execute("SELECT * FROM webhooks WHERE token=?", (token,)).fetchone()
+
+
+def list_hooks(c: sqlite3.Connection) -> list[sqlite3.Row]:
+    return c.execute("SELECT * FROM webhooks ORDER BY id").fetchall()
+
+
+def update_hook(c: sqlite3.Connection, hid: int, **fields: Any) -> None:
+    if not fields:
+        return
+    sets = ", ".join(f"{k}=?" for k in fields)
+    c.execute(f"UPDATE webhooks SET {sets}, updated_at=? WHERE id=?",
+              (*fields.values(), iso(), hid))
+
+
+def delete_hook(c: sqlite3.Connection, hid: int) -> bool:
+    c.execute("DELETE FROM webhook_runs WHERE hook_id=?", (hid,))
+    return bool(c.execute("DELETE FROM webhooks WHERE id=?", (hid,)).rowcount)
+
+
+def add_hook_run(c: sqlite3.Connection, hook_id: int, session_id: str) -> int:
+    return c.execute(
+        "INSERT INTO webhook_runs(hook_id, session_id, created_at) VALUES(?,?,?)",
+        (hook_id, session_id, iso())).lastrowid
+
+
+def get_hook_run(c: sqlite3.Connection, hook_id: int, run_id: int) -> sqlite3.Row | None:
+    return c.execute(
+        "SELECT * FROM webhook_runs WHERE id=? AND hook_id=?",
+        (run_id, hook_id)).fetchone()
 
 
 # ---------------------------------------------------------------- 统计

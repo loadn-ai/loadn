@@ -251,9 +251,29 @@ def cmd_backup_restore(date: str) -> int:
         print("取消")
         return 1
 
-    # 先备份当前状态
+    # 三轮修（backlog 清）：restore 源必须是**完成品**（有 manifest=备份
+    # 全部落盘）——半成品目录（备份中途被杀留下的）可能是截断 DB，直接
+    # 覆盖生产=数据损坏
+    if not (src / "manifest.json").exists():
+        print(f"✗ 备份 {date} 不是完成品（缺 manifest.json——备份中断的"
+              "半成品不可恢复）", file=sys.stderr)
+        return 1
+
+    # 活库检测：主 DB 有活跃 WAL 且服务可能在跑——覆盖 live WAL 库会二次
+    # 损坏（checkpoint 与 copy 竞争）。检测到即要求先停服务
+    wal = data_root / (DB_PATH + "-wal")
+    if wal.exists() and wal.stat().st_size > 0:
+        print("✗ 检测到数据库 WAL 非空——服务可能正在运行。"
+              "请先 systemctl stop loadn（或确认无进程持有 DB）后重试",
+              file=sys.stderr)
+        return 1
+
+    # 先备份当前状态（失败即中止——预备份是唯一回滚副本，静默失败会让
+    # 「恢复失败」等于「丢当前状态」）
     print("  先备份当前状态…")
-    cmd_backup_run()
+    if cmd_backup_run() != 0:
+        print("✗ 预备份失败——已中止恢复（当前状态未被改动）", file=sys.stderr)
+        return 1
 
     # 恢复关键文件
     for rel in CRITICAL_FILES:
@@ -270,13 +290,23 @@ def cmd_backup_restore(date: str) -> int:
     if db_src.exists():
         shutil.copy2(db_src, data_root / DB_PATH)
 
-    # 恢复 workspace
+    # 恢复 workspace（rsync 返回码必须查——半恢复=新 DB 配旧/缺工作区，
+    # sessions 指向不存在的任务文件）
     ws_src = src / "workspace"
     if ws_src.exists():
-        subprocess.run(
-            ["rsync", "-a", "--delete",
-             str(ws_src) + "/", str(data_root / "workspace") + "/"],
-            timeout=3600)
+        try:
+            r = subprocess.run(
+                ["rsync", "-a", "--delete",
+                 str(ws_src) + "/", str(data_root / "workspace") + "/"],
+                timeout=3600)
+        except subprocess.TimeoutExpired:
+            print("✗ workspace rsync 超时——恢复不完整，请检查后重试",
+                  file=sys.stderr)
+            return 1
+        if r.returncode != 0:
+            print(f"✗ workspace rsync 失败（rc={r.returncode}）——恢复不完整",
+                  file=sys.stderr)
+            return 1
 
     print(f"✓ 恢复完成（来源 {date}）——建议 systemctl restart loadn")
     return 0

@@ -103,8 +103,8 @@ def test_schema_rev3_migration(tmp_path, monkeypatch):
         assert "params_json" in cols
         assert "pending_anchor" in cols                    # 更早的迁移照跑
         row = c.execute("SELECT value FROM kv WHERE key='schema_rev'").fetchone()
-        assert row[0] == "3"
-    assert db_mod.SCHEMA_REV == 3
+        assert row[0] == str(db_mod.SCHEMA_REV)            # kv 随代码真源（P3 起 rev4）
+    assert db_mod.SCHEMA_REV >= 4                          # additive-only：只升不降
 
 
 # ---------------------------------------------------------------- API 面

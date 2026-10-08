@@ -50,6 +50,10 @@ async def test_connect_tunnel_unknown_host_502(proxy):
                 await c.get("https://no-such-host.opencode.ai/")
         except (httpx.ProxyError, httpx.ConnectError) as e:
             err = e
+        except httpx.ReadTimeout as e:
+            # DNS 慢环境：getaddrinfo 失败等满 resolver 超时（实测 20s）>
+            # 客户端 15s——代理来不及回 502 客户端先超时。语义同「连不上」
+            err = e
         assert err is not None
     finally:
         await proxy.stop()

@@ -134,8 +134,10 @@ class ActiveTurn:
     # stream_event 逐 delta 直播（--verbose 下 claude/loadn 都发）：缓冲合流
     # 后按 0.5s/320 字符冲刷成 delta 事件；整块 assistant 到达时若该类块已
     # 流式发射过则跳过重复直播（数据层照常入账）
+    memory_hits: list = field(default_factory=list)   # P7：本 turn 注入记忆清单
     delta_buf: dict = field(default_factory=lambda: {"think": "", "text": ""})
     delta_last_flush: dict = field(default_factory=lambda: {"think": 0.0, "text": 0.0})
+    closing: bool = False     # 三轮修：_finish 已启动——新 steer 拒收回落排队
     streamed_kinds: set = field(default_factory=set)
     # 收养静默重放期：状态照常重建（at.texts/blocks/delta 抑制表）但 SSE 不
     # 重发（session_events 已有停机前的事件，重发=重连客户端看到双份）
@@ -171,10 +173,18 @@ class Engine:
 
     def publish(self, sid: str, type_: str, data: dict,
                 turn_id: int | None = None) -> int:
-        """事件落库（拿自增 id 作为 SSE event id）→ 推给所有订阅者。"""
+        """事件落库（拿自增 id 作为 SSE event id）→ 推给所有订阅者。
+
+        sid='*' 是广播（egress 决策流水）：fan-out 给**全部**订阅者——
+        原 _subs.get("*") 恒空集=egress 面板的 SSE 驱动刷新从未生效
+        （六轮修 A3）。"""
         with db_mod.conn() as c:
             eid = db_mod.add_event(c, sid, turn_id, type_, data)
-        for q in list(self._subs.get(sid, ())):
+        if sid == "*":
+            queues = [q for qs in self._subs.values() for q in qs]
+        else:
+            queues = list(self._subs.get(sid, ()))
+        for q in queues:
             q.put_nowait((eid, type_, data))
         return eid
 
@@ -195,6 +205,11 @@ class Engine:
         for tid, at in self.active.items():
             if at.session_id != sid:
                 continue
+            if at.closing:
+                # 三轮修（backlog 清）：_finish 已启动（missed 快照可能已
+                # 过）——此刻写入的 steer 会落在快照与 active.pop 之间=
+                # 永久丢失。拒收回落 submit 排队（插话不丢话）
+                return None
             with db_mod.conn() as c:
                 row = db_mod.get_turn(c, tid)
                 eng = row["engine"] if row is not None else None
@@ -224,6 +239,20 @@ class Engine:
                 raise PermissionError(f"会话已熔断（{why}）——kill switch/canary 命中")
         except PermissionError:
             raise
+        # 三轮修（backlog 清）：全局熔断 fail-closed——kill-all 端点宣称
+        # 「拒绝新任务」但 submit 从不查标记（只拦调度+已 lock 会话）：
+        # 应急制动期间聊天/API 对空闲会话照常投递驱动 agent。守卫在
+        # canary 之后（会话级锁信息更具体），删除标记即恢复。
+        try:
+            from .config import PATHS as _P
+            if (_P["run"] / "KILL_ALL").exists():
+                raise PermissionError(
+                    "全局熔断生效中（KILL_ALL）——新任务暂停投递；"
+                    "解除请用 kill-all-clear")
+        except PermissionError:
+            raise
+        except (OSError, ImportError):
+            pass
         blocks_json = None
         if attachments:
             blocks_json = json.dumps(
@@ -241,7 +270,13 @@ class Engine:
             # 自动标题：标记在（未显式命名/未手动改名/尚未成功过）→ 后台生成
             want_title = CONFIG.titlegen.enabled and CONFIG.titlegen.api_key \
                 and db_mod.kv_get(c, f"title_auto:{sid}") is not None
-        self.publish(sid, "turn_queued", {"turn_id": tid, "mode": mode}, tid)
+        # 三轮修（backlog 清）：publish 失败（事件库抖动）不再上抛——原
+        # 异常发生在 create_turn 之后、入队之前：turn 行永久 queued 无
+        # worker 拾取（重启 requeue 前死排队）。SSE 丢一条可接受
+        try:
+            self.publish(sid, "turn_queued", {"turn_id": tid, "mode": mode}, tid)
+        except Exception:                              # noqa: BLE001
+            log.exception("turn_queued 事件发布失败（turn 照常入队）tid=%s", tid)
         if want_title:
             from .integrations import titlegen
             asyncio.create_task(titlegen.maybe_auto_title(sid, text))
@@ -258,10 +293,24 @@ class Engine:
         if t is None or t.done():
             self._workers[sid] = asyncio.create_task(self._session_worker(sid))
 
+    async def _wait_adopt_gate(self, sid: str) -> None:
+        """三轮修（backlog 清）：收养闸等待——loop/done 防御（_adopt_gates
+        是单例状态，测试隔离面会留下跨 loop 的脏 future：直接 await 轻则
+        RuntimeError 重则挂死；非本 loop 的残留闸不具约束力，跳过）。"""
+        gate = self._adopt_gates.get(sid)
+        if gate is not None and not gate.done() \
+                and gate.get_loop() is asyncio.get_running_loop():
+            await gate
+
     async def _session_worker(self, sid: str) -> None:
         q = self._queues[sid]
         while True:
             tid = await q.get()
+            # 三轮修（backlog 清）：收养闸在 sem **外**等——原在 _run_turn
+            # 第一步 await gate 且整段包在 sem 内：≥max_concurrent（默认3）
+            # 个会话各收养时，gate 等待者空占全部信号量槽=全引擎所有会话
+            # 新 turn 冻结（收养可跑数小时）。loop/done 防御见 helper
+            await self._wait_adopt_gate(sid)
             async with self._sem:
                 try:
                     await self._run_turn(sid, tid)
@@ -378,10 +427,9 @@ class Engine:
 
     async def _run_turn(self, sid: str, tid: int, _anchor: str = "") -> None:
         # 收养闸：该 session 有正在收养的幸存 turn 时等它放行（串行语义——
-        # 否则收养 turn 与 requeue/新 submit turn 同 session 双跑）
-        gate = self._adopt_gates.get(sid)
-        if gate is not None:
-            await gate
+        # 否则收养 turn 与 requeue/新 submit turn 同 session 双跑）。loop
+        # 防御见 _wait_adopt_gate（跨 loop 脏闸不挂死）
+        await self._wait_adopt_gate(sid)
         with db_mod.conn() as c:
             sess = db_mod.get_session(c, sid)
             turn = db_mod.get_turn(c, tid)
@@ -518,6 +566,8 @@ class Engine:
             self._flush_delta(sid, tid, at, "think")
             self._flush_delta(sid, tid, at, "text")
         if t == "assistant":
+            if isinstance(ev.get("memory_hits"), list):   # P7 来源标注
+                at.memory_hits = ev["memory_hits"]
             for b in (ev.get("message") or {}).get("content") or []:
                 if not isinstance(b, dict):
                     continue
@@ -670,6 +720,7 @@ class Engine:
         return "\n\n".join(parts)
 
     async def _finish(self, sid: str, tid: int, at: ActiveTurn, sess, res, anchor: str) -> None:
+        at.closing = True     # 三轮修：收尾中拒新 steer（见 steer_if_running）
         status = "done"
         if res.stopped:
             status = "stopped"
@@ -739,7 +790,10 @@ class Engine:
             with db_mod.conn() as c:
                 db_mod.add_message(c, session_id=sid, turn_id=tid, role="assistant",
                                    content=content or "（无文本输出）",
-                                   blocks_json=json.dumps(at.blocks, ensure_ascii=False))
+                                   blocks_json=json.dumps(at.blocks, ensure_ascii=False),
+                                   **({"memory_hits_json": json.dumps(
+                                       at.memory_hits, ensure_ascii=False)}
+                                      if at.memory_hits else {}))
 
         # ---- turn / session 记账
         usage = res.usage or {}
@@ -809,6 +863,14 @@ class Engine:
                     await self.submit(sid, f"（运行中插话，转发处理）{text}")
                 except Exception:
                     log.exception("插话回队列失败 sid=%s", sid)
+            # 三轮修（backlog 清）：turn 终态清 steer 文件——原从不清理：
+            # 文件跨 turn 无限累积，且条目无人再消费（新引擎进程 offset=
+            # 文件大小，旧行永不读）
+            try:
+                (ws_mod.ws_of(sid) / f".steer.{sid}.jsonl").unlink(
+                    missing_ok=True)
+            except Exception:                              # noqa: BLE001
+                log.info("steer 文件清理失败（无碍）sid=%s", sid)
 
         # ---- 运维通知（fire-and-forget，永不拖垮主流程）
         try:
@@ -832,11 +894,18 @@ class Engine:
         except Exception:
             log.exception("产物扫描失败 sid=%s", sid)
         await self._publish_files(sid, tid, at)
-        with db_mod.conn() as c:
-            removed = db_mod.prune_events(c, sid, CONFIG.run.events_retain_days)
-        if removed:
-            log.info("事件清理 sid=%s 删除 %d 行（保留 %.1f 天）",
-                     sid, removed, CONFIG.run.events_retain_days)
+        # 三轮修：prune 是收尾侧支——失败不得把已 done 的 turn 覆写成
+        # error（原异常直穿 _session_worker 兜底 handler：DB 记 done→error、
+        # SSE 先 turn_done 后 turn_error，下游按 status 消费的全部误判）
+        try:
+            with db_mod.conn() as c:
+                removed = db_mod.prune_events(c, sid,
+                                              CONFIG.run.events_retain_days)
+            if removed:
+                log.info("事件清理 sid=%s 删除 %d 行（保留 %.1f 天）",
+                         sid, removed, CONFIG.run.events_retain_days)
+        except Exception:
+            log.exception("事件清理失败（不影响终态）sid=%s", sid)
 
     # ------------------------------------------------------------ 生命周期（daemon 独立重启）
     def requeue(self, sid: str, tid: int) -> None:
@@ -939,6 +1008,27 @@ class Engine:
         tid = turn["id"]
         at = ActiveTurn(turn_id=tid, session_id=sid, stop=StopHandle(),
                         started_at=time.time(), quiet=True)
+        # 三轮修（backlog 清）：steer 文件行先灌进 at.steers——下方输出日志
+        # 重放时 transcript 的 steer 事件经 _consume 把已注入的标 consumed，
+        # 剩下的就是「重启时未送达」的插话，尾部回队（原 salvage 不读 steer
+        # 文件：用户插话彻底丢失无提示；且新引擎进程 offset=文件大小=残留
+        # 行永不消费）
+        steer_path = ws_mod.ws_of(sid) / f".steer.{sid}.jsonl"
+        try:
+            for ln in steer_path.read_text(encoding="utf-8").splitlines():
+                ln = ln.strip()
+                if not ln:
+                    continue
+                import json as _json
+                try:
+                    d = _json.loads(ln)
+                except ValueError:
+                    continue
+                if isinstance(d, dict) and d.get("text"):
+                    at.steers.append({"text": str(d["text"]),
+                                      "consumed": False})
+        except OSError:
+            pass
         try:
             with db_mod.conn() as c:
                 sess = db_mod.get_session(c, sid)
@@ -959,6 +1049,20 @@ class Engine:
                         await sink.feed_raw(raw)
             finally:
                 tail.close()
+            # 未消费插话回队（与 _finish 的 missed-steer 同款语义）
+            for st in at.steers:
+                if not st.get("consumed"):
+                    log.info("中断 turn %s 插话未送达，回队列: %s",
+                             tid, st["text"][:60])
+                    try:
+                        await self.submit(
+                            sid, f"（运行中插话，转发处理）{st['text']}")
+                    except Exception:                      # noqa: BLE001
+                        log.exception("中断插话回队失败 sid=%s", sid)
+            try:
+                steer_path.unlink(missing_ok=True)     # 回队完成清文件
+            except OSError:
+                pass
             content = "\n\n".join(t for t in at.texts if t.strip())
             if not (content or at.blocks):
                 return

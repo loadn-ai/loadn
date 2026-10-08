@@ -235,7 +235,7 @@ spawns `claude -p --output-format stream-json` can spawn `loadn` instead:
 | Permission rules | `.agent/settings.json` in the project (deny/allow, `Bash:git push*` patterns); modes `default/acceptEdits/plan/bypassPermissions` |
 | Hooks (Pre/PostToolUse, Stop, Session*) | `.agent/settings.json` `hooks` — external commands, stdin JSON, exit 2 blocks |
 | MCP servers | `.mcp.json` in the project (stdio; tools appear as `mcp__<server>__<tool>`) |
-| Skills | `.claude/skills/` / `.agent/skills/` / `$LOADN_HOME/skills` SKILL.md — name+description indexed in the system prompt; body loads on demand via the `Skill` tool |
+| Skills | `.agents/skills/`（agentskills.io 标准目录，最高优先）/ `.claude/skills/` / `.agent/skills/` / `$LOADN_HOME/skills` SKILL.md — name+description indexed in the system prompt; body loads on demand via the `Skill` tool（第三方安装过供应链锁，装完即 pin；任意 skill 可导出 agentskills.io 兼容 zip） |
 | Custom subagents | `.claude/agents/*.md` / `.agent/agents/*.md` / `$LOADN_HOME/agents` — frontmatter `name/description/tools/model`, body becomes the type's system addendum; usable as `Task(subagent_type=…)` |
 | Constitution chain | CLAUDE.md/AGENTS.md from the git root (or `$HOME`/cwd boundary) down to cwd, nearest last; `@./file.md` line imports (depth 3); user-level `$LOADN_HOME/AGENT.md` on top |
 | Small model for summaries | `small_model` key in `$LOADN_HOME/config.json` (per-call model override for compaction) |

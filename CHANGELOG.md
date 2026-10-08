@@ -3,8 +3,360 @@
 本项目的全部显著变更记录于此。格式遵循 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/)，
 版本遵循 [SemVer](https://semver.org/lang/zh-CN/)。
 
-## [未发布]（Unreleased）
+## [0.7.0] - 2026-10-08
 
+- **生产实证修复：非 ASCII token 头 500**（生产隧道链路
+  ERR_HTTP2_PROTOCOL_ERROR 排查定位）：客户端存了含非 ASCII 的坏
+  token（latin-1 高位字节经 h11 放行进 str）→ hmac.compare_digest 抛
+  TypeError → 500，经 HTTP/2 隧道层（花生壳云端）表现为流 RST=浏览器
+  报 ERR_HTTP2_PROTOCOL_ERROR 200 (OK)。修：三通道比较统一 utf-8/
+  replace 编码 bytes（恒定耗时保持）；对赌：单元级坏 token 双通道
+  （头/query）安全拒。排查结论：服务端三端点毫秒级完整 200、gzip/
+  长度正确——隧道 RST 的直接诱因是 500 响应被云端转成协议错。
+- **多用户批3：记忆域收口+渠道认领归属**：①记忆管理面属主收口
+  （隔离缺口修复：domain key 直读无复核——user 域=全局知识库改 admin
+  维护（普通用户 403）；p: 项目域经 hex→projects 反查（git 根探测
+  结果缓存）属主判定，他人/无主域 404 不暴露；读写同门单点收口）
+  ②渠道归属设计落地（渠道线程无 cookie——由认领表决定归属）：admin
+  在渠道卡绑定表把 chat 认领给用户（PUT bindings/{chat_id}，审计
+  入账）；认领后该 chat 经渠道 /new 建的会话自动落属主、换绑保留
+  认领③share 铸链复核确认已收口（经会话属主门）；vault 维持 admin
+  全管（按用户分级记 backlog）。对赌：user 域 403/404 语义区分、
+  他人项目域 404、认领前后渠道会话归属断言；测试卫生（白名单还原/
+  binding 清理/查询精确化）。
+- **多用户批2：用户管理面+隔离收口**：①用户管理（admin）：
+  /api/auth/users 列表（带活跃会话数）/建号/改角色/启停/重置密码——
+  禁用即时踢下线（删全部会话）、不能禁用/降级自己（防锁死管理面）、
+  全操作入审计；前端 SettingsTab「用户与账号」卡（非 admin 显示权限
+  提示）②属主接线补齐：webhooks/projects/schedules/categories 四面
+  （建号落主+列表过滤+patch/delete 属主 404——categories 补 owner_id
+  列）③hooks/schedules 写面从 admin 双头降为普通面（多用户语义：
+  普通用户自管自己的自动化；owner 复核在路由内；W0 钉版与 hooks
+  认证测试同步更新）④审批 decide 属主复核（cookie 普通用户裁决他人
+  会话的审批=404；Telegram 渠道线程 user=None 放行不变）⑤内置心跳
+  job：普通用户可见可暂停（全员有意义）但删除需 admin。对赌：批2
+  e2e（四资源过滤/越权裁决 404/禁用踢下线/防自禁）+W0 钉版 regen。
+- **多用户账号密码登录与空间隔离（批1：认证内核+核心面）**：用户
+  反馈「让用户记 token 不合理」——按方向评审定完整多用户+隔离。本批：
+  ①users/auth_sessions 表（pbkdf2-sha256 260k 轮标准库哈希——依赖红线
+  内）+sessions/projects/scheduled_jobs/webhooks/channel_bindings 加
+  owner_id 列（migration）②登录/登出/安装向导/改密/me/status 端点：
+  httpOnly SameSite cookie 会话（30 天滑动续期、UA 留痕、登录失败恒定
+  耗时、审计 auth 全入账）③中间件双通道：cookie 会话优先（管理面要求
+  admin 角色），token/宽限通道原语义不变（CLI/存量部署与全部既有测试
+  零破坏——通道 user=None 时属主检查放行）④属主隔离核心面：
+  _get_session_or_404 单点收口（五路由文件共用——越权=404 不暴露存在
+  性）+会话列表按属主过滤+建会话落 owner；contextvars 贯穿 sync 路由
+  线程池⑤setup 安装向导：首账号=admin 且存量数据自动归并（legacy
+  owner NULL 行 claim）；账号体系建立后未登录访客主动弹登录门
+  （auth_required——不靠等第一个 401）⑥前端 TokenGate 重写：安装向导/
+  登录表单/已登录用户徽标（登出）+token 输入降级为「高级」折叠。
+  e2e：内核全链（setup 归并/登录/列表过滤/越权 404/B 非管理面 403/
+  登出失效）+浏览器登录门渲染与错误反馈。
+- **浏览器级 e2e 补面 + 设定↔UI 全量审计补齐（9 项 UI 能力）**：
+  ①新增 tests/e2e_ui/（playwright chromium headless 连真 uvicorn+fake
+  引擎，零 token）三条旅程：SSE 流渲染+resync 快照消费不清空（六轮修
+  A1 的运行时对赌）、审批卡实时出现不刷新（A2 对赌）、「始终允许·确切
+  →策略落库（P10 新 UI 对赌）——前端从此有运行时验证面（此前仅 tsc
+  +build，resync 清空这类纯运行时 bug 无测试可抓）②**P10 per-target
+  三档补全 UI**（设定审计最大缺口：审批卡加「始终允许·确切/域名+动作/
+  目标全放行」三键 + 安全中心「目标放行策略」管理卡——list/改档/删/
+  手工建/skill targets 只读建议；此前全链零 UI）③**P12 技能建议卡**
+  （SkillSuggestCard：引擎检测教学/纠错 → 会话内可编辑卡片 → 确认固化
+  （过八类扫描）/拒绝（7 天抑制）——闭环此前断在决策端）④Telegram
+  启停**热起轮询线程**（原勾选启用后实际收不到消息直到重启）⑤skills
+  供应链锁状态露出（pinned/lock_ok 字段+徽标——「挂着但 agent 说没有」
+  的不可见故障可见化）⑥记忆 draft「待确认」角标⑦渠道卡会话绑定表
+  （chat↔会话+游标）⑧heartbeat 降频「降频中」徽标⑨routines 安装
+  existing 幂等文案区分。审计确认已良好覆盖：egress 三态/白名单/授权、
+  KILL_ALL、webhook、审计链、MCP、引擎切换、vault/成本/notify 等。
+- **六轮复查批（前后端契约 diff+修复对抗复审，12 项）**：换三新方法论
+  ——前端 ui/src 从未系统审查过 + 近六 commit 的修复本身是最大新 bug 面。
+  ①**resync 空载荷清空会话**（Critical：删/改消息发 {}，前端当全量快照
+  消费——另一 tab/断线回放路径把 messages/turns/artifacts 全清成空）→
+  改带整包快照 ②**purge 实例会话级联删掉整个递归 job/内置心跳**（回填
+  session_id 与 delete_session 级联的组合炸弹——清一个旧会话=日更任务/
+  心跳静默消失）→ 级联前摘 new_session 类指针 ③**approval 事件从未被
+  SSE 订阅**（agent 请求审批时卡片永不实时出现，冻结等裁决须刷新页面）
+  ④**egress '*' 广播永不投递**（_subs.get('*') 恒空=数据流面板「SSE
+  驱动不轮询」的设计从未生效）→ publish('*') fan-out 全订阅+前端放行
+  广播 ⑤job_fired/interrupted_salvaged 补订阅（定时触发/重启补记账的
+  即时反馈）⑥decideApproval 吞 ok:false（host 非法/并发窗口/非 pending
+  时点击无反应零反馈）→ alert 真因 ⑦调度 claim 改 **compare-and-set**
+  （due_jobs 读与 claim 写无锁——服务端循环与手动 tick 并发双 fire，
+  fires 翻倍+双投递）⑧单次 job 投递失败置 paused+审计（原 claim 推
+  +24h 后无告警面——「明天才补」且面板无异常）⑨upsert ON CONFLICT 真
+  兜底（索引建置失败的库回落旧路径——注释宣称的 fallback 此前不存在）
+  ⑩surrogate 漏网两处（add_message/scan_session——API JSON 体转义与
+  rglob 文件名）⑪advance_boundary 锁结果检查（fail-closed 漏网实例）
+  ⑫Telegram 投递拒绝回执（熔断期间消息静默消失）+前端 new_session
+  回填实例链接放行。对赌新增 6 条（purge 保 job/广播 fan-out/resync
+  快照/单次失败 paused/add_message 清洗）。
+- **三轮 backlog 中优清偿批（9 项）**：①lone surrogate 三通道清洗
+  （sanitize_text：transcript 两处写+session_events+外部命令钩子——原
+  surrogateescape 非常规文件名经工具结果进入事件流即 UnicodeEncodeError：
+  整 turn error/上下文丢失/PreToolUse 安全钩子 fail-open）②skills.create
+  的 description 单行化（多行值注入 source:=供应链锁 fail-closed=skill
+  被引擎拒索引自毁）③webui/引擎两套 frontmatter 解析器统一（原首键胜
+  vs 后键覆盖——重复键时管理页与引擎注册名错位）④artifacts (session,
+  path) 唯一索引+upsert 原子化 ON CONFLICT（原 SELECT→INSERT 竞态双行，
+  mtime 更新丢失+摘要双计费；migration 先清存量重复行）⑤DELETE 单条
+  消息级联置空 turns.message_id（生产 4 行悬挂）⑥_finish 启动即置
+  closing：收尾窗口内到达的 steer 拒收回落排队（原落在 missed 快照与
+  active.pop 之间=永久丢失）⑦收养闸挪到全局信号量外（原 gate 等待者
+  空占 max_concurrent 槽=收养期间全引擎新 turn 冻结）+loop/done 防御
+  （单例状态跨 loop 残留闸不再挂死）⑧submit 的事件发布失败不再让 turn
+  卡死 queued（SSE 丢一条可接受，turn 永久排队不可）⑨记忆域锁超时
+  fail-closed 补齐 edit/promote（remember/forget 之外的最后两处无锁
+  RMW）+session_events 启动全局清扫（原只在该会话下一 turn 收尾时触发，
+  长期不活跃会话存量永不收缩——生产 63% 超期）。**过程教训**：_migrate
+  热路径加的每连接 DELETE+CREATE INDEX 写事务与高频事件写并发=写锁排队
+  风暴（export 30s 超时实证）——索引建置加 sqlite_master 门禁后过。
+  对赌新增 7 条（surrogate 两面/skills 单行+解析统一/upsert 原子/steer
+  closing 拒收/消息级联/域锁 fail-closed）。
+- **三轮 backlog 高优清偿批（5 项）**：①Telegram offset 持久化（kv
+  落盘，重启从确认位续拉——原归零重放 24h 内全部 updates：消息双投、
+  /new 重建会话重绑、旧会话孤儿化）②重启丢插话修复：salvage 现在读
+  steer 文件——输出日志重放时按 steer 回执摘除已注入的，未送达的回队
+  为新消息（原插话彻底丢失无提示）；turn 终态/salvage 后清 steer 文件
+  （原跨 turn 无限累积）③KILL_ALL 全局熔断 fail-closed 到 submit 面
+  （原只拦调度+已 lock 会话：应急制动期间聊天/API 对空闲会话照常驱动
+  agent——端点宣称的「拒绝新任务」半开）④backup restore 三守卫：源
+  须完成品（有 manifest）、主库 WAL 非空拒恢复（活库覆盖二次损坏）、
+  预备份失败中止+rsync 返回码必查（原半恢复=新 DB 配旧工作区）⑤广播
+  事件行（session_id='*'，egress 逐请求双写不挂 turn）按保留窗清理+
+  hard_keep 兜底挂调度 tick（生产 2.5 万行无界增长，275MB 库主因）。
+  对赌新增 5 条（offset 续拉/salvage 摘除+回队+清文件/熔断拒新+解除
+  恢复/restore 三守卫/广播清窗口+兜底）。
+- **三轮多方法论复查修复批（并发红线 6+高/中 5 项）**：故障注入/
+  并发时序矩阵/序列化边界/重启幂等/生产数据逆向五路侦查——①**审批并发
+  双写**（decide/consume 的 SELECT→UPDATE 无写事务无守卫：Telegram 轮询
+  线程×webui 线程池双开时否决可盲写覆盖批准、同码可双消费=不可逆动作
+  双执行）→ BEGIN IMMEDIATE 串行化 + UPDATE 带 status 守卫 + changes()
+  核对②**审计哈希链并发分叉**（生产库实证 3 处两行 prev_hash 相同——
+  SELECT 链尾与 INSERT 之间无锁）→ 进程内 threading.Lock + BEGIN
+  IMMEDIATE 双保险③**heartbeat 空转计数是死代码**（_heartbeat_last_empty
+  返回值被丢弃且 _hb_advance 无 count=True 调用点——三防②③从未生效，
+  旧测试手工改 label 才绿）→ 真路径接线 + 实投回填 session_id + 低频档
+  2h 探针自愈（防 ×3 后永久停投）+ 产出恢复高频④**调度 fire 半途失败
+  20s 重投风暴**（settle 在副作用后：submit 抛/记账写失败时 due_at 留在
+  过去，new_session 类每 20s 造一个孤儿会话）→ fire 入口先 claim 预推
+  due_at⑤**记忆域锁超时后无锁 RMW**（与持锁方整文件互覆盖=丢条目/复活）
+  → remember/forget fail-closed 放弃本次变更⑥**skill 供应链锁裸 RMW+
+  非原子写**（并发丢条目=skill 被 fail-closed 拒索引；写一半截断=全部
+  外部 skill 失索引）→ flock+进程锁+tmp/rename 原子写⑦edit_entry 单行化
+  （#15 漏的编辑通道：多行 summary 使 frontmatter 提前闭合）+reason 同款
+  ⑧prune_events 失败不再把 done 覆写成 error⑨审批过期清扫挂调度 tick
+  （生产 23 行 pending 全超 TTL 僵尸；顺带补 decided_at）⑩用户消息 argv
+  加 -- 终结符（单词消息 --version/-h 被 flag 劫持）⑪routine 安装幂等
+  （双击/重发=每天双份推送）。对赌新增 12 条（并发三面：审批裁决/同码
+  消费/审计链 8 线程；真路径空转计数 ×1→×2→×3 降频；claim 防风暴；
+  8 线程锁不丢条目；sweep 幂等+decided_at；flag 不劫持；install 幂等）。
+- **二轮全面分析修复批（高/中 13 项）**：致命批之后的高/中清剿——
+  ⑥常规压缩点补反思调用（原只挂 overflow 自救路径，正常压缩的摘要
+  从不进反思=P12 特性半残）⑦heartbeat cron 归正 7,37 双分钟点（"7,30"
+  在本仓 cron 解析=单值每小时一次≠30min 档）⑧记忆注入单读共享
+  （select_injected 调一次，hits_of+render_block 共用 picked——两读盘
+  间隙后台抽取落盘会造成 memory_hits≠实际注入的 TOCTOU）⑨CLI _Patched
+  属性委托（非下划线属性透传内层——诊断器探属性 AttributeError）⑩
+  Telegram 回调**绑定校验**（审批须属于绑定到本 chat 的会话：原任一
+  白名单 chat 可枚举小整数 aid 裁决他人审批；码路由到审批所属 sid 非
+  当前绑定）⑪send_reply Markdown 失败降级纯文本重发（原走断线退避=
+  游标不推进→同一失败行无限重试+队列头阻塞）⑫引擎注入 user 事件带
+  engine:true（consolidate 不把截断 nudge/自检 gate 当用户教导触发
+  建议卡）⑬内置心跳 job：PATCH 403 禁改（三防档位参数不可绕）+ 删除
+  =kv 哨兵永久关闭（原删即重启复活）+ 去重键改恒定形态（is_system
+  AND kind，原 label LIKE 用户可骗）⑭remember dup 原位更新返回自身
+  条目（原 [-1] 挪尾后返回别的条目）⑮⑯summary/origin_session 写入
+  前单行化（换行=frontmatter 串键/伪造溯源键）+ advance_boundary 入
+  域锁（RMW 与写入并发丢 entries）⑰decide 并发窗口如实回执（重读
+  真态 approved-race，不谎报失败）⑱executed 态不算否决⑲浏览器预算
+  随 open 重置（新任务不吃上一任务剩额度）+ 冻结拒步不烧预算⑳回调
+  answer 面 try 包裹+审计带 by ㉑notify_approval fetchall 多绑定全送
+  ㉒MCP discover 降级分支 stop 再抛不炸㉓webhook 未知 token 恒定耗时
+  比对+审计带来源 ip。对赌新增 11 条（system job 守卫三段/单读一致/
+  dup 返回/frontmatter 单行/engine 标记/常规压缩反思/预算重置/ip
+  留痕/绑定校验/Markdown 降级）。backlog：decide 端 admin 面授权、
+  promote 跨域原子性、update_lock_entry 无锁、_fm_upsert 换行防御。
+- **二轮全面分析修复批（致命 5 项）**：三路侦察 + 逐条实证后修——
+  ①调度器 Row/dict 双态统一在 fire() **入口**（to_dict 原插在 KILL_ALL
+  检查之后：:155 job.get("id") 对 Row 炸穿被 pass 吞掉→**kill 开关
+  fail-open**；_heartbeat_last_empty 同款→heartbeat 20s 热循环永不投递；
+  接线级对赌再抓回一次——Row 直传+KILL_ALL 双形态）②heartbeat ×N 语义
+  归正：实投成功清零（原 _hb_advance(fired=True) 死代码，3 次忙跳过后
+  **永久停投**）、忙跳过/降频不计数（忙≠无产出）、label 解析带 try、
+  降频后 cron 同步进本地 dict ③**后台任务排空**（fire-and-forget 三连
+  在 -p 模式 asyncio.run 收尾被取消——平台 webui 主路径上记忆抽取/P12
+  检测从未写完过）：_spawn_bg 登记防 GC + drain_bg（30s 超时兜底）挂
+  _shutdown_bundle ④P12 库副本**先扫后写**（原顺序红线内容留在平台
+  技能库任意后续会话可挂载执行）+ 同名落位用指纹后缀循环（-taught 二次
+  冲突静默覆盖）+ description/origin 单行化（frontmatter 换行注入）⑤
+  ws_of 统一 DB 感知（P7 sources/P12 suggest/P13 票三处原用
+  workspace/<sid> 拼接——**项目子任务会话全错位**：sources 恒 deleted、
+  固化 404、票永不生效）；.mcp.json SID 注入改 DB 反查；票写失败留痕。
+  测试侧：decide 类测试隔离平台技能库根到 tmp（原直写真实 skills/——
+  污染+跨 run 409）；新增 Row 生产路径/KILL_ALL 翻转/库红线零残留/
+  drain 排空四条接线级对赌。
+- **P1-P13 全面复查修复批**：修复生产路径三严重 bug——①heartbeat 三防
+  是死代码（fire() 不路由 is_system job，生产从未执行忙跳过/降频；修路由
+  + 经 fire() 的接线级对赌）②P12 教学检测在带工具的 turn 恒漏检（users[-1]
+  恒为 tool_result；过滤非人话块）③P7/P8 项目域记忆 hits 在 sources/chips
+  恒误报「已删除」（域枚举名≠目录键；按会话项目域目录解析）。设计缺口
+  四项——④P13 敏感冻结补全「单步放行」三层（.mcp.json 注 SID env→审批
+  批准落一次性票文件→冻结处验票消费；此前审批从不建、文案对模型说谎）
+  ⑤P12 技能确认改双写（会话工作区立即生效 + 平台技能库跨会话持久——
+  原只写工作区，「下次自动启用」跨会话不成立）⑥P5 promote() manifest
+  读改写入域锁（并发丢更新残留点）⑦P12 pending 建议卡单槽保护（未决策
+  不被覆盖）。过程又抓一 bug：sqlite3.Row 无 .get()——fire() 新增路由
+  对全部调度 job 抛 AttributeError（7 测试红出）；测试隔离修复（busy
+  检查全局语义下跨文件残留 running turn 串扰）。中项留 backlog（P13
+  预算进程级语义/敏感正则过宽可配、P9 回信 25s 延迟、P3 token 入 URL
+  日志面、P6 frontmatter 换行值、P12 双通道同捕）。
+- **视觉 GUI 工具层（P13，CUA 兜底）**：browser_mcp 扩四纯视觉工具——
+  browser_screenshot（viewport png→base64 vision block，**不注 DOM 信息**）、
+  browser_click(x,y)/browser_type(text)/browser_scroll(dy)（坐标/键盘，
+  无 CSS 选择器）。**敏感冻结**（确定性、模型之外）：动作前 URL 命中
+  支付/登录/验证码等模式（SENSITIVE_URL_RE 可配正则族）→ 拒本步 +
+  approve.create 审批请求 + 通过后仅放行该单步（下一步重新冻结——
+  连续两步敏感操作永不自动放行）；screenshot 只读不冻结（能看不能动）。
+  **预算**：screenshot≤20/click≤30（超限 RuntimeError 终止汇报）；步间隔
+  ≥800ms 节流。**自纠**：click 后自动补 screenshot 回图供模型验证。
+  审计 browser_cua（坐标/域名/动作）全入账本；截图不留存。四工具经既有
+  stdio MCP server tools/list 面注册（引擎 .mcp.json 即得）。fake
+  playwright 页面测试四件全绿；真机静态页「截图→点→验证」与支付页冻结
+  手测未做（无 CDP 沙箱环境）。
+- **经验→技能固化闭环（P12，本批主战场）**：纠正/教学一次→沉淀可复用
+  技能。**纠错信号检测**（确定性词表挂 turn 收尾，禁模型猜常开）：显式
+  教学（以后都/记住要/always/never…）与否定纠错（不对/错了/重做…）两类
+  才触发；防自激每会话 ≤2 次。**建议卡**：命中写会话工作区
+  .loadn/skill-suggest.json（预填名/描述/正文=用户原话+上轮摘要，不改写
+  语义），webui 卡片可编辑；确认→写项目 .agents/skills/（**过 W4 八类
+  供应链扫描**，红线拒写；origin: user-taught 戳——自备内容不进 P0-3
+  锁，实测 source 字段会撞锁拒索引）；拒绝→负样本（同类指纹 7 天抑制，
+  引擎侧同文件）。**压缩后反思**（默认 off，env
+  LOADN_REFLECT_AFTER_COMPACT）：cheap 通道读压缩摘要 → ≤3 条操作教训 →
+  项目记忆域 **draft 条目**（带角标待确认——P6 记忆页编辑保存即转正，
+  绝不自动落盘）；反思不触发纠错检测（防自激）。全链路审计 type=
+  consolidate（accepted/rejected/scan_rejected/lesson_confirmed）。
+  架构：顶层 loadn/consolidate.py（memorystore 先例，引擎 loop 与 webui
+  决策面共用，进程边界安全）。手测真实纠正→存技能→新会话命中未做
+  （loop 级触发/接受/索引可见/拒绝抑制/反思 draft 全链 API+引擎对赌）。
+- **Heartbeat 巡检 + Routine 模板包（P11）**：schedule 加 destination
+  三档（dashboard 默认零改 / notify 推送 / notify+artifact 推送+确保
+  会话 artifacts 目录并附路径）。系统级内置 heartbeat（🫀 is_system=1，
+  30min cron、assistant 档、可删即关）：三防——主队列忙跳过本轮、
+  连续空轮计数编 label 尾标（实投清零）、连续 3 轮无产出自动降频 30min→2h
+  （🫀·low 前缀+审计，面板可查）。routine 模板包 5 例（晨报/资讯论文
+  巡检/凭证预算体检/日程提醒/仓库日报），调度页「模板库」：Ready 一键
+  启用 / Needs setup 显示缺什么+去配置链接；**安装=复制为用户 schedule**
+  （is_system=0，与平台升级解耦）。SCHEMA_REV 8（destination/is_system
+  两列 additive）。手测空转心跳未做（三防+安装 API 全对赌）。
+- **按目标系统的权限三档（P10，allow/ask/never）**：外部副作用动作的
+  目标级持久策略——target_policies 表（match=域名精确/*.suffix 通配或
+  动作类名；kind host|action）。决策序在审批门之前：never→建审批+自动
+  否决（全链路留痕）；always→建审批+自动批准（一次性码随 create 响应
+  给 agent 即用即 consume——用户对该目标的常设决定语义，与逐次审批同一
+  条 consume 链）；ask/无记录/**表损坏**→原审批门（fail-closed）；多规则
+  命中最严优先（never>always>ask）。host 维度与 action 维度叠加取严。
+  挂两点：POST /sessions/{sid}/approvals（bash_allow 本地动作不进此表）
+  与 egress 出口 ask 门（never 直接拒 / always 落临时授权同审批批准
+  回收语义）。审批卡「Always allow」三档窄化（exact=动作类+参数指纹 /
+  domain-action / target，created_from=approval:id）；SKILL.md frontmatter
+  targets: 仅建议展示绝不自动生效。管理面 /api/admin/target-policy CRUD
+  （改动入审计 policy_change）。手测某域名 never 后浏览器动作被拒——
+  UI 手测未走真浏览器（API 层 never/always/ask 全对赌，如实记录）。
+- **Telegram 双向对话渠道（P9/P9b）**：ChannelProvider 抽象（WhatsApp/
+  Signal 注册位预留）+ Telegram 首实现——长轮询 getUpdates（指数退避
+  1s→60s，成功复位）；白名单 chat_id（fail-closed：非白名单忽略+审计
+  channel）；bot 消息丢弃（防 loop）；每 chat 限速 10/min；命令
+  /new /bind /status /unbind；文本=绑定会话用户消息（ENGINE.submit 经主
+  loop 线程安全投递）；turn 终态增量回信（Markdown，>4096 按段分段）。
+  管理面 /api/admin/channels（token 只入 vault password 位、白名单/启停
+  热生效、getMe 健康探测）+ 资源控制台「渠道」卡。**P9b**：审批请求推
+  内联键盘（Approve/Deny），回调走既有 decide 语义、一次性确认码经
+  steer 注回会话。SCHEMA_REV 6（channel_bindings）。手测真机问答/审批
+  未做（无 bot token 环境；fake API 五件验收全绿）。
+- **来源 chips + 动作台账页（P8）**：消息流里带 memory_hits 的 assistant
+  消息下方渲染来源 chips（🧠用户域/📁项目域 + id8），点击弹层看记忆全文/
+  当前状态（存在/已修改/已删除）/reason/来源会话，「去记忆页编辑」直达
+  管理中心记忆 tab。新增 `GET /api/activity` 三源聚合（工具动作
+  bash/文件/网络 + 审批全态 + 审计拦截）——过滤（会话/类型/状态）+ 分页
+  （limit≤200，工具源 400 行有界窗口，禁大表扫）；卡片三态完成/失败/
+  被拦截待审批（带「去审批」直达会话）+ 已否决态；管理中心「台账」tab。
+- **记忆来源标注 Sources 数据层（P7）**：记忆条目改**稳定 id**（域|溯源|
+  摘要|内容 的 sha1[:8]——同内容重抽幂等原位更新，不再换 id）；注入行首带
+  `[memory:<id8>|溯源]`（人类可读）。每 turn 实际注入清单写入 assistant 消息
+  JSONL 扩展字段 `memory_hits: [{id,domain,reason,hash}]`（选择器与渲染
+  共用单一真相——节关/被预算裁=空清单；旧记录无字段读取不报错）。reason
+  枚举 explicit/inferred/user_pref/project_fact（直写=explicit、自动抽取按
+  域=user_pref/project_fact，存条目 frontmatter 与 manifest，注入透传）。
+  新增 `GET /api/sessions/{sid}/messages/{mid}/sources`：命中记忆全文+
+  来源会话 id+当前状态（present/modified/deleted——已删除经 git 史回溯
+  内容）。messages 表加 memory_hits_json 列（SCHEMA_REV 5，additive）。
+- **webui 记忆管理页（P6，Lindy「不是黑盒」语义）**：管理中心「记忆」tab
+  ——域 tab（用户级/项目级）、左条目列表右编辑器（源码/预览双模式，
+  react-markdown 复用）、历史侧栏（版本查看+恢复）、删除二次确认。API
+  `/api/memory/*`（7 端点，写操作 admin 双头）：新建/编辑**保存即 commit**
+  （`memory: manual:webui …`）、编辑与删除**重跑蜜罐/凭证护栏**（命中 400
+  返回原因，不落被拒内容）、删除留史、已删条目按原 id 重建恢复（溯源从
+  版本 frontmatter 读回）、禁整仓 reset。新建/编辑/删除/恢复入审计账本
+  （type=memory；查看不记）。**架构**：存储层抽顶层 `loadn/memorystore.py`
+  （进程边界禁 webui 入 loadn.core，而域锁/manifest 协议必须单实现——
+  skilllock 同款先例），引擎侧转消费者+再导出（调用方导入路径不变）。
+- **记忆 git 版本化（P5，MemFS 语义）**：一次 commit=一次「记住」——域目录
+  首写 git init（本地仓，永不触网络，GPG 关），写入=add -A+commit
+  （`memory: <摘要> [session:<id>]`，LRU 淘汰的删除同 commit 入史可找回）、
+  忘掉/提升各有独立提交、护栏拒绝留 `--allow-empty` reject 提交（被拒内容
+  不入树）。**并发安全**：manifest 读改写+淘汰+提交全段入跨进程 flock 域锁
+  （用户域全局目录多会话并发是常态——20 并发实测曾互抢 tmp 丢更新，已修）；
+  锁超时=文件照写、commit 让下趟补。CLI 扩展 `loadn memory log
+  [--domain]` 与 `restore <commit>`（恢复单条重新入库，禁整仓 reset）。
+  git 缺席静默降级为无版本记忆（读写不受影响）。
+- **用户级跨项目记忆域（P4）**：域键抽象 project/user——新增
+  `$LOADN_HOME/memory/_user/` 全局域（换项目不再失忆）。归属判定为确定性
+  启发式（禁模型猜）：第一人称偏好词表 ∧ 无路径/文件/包管理指称 → user，
+  拿不准 → project 宁保守；词表经 `memory/user-domain-words.txt` 可扩充。
+  注入两段：`[user-memory|溯源]` 置于 `[memory|溯源]` 之上（身份先于项目）；
+  两域同守蜜罐/凭证护栏与 LRU 上限。"忘掉 X"跨两域生效；新增 CLI
+  `loadn memory promote <id>` 手动提升。开关 `LOADN_USER_MEMORY=off`
+  （默认 on）= 显式面拒绝+目录零创建+注入面零读，行为与单域现状逐字节
+  一致。不迁移存量记忆；boundary 锚点仍只存 project 域 manifest。
+- **Webhook 事件触发入口（P3）**：外部事件（PR/支付/表单）→ agent 会话。
+  实体 {token(20hex)/name/profile/prompt 模板/enabled/allowed_ips/限流}，
+  CRUD 管理面（`/api/hooks`，admin 双头）+ Webhooks 管理页 + 调度页并列卡。
+  公开触发 `POST /hooks/{token}`（挂 `/api` 外——W0 只护 /api，token 即凭证，
+  share 同构；host_guard 照守）：校验→限流→渲染→建 session 后台执行，
+  `202+{session_id, run_id}`；`GET /hooks/{token}/runs/{run_id}` 轮询。
+  安全：命中/拒绝全入审计账本（TYPES 扩 `webhook`）；payload 仅 `{{payload}}`
+  字面替换（禁求值）、≤64KB 截断标注、整体作用户消息（不可信，不解析为
+  指令）；限流 6/min 默认；IP 白名单不信任 X-Forwarded-For（fail-closed）；
+  SCHEMA_REV 3→4（webhooks/webhook_runs 两表，additive）。卡面「/api/hooks/
+  {token}」路径按 W0 现实修正为 /hooks/{token}。签名校验留 TODO。
+- **MCP 工具懒加载 ToolSearch（P2）**：单 server 工具数超阈值（默认 15，
+  env `LOADN_MCP_LAZY_TOOL_THRESHOLD` 覆盖，0=关）时不全量注入工具面
+  （大 server 单家可吃 12.6 万 token）——只注册 `ToolSearch`：参数 enum 即
+  索引（name+description 首句+来源 server），点名即物化并返回完整
+  inputSchema（一轮完成，禁止两跳猜参数）；复查补强：直接调用索引内工具
+  由 loop 当场物化执行（不吃「未知工具」错误）、disallow 的延迟名在 build
+  侧预过滤出索引（enum 不可见，fail-closed）。暗礁处理：引擎内部直用的
+  `mcp__lsp__diagnostics` 永不延迟（防 LSP 诊断回注静默失效）、
+  tool-call-repair 已知工具集含延迟名、延迟连接与会话同寿命（会话内
+  schema 缓存）。验收：50 工具 fake server 载荷降 >60%、≤15 逐字节回归
+  一致、loop 级一轮两调用链路绿。result 事件加可选 `mcp_deferred`
+  观测字段（transcript 侧，同 diffs 语义）；`init.tools` 保持 spawn 快照
+  语义（PROTOCOL.md 注记，无契约变更）。
+- **技能目录兼容 agentskills.io（P1）**：发现根新增项目级 `.agents/skills/`
+  （开放标准目录、`npx skills add` 落点），同名优先级最高、照过 P0-2 信任门
+  ——负路径对赌实测抓出信任门资源枚举不认 `.agents` 的真缺口（只带该目录的
+  clone 仓库会被判「无资源」直接放行），已补。frontmatter 解析容错兼容
+  agentskills.io 形状（缺 name/description 回落默认值，`allowed-tools`/
+  `metadata` 等字段忽略不炸）。安装三来源：GitHub repo/tree URL、
+  `owner/repo/path` 简写、任意 https `.zip`/`.tar.gz` 归档 URL（明文与非
+  归档扩展名 fail-closed 拒绝）。**安装↔供应链锁打通**：远程来源装完即
+  盖 `source` 戳 + 写 `$LOADN_HOME/skills.lock.json`，out-of-band 篡改 →
+  引擎拒索引；经管理面编辑/重装自动刷新锁（zip 上传视作用户自备不 pin）。
+  新增导出：任一 skill 导出为 agentskills.io 兼容 zip（frontmatter 规范化
+  补必填字段、剥 `source` 戳与 `.loadn-*` 内部元数据，可原样装回）。
 - **测试质量战役（T + M0-M6）**：行覆盖 78.8%→**83.1%**（CI 门同步收紧）；
   自研突变测试 runner（`scripts/mutate.py`，AST 定位 5 算子+窄测试集映射）
   对 41 个安全与核心文件注入 **2589 个变异**，杀伤率 **76.1%**
@@ -18,6 +370,11 @@
   守卫必配否定路径对赌/合入前跑该文件突变窄集/覆盖率门只升不降。
 - evals 场景 5→10；契约 v1/v2 对赌补全（tool_use_failure 终态事件、
   平台 durable 事件转发两个真缺口修复）。
+
+- **内置心跳 job 的面板适配**：PATCH 对 system job 放行 status-only
+  请求（「停用走暂停」兑现——暂停心跳与永久关闭是两档能力，夹带其他
+  字段仍 403 fail-closed）；前端排程面板对内置 job 隐藏编辑入口、删除
+  确认提示「永久关闭，重启不重建」。
 
 ## [0.6.25] - 2026-10-03
 

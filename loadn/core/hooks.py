@@ -119,7 +119,10 @@ async def _run_hook(command: str, payload: dict):
         stderr=asyncio.subprocess.PIPE)
     try:
         out, err = await asyncio.wait_for(
-            proc.communicate(json.dumps(payload, ensure_ascii=False).encode()),
+            # 三轮修：errors=replace——lone surrogate（surrogateescape 文件名）
+            # encode 抛错被 fire() 吞掉=安全钩子静默跳过（fail-open）
+            proc.communicate(json.dumps(payload, ensure_ascii=False)
+                             .encode("utf-8", errors="replace")),
             timeout=HOOK_TIMEOUT_S)
     except asyncio.TimeoutError:
         proc.kill()

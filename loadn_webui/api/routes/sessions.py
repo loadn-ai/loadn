@@ -49,6 +49,12 @@ async def create_session(body: dict):
     if category_id is not None:
         with db_mod.conn() as c:
             db_mod.update_session(c, sid, touch=False, category_id=category_id)
+    # 八轮（多用户）：cookie 通道建的会话落属主（token 通道 None=legacy 归并）
+    from ...security import userauth as _ua
+    _u = _ua.current_user()
+    if _u is not None:
+        with db_mod.conn() as c:
+            db_mod.update_session(c, sid, owner_id=_u["id"])
     with db_mod.conn() as c:
         # 未显式命名 → 允许自动标题（成功生成或手动改名后清标记）
         if not (body.get("title") or "").strip():
@@ -64,9 +70,15 @@ async def create_session(body: dict):
 @router.get("/sessions")
 def list_sessions():
     from ...scheduler import next_wake
+    from ...security import userauth as _ua
+    _u = _ua.current_user()
     with db_mod.conn() as c:
         rows = [db_mod.to_dict(r) for r in db_mod.list_sessions(c)]
-        for r in rows:
+    if _u is not None and _u["role"] != "admin":
+        # 八轮：cookie 普通用户只见自己的（admin/owner=NULL legacy 由 admin 见）
+        rows = [r for r in rows if r.get("owner_id") == _u["id"]]
+    for r in rows:
+        with db_mod.conn() as c:
             act = db_mod.active_turns(c, r["id"])
             r["active_turn"] = db_mod.to_dict(act[-1]) if act else None
             r["usage"] = db_mod.usage_totals(c, r["id"])
@@ -355,13 +367,52 @@ def create_approval(sid: str, body: dict):
     _get_session_or_404(sid)
     from ...engine import ENGINE
     from ...security import approve as approve_mod
+    from ...security import target_policy as tp
+    action_type = str(body.get("action_type") or "")
+    params = dict(body.get("params") or {})
+    # P10 决策序（外部副作用动作；bash_allow 等本地动作不进此表）：never→
+    # 建+自动否决（全链路留痕）；always→建+自动批准（码随响应给 agent，
+    # 即用即 consume——常设决定语义）；ask/无记录→原审批门
+    policy = (tp.decide("action", action_type) if action_type != "bash_allow"
+              else "ask")
+    if params.get("host"):                  # 带目标域名的动作叠加 host 维度
+        host_pol = tp.decide("host", str(params["host"]))
+        policy = min((policy, host_pol),
+                     key=lambda m: {"never": 0, "ask": 1, "always": 2}[m])
     try:
-        out = approve_mod.create(sid, str(body.get("action_type") or ""),
-                                 dict(body.get("params") or {}),
+        out = approve_mod.create(sid, action_type, params,
                                  note=str(body.get("note") or ""),
                                  turn_id=body.get("turn_id"))
     except ValueError as e:
         raise HTTPException(400, str(e))
+    if policy == "never":
+        d = approve_mod.decide(out["id"], False, by="target_policy")
+        # 二轮修#17：并发已裁决（webui/TG 抢先 Approve）时 decide 返回
+        # ok:False——重读真态，approved 即把码带出（fail-open 窗口虽窄，
+        # 但 silent deny→approved 的真相不能瞒）
+        if not d.get("ok"):
+            try:
+                real = approve_mod.status(out["id"]).get("status")
+            except LookupError:
+                real = "gone"
+            if real == "approved":
+                ENGINE.publish(sid, "approval", {"kind": "decided",
+                                                 "id": out["id"],
+                                                 "status": "approved"})
+                return {**out, "policy": "never",
+                        "status": "approved-race",
+                        "note": "并发窗口内已被批准（码经审批面发放）"}
+        ENGINE.publish(sid, "approval", {"kind": "request", **out})
+        ENGINE.publish(sid, "approval", {"kind": "decided", "id": out["id"],
+                                         "status": "denied"})
+        return {**out, "policy": "never", "status": "denied"}
+    if policy == "always":
+        d = approve_mod.decide(out["id"], True, by="target_policy")
+        ENGINE.publish(sid, "approval", {"kind": "request", **out})
+        ENGINE.publish(sid, "approval", {"kind": "decided", "id": out["id"],
+                                         "status": "approved"})
+        return {**out, "policy": "always", "status": "approved",
+                "code": d.get("code")}
     ENGINE.publish(sid, "approval", {"kind": "request", **out})
     return out
 @router.post("/sessions/{sid}/schedules")
@@ -370,6 +421,10 @@ def create_schedule(sid: str, body: dict):
     _get_session_or_404(sid)
     body = {**body, "kind": "message"}
     fields = _job_fields(body, sid)
+    from ...security import userauth as _ua
+    _u = _ua.current_user()
+    if _u is not None:
+        fields["owner_id"] = _u["id"]
     with db_mod.conn() as c:
         jid = db_mod.create_job(c, **fields)
         job = db_mod.to_dict(db_mod.get_job(c, jid))

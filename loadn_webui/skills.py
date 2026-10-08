@@ -1,12 +1,17 @@
-"""skill 发现、按会话挂载、管理面（CRUD / 编辑 / zip / GitHub 安装）。
+"""skill 发现、按会话挂载、管理面（CRUD / 编辑 / 安装 / 导出）。
 
 平台 skills 只留仓库 skills/，创建会话时 symlink 到工作区 .claude/skills/
 ——零拷贝、版本最新、真选择性（P0 已实测无头会话识别 symlink 目录）。
 追加/移除后下一 turn 生效（CLI 会话启动时枚举）；编辑文件经 symlink 实时可见。
 
-安装链路统一 GitHub tarball（codeload 直连可用，不走 git）；skillhub 等市场
-只做发现（见 skillhub.py），repo_url 片段 #a~b~c 约定在 parse_repo_url 解析。
-第三方 skill 代码会在 bypassPermissions 下被 agent 执行——装前即信任作者。
+安装三来源（P1，agentskills.io 兼容）：GitHub repo/tree URL 或 owner/repo
+简写（tarball，codeload 直连不走 git）、任意 https .zip/.tar.gz 归档 URL、
+zip 上传。前两类远程来源装完即 pin：盖 source 戳 + 写引擎供应链锁
+（$LOADN_HOME/skills.lock.json），out-of-band 篡改 → 引擎拒索引；上传视同
+用户自备不 pin。导出 export_zip 产出 agentskills.io 兼容目录 zip。
+skillhub 等市场只做发现（见 skillhub.py），repo_url 片段 #a~b~c 约定在
+parse_repo_url 解析。第三方 skill 代码会在 bypassPermissions 下被 agent
+执行——装前即信任作者。
 """
 from __future__ import annotations
 
@@ -18,6 +23,9 @@ import tarfile
 import zipfile
 from datetime import datetime
 from pathlib import Path
+
+from loadn.skilllock import remove_lock_entry, update_lock_entry
+from loadn.util import parse_frontmatter as parse_fm_full
 
 from .config import PATHS, skills_dirs
 from .util import get_logger, iso, slugify
@@ -37,16 +45,41 @@ DISABLED_FILE = ".loadn-disabled"   # 存在即禁用：不挂载新会话 + 摘
 
 # ---------------------------------------------------------------- 读取
 def parse_frontmatter(md: str) -> dict:
-    """SKILL.md 头部 frontmatter（name/description，宽松解析，同 available() 口径）。"""
-    out = {"name": "", "description": ""}
-    parts = md.split("---", 2)
-    if len(parts) < 3:
-        return out
-    for ln in parts[1].splitlines():
-        m = re.match(r"^(name|description):\s*(.*)$", ln.strip())
-        if m and not out[m.group(1)]:
-            out[m.group(1)] = m.group(2).strip().strip('"').strip("'")
-    return out
+    """SKILL.md 头部 frontmatter（name/description）。
+
+    三轮修（backlog 清）：复用引擎侧 loadn.util.parse_frontmatter——原
+    自研 split 版与引擎语义相反（首键胜 vs 后键覆盖；--- 不锚定行首），
+    重复键时管理页显示 name=a、引擎注册 name=b，删除/引用按名错位。"""
+    from loadn.util import parse_frontmatter as _engine_parse
+    meta, _ = _engine_parse(md)
+    return {"name": str(meta.get("name") or ""),
+            "description": str(meta.get("description") or "")}
+
+
+_FM_SPLIT = re.compile(r"^---\s*\n(.*?)\n---\s*\n?", re.DOTALL)
+
+
+def _fm_upsert(text: str, fields: dict[str, str | None]) -> str:
+    """frontmatter 字段 upsert（值 None=删该键）；无 frontmatter 则新建。
+
+    其余行原样保留（agentskills.io 的 allowed-tools/metadata 等字段不动）；
+    只替换顶层标量键——被替换键的缩进续行（列表项）会随键一起丢，本仓
+    upsert 的键（source/name/description）均为标量，不触及该形态。
+    """
+    m = _FM_SPLIT.match(text)
+    if m:
+        lines = m.group(1).splitlines()
+        rest = text[m.end():]
+    else:
+        lines, rest = [], text
+    drop = set(fields)
+    out = [ln for ln in lines
+           if not (ln[:1] not in (" ", "\t") and ":" in ln
+                   and ln.partition(":")[0].strip() in drop)]
+    out.extend(f"{k}: {v}" for k, v in fields.items() if v is not None)
+    if not out:
+        return rest
+    return "---\n" + "\n".join(out) + "\n---\n" + rest
 
 
 def _source(name: str) -> dict | None:
@@ -96,6 +129,16 @@ def available() -> list[dict]:
             src = _source(p.name)
             if src:
                 item["source"] = src
+                # 七轮修（设定审计#6）：供应链锁状态露出——带 source 的
+                # 外部 skill 受锁保护；锁校验不过会被引擎拒索引（webui
+                # 仍显示=「挂着但 agent 说没有」的不可见故障）。lock_ok=
+                # 锁条目存在且哈希一致
+                from loadn import skilllock
+                locks = skilllock.load_locks()
+                ent = locks.get(p.name)
+                item["pinned"] = ent is not None
+                item["lock_ok"] = bool(
+                    ent and skilllock.skill_hash(md) == ent.get("computedHash"))
             out.append(item)
     return out
 
@@ -183,6 +226,12 @@ def write_file(name: str, rel: str, content: str, create: bool = False) -> dict:
         fm = parse_frontmatter(content)
         if not fm.get("description"):
             warn = "SKILL.md 缺 frontmatter description，CLI 可能无法发现该 skill"
+        # B6 打通：外部 skill 经管理面编辑 = 有意变更 → 同步刷新锁
+        # （否则编辑保存即 rug-pull 误报，下次发现直接拒索引）
+        meta, _ = parse_fm_full(content)
+        pin = str(meta.get("source") or "").strip()
+        if pin:
+            update_lock_entry(name, p, pin)
     return {"ok": True, "path": rel, "warning": warn}
 
 
@@ -226,12 +275,16 @@ description: {description}
 def create(name: str, description: str) -> dict:
     if not NAME_RE.match(name or ""):
         raise ValueError("名称需匹配 ^[a-z0-9][a-z0-9._-]{0,63}$（小写开头，限小写字母/数字/._-）")
+    # 三轮修（backlog 清）：description 单行化——多行值进 frontmatter 后：
+    # 引擎解析只取首行=丢数据；注入 source: 行=触发供应链锁 fail-closed
+    # =skill 被引擎拒索引（自毁）。name 已有 NAME_RE 白名单无需再洗。
+    description = " ".join((description or "").split()) or name
     d = _writable_root() / name
     if skill_dir(name) is not None or d.exists():
         raise FileExistsError(f"已存在: {name}")
     d.mkdir(parents=True)
     (d / "SKILL.md").write_text(
-        SKILL_TEMPLATE.format(name=name, description=description or name))
+        SKILL_TEMPLATE.format(name=name, description=description))
     return {"ok": True, "name": name}
 
 
@@ -240,6 +293,13 @@ def delete(name: str) -> dict:
     d = skill_dir(name)
     if d is None:
         raise FileNotFoundError(f"skill 不存在: {name}")
+    # 外部来源 skill 连锁条目一起清（不留幽灵；用户层没有该条则静默）
+    try:
+        meta, _ = parse_fm_full((d / "SKILL.md").read_text(errors="replace"))
+    except OSError:
+        meta = {}
+    if str(meta.get("source") or "").strip():
+        remove_lock_entry(name)
     shutil.rmtree(d)
     return {"ok": True, "deleted": name}
 
@@ -278,6 +338,24 @@ def _install_dir(src: Path, src_root: Path, via: str, **extra) -> str:
             f"skill 扫描红线拒装：{[x['rule'] + ':' + x['detail'] for x in report['findings'] if x['level'] == 'red'][:3]}")
     # W4 ③：能力声明（无则全禁草案）
     skill_scan.ensure_capability(dst)
+    # P1 锁打通：远程来源装完即 pin——盖 source 戳 + 写引擎供应链锁
+    # （$LOADN_HOME/skills.lock.json）。此后 out-of-band 篡改 SKILL.md
+    # → 引擎 discover 拒索引（fail-closed）。写不进锁就拒装：戳已盖而锁
+    # 缺失的 skill 会被引擎直接拒索引，不如装的时候失败得响。
+    pin = None
+    if via == "github" and extra.get("repo"):
+        pin = f"github:{extra['repo']}" + (f"@{extra['ref']}" if extra.get("ref") else "")
+    elif via == "url" and extra.get("url"):
+        pin = f"url:{extra['url']}"
+    if pin:
+        md = dst / "SKILL.md"
+        try:
+            md.write_text(_fm_upsert(md.read_text(encoding="utf-8"), {"source": pin}),
+                          encoding="utf-8")
+            update_lock_entry(name, md, pin)
+        except (OSError, UnicodeDecodeError) as e:
+            shutil.rmtree(dst, ignore_errors=True)
+            raise PermissionError(f"供应链锁写入失败，拒装（{e}）") from None
     src_meta = {"via": via, "installed_at": iso(),
                 "scan": {"level": report["level"], "n": len(report["findings"])},
                 "subdir": str(src.relative_to(src_root)) or "."}
@@ -317,24 +395,54 @@ def _find_skill_dirs(root: Path, subpath: str) -> list[Path]:
     return sorted(set(cands))
 
 
-def install_from_zip(data: bytes, overwrite: bool = False) -> dict:
-    """zip 上传安装：接受裸 skill 目录或单层包裹（zip 内若干含 SKILL.md 的目录）。"""
+def _extract_zip(data: bytes, tmp: Path) -> None:
+    """zip 解包加固（条目数/体积/路径穿越，与上传安装同一套门）。"""
+    with zipfile.ZipFile(io.BytesIO(data)) as zf:
+        infos = zf.infolist()
+        if len(infos) > MAX_SKILL_FILES:
+            raise PermissionError(f"zip 内 {len(infos)} 个条目超过上限 {MAX_SKILL_FILES}")
+        for info in infos:
+            n = info.filename
+            if n.startswith(("/", "\\")) or ".." in Path(n).parts or ":" in n:
+                raise PermissionError(f"非法 zip 条目: {n}")
+        total = sum(i.file_size for i in infos if not i.is_dir())
+        if total > MAX_SKILL_TOTAL_BYTES:
+            raise PermissionError("zip 解包超 100MB 上限")
+        zf.extractall(tmp)
+
+
+def _extract_tarball(data: bytes, tmp: Path) -> None:
+    """tar.gz 解包加固（W4：一律 data 过滤器；旧解释器直接拒装）。"""
+    with tarfile.open(fileobj=io.BytesIO(data), mode="r:gz") as tf:
+        members = tf.getmembers()
+        if len(members) > MAX_SKILL_FILES * 5:
+            raise PermissionError(f"tarball 内 {len(members)} 个条目过多")
+        for mm in members:
+            if mm.name.startswith(("/", "\\")) or ".." in Path(mm.name).parts:
+                raise PermissionError(f"非法 tar 条目: {mm.name}")
+        try:
+            tf.extractall(tmp, filter="data")
+        except TypeError:
+            raise PermissionError(
+                "当前 Python 无 tar 数据过滤器（需 3.10.12+/3.12+）——拒装")
+
+
+def _extract_to_tmp(data: bytes) -> Path:
+    """下载/上传的归档统一落临时目录（调用方 finally 清理）。"""
     tmp = PATHS["var"] / "tmp_skill_install"
     shutil.rmtree(tmp, ignore_errors=True)
     tmp.mkdir(parents=True, exist_ok=True)
+    return tmp
+
+
+def install_from_zip(data: bytes, overwrite: bool = False) -> dict:
+    """zip 上传安装：接受裸 skill 目录或单层包裹（zip 内若干含 SKILL.md 的目录）。
+
+    上传内容视作用户自备（同 create()），不盖 source 戳、不进供应链锁。
+    """
+    tmp = _extract_to_tmp(data)
     try:
-        with zipfile.ZipFile(io.BytesIO(data)) as zf:
-            infos = zf.infolist()
-            if len(infos) > MAX_SKILL_FILES:
-                raise PermissionError(f"zip 内 {len(infos)} 个条目超过上限 {MAX_SKILL_FILES}")
-            for info in infos:
-                n = info.filename
-                if n.startswith(("/", "\\")) or ".." in Path(n).parts or ":" in n:
-                    raise PermissionError(f"非法 zip 条目: {n}")
-            total = sum(i.file_size for i in infos if not i.is_dir())
-            if total > MAX_SKILL_TOTAL_BYTES:
-                raise PermissionError("zip 解包超 100MB 上限")
-            zf.extractall(tmp)
+        _extract_zip(data, tmp)
         return _install_tree(tmp, "zip-upload", overwrite=overwrite)
     finally:
         shutil.rmtree(tmp, ignore_errors=True)
@@ -345,7 +453,8 @@ def install_from_github(repo: str, subpath: str = "", ref: str | None = None,
     """GitHub tarball 安装：codeload 流式下载 → 容错定位 → 装入。
 
     _download 供测试注入（返回 tar.gz bytes），生产走 httpx（延迟导入，
-    保持无 httpx 环境下 skills 管理其余功能可用）。
+    保持无 httpx 环境下 skills 管理其余功能可用）。远程来源装完即 pin
+    （source 戳 + 引擎锁，见 _install_dir）。
     """
     m = re.match(r"^([\w.-]+)/([\w.-]+)$", repo or "")
     if not m:
@@ -368,28 +477,49 @@ def install_from_github(repo: str, subpath: str = "", ref: str | None = None,
     if len(data) > MAX_TARBALL_BYTES:
         raise PermissionError("tarball 超过 200MB 上限")
 
-    tmp = PATHS["var"] / "tmp_skill_install"
-    shutil.rmtree(tmp, ignore_errors=True)
-    tmp.mkdir(parents=True, exist_ok=True)
+    tmp = _extract_to_tmp(data)
     try:
-        with tarfile.open(fileobj=io.BytesIO(data), mode="r:gz") as tf:
-            members = tf.getmembers()
-            if len(members) > MAX_SKILL_FILES * 5:
-                raise PermissionError(f"tarball 内 {len(members)} 个条目过多")
-            for mm in members:
-                if mm.name.startswith(("/", "\\")) or ".." in Path(mm.name).parts:
-                    raise PermissionError(f"非法 tar 条目: {mm.name}")
-            # W4 解包加固：一律 data 过滤器；旧解释器（无 filter 形参）直接拒装
-            try:
-                tf.extractall(tmp, filter="data")
-            except TypeError:
-                raise PermissionError(
-                    "当前 Python 无 tar 数据过滤器（需 3.10.12+/3.12+）——拒装")
+        _extract_tarball(data, tmp)
         # tarball 顶层是 repo 名目录
         roots = [p for p in tmp.iterdir() if p.is_dir()]
         root = roots[0] if len(roots) == 1 else tmp
         return _install_tree(root, "github", overwrite=overwrite,
                              repo=f"{owner}/{name}", ref=br, subpath=subpath)
+    finally:
+        shutil.rmtree(tmp, ignore_errors=True)
+
+
+def install_from_url(url: str, overwrite: bool = False, _download=None) -> dict:
+    """任意 https 归档 URL 安装（agentskills.io 生态第三来源）。
+
+    仅收 https + .zip/.tar.gz/.tgz（fail-closed：明文与非归档直接拒）；
+    解包/扫描/装后 pin 与 GitHub 来源同一条链。_download 供测试注入。
+    """
+    u = (url or "").strip()
+    if not u.lower().startswith("https://"):
+        raise ValueError("URL 安装仅支持 https://（fail-closed）")
+    low = u.lower().split("?", 1)[0]
+    if low.endswith(".zip"):
+        kind = "zip"
+    elif low.endswith((".tar.gz", ".tgz")):
+        kind = "tar"
+    else:
+        raise ValueError("URL 需以 .zip / .tar.gz / .tgz 结尾（技能包归档地址）")
+    if _download is None:
+        _download = _download_url
+    data = _download(u)
+    if len(data) > MAX_TARBALL_BYTES:
+        raise PermissionError("下载超过 200MB 上限")
+    tmp = _extract_to_tmp(data)
+    try:
+        if kind == "zip":
+            _extract_zip(data, tmp)
+            root = tmp
+        else:
+            _extract_tarball(data, tmp)
+            roots = [p for p in tmp.iterdir() if p.is_dir()]
+            root = roots[0] if len(roots) == 1 else tmp
+        return _install_tree(root, "url", overwrite=overwrite, url=u)
     finally:
         shutil.rmtree(tmp, ignore_errors=True)
 
@@ -446,6 +576,24 @@ def _download_tarball(owner: str, repo: str, branch: str) -> bytes:
     return b"".join(chunks)
 
 
+def _download_url(url: str) -> bytes:
+    """任意 https 归档下载（流式 + 体积上限，与 codeload 同款门）。"""
+    import httpx
+    chunks, total = [], 0
+    with httpx.Client(timeout=httpx.Timeout(30, read=120), follow_redirects=True) as cli:
+        with cli.stream("GET", url) as r:
+            if r.status_code == 404:
+                raise RuntimeError(f"{url} 404")
+            if r.status_code != 200:
+                raise RuntimeError(f"HTTP {r.status_code}")
+            for chunk in r.iter_bytes(1 << 20):
+                total += len(chunk)
+                if total > MAX_TARBALL_BYTES:
+                    raise PermissionError("下载超过 200MB 上限")
+                chunks.append(chunk)
+    return b"".join(chunks)
+
+
 _GH_URL = re.compile(
     r"^(?:https?://)?(?:www\.)?github\.com/([\w.-]+)/([\w.-]+)"
     r"(?:/(?:tree|blob)/([\w.-]+)((?:/[\w.-]+)+)?)?"
@@ -453,13 +601,21 @@ _GH_URL = re.compile(
 
 
 def parse_repo_url(url: str) -> dict:
-    """GitHub URL → {repo, subpath, ref}。支持三形态：
+    """GitHub 地址 → {repo, subpath, ref}。支持四形态：
     - github.com/owner/repo#skills~a~b     （skillhub repo_url 片段约定，~ 即 /）
     - github.com/owner/repo#/skills/a/b
     - github.com/owner/repo/tree/branch/skills/a/b
+    - owner/repo[/sub/path]                （agentskills.io 生态常用简写）
     """
-    m = _GH_URL.match((url or "").strip())
+    s = (url or "").strip()
+    m = _GH_URL.match(s)
     if not m:
+        # owner/repo 简写（无协议头；带协议的第三方站地址仍拒绝）
+        if "://" not in s and "/" in s:
+            parts = [p for p in s.split("/") if p]
+            if len(parts) >= 2 and all(re.match(r"^[\w.-]+$", p) for p in parts):
+                return {"repo": f"{parts[0]}/{parts[1]}",
+                        "subpath": "/".join(parts[2:]), "ref": ""}
         raise ValueError(f"不是可安装的 GitHub 仓库地址: {url}")
     owner, repo = m.group(1), m.group(2)
     ref, sub = "", ""
@@ -473,6 +629,38 @@ def parse_repo_url(url: str) -> dict:
         else:
             sub = "/".join(x for x in frag.split("~") if x and x not in (".",))
     return {"repo": f"{owner}/{repo}", "subpath": sub, "ref": ref}
+
+
+def export_zip(name: str) -> bytes:
+    """导出为 agentskills.io 兼容 zip（顶层 <name>/ 目录形状，可直接再装）。
+
+    frontmatter 规范化：补 name/description（agentskills.io 标准必填）、
+    剥 source 戳（溯源属本机安装记录，新环境装时重新 pin）；
+    .loadn-* 内部元数据与符号链接不入包。
+    """
+    d = skill_dir(name)
+    if d is None:
+        raise FileNotFoundError(f"skill 不存在: {name}")
+    if _dir_size(d) > MAX_SKILL_TOTAL_BYTES:
+        raise PermissionError("skill 体积超过导出上限")
+    fm = parse_frontmatter((d / "SKILL.md").read_text(errors="replace"))
+    buf = io.BytesIO()
+    with zipfile.ZipFile(buf, "w", zipfile.ZIP_DEFLATED) as zf:
+        for f in sorted(d.rglob("*")):
+            rel = f.relative_to(d)
+            if any(part.startswith(".") for part in rel.parts):
+                continue          # .loadn-source / .loadn-disabled / .loadn-capabilities
+            if f.is_symlink():
+                continue          # 符号链接不可移植，不入包
+            if f.name == "SKILL.md" and len(rel.parts) == 1:
+                zf.writestr(f"{name}/SKILL.md", _fm_upsert(
+                    f.read_text(errors="replace"),
+                    {"name": fm.get("name") or name,
+                     "description": fm.get("description") or name,
+                     "source": None}))
+            elif f.is_file():
+                zf.write(f, f"{name}/{rel}")
+    return buf.getvalue()
 
 
 # ---------------------------------------------------------------- 挂载（会话）

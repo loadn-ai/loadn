@@ -15,6 +15,7 @@ export interface ScheduleInfo {
   status: 'active' | 'paused' | 'done';
   title: string | null; profile: string | null; engine: string | null;
   last_fired_at: string | null;
+  is_system?: boolean;      // 内置 job（🫀心跳）：不可编辑档位，可暂停/永久关
 }
 
 function fmtDue(iso: string): string {
@@ -89,7 +90,10 @@ export default function SchedulesTab({ filterSid, onClearFilter }: {
   }
 
   async function del(j: ScheduleInfo) {
-    if (!confirm(`删除定时任务「${j.label || j.prompt.slice(0, 30)}」？`)) return;
+    const tip = j.is_system
+      ? '（内置心跳：删除=永久关闭，重启后不再重建；临时停用请用暂停）'
+      : '';
+    if (!confirm(`删除定时任务「${j.label || j.prompt.slice(0, 30)}」？${tip}`)) return;
     try {
       await api(`/api/schedules/${j.id}`, { method: 'DELETE' });
       await reload();
@@ -135,6 +139,35 @@ export default function SchedulesTab({ filterSid, onClearFilter }: {
           </tbody>
         </table>
       </div>
+      <HooksAside />{/* P3：事件触发与 cron 并列展示（管理在 Webhooks tab） */}
+      <RoutinesLib />{/* P11：模板库——Ready 一键启用 / Needs setup 缺什么 */}
+    </div>
+  );
+}
+
+/** 事件触发概览（只读并列卡——与 cron 时间触发对照；建改去管理中心 Webhooks tab） */
+function HooksAside() {
+  const [hooks, setHooks] = useState<{ id: number; name: string; enabled: number;
+    rate_limit_per_min: number; last_fired_at: string | null }[]>([]);
+  useEffect(() => {
+    void (async () => {
+      try {
+        const d = await api<{ hooks: typeof hooks }>('/api/hooks');
+        setHooks(d.hooks);
+      } catch { /* 管理面不可达时静默——概览卡不炸调度页 */ }
+    })();
+  }, []);
+  if (!hooks.length) return null;
+  return (
+    <div className="admin-toolbar" style={{ marginTop: 10, opacity: 0.9 }}>
+      <span className="muted">事件触发（webhook）：</span>
+      {hooks.map(h => (
+        <span key={h.id} className={`sk-src ${h.enabled ? 'local' : 'off-tag'}`}
+          title={h.last_fired_at ? `最近触发 ${h.last_fired_at}` : '未触发过'}>
+          {h.name}（{h.enabled ? `${h.rate_limit_per_min}/min` : '停'}）
+        </span>
+      ))}
+      <span className="muted">建改在管理中心 → Webhooks</span>
     </div>
   );
 }
@@ -154,13 +187,22 @@ function JobRow({ job: j, onAct, onDel, onChanged }: {
     <>
       <tr className="clickable">
         <td>
-          <div className="sched-label">{j.label || '（无标签）'}</div>
+          <div className="sched-label">
+            {j.label || '（无标签）'}
+            {j.is_system && (j.label || '').includes('🫀·low')
+              ? <span className="chip" title="连续 3 轮无产出已降频为 2h（有产出自动恢复 30min）">降频中</span>
+              : null}
+          </div>
           <div className="sched-prompt" title={j.prompt}>{j.prompt.slice(0, 60)}</div>
         </td>
         <td>
-          {j.kind === 'message' && j.session_id ? (
+          {j.session_id ? (
+            // 六轮修 A7：new_session job 回填最新实例 sid（调度侧三轮修）——
+            // 原来被 kind 门挡死，显示「新建 · title」不可点进实例
             <a className="link" onClick={() => openSession(j.session_id!)}
                title={j.session_id}>{j.session_title || j.session_id.slice(0, 18)}</a>
+          ) : j.kind === 'message' ? (
+            <span>（会话已删除）</span>
           ) : (
             <span>新建 · {j.title || '（默认标题）'}{j.engine ? ` · ${j.engine}` : ''}</span>
           )}
@@ -184,13 +226,16 @@ function JobRow({ job: j, onAct, onDel, onChanged }: {
                 {j.status === 'active' ? <Pause size={13} /> : <Play size={13} />}
               </button>
             )}
-            {j.status !== 'done' && (
+            {j.status !== 'done' && !j.is_system && (
               <button className="btn ghost sm" title="编辑（标签/指令/触发/目标）"
                       onClick={() => setEditing(v => !v)}>
                 <Pencil size={13} />
               </button>
             )}
-            <button className="btn ghost sm danger-link" title="删除"
+            <button className="btn ghost sm danger-link"
+                    title={j.is_system
+                      ? '永久关闭（删除后重启不重建；暂停可临时停用）'
+                      : '删除'}
                     onClick={() => void onDel(j)}><Trash size={13} /></button>
           </div>
         </td>
@@ -495,3 +540,62 @@ function JobForm({ job, presetSid, onDone }: {
     </div>
   );
 }
+
+
+/** P11 模板库：例程模板卡片（安装=复制为用户 schedule，与平台升级解耦） */
+export function RoutinesLib() {
+  const [items, setItems] = useState<RoutineInfo[]>([]);
+  const [msg, setMsg] = useState('');
+  useEffect(() => {
+    void (async () => {
+      try {
+        const d = await api<{ routines: RoutineInfo[] }>('/api/routines');
+        setItems(d.routines);
+      } catch { /* 静默 */ }
+    })();
+  }, []);
+  async function install(key: string) {
+    try {
+      const d = await api<{ job: { id: number; label: string }; existing?: boolean }>(
+        `/api/routines/${key}/install`, { method: 'POST' });
+      setMsg(d.existing
+        ? `「${d.job.label}」此前已安装——已定位既有任务（未重复创建）`
+        : `已安装「${d.job.label}」为你的定时任务（可在上方列表编辑）`);
+    } catch (e) { setMsg(`安装失败：${String(e)}`); }
+  }
+  if (!items.length) return null;
+  return (
+    <div style={{ marginTop: 12 }}>
+      <b style={{ fontSize: 13 }}>模板库</b>
+      <div className="hub-results">
+        {items.map(t => (
+          <div key={t.key} className="hub-card slim">
+            <div className="sk-head">
+              <b>{t.name}</b>
+              <span className={`sk-src ${t.ready ? 'local' : 'off-tag'}`}>
+                {t.ready ? 'Ready' : '需配置'}
+              </span>
+              <span className="sk-src ext">{t.cron}</span>
+            </div>
+            <div className="sk-desc">{t.description}</div>
+            {!t.ready && (
+              <div className="admin-err" style={{ fontSize: 12 }}>
+                缺：{t.missing.join('、')}
+                <button className="link" onClick={() => {
+                  location.hash = '#/admin/settings';
+                }}>去配置 →</button>
+              </div>
+            )}
+            <div className="sk-foot">
+              <span className="sk-time">建议档：notify 推送</span>
+              <button className="btn sm primary" disabled={!t.ready}
+                onClick={() => void install(t.key)}>一键启用</button>
+            </div>
+          </div>
+        ))}
+      </div>
+      {msg && <div className="admin-msg">{msg}</div>}
+    </div>
+  );
+}
+interface RoutineInfo { key: string; name: string; cron: string; description: string; ready: boolean; missing: string[] }

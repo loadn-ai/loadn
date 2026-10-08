@@ -97,8 +97,15 @@ async def delete_message(mid: int):
         if row is None:
             raise HTTPException(404, "消息不存在")
         c.execute("DELETE FROM messages WHERE id=?", (mid,))
+        # 三轮修（backlog 清）：清 turns.message_id 反向引用（生产 4 行
+        # 悬挂实证——retract 路径成对删，此路漏）
+        c.execute("UPDATE turns SET message_id=NULL WHERE message_id=?", (mid,))
         sid = row["session_id"]
-    ENGINE.publish(sid, "resync", {}, None)
+    # 六轮修 A1：resync 带**整包快照**——与 sse.py 断线回放的 resync 同
+    # 语义（前端把 resync 当全量快照消费：空载荷会把另一 tab/回放路径的
+    # messages/turns/artifacts 全清成空）
+    from ..sse import _resync_snapshot
+    ENGINE.publish(sid, "resync", _resync_snapshot(sid), None)
     return {"ok": True}
 @router.put("/messages/{mid}")
 async def edit_message(mid: int, body: dict):
@@ -113,7 +120,11 @@ async def edit_message(mid: int, body: dict):
             raise HTTPException(404, "消息不存在")
         c.execute("UPDATE messages SET content=? WHERE id=?", (text, mid))
         sid = row["session_id"]
-    ENGINE.publish(sid, "resync", {}, None)
+    # 六轮修 A1：resync 带**整包快照**——与 sse.py 断线回放的 resync 同
+    # 语义（前端把 resync 当全量快照消费：空载荷会把另一 tab/回放路径的
+    # messages/turns/artifacts 全清成空）
+    from ..sse import _resync_snapshot
+    ENGINE.publish(sid, "resync", _resync_snapshot(sid), None)
     return {"ok": True}
 @router.delete("/turns/{tid}")
 async def retract_turn(tid: int):

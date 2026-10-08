@@ -184,9 +184,10 @@ def test_admin_plane_separate_admin_token(w0):
     ("PUT", "/api/tools/mcp/foo"),
     ("DELETE", "/api/tools/mcp/foo"),
     ("PUT", "/api/settings/run"),
-    ("POST", "/api/schedules"),
-    ("PATCH", "/api/schedules/99"),
-    ("DELETE", "/api/schedules/99"),
+    # /api/schedules 与 /api/hooks 的写面已降普通面（多用户批2——owner
+    # 复核在路由内）；钉版改判「不再 403」（防无意升回管理面/或再降级
+    # 更多敏感面时显形）
+    ("PUT", "/api/memory/config"),
 ])
 def test_admin_plane_prefix_matrix(w0, method, path):
     """全部管理面前缀 × 写方法：token 但无 admin 头 → 403。"""

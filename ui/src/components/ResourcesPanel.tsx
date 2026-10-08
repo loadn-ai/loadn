@@ -4,6 +4,7 @@
 // 样式类在 index.css「资源中心」段；安全语义不变：密钥值永不出后端。
 import { useEffect, useState } from 'react';
 import { api } from '../api/client';
+import ChannelsCard from './admin/ChannelsCard';
 
 interface ServiceItem { key: string; label: string; note: string; value: string; kind: string }
 interface SecretItem { key: string; set: boolean }
@@ -526,6 +527,7 @@ export default function ResourcesPanel() {
           </table>
         </>
       )}
+      <ChannelsCard />
     </div>
   );
 }

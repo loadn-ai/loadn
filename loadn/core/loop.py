@@ -227,10 +227,12 @@ class AgentCore:
                  permissions: PermissionEngine | None = None,
                  hooks: HookRunner | None = None, compactor=None,
                  ctx: ToolContext | None = None, subagents=None,
-                 planner=None) -> None:
+                 planner=None, mcp_deferred: dict | None = None) -> None:
         from loadn.core.context import ContextAssembler
         self.provider = provider
         self.tools = tools
+        self.mcp_deferred = mcp_deferred or {}   # P2 懒加载索引（名→MCPTool；
+        #   会话内 schema 缓存，物化经 ToolSearchTool 原地插入 self.tools）
         self.session = session            # SessionManager（transcript/state 落盘）
         self.cwd = Path(cwd)
         self.settings = settings or LoopSettings()
@@ -258,6 +260,10 @@ class AgentCore:
         self._tool_execs = 0          # 累计工具执行数（口头交付检测）
         # P1-8 repomap：冷启动前 3 轮带仓库地图，之后让位上下文预算
         self._repomap_turns = 0
+        # 二轮修#3：turn 收尾 fire-and-forget 任务登记（不存引用会被 GC，
+        # 更要命的是 -p 模式 asyncio.run 收尾直接取消它们——平台 webui 主
+        # 路径上记忆抽取/P12 检测从未写完过。main._shutdown_bundle 排空）
+        self._bg_tasks: set = set()
         self._emit_hook = None             # P2-3 v2：工具区事件源（run_turn 注入）
         # P1-6 cache-warm：空闲期保温（长命进程语义；详见 core/cache_warmer）
         self._warmer = None
@@ -323,7 +329,7 @@ class AgentCore:
                         "当前工作；与本任务无关的，记下不打断。")
             messages.append(Message(role="user", content=[TextBlock(text=injected)]))
             self.session.append_event("user", {
-                "role": "user", "content": [{"type": "text", "text": injected}]})
+                "role": "user", "engine": True, "content": [{"type": "text", "text": injected}]})
             if emit is not None:
                 await _fire(emit, {"type": "steer", "text": t})
             n += 1
@@ -355,7 +361,7 @@ class AgentCore:
             messages = [Message(role="user", content=[TextBlock(
                 text=injected_reminder)]), *messages]
             self.session.append_event("user", {
-                "role": "user",
+                "role": "user", "engine": True,
                 "content": [{"type": "text", "text": injected_reminder}]})
 
         # ---- v0.2 并行拆分调度：可拆任务先扇出子代理，结果注入主循环收敛
@@ -384,7 +390,7 @@ class AgentCore:
                     "的收尾与修正（子代理可能有个别错误），然后给出最终交付。"
                     "若子结果之间有冲突，以可验证的证据为准。")
                 self.session.append_event("user", {
-                    "role": "user", "content": [{"type": "text", "text": converge}]})
+                    "role": "user", "engine": True, "content": [{"type": "text", "text": converge}]})
                 messages.append(Message(role="user", content=[
                     TextBlock(text=converge)]))
 
@@ -393,6 +399,10 @@ class AgentCore:
         else:
             self.assembler.with_repomap = False
             system = self.assembler.build()
+        # P7：本轮实际注入的记忆清单（assembler 真源：节关/被裁=空）——
+        # 挂到本 turn 的 assistant 消息扩展字段 memory_hits
+        self._turn_memory_hits = list(getattr(self.assembler,
+                                              "last_memory_hits", []))
         max_turns = self.settings.max_turns or 0
         final_text = ""
         truncation_nudged = False
@@ -466,6 +476,8 @@ class AgentCore:
                                     tokens_cropped=getattr(
                                         self.compactor,
                                         "last_dropped_tokens", None))
+                                await self._reflect_if_due(
+                                    self.compactor.last_summary)
                                 overflowed = True
                                 break        # 出内层，回 while True 重发
                             summary.subtype = "error_during_execution"
@@ -518,9 +530,14 @@ class AgentCore:
                     blocks = self._repair_tool_calls(blocks)
                 msg = Message(role="assistant", content=blocks)
                 messages.append(msg)
-                self.session.append_event("assistant", msg.to_dict())
+                payload = msg.to_dict()
+                hits = getattr(self, "_turn_memory_hits", None)
+                if hits:
+                    payload["memory_hits"] = hits   # P7：本 turn 注入清单
+                self.session.append_event("assistant", payload)
                 await _fire(emit, {"type": "assistant", "message": msg,
-                                   "message_id": asm.message_id})
+                                   "message_id": asm.message_id,
+                                   **({"memory_hits": hits} if hits else {})})
 
                 tool_uses = [b for b in blocks if isinstance(b, ToolUseBlock)]
                 texts = [b.text for b in blocks if isinstance(b, TextBlock)]
@@ -540,7 +557,7 @@ class AgentCore:
                         messages.append(Message(role="user", content=[
                             TextBlock(text=nudge)]))
                         self.session.append_event("user", {
-                            "role": "user",
+                            "role": "user", "engine": True,
                             "content": [{"type": "text", "text": nudge}]})
                         continue
                     # v0.7 完工自检关卡（grind 模式）：模型说完成 ≠ 任务完成。
@@ -551,7 +568,7 @@ class AgentCore:
                         messages.append(Message(role="user", content=[
                             TextBlock(text=gate)]))
                         self.session.append_event("user", {
-                            "role": "user",
+                            "role": "user", "engine": True,
                             "content": [{"type": "text", "text": gate}]})
                         continue
                     summary.subtype = "success"   # 纯文本=turn 终结（自检放行）
@@ -597,7 +614,7 @@ class AgentCore:
                         messages.append(Message(role="user", content=[
                             TextBlock(text=nudge_text)]))
                         self.session.append_event("user", {
-                            "role": "user",
+                            "role": "user", "engine": True,
                             "content": [{"type": "text", "text": nudge_text}]})
                 if result_blocks:
                     # transcript 已逐条落 tool_result 事件（replay 自动归并成
@@ -615,6 +632,10 @@ class AgentCore:
                             self.compactor.last_summary,
                             tokens_cropped=getattr(
                                 self.compactor, "last_dropped_tokens", None))
+                        # 二轮修#6：常规压缩点也反思（原只挂 overflow 自救
+                        # 路径——正常压缩的摘要从不进反思=特性半残）
+                        await self._reflect_if_due(
+                            self.compactor.last_summary)
 
                 # v0.7 反思检查点：长磨不迷路（coq 6h 那场靠运气做到的事
                 # 变成机制）——周期性强制总结已确立/已废/下一步
@@ -627,7 +648,7 @@ class AgentCore:
                     messages.append(Message(role="user", content=[
                         TextBlock(text=reflect)]))
                     self.session.append_event("user", {
-                        "role": "user",
+                        "role": "user", "engine": True,
                         "content": [{"type": "text", "text": reflect}]})
 
                 # 轮次闸
@@ -669,7 +690,16 @@ class AgentCore:
                 "duration_ms": int(summary.duration_s * 1000),
                 **({"diffs": [{"path": d["path"], "hash": d["hash"],
                                "lines": summary_line(d["diff"])}
-                              for d in diffs]} if diffs else {})},
+                              for d in diffs]} if diffs else {}),
+                # P2：MCP 懒加载规模（可选字段——实际节省已自动计入
+                # usage.input_tokens；此处仅记延迟面体量便于观测）
+                **({"mcp_deferred": {
+                        "tools": len(md),
+                        "est_tokens_deferred": int(sum(
+                            len(t.description)
+                            + len(json.dumps(t.input_schema))
+                            for t in md.values()) / 4)}}
+                   if (md := self.mcp_deferred) else {})},
                 fsync=True)
             self.session.record_usage(summary)
             # P3-10：auto-commit 影子分支（off 默认零副作用）
@@ -679,6 +709,7 @@ class AgentCore:
             await _fire(emit, {"type": "turn", "summary": summary})
             self._warmer_schedule()          # P1-6：空闲保温（长命进程）
             self._memory_extract()          # P1-4b：后台记忆抽取（同步快路径）
+            self._consolidate_check()       # P12：纠错→技能建议（确定性词表）
             self._titlegen(first_user_text)  # P1-7：引擎侧标题（一次性）
         return summary
 
@@ -793,15 +824,27 @@ class AgentCore:
         self._merge_usage(summary, asm)
         msg = Message(role="assistant", content=asm.blocks())
         messages.append(msg)
-        self.session.append_event("assistant", msg.to_dict())
+        payload = msg.to_dict()
+        hits = getattr(self, "_turn_memory_hits", None)
+        if hits:
+            payload["memory_hits"] = hits       # P7：本 turn 注入清单
+        self.session.append_event("assistant", payload)
         await _fire(emit, {"type": "assistant", "message": msg,
-                           "message_id": asm.message_id})
+                           "message_id": asm.message_id,
+                           **({"memory_hits": hits} if hits else {})})
         return "".join(asm.text_parts)
 
     async def _exec_tool(self, tu: ToolUseBlock, emit: Emitter) -> tuple[ToolResultBlock, str]:
         self._tool_execs += 1
         name = tu.name
         tool = self.tools.get(name)
+        if tool is None:
+            # P2：延迟索引内的工具被直接调用——当场物化并执行（模型从
+            # ToolSearch 索引知道名字，直接点名不该吃一次「未知工具」错误；
+            # 索引在 build 侧已过 disallow 预过滤，这里无需再判）
+            t = self.mcp_deferred.get(name)
+            if t is not None:
+                self.tools[name] = tool = t
         content: str | list = ""
         is_error = False
 
@@ -959,21 +1002,59 @@ class AgentCore:
             pass
 
     # ------------------------------------------------------------ P1-4b memory
+    def _spawn_bg(self, coro) -> None:
+        """登记式后台任务（存引用防 GC + 供收尾排空）。无运行 loop 时静默弃。"""
+        import asyncio as _aio
+        try:
+            t = _aio.get_running_loop().create_task(coro)
+        except RuntimeError:
+            return
+        self._bg_tasks.add(t)
+        t.add_done_callback(self._bg_tasks.discard)
+
+    async def drain_bg(self, timeout_s: float = 30.0) -> None:
+        """排空后台任务（-p 进程退出前调用——不排空则 asyncio.run 取消
+        pending task，小模型调用写一半即灭）。超时兜底：宁可丢尾部也不挂死。"""
+        import asyncio as _aio
+        pending = [t for t in list(self._bg_tasks) if not t.done()]
+        if not pending:
+            return
+        try:
+            await _aio.wait_for(
+                _aio.gather(*pending, return_exceptions=True), timeout_s)
+        except _aio.TimeoutError:
+            log.warning("后台任务排空超时 %ss（丢弃尾部）", timeout_s)
+        self._bg_tasks.clear()
+
     def _memory_extract(self) -> None:
-        """turn 成功后的记忆抽取（后台语义；同步执行——fake/小模型路径快，
-        真实网关下 small_model 一次短调用可接受，失败静默不炸主循环）。"""
+        """turn 成功后的记忆抽取（后台语义；失败静默不炸主循环）。"""
         from loadn.core import memory as mem_mod
         small = getattr(self.compactor, "small_model", None) \
             if self.compactor else None
-        import asyncio as _aio
 
         async def _run():
             return await mem_mod.extract_and_store(
                 self.provider, self.cwd, self.session, small_model=small)
-        try:
-            _aio.get_running_loop().create_task(_run())
-        except RuntimeError:
-            pass
+        self._spawn_bg(_run())
+
+    # ------------------------------------------------------------ P12 经验固化
+    def _consolidate_check(self) -> None:
+        """纠错检测（turn 成功后；确定性词表禁模型猜）。失败静默。"""
+        self._spawn_bg(self._consolidate_async())
+
+    async def _consolidate_async(self) -> None:
+        from loadn import consolidate as _c
+        _c.maybe_suggest(self.cwd, self.session)
+
+    async def _reflect_if_due(self, summary_text: str) -> None:
+        """压缩后反思（默认 off；cheap 通道 → 记忆域 draft 待确认）。"""
+        from loadn import consolidate as _c
+        if not _c.reflection_enabled() or not summary_text:
+            return
+        small = (getattr(self.compactor, "small_model", None)
+                 if self.compactor else None)
+        await _c.reflect_after_compact(self.provider, self.cwd, self.session,
+                                       summary_text, small_model=small)
 
     # ------------------------------------------------------------ P1-2 tool-repair
     def _repair_tool_calls(self, blocks: list) -> list:
@@ -987,7 +1068,8 @@ class AgentCore:
         from loadn.types import ToolUseBlock as TUB
         texts = [getattr(b, "text", "") for b in blocks]
         merged = "\n".join(t for t in texts if t)
-        calls = tr.try_repair(merged, set(self.tools.keys()))
+        calls = tr.try_repair(merged, set(self.tools.keys())
+                              | set(self.mcp_deferred))
         if not calls:
             return blocks
         try:

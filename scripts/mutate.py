@@ -166,9 +166,42 @@ TARGET_TESTS: dict[str, list[str]] = {
         "tests/test_memory.py",
         "tests/test_m6a_units.py",
     ],
+    "loadn/memorystore.py": [
+        "tests/test_memory.py",
+        "tests/test_memory_ui.py",
+    ],
+    "loadn_webui/api/routes/memory.py": [
+        "tests/test_memory_ui.py",
+    ],
+    "loadn_webui/api/routes/activity.py": [
+        "tests/test_activity.py",
+    ],
+    "loadn_webui/integrations/channels.py": [
+        "tests/test_channels.py",
+    ],
+    "loadn_webui/security/target_policy.py": [
+        "tests/test_target_policy.py",
+    ],
+    "loadn_webui/routines.py": [
+        "tests/test_routines.py",
+    ],
+    "loadn/consolidate.py": [
+        "tests/test_consolidate.py",
+    ],
+    "loadn/cli/memory_cli.py": [
+        "tests/test_memory.py",
+    ],
     "loadn/core/tool_repair.py": [
         "tests/test_tool_repair.py",
         "tests/test_m6a_units.py",
+    ],
+    "loadn/core/skills.py": [
+        "tests/security/test_b6_skills_lock.py",
+        "tests/test_context_sections.py",
+    ],
+    "loadn/skilllock.py": [
+        "tests/security/test_b6_skills_lock.py",
+        "tests/test_admin.py",
     ],
     "loadn/core/context.py": [
         "tests/test_context_sections.py",
@@ -218,6 +251,14 @@ TARGET_TESTS: dict[str, list[str]] = {
         "tests/test_mcp_stdio_units.py",
         "tests/test_mcp_http.py",
         "tests/test_mcp_oauth.py",
+        "tests/test_mcp_lazy.py",
+    ],
+    "loadn/tools/tool_search.py": [
+        "tests/test_mcp_lazy.py",
+    ],
+    "loadn/core/build.py": [
+        "tests/test_mcp_lazy.py",
+        "tests/test_ext.py",
     ],
     "loadn_webui/integrations/lsp_host.py": [
         "tests/test_lsp_host.py",
@@ -239,6 +280,7 @@ TARGET_TESTS: dict[str, list[str]] = {
     "loadn_webui/integrations/browser_mcp.py": [
         "tests/test_browser_units.py",
         "tests/security/test_browser_cua.py",
+        "tests/test_browser_vision.py",
     ],
     "loadn_webui/engines/opencode.py": [
         "tests/test_engines.py",
@@ -257,6 +299,16 @@ TARGET_TESTS: dict[str, list[str]] = {
         "tests/test_m7b_units.py",
     ],
     "loadn_webui/api/routes/skills.py": ["tests/test_admin.py"],
+    "loadn_webui/hooks.py": [
+        "tests/test_webhooks.py",
+    ],
+    "loadn_webui/api/routes/hooks.py": [
+        "tests/test_webhooks.py",
+    ],
+    "loadn_webui/skills.py": [
+        "tests/test_admin.py",
+        "tests/security/test_b6_skills_lock.py",
+    ],
     "loadn_webui/api/routes/tools.py": ["tests/test_admin.py"],
     "loadn_webui/api/routes/settings.py": ["tests/test_settings.py", "tests/test_settings_admin.py"],
     "loadn_webui/api/routes/projects.py": ["tests/test_projects.py"],
@@ -304,6 +356,8 @@ TARGET_TESTS: dict[str, list[str]] = {
     ],
     "loadn/core/loop.py": [
         "tests/test_loop.py",
+        "tests/test_memory.py",
+        "tests/test_mcp_lazy.py",
         "tests/contract/test_protocol_v2.py",
         "tests/test_ext.py",
         "tests/test_loop_grind.py",

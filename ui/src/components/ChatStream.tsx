@@ -40,7 +40,7 @@ export default function ChatStream({ onOpenFile }: { onOpenFile?: (path: string)
         m.role === 'user'
           ? <UserMsg key={m.id} mid={m.id} text={m.content} blocks={m.blocks_json} ts={m.created_at}
                      onOpenFile={onOpenFile} />
-          : <AssistantMsg key={m.id} mid={m.id} text={m.content} blocks={parseBlocks(m.blocks_json)} ts={m.created_at} />)}
+          : <AssistantMsg key={m.id} mid={m.id} text={m.content} blocks={parseBlocks(m.blocks_json)} ts={m.created_at} hits={m.memory_hits_json} />)}
       {live && <LiveTurn key={`live-${live.turnId}`} live={live} />}
       {queued.length > 0 && (
         <div className="queue-zone">
@@ -205,7 +205,8 @@ function AttachChip({ a, onOpenFile }: {
   );
 }
 
-function AssistantMsg({ text, blocks, ts, mid }: { text: string; blocks: StreamItem[]; ts: string; mid?: number }) {
+function AssistantMsg({ text, blocks, ts, mid, hits }:
+  { text: string; blocks: StreamItem[]; ts: string; mid?: number; hits?: string | null }) {
   const [open, setOpen] = useState(blocks.length <= 6);
   const { editMessage } = useStore();
   const [editing, setEditing] = useState(false);
@@ -219,8 +220,13 @@ function AssistantMsg({ text, blocks, ts, mid }: { text: string; blocks: StreamI
     try { await editMessage(mid!, t); }
     catch (e) { alert(`保存失败：${e instanceof Error ? e.message : e}`); }
   };
+  const parsedHits: { id: string; domain: string }[] = (() => {
+    try { const h = JSON.parse(hits || '[]'); return Array.isArray(h) ? h : []; }
+    catch { return []; }
+  })();
   return (
     <div className="msg assistant">
+      {parsedHits.length > 0 && <MemoryChips mid={mid} hits={parsedHits} />}
       {blocks.length > 0 && (interleaved ? (
         <div className="replay">
           {blocks.map((b, i) => {
@@ -387,3 +393,52 @@ export const ToolCard = memo(function ToolCard({ tool, done }: { tool: ToolEvent
     </div>
   );
 });
+
+
+/** P8 来源 chips：本 turn 注入的记忆清单（域图标+id8）；点击弹层看全文/状态 */
+function MemoryChips({ mid, hits }: { mid?: number; hits: { id: string; domain: string }[] }) {
+  const [open, setOpen] = useState(false);
+  const [src, setSrc] = useState<{ hits: { id: string; domain: string; reason?: string;
+    status?: string; content?: string | null; origin_session?: string | null }[] } | null>(null);
+  const sid = useStore(s => s.currentSid);
+  const icon = (d: string) => (d === 'user' ? '🧠' : '📁');
+  async function load() {
+    setOpen(!open);
+    if (!open && mid && sid && !src) {
+      try { setSrc(await api(`/api/sessions/${sid}/messages/${mid}/sources`)); }
+      catch { setSrc({ hits: [] }); }
+    }
+  }
+  return (
+    <div className="memory-chips" style={{ display: 'flex', flexWrap: 'wrap', gap: 4, marginBottom: 4 }}>
+      {hits.map(h => (
+        <button key={h.id} className="link" onClick={() => void load()}
+          title={`记忆来源 ${h.domain}/${h.id}（点击看详情）`}
+          style={{ fontSize: 11, opacity: 0.8 }}>
+          {icon(h.domain)} {h.id}
+        </button>
+      ))}
+      {open && src && (
+        <div className="hooks-aside panel" style={{ width: '100%', fontSize: 12, padding: 8 }}>
+          {src.hits.map((h, i) => (
+            <div key={i} style={{ borderTop: i ? '1px dashed #8884' : undefined, padding: '4px 0' }}>
+              <b>{icon(h.domain)} {h.id}</b>
+              <span style={{ opacity: 0.7 }}>
+                {' '}· {h.status === 'present' ? '存在' : h.status === 'modified' ? '已修改' : '已删除'}
+                {' '}· {(h.reason || '')}
+                {h.origin_session ? ` · 源自 ${h.origin_session.slice(0, 18)}` : ''}
+              </span>
+              {h.content && <div className="muted" style={{ whiteSpace: 'pre-wrap' }}>
+                {h.content.slice(0, 300)}</div>}
+            </div>
+          ))}
+          <div style={{ marginTop: 4 }}>
+            <button className="link" onClick={() => { location.hash = '#/admin/memory'; }}>
+              去记忆页编辑 →
+            </button>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}

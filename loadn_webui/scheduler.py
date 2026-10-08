@@ -138,6 +138,29 @@ class Scheduler:
         jobs = []
         with db_mod.conn() as c:
             jobs = db_mod.due_jobs(c, iso())
+        # 三轮修：顺带过期审批清扫（原纯惰性过期——会话结束后无人触发，
+        # 生产 23 行 pending 全部超 TTL 僵尸；一条 UPDATE 量级，20s 一轮
+        # 无感）。失败静默（sweep 内部兜底）
+        try:
+            from .security.approve import sweep_expired
+            swept = sweep_expired()
+            if swept:
+                log.info("审批过期清扫：%d 行 pending → expired", swept)
+        except Exception:                              # noqa: BLE001
+            pass
+        # 三轮修（backlog 清）：广播事件行清理（'*' 行不挂 turn，prune 的
+        # 会话路径永远够不着——生产 2.5 万行无界增长）
+        try:
+            from .config import CONFIG
+            cutoff = (datetime.now(timezone.utc)
+                      - _timedelta_s(86400 * (CONFIG.run.events_retain_days
+                                              + 1))).isoformat()
+            with db_mod.conn() as c:
+                gone = db_mod.prune_broadcast(c, cutoff)
+            if gone:
+                log.info("广播事件清理：%d 行", gone)
+        except Exception:                              # noqa: BLE001
+            pass
         n = 0
         for job in jobs:
             try:
@@ -148,19 +171,66 @@ class Scheduler:
         return n
 
     async def fire(self, job) -> bool:
+        # 二轮修#1：Row/dict 双态统一在**入口**（此前 to_dict 插在 KILL_ALL
+        # 检查之后——:155 的 job.get("id") 对 Row 抛 AttributeError 被外层
+        # pass 吞掉，熔断反转 fail-open；接线级对赌抓回）
+        if not isinstance(job, dict):
+            job = db_mod.to_dict(job)
         # W6.4 全局熔断标记：KILL_ALL 存在时调度器不投递
         try:
             from .config import PATHS as _P
             if (_P["run"] / "KILL_ALL").exists():
-                log.warning("KILL_ALL 生效中，调度投递暂停（job %s）", job.get("id"))
+                log.warning("KILL_ALL 生效中，调度投递暂停（job %s）", job["id"])
                 return False
-        except Exception:                              # noqa: BLE001
+        except (OSError, ImportError):
             pass
-        """触发单个 job：按 kind 分流 + 记账（fires/due_at/终态）。返回是否投递成功。"""
+        # 三轮修：先 claim 再投递——把 due_at 预推一档缓冲（cron 重算/
+        # every+间隔；单次推到远未来）。副作用（建会话/submit/steer）成功
+        # 后 _settle 正常记账覆盖；**半途失败**（submit 抛/settle 写失败）
+        # 时 due_at 已离开过去——原形态下 job 每 20s 被 due_jobs 重新选中，
+        # new_session 类每轮造一个孤儿会话+整套 workspace，IO 降级持续
+        # 多久堆多久（故障注入侦查实证）。claim 自身的失败原样上抛（tick
+        # 记日志，下轮再试——不投递不放大）。
         now = datetime.now(timezone.utc)
-        if (job["kind"] or "message") == "new_session":
-            return await self._fire_new_session(job, now)
-        return await self._fire_message(job, now)
+        try:
+            claim_due = _next_due(job, now) or (now + _timedelta_s(86400)
+                                                ).isoformat(timespec="seconds")
+            # 六轮修：claim 用 compare-and-set——due_jobs 的 SELECT 与本
+            # UPDATE 之间无锁（服务端调度循环与测试/手动 tick 并发扫同一
+            # job 时双 fire：fires 计数翻倍+双投递）。占位失败=他方已 claim
+            with db_mod.conn() as c:
+                cur = c.execute(
+                    "UPDATE scheduled_jobs SET due_at=? WHERE id=? AND due_at=?",
+                    (claim_due, job["id"], job["due_at"]))
+                if cur.rowcount == 0:
+                    return False            # 他方 tick 已占位
+            job = {**job, "due_at": claim_due}
+        except Exception:                              # noqa: BLE001 — claim 失败不投
+            log.exception("job %s claim 失败（本轮跳过）", job["id"])
+            return False
+        # P11：内置 job 走专属三防路径（sqlite3.Row 无 .get——keys 刭列）
+        if "is_system" in job.keys() and job["is_system"]:
+            return await self.fire_heartbeat(job)
+        try:
+            if (job["kind"] or "message") == "new_session":
+                return await self._fire_new_session(job, now)
+            return await self._fire_message(job, now)
+        except Exception:
+            # 六轮修 B3：单次 job（无 cron/every）claim 已把 due_at 推到
+            # +24h——失败若无痕=「明天才补且面板无异常」。置 paused 让
+            # 失败可见（用户可手动恢复）；cron/every 类按 claim 节奏自愈
+            log.exception("job %s 投递失败", job["id"])
+            if not job["cron"] and not job["every_s"]:
+                try:
+                    with db_mod.conn() as c:
+                        db_mod.update_job(c, job["id"], status="paused")
+                    from .security.audit import audit
+                    audit("policy_change", {
+                        "action": "one_shot_job_failed_paused",
+                        "job": job["id"]})
+                except Exception:                          # noqa: BLE001
+                    pass
+            return False
 
     def _wrap(self, job, now: datetime) -> str:
         label = job["label"] or "定时任务"
@@ -207,6 +277,11 @@ class Scheduler:
         await self.engine.submit(sid, self._wrap(job, now), mode="background")
         log.info("job %s 新建会话 %s（%s%s）", job["id"], sid, prof.name,
                  f"/{job['engine']}" if job["engine"] else "")
+        # 三轮修：回填 session_id——heartbeat 的空转判定（上一轮会话有无
+        # 产出）靠它；不回填则 new_session 恒无据可查（三防②③的原死因
+        # 之二）。普通 new_session job 回填同样合理（列表可点进最新实例）
+        with db_mod.conn() as c:
+            db_mod.update_job(c, job["id"], session_id=sid)
         return await self._settle(job, now, sid, new_sid=sid)
 
     async def _settle(self, job, now: datetime, sid: str | None, *,
@@ -238,9 +313,183 @@ class Scheduler:
                         event="on_scheduled")
         except Exception:
             log.exception("调度通知异常")
+        await self._deliver_destination(job, new_sid or sid, label)
         log.info("job %s「%s」触发（%d/%d，%s）→ %s", job["id"], label, fires,
                  job["max_fires"], "插话" if steered else "排队", new_sid or sid)
         return True
+
+    async def _deliver_destination(self, job, sid: str | None, label: str) -> None:
+        """P11 destination：dashboard（默认，现状零改）/ notify（推送提醒）/
+        notify+artifact（推送 + 巡检产物写会话 artifacts/ 并附路径）。
+        推送在投递时发「已触发+去向」；产物落盘=给 agent 的下一轮指示由
+        _wrap 附言承担（结果产物由 turn 内产出，此处只保证目录与提醒）。"""
+        dest = job["destination"] or "dashboard"
+        if dest == "dashboard" or not sid:
+            return
+        from . import workspace as ws_mod
+        from .integrations import notify
+        extra = ""
+        if "artifact" in dest:
+            try:
+                ws = ws_mod.ws_of(sid)
+                art_dir = ws / "artifacts"
+                art_dir.mkdir(parents=True, exist_ok=True)
+                extra = f"（产物目录 {art_dir}，turn 内落盘自动入产物面板）"
+            except Exception:                             # noqa: BLE001
+                pass
+        if "notify" in dest:
+            notify.fire(f"🔄 例行触发 · {label}",
+                        f"会话 {sid} 已投递{extra}", event="on_scheduled")
+
+    # ------------------------------------------------------------ P11 heartbeat
+    HEARTBEAT_EMPTY_SKIP = "heartbeat-empty"      # 空/忙跳过（不计数）
+    HEARTBEAT_LOW_FREQ_MARK = "🫀·low"
+
+    def heartbeat_busy(self) -> bool:
+        """三防①：主队列忙（有 running/queued turn）跳过本轮。"""
+        with db_mod.conn() as c:
+            row = c.execute(
+                "SELECT COUNT(*) AS n FROM turns WHERE status IN "
+                "('running','queued')").fetchone()
+        return bool(row and row["n"] > 0)
+
+    async def fire_heartbeat(self, job) -> bool:
+        """heartbeat 专用触发：三防（忙跳过 / 空输出不投递不落账 /
+        连续 3 轮无产出自动降频）。返回是否实际投递。"""
+        from .routines import heartbeat_prompt
+        if self.heartbeat_busy():
+            log.info("heartbeat：主队列忙，跳过本轮")
+            # 二轮修#2：忙跳过不计数（×N 语义=「连续无产出」，忙≠无产出；
+            # 原实现在 3 次忙跳过后永久停投——_hb_advance(fired=True) 是
+            # 死代码，实投从不清零）
+            self._hb_advance(job, fired=False, count=False)
+            return False
+        # 三轮修：空转计数接线（原 _heartbeat_last_empty 返回值被丢弃且
+        # _hb_advance 无 count=True 调用点——×N 恒 0，三防②③全是死代码，
+        # 测试靠手工改 label 才绿）。语义：本轮 fire 时查**上一轮** heartbeat
+        # 会话产出——空 → ×N+1 且本轮不投（三防②省钱）；连续 3 次 → 降频
+        # 2h（三防③）；低频档空转**照投**（2h 探针自愈，否则 ×3 后永久
+        # 停投）；实投有产出 → 清 ×N 并恢复高频档。
+        low = self.HEARTBEAT_LOW_FREQ_MARK in (job["label"] or "")
+        last_empty = self._heartbeat_last_empty(job)
+        empties = 0
+        if "×" in (job["label"] or ""):
+            try:
+                empties = int(job["label"].rsplit("×", 1)[-1].strip())
+            except ValueError:
+                empties = 0
+        if last_empty and not low:
+            self._hb_advance(job, fired=False, count=True)   # ×N+1（推 due）
+            empties += 1
+            if empties >= 3:                   # 三防③：连续 3 轮无产出
+                with db_mod.conn() as c:
+                    db_mod.update_job(
+                        c, job["id"],
+                        label=f"{self.HEARTBEAT_LOW_FREQ_MARK}{job['label']}",
+                        cron="5 */2 * * *")     # 30min → 2h 降频
+                from .security.audit import audit
+                audit("policy_change", {"action": "heartbeat_lowfreq",
+                                        "job": job["id"]})
+                log.warning("heartbeat：连续 3 轮无产出，降频为 2h（面板可查）")
+            return False                       # 三防②：空转轮不投递
+        # 投递（new_session 复用现有路径，prompt 用巡检模板）
+        now = datetime.now(timezone.utc)
+        fired = await self._fire_new_session(
+            {**job, "prompt": heartbeat_prompt(),
+             "profile": job["profile"] or "assistant",
+             "label": job["label"] or "🫀 心跳巡检"}, now)
+        if fired:
+            with db_mod.conn() as c:
+                updates = {}
+                if "×" in (job["label"] or ""):
+                    # 二轮修#2：实投成功清零连续无产出计数（×N=真·连续）
+                    updates["label"] = job["label"].split(" ×")[0]
+                if low:
+                    # 三轮修：低频档实投（上一轮有产出才走到这——空转分支
+                    # 已 return）→ 恢复高频 30min 档
+                    base = (updates.get("label") or job["label"]).replace(
+                        self.HEARTBEAT_LOW_FREQ_MARK, "")
+                    updates["label"] = base
+                    updates["cron"] = "7,37 * * * *"
+                    from .security.audit import audit
+                    audit("policy_change", {"action": "heartbeat_highfreq",
+                                            "job": job["id"]})
+                if updates:
+                    db_mod.update_job(c, job["id"], **updates)
+        return fired
+
+    def _heartbeat_last_empty(self, job) -> bool:
+        """上一轮 heartbeat 会话最后 turn 是否无文本（无产出形态）。"""
+        if not job.get("last_fired_at") or not job.get("session_id"):
+            # new_session 递归不回填 sid——空转计数经 label 记录（fires 只计
+            # 实投；连续空轮数编码在 label 尾标 ×N，见 _hb_advance）
+            return "×" in (job["label"] or "")
+        with db_mod.conn() as c:
+            row = c.execute(
+                "SELECT t.id, (SELECT COUNT(*) FROM messages m WHERE "
+                "m.turn_id=t.id AND m.role='assistant' AND "
+                "length(m.content)>20) AS has_text FROM turns t "
+                "WHERE t.session_id=? ORDER BY t.id DESC LIMIT 1",
+                (job["session_id"],)).fetchone()
+        return bool(row) and not row["has_text"]
+
+    def _hb_advance(self, job, *, fired: bool, count: bool = True) -> None:
+        """推进 due_at；连续空轮计数编在 label 尾标（×1/×2/×3）。
+
+        count=False（忙跳过/降频跳过）只推 due_at 不动 label——被忙挡住
+        的那轮没有产出机会，不该计数。label 解析带 try（用户改出非数字
+        尾标不炸——否则 20s 热循环）。"""
+        now = datetime.now(timezone.utc)
+        next_due = _next_due(job, now)
+        if not count:
+            with db_mod.conn() as c:
+                if next_due is not None:
+                    db_mod.update_job(c, job["id"], due_at=next_due)
+            return
+        label = job["label"] or "🫀 心跳巡检"
+        try:
+            n = int(label.rsplit("×", 1)[-1].strip()) if "×" in label else 0
+        except ValueError:
+            n = 0                                     # 非数字尾标从头计
+        label = f"{label.split(' ×')[0]} ×{n + 1}"
+        with db_mod.conn() as c:
+            updates = {"label": label}
+            if next_due is not None:
+                updates["due_at"] = next_due
+            db_mod.update_job(c, job["id"], **updates)
+
+
+def ensure_heartbeat(engine) -> None:
+    """P11：内置 heartbeat schedule（幂等创建）。
+
+    二轮修#13：显式删除 = 永久关闭（kv 哨兵 heartbeat_disabled——原「删
+    即关」重启就复活）；去重键=恒定形态（is_system=1 AND kind=new_session）
+    而非 label LIKE（用户曾可改 label）。"""
+    from .cron import next_run_iso
+    try:
+        with db_mod.conn() as _c:
+            _off = _c.execute(
+                "SELECT value FROM kv WHERE key='heartbeat_disabled'").fetchone()
+        if _off and _off["value"] == "1":
+            return
+    except Exception:                                  # noqa: BLE001 — kv 缺表
+        pass
+    with db_mod.conn() as c:
+        row = c.execute(
+            "SELECT id FROM scheduled_jobs WHERE is_system=1 "
+            "AND kind='new_session'").fetchone()
+        if row is not None:
+            return
+        now = datetime.now(timezone.utc)
+        db_mod.create_job(
+            c, kind="new_session", label="🫀 心跳巡检",
+            prompt=__import__("loadn_webui.routines", fromlist=["heartbeat_prompt"]).heartbeat_prompt(),
+            # 二轮修#7：7/30 在本仓 cron 解析=单值 7（每小时一次）——
+            # 30min 档须显式双点
+            cron="7,37 * * * *", due_at=next_run_iso("7,37 * * * *", now),
+            profile="assistant", title="🫀 心跳巡检", is_system=1,
+            destination="notify+artifact", max_fires=100000)
+
 
 
 def next_wake(sid: str) -> dict | None:

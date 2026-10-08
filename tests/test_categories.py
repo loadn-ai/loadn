@@ -22,6 +22,9 @@ async def _mk_category(client, name="分类") -> int:
 
 
 async def test_category_crud(client):
+    # 全量序自净：e2e auth 等测试会在共享库留分类（精确集合断言会污染）
+    for c_ in (await client.get("/api/categories")).json()["categories"]:
+        await client.delete(f"/api/categories/{c_['id']}")
     cid = await _mk_category(client, "证书")
     assert (await client.post("/api/categories", json={"name": "证书"})).status_code == 409
     assert (await client.post("/api/categories", json={"name": "  "})).status_code == 400

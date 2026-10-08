@@ -72,6 +72,9 @@ def main(argv: list[str] | None = None) -> int:
     if raw and raw[0] == "skills":
         from loadn.cli.skills_lock import main as skills_main
         return skills_main(raw[1:])
+    if raw and raw[0] == "memory":
+        from loadn.cli.memory_cli import main as memory_main
+        return memory_main(raw[1:])
     if raw and raw[0] == "auth":
         from loadn.cli.auth import main as auth_main
         return auth_main(raw[1:])
@@ -258,6 +261,13 @@ async def _heartbeat(emitter, fmt: str) -> None:
 
 
 async def _shutdown_bundle(bundle) -> None:
+    # 二轮修#3：先排空 turn 收尾挂的后台任务（记忆抽取/P12 检测）——
+    # 不排空则 asyncio.run 收尾取消 pending，平台 webui 主路径上这些
+    # 写入从未完成过（fire-and-forget 三连在 -p 进程退出时全灭）
+    try:
+        await bundle.core.drain_bg(timeout_s=30.0)
+    except Exception:  # noqa: BLE001 — 排空失败不挡退出
+        pass
     for conn in getattr(bundle, "mcp_conns", []) or []:
         try:
             await conn.stop()
@@ -275,6 +285,18 @@ def _patch_system(core, extra: str) -> None:
     inner = core.assembler
 
     class _Patched:
+        # 二轮修#9：属性委托（原代理只实现 build——loop 往 assembler 写
+        # with_repomap/mentioned_files 落在 wrapper 上不透传→repomap 失效；
+        # 读 last_memory_hits 也取不到→P7 来源标注恒空）
+        def __getattr__(self, name):
+            return getattr(inner, name)      # 委托（写入经 setattr 下行使真源生效）
+
+        def __setattr__(self, name, value):
+            if name.startswith("_"):
+                object.__setattr__(self, name, value)
+            else:
+                setattr(inner, name, value)  # loop 的 with_repomap 等写真源
+
         def build(self, **kw):
             return inner.build(**kw) + "\n\n## 追加指令\n" + extra
 

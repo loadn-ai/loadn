@@ -246,7 +246,7 @@ spawns `claude -p --output-format stream-json` can spawn `loadn` instead:
 | Permission rules | `.loadn/settings.json` in the project (deny/allow, `Bash:git push*` patterns; `.agent/` legacy path still honored); modes `default/acceptEdits/plan/bypassPermissions` |
 | Hooks (Pre/PostToolUse, Stop, Session*) | `.loadn/settings.json` `hooks` — external commands, stdin JSON, exit 2 blocks |
 | MCP servers | `.mcp.json` in the project (stdio + streamable-HTTP with OAuth); tools appear as `mcp__<server>__<tool>` |
-| Skills | `.claude/skills/` / `.loadn/skills/` / `$LOADN_HOME/skills` SKILL.md — indexed in the system prompt; body loads on demand via the `Skill` tool (third-party installs go through a supply-chain lock) |
+| Skills | `.agents/skills/` (agentskills.io standard, highest priority) / `.claude/skills/` / `.loadn/skills/` / `$LOADN_HOME/skills` SKILL.md — indexed in the system prompt; body loads on demand via the `Skill` tool (third-party installs go through a supply-chain lock; any skill exports as an agentskills.io-compatible zip) |
 | Custom subagents | `.claude/agents/*.md` / `$LOADN_HOME/agents` — frontmatter `name/description/tools/model`; usable as `Task(subagent_type=…)` |
 | Constitution chain | CLAUDE.md/AGENTS.md from the git root down to cwd, nearest last; `@./file.md` line imports; user-level `$LOADN_HOME/AGENT.md` on top |
 | Platform config (50+ keys) | [docs/CONFIG.md](docs/CONFIG.md) — sandbox tiers, egress allowlist/three-state policy, approval TTLs, resource bridges |

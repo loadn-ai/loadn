@@ -92,12 +92,15 @@ def scan_session(sid: str) -> int:
                 st = p.stat()
             except OSError:
                 continue
-            rel = str(p.relative_to(ws.parent))
-            fields: dict = {"session_id": sid, "path": rel, "kind": kind_of(p),
+            from loadn.util import sanitize_text  # 六轮修 B5：rglob 出的
+            rel = sanitize_text(str(p.relative_to(ws.parent)))  # surrogateescape
+            fields: dict = {"session_id": sid, "path": rel,  # 文件名不清洗会
+                            "kind": sanitize_text(kind_of(p)),  # 炸 sqlite bind
                             "size": st.st_size, "mtime": st.st_mtime}
             if rel not in done:
-                fields["title"] = p.stem.replace("_", " ").replace("-", " ").strip() \
-                    or p.name
+                fields["title"] = sanitize_text(
+                    p.stem.replace("_", " ").replace("-", " ").strip()
+                    or p.name)
                 fields["created_by"] = "agent"
             db_mod.upsert_artifact(c, **fields)
             n += 1

@@ -3,6 +3,8 @@ from __future__ import annotations
 
 import json
 
+import pytest
+
 from loadn_webui import cli
 
 
@@ -59,3 +61,25 @@ def test_kill_all_cli_offline(monkeypatch, tmp_path, capsys):
     assert cli.main(["kill-all"]) == 0
     assert (tmp_path / "run" / "KILL_ALL").exists()
     assert "KILL_ALL" in capsys.readouterr().out
+
+
+async def test_r3_killall_rejects_new_submissions(client, monkeypatch,
+                                                  tmp_path):
+    """三轮修（backlog 清）对赌：kill-all 落标记后 submit fail-closed——
+    空闲会话的新消息也被拒（原 submit 从不查 KILL_ALL：熔断只拦调度+已
+    lock 会话，端点宣称的「拒绝新任务」半开）；解除即恢复。"""
+    from loadn_webui.config import PATHS
+    from loadn_webui.engine import ENGINE
+    r = await client.post("/api/sessions", json={"title": "熔断面"})
+    sid = r.json()["session"]["id"]
+    marker_dir = PATHS["run"]
+    marker_dir.mkdir(parents=True, exist_ok=True)
+    marker = marker_dir / "KILL_ALL"
+    marker.write_text("kill-all")
+    try:
+        with pytest.raises(PermissionError, match="全局熔断"):
+            await ENGINE.submit(sid, "应急期间的新任务")
+    finally:
+        marker.unlink(missing_ok=True)
+    tid = await ENGINE.submit(sid, "解除后的任务")      # 清除即恢复
+    assert tid

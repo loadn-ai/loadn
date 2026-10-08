@@ -181,6 +181,8 @@ class ContextAssembler:
 
     # ------------------------------------------------------------ 组装
     def build(self, *, with_env: bool = True) -> str:
+        self.last_memory_hits: list = []   # P7：本轮实际注入的记忆清单
+        # （memory_project 节构建时填充；节被裁/关则保持空——hits 恰为注入）
         """组装完整 system（节序即注入顺序；预算纪律见类 docstring）。"""
         from loadn.util import get_logger
         log = get_logger(__name__)
@@ -220,6 +222,8 @@ class ContextAssembler:
             {"id": s.id, "chars": len(t),
              "truncated": t.endswith("[section truncated]"),
              "dropped": s.id in drop_ids} for s, t in built]
+        if "memory_project" in drop_ids:
+            self.last_memory_hits = []   # 节被预算裁掉=没注入，hits 清空
         return "\n\n".join(t for s, t in built if s.id not in drop_ids)
 
     def _build_section(self, sid: str) -> str:
@@ -238,7 +242,11 @@ class ContextAssembler:
                                    mentioned=self.mentioned_files) or ""
         if sid == "memory_project":
             from loadn.core import memory as mem_mod
-            return mem_mod.render_block(self.cwd) or ""
+            # 二轮修#8：单读共享（两读盘之间抽取 task 落盘会让 hits 与
+            # 实际注入不一致——chips 误报已修改/已删除）
+            picked = mem_mod.select_injected(self.cwd)
+            self.last_memory_hits = mem_mod.hits_of(picked)
+            return mem_mod.render_block(self.cwd, picked=picked) or ""
         if sid == "memory":
             memory_parts = []
             proj_mem = _read_first([_claude_project_memory(self.cwd)])

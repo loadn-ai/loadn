@@ -188,7 +188,9 @@ async def test_new_session_job(sched, client):
         sid = row["id"]
         msgs = [m["content"] for m in db_mod.list_messages(c, sid) if m["role"] == "user"]
     assert job["fires"] == 1 and job["status"] == "done"
-    assert job["session_id"] is None            # 不回填：递归时每次建全新会话
+    # 三轮修：回填最新实例 sid（heartbeat 空转判定的数据源；递归仍每次
+    # 建全新会话——见 recurring 测试）
+    assert job["session_id"] == sid
     assert any("【定时唤醒】" in m for m in msgs)
     await _wait_jobs_done(sched, sid, n_turns=1)
 
@@ -244,7 +246,10 @@ async def test_fire_message_steers_running_turn(client, ws_root, tmp_path, monke
                                 due_at=iso(), max_fires=1)
     assert await Scheduler(ENGINE).tick() == 1
     steer_file = ws_root / sid / f".steer.{sid}.jsonl"
-    assert "比赛开赛" in steer_file.read_text()      # 插话写入
+    # 三轮修后 turn 终态会清 steer 文件（消费完防无限累积）——慢时序下
+    # 文件可能已被 _finish 清理；存在时必须含插话（未消费不清）
+    if steer_file.exists():
+        assert "比赛开赛" in steer_file.read_text()
     with db_mod.conn() as c:
         n_turns = len(c.execute(
             "SELECT id FROM turns WHERE session_id=?", (sid,)).fetchall())
@@ -314,9 +319,10 @@ async def test_api_global_endpoints(client):
     mine = [x for x in rows if x["id"] == mid][0]
     assert mine["session_title"] == "全局调度"
     assert mine["cron_desc"] == "每 5 分钟"
-    newones = [x for x in rows if x["kind"] == "new_session"]
-    assert all(x["session_title"] is None for x in newones)
-    assert any(x["cron_desc"] == "每天 20:00" for x in newones)
+    # 三轮修：session_id 回填后，全表 new_session 的 title 取决于是否
+    # 触发过（前序测试的 job 共享 db）——只断言本测试自建的 20:00 job
+    mine_new = next(x for x in rows if x["cron_desc"] == "每天 20:00")
+    assert mine_new["session_title"] is None      # 未到点未触发：无绑定
 
 
 async def test_api_patch_reschedule(client):
@@ -366,3 +372,159 @@ async def test_parse_when_accepts_js_iso():
     assert parse_when(at="2026-09-18T17:20:51Z") == "2026-09-18T17:20:51+00:00"
     with pytest.raises(ValueError):
         parse_when(at="not-a-time-Z")
+
+
+async def test_r2_system_job_guard_and_sentinel(client):
+    """二轮修#7/#13 对赌：内置心跳 cron=7,37 双点（30min 档——"7,30" 在
+    本仓解析=单值每小时一次）；PATCH is_system → 403（守卫不可绕过）；
+    DELETE → kv 哨兵写入 + ensure_heartbeat 不复活（删即关≠重启复活）。"""
+    from loadn_webui.scheduler import ensure_heartbeat
+    # 全量序自净：前置测试可能已建 system job / 写过关闭哨兵——清出干净
+    # 现场（本测试自带全部前置，不依赖全局状态）
+    with db_mod.conn() as c:
+        c.execute("DELETE FROM scheduled_jobs WHERE is_system=1")
+        c.execute("DELETE FROM kv WHERE key='heartbeat_disabled'")
+    ensure_heartbeat(None)
+    with db_mod.conn() as c:
+        row = c.execute("SELECT id, cron FROM scheduled_jobs "
+                        "WHERE is_system=1 AND kind='new_session'").fetchone()
+    assert row is not None
+    assert row["cron"] == "7,37 * * * *", "30min 档须双分钟点（7,30=单值 hourly）"
+    jid = row["id"]
+
+    # 守卫否定路径：档位字段 PATCH 都 403（fail-closed，不是部分字段白名单）
+    r = await client.patch(f"/api/schedules/{jid}", json={"label": "hack"})
+    assert r.status_code == 403 and "不可编辑" in r.json()["detail"]
+    r = await client.patch(f"/api/schedules/{jid}", json={"cron": "* * * * *"})
+    assert r.status_code == 403
+    # status-only 放行（「停用走暂停」的兑现）：暂停 → 恢复往返
+    r = await client.patch(f"/api/schedules/{jid}", json={"status": "paused"})
+    assert r.status_code == 200 and r.json()["job"]["status"] == "paused"
+    r = await client.patch(f"/api/schedules/{jid}", json={"status": "active"})
+    assert r.status_code == 200 and r.json()["job"]["status"] == "active"
+    # 夹带私货：status+label 混合 → 仍 403（不是「含 status 即放行」）
+    r = await client.patch(f"/api/schedules/{jid}",
+                           json={"status": "paused", "label": "hack"})
+    assert r.status_code == 403
+    with db_mod.conn() as c:      # 守卫反转对赌：DB 里真没被改
+        assert c.execute("SELECT cron FROM scheduled_jobs WHERE id=?",
+                         (jid,)).fetchone()["cron"] == "7,37 * * * *"
+
+    # DELETE → 哨兵 + 不复活
+    r = await client.delete(f"/api/schedules/{jid}")
+    assert r.status_code == 200
+    with db_mod.conn() as c:
+        v = c.execute("SELECT value FROM kv WHERE "
+                      "key='heartbeat_disabled'").fetchone()
+        assert v is not None and v["value"] == "1"
+    ensure_heartbeat(None)
+    with db_mod.conn() as c:
+        n = c.execute("SELECT COUNT(*) AS n FROM scheduled_jobs WHERE "
+                      "is_system=1").fetchone()["n"]
+    assert n == 0, "哨兵生效：重启不重建（永久关闭语义）"
+    # 清哨兵 → 重建（幂等创建路径不受污染）
+    with db_mod.conn() as c:
+        c.execute("DELETE FROM kv WHERE key='heartbeat_disabled'")
+    ensure_heartbeat(None)
+    with db_mod.conn() as c:
+        assert c.execute("SELECT COUNT(*) AS n FROM scheduled_jobs WHERE "
+                         "is_system=1").fetchone()["n"] == 1
+
+
+async def test_r3_fire_claim_prevents_storm(sched, client, monkeypatch):
+    """三轮修对赌：fire 半途失败（submit 抛）→ due_at 已被 claim 预推——
+    第二次 tick 不重选该 job（原形态：settle 未达，due_at 留在过去，每
+    20s 重投一次，new_session 类每轮造一个孤儿会话）。"""
+    from loadn_webui.util import iso
+
+    class _BoomEngine:
+        async def submit(self, sid, text, mode="foreground", attachments=None):
+            raise OSError("磁盘满（模拟）")
+
+    jid = _make_job(None, iso(), kind="new_session", title="孤儿风暴",
+                    prompt="跑巡检", max_fires=100)
+    boom = Scheduler(_BoomEngine())
+    with db_mod.conn() as c:
+        n0 = c.execute("SELECT COUNT(*) AS n FROM sessions").fetchone()["n"]
+    with db_mod.conn() as c:
+        job_row = db_mod.get_job(c, jid)
+    n_fired0 = await boom.tick()               # 生产路径：tick 兜底吞异常
+    assert n_fired0 == 0                        # submit 抛 → 无成功触发
+    with db_mod.conn() as c:
+        job = db_mod.get_job(c, jid)
+        n1 = c.execute("SELECT COUNT(*) AS n FROM sessions").fetchone()["n"]
+    assert n1 == n0 + 1                         # 第一轮的孤儿已产生（沉没）
+    assert job["due_at"] > iso(), "claim 须预推 due_at 离开过去"
+    # 第二次 tick：job 不再被选中（不再造孤儿）
+    n_fired = await boom.tick()
+    assert n_fired == 0
+    with db_mod.conn() as c:
+        n2 = c.execute("SELECT COUNT(*) AS n FROM sessions").fetchone()["n"]
+    assert n2 == n1, "due_at 已推走——不产生 20s 重投风暴"
+
+
+async def test_r3_broadcast_events_pruned(client, monkeypatch):
+    """三轮修（backlog 清）对赌：'*' 广播行（egress 逐请求双写，不挂
+    turn——prune 的会话路径永远够不着，生产 2.5 万行无界增长）按保留窗
+    清理；新行不动；hard_keep 兜底总量。"""
+    from datetime import datetime, timedelta, timezone
+
+    from loadn_webui import db as db_mod
+    old = (datetime.now(timezone.utc)
+           - timedelta(days=30)).isoformat(timespec="seconds")
+    fresh = datetime.now(timezone.utc).isoformat(timespec="seconds")
+    with db_mod.conn() as c:
+        for _ in range(5):
+            c.execute("INSERT INTO session_events(session_id, type, "
+                      "data_json, created_at) VALUES('*', 'egress', '{}', ?)",
+                      (old,))
+        c.execute("INSERT INTO session_events(session_id, type, "
+                  "data_json, created_at) VALUES('*', 'egress', '{}', ?)",
+                  (fresh,))
+        cutoff = (datetime.now(timezone.utc)
+                  - timedelta(days=8)).isoformat(timespec="seconds")
+        gone = db_mod.prune_broadcast(c, cutoff)
+        assert gone >= 5
+        n_old = c.execute(
+            "SELECT COUNT(*) n FROM session_events WHERE session_id='*' "
+            "AND created_at < ?", (cutoff,)).fetchone()["n"]
+        n_new = c.execute(
+            "SELECT COUNT(*) n FROM session_events WHERE session_id='*' "
+            "AND created_at >= ?", (cutoff,)).fetchone()["n"]
+    assert n_old == 0                            # 超窗全清
+    assert n_new >= 1                            # 新行保留
+    # hard_keep 兜底：总量超限从最老裁
+    with db_mod.conn() as c:
+        for _ in range(30):
+            c.execute("INSERT INTO session_events(session_id, type, "
+                      "data_json, created_at) VALUES('*', 'egress', '{}', ?)",
+                      (fresh,))
+        gone = db_mod.prune_broadcast(c, cutoff, hard_keep=10)
+        n = c.execute("SELECT COUNT(*) n FROM session_events "
+                      "WHERE session_id='*'").fetchone()["n"]
+    assert n <= 10, f"hard_keep 兜底生效（实际 {n}）"
+
+
+async def test_r6_one_shot_failure_pauses_visible(client, monkeypatch):
+    """六轮修 B3 对赌：单次 job 投递失败 → paused + 审计（失败可见可恢复；
+    原 claim 预推 24h 后无任何告警面——「明天才补」且面板看不出异常）。"""
+    from loadn_webui.scheduler import Scheduler
+    from loadn_webui.util import iso
+
+    class _BoomEngine:
+        async def submit(self, sid, text, mode="foreground", attachments=None):
+            raise OSError("磁盘满（模拟）")
+
+    r = await client.post("/api/sessions", json={"title": "单次失败可见"})
+    sid = r.json()["session"]["id"]
+    with db_mod.conn() as c:
+        jid = db_mod.create_job(c, kind="message", label="20点开会",
+                                prompt="提醒", due_at=iso(),
+                                session_id=sid)
+    boom = Scheduler(_BoomEngine())
+    n = await boom.tick()
+    assert n == 0                                  # 投递失败无成功计数
+    with db_mod.conn() as c:
+        job = db_mod.get_job(c, jid)
+    assert job["status"] == "paused", "单次 job 失败须 paused（可见）"
+    assert job["due_at"] > iso()                   # claim 已推走（不风暴）

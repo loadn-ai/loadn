@@ -137,3 +137,94 @@ async def test_resume_continuity_after_stop(client, ws_root):
     assert t2["status"] == "done"
     detail = (await client.get(f"/api/sessions/{sid}")).json()
     assert detail["session_fresh"] == 0
+
+
+def test_r3_surrogate_does_not_break_transcript(tmp_path):
+    """三轮修（backlog 清）对赌：工具结果含 lone surrogate（surrogateescape
+    非常规文件名）不再炸 transcript——原 UnicodeEncodeError 直穿顶层
+    except：整 turn 报 error、上下文丢失（resume 无法重建）。"""
+    bad = "caf\udce9-\udcff.py"
+    from loadn.core.session import SessionManager
+    session = SessionManager.create(tmp_path, home=tmp_path / "home")
+    session.append_event("user", {"content": [{"type": "text",
+                                               "text": f"读 {bad}"}]})
+    # 能无损读回（不抛 UnicodeEncodeError）且 surrogate 已替换为 ?
+    evs = session.transcript.read_events()
+    mine = next(e for e in evs if e["type"] == "user")
+    blob = json.dumps(mine, ensure_ascii=False)
+    assert "caf?" in blob and "\\udc" not in blob
+    # webui 侧 session_events 同款（db.add_event）
+    from loadn_webui import db as db_mod
+    with db_mod.conn() as c:
+        eid = db_mod.add_event(c, "s-r3", None, "files",
+                               {"paths": [bad, "normal.py"]})
+        row = c.execute("SELECT data_json FROM session_events WHERE id=?",
+                        (eid,)).fetchone()
+    assert "normal.py" in row["data_json"]       # 正常内容不受影响
+    assert "\\udc" not in row["data_json"]       # surrogate 已清洗
+
+
+async def test_r3_hooks_payload_with_surrogate(monkeypatch, tmp_path):
+    """三轮修对赌：外部命令钩子 payload 含 surrogate 时 communicate 不再
+    抛（原 encode 抛错被 fire() 的 continue 吞=安全钩子静默跳过 fail-open）。"""
+
+    from loadn.core import hooks as hk
+    captured = {}
+
+    class _FakeProc:
+        def communicate(self, data):
+            captured["data"] = data
+            return b"", b""
+
+        def wait(self):
+            return 0
+
+    async def _fake_exec(cmd, **kw):
+        return _FakeProc()
+
+    monkeypatch.setattr(hk.asyncio, "create_subprocess_shell", _fake_exec)
+    runner = hk.HookRunner(hooks={"PreToolUse": ["cat >/dev/null"]})
+    out = await runner.fire("PreToolUse", {"file": "x\udce9y"})
+    assert b"x" in captured["data"]              # encode 成功（不再抛）
+    assert not out.blocked                       # 钩子照常执行未跳过
+
+
+def test_r6_add_message_sanitizes_surrogate():
+    """六轮修 B5 对赌：API JSON 体的 lone surrogate 进 add_message 不再
+    炸 sqlite bind（原 UnicodeEncodeError 会把 _finish 记账炸成 turn
+    永久 running）。"""
+    from loadn_webui import db as db_mod
+    bad = "读 caf\udce9.py 的结果"
+    with db_mod.conn() as c:
+        mid = db_mod.add_message(c, session_id="s-r6", turn_id=None,
+                                 role="user", content=bad)
+        row = c.execute("SELECT content FROM messages WHERE id=?",
+                        (mid,)).fetchone()
+    assert "caf?" in row["content"]
+
+
+def test_r8_nonascii_token_gets_401_not_500():
+    """八轮（生产实证）对赌：带含非 ASCII 的坏 token（latin-1 高位字节
+    经 h11 放行的真实形态——httpx 客户端拒发、但浏览器/隧道层可发）→
+    check_auth 安全返回 False（原 hmac.compare_digest 对非 ASCII str 抛
+    TypeError → 500 + 隧道层表现为 HTTP/2 RST）。单元级直调（HTTP 客户
+    端层拒发非 ASCII 头，模拟不了）。"""
+    from starlette.requests import Request
+
+    from loadn_webui.api.app import check_auth
+    from loadn_webui.config import CONFIG
+    old = (CONFIG.server.token, CONFIG.server.token_grace_until)
+    CONFIG.server.token = "real-token"
+    CONFIG.server.token_grace_until = 0.0
+    bad = "\u00e5\u00e6-\u5bbd"          # latin-1 高位 + CJK 混合形态
+    try:
+        r = Request({"type": "http", "method": "GET", "path": "/api/sessions",
+                     "headers": [(b"x-loadn-token", bad.encode("utf-8"))],
+                     "query_string": b""})
+        assert check_auth(r) is False           # 不抛 TypeError
+        r2 = Request({"type": "http", "method": "GET", "path": "/",
+                      "headers": [], "query_string":
+                      b"token=" + bad.encode("utf-8")})
+        assert check_auth(r2) is False
+    finally:
+        CONFIG.server.token, CONFIG.server.token_grace_until = old
