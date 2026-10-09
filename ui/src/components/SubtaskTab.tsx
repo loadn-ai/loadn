@@ -67,12 +67,13 @@ export default function SubtaskTab({ subtask, onOpenFile }: {
             <div className="agent-head-sub">
               <span className="muted">调用过的 agent：</span>
               {groupAgents.map(a => (
-                <span key={a.key} className="chip-agent static"
-                      title={a.role ? `负责：${a.role}` : a.name}>
+                <button key={a.key} className="chip-agent static"
+                        title={`${a.name}${a.role ? ` · 负责：${a.role}` : ''}（点击看该 agent 视角）`}
+                        onClick={() => useStore.getState().openAgentView(a.key)}>
                   <AgentAvatar name={a.name} size={18} />
                   <span className="chip-name">{a.name}</span>
                   <span className={`chip-dot ${a.status}`} />
-                </span>
+                </button>
               ))}
             </div>
           )}
@@ -205,7 +206,7 @@ export const DispatchCard = memo(function DispatchCard({ agent, tool, turnId, de
   );
 });
 
-function AgentArtCard({ a, onOpenFile }: {
+export function AgentArtCard({ a, onOpenFile }: {
   a: ArtifactInfo; onOpenFile?: (path: string) => void;
 }) {
   return (

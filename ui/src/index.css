@@ -1228,6 +1228,9 @@ button.attach-chip:hover { border-color: color-mix(in srgb, var(--accent) 40%, v
 /* 子任务 tab 行 */
 .main-tabs { overflow-x: auto; scrollbar-width: none; }
 .main-tabs::-webkit-scrollbar { display: none; }
+.mtab.agent .mtab-name { gap: 5px; }
+.mtab-agent-name { max-width: 96px; overflow: hidden; text-overflow: ellipsis;
+  white-space: nowrap; }
 .mtab.subtask .mtab-name { gap: 5px; }
 .mtab-sub-name { max-width: 120px; overflow: hidden; text-overflow: ellipsis;
   white-space: nowrap; }

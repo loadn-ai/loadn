@@ -161,11 +161,15 @@ async def test_browser_subagent_dispatch_card_and_chips(server_url, ws_root,
             await page.keyboard.press("Enter")
             # 派发卡：引擎人名渲染（马洛）
             await page.wait_for_selector(".dispatch-card:has-text('马洛')")
-            # agent chips 出现；agent tab 不存在（rev10：tab=子任务，agent 走 chips）
+            # agent chips 出现；agent 视图按需开——初始无 agent tab
             await page.wait_for_selector(".chip-agent:has-text('马洛')")
             assert await page.locator(".mtab.agent").count() == 0
-            # 子代理工具流水在主控合集（子1·Write → 子1 徽标）
-            await page.wait_for_selector(".tool-card .tool-subtag:has-text('子1')")
+            # 点击 chip → 该 agent 的钻取视图（tab + 头部 + 工具流水）
+            await page.click(".chip-agent:has-text('马洛')")
+            await page.wait_for_selector(".mtab.agent:has-text('马洛')")
+            await page.wait_for_selector(".agent-head:has-text('马洛')")
+            await page.wait_for_selector(".agent-tab .tool-card .tool-subtag:"
+                                         "has-text('子1')")
         finally:
             await browser.close()
 
@@ -176,6 +180,7 @@ async def test_browser_subtask_tab_appears(server_url, ws_root, logged_context,
     同进程 uvicorn 线程生效）→ 发消息 → SSE subtask 事件 → 子任务 tab 弹出
     → 点击看筛选视图（该 turn 的用户消息+agent 活动都在 tab 内）。"""
     from playwright.async_api import async_playwright
+
     from loadn_webui.config import CONFIG
     from loadn_webui.integrations import titlegen
 

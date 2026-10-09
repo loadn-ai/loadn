@@ -168,8 +168,12 @@ interface Store {
   rightTab: 'properties' | 'artifacts' | 'files';
   panelOpen: boolean;
   egressTick: number;
-  /** 主区活动 tab：'chat' | 's:<subtaskId>' | 'f:<path>'（子任务/文件 tab） */
+  /** 主区活动 tab：'chat' | 's:<subtaskId>' | 'a:<agentKey>' | 'f:<path>' */
   mainTab: string;
+  /** 已打开的 agent 钻取视图（按需开——chips/子任务内点击才进，不自动生成） */
+  agentViews: string[];
+  openAgentView: (key: string) => void;
+  closeAgentView: (key: string) => void;
   /** 侧栏当前空间：'recent' | 'starred' | 'archive' | 'cat:<id>' */
   activeSpace: string;
   /** Composer 注入请求（「新建子任务/招募」模板）：seq 递增防同文本去重失效 */
@@ -258,12 +262,24 @@ export const useStore = create<Store>((set, get) => ({
   panelOpen: typeof window !== 'undefined' && window.innerWidth > 900,
   egressTick: 0,
   mainTab: 'chat',
+  agentViews: [],
   activeSpace: initialSpace(),
   composeReq: null,
 
   setRightTab(t) { set({ rightTab: t }); },
   setPanelOpen(v) { set({ panelOpen: v }); },
   setMainTab(t) { set({ mainTab: t }); },
+  openAgentView(key) {
+    set(s => (s.agentViews.includes(key) ? {} : {
+      agentViews: [...s.agentViews, key], mainTab: `a:${key}` }));
+  },
+  closeAgentView(key) {
+    set(s => {
+      const agentViews = s.agentViews.filter(k => k !== key);
+      return { agentViews,
+               ...(s.mainTab === `a:${key}` ? { mainTab: 'chat' } : {}) };
+    });
+  },
   setActiveSpace(s) {
     localStorage.setItem('wd_space', s);
     set({ activeSpace: s });
@@ -337,7 +353,7 @@ export const useStore = create<Store>((set, get) => ({
     get().closeSession();
     set({ currentSid: sid, messages: [], turns: [], artifacts: [], live: null,
           sessionExtras: null, timeline: [], agents: [], subtasks: [],
-          mainTab: 'chat' });
+          mainTab: 'chat', agentViews: [] });
     localStorage.setItem('loadn_sid', sid);   // 刷新/重开恢复
     localStorage.removeItem('wd_sid');        // 旧键清理（迁移遗留）
     const d = await api<{ messages: MessageInfo[]; turns: TurnInfo[];
@@ -395,7 +411,8 @@ export const useStore = create<Store>((set, get) => ({
     if (es) { es.close(); }
     localStorage.removeItem('loadn_sid'); localStorage.removeItem('wd_sid');
     set({ es: null, connected: false, currentSid: null, sessionExtras: null,
-          timeline: [], agents: [], subtasks: [], live: null, mainTab: 'chat' });
+          timeline: [], agents: [], subtasks: [], live: null, mainTab: 'chat',
+          agentViews: [] });
   },
 
   /** 前台恢复拉新（visibilitychange/focus 调用）。iOS PWA 后台冻结定时器与
