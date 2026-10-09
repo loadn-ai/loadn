@@ -47,6 +47,14 @@ export default function SubtaskTab({ subtask, onOpenFile }: {
   const memberTurns = turns.filter(t => memberIds.has(t.id));
   const msgs = messages.filter(m => m.turn_id != null && memberIds.has(m.turn_id));
   const groupAgents = agents.filter(a => memberIds.has(a.turnId));
+  // 按人名聚合：引擎每轮从头取名（跨轮重名），「调用过的 agent」展示的是
+  // 人（名字是稳定身份），不是每次派出实例——马洛×3 次派出 = 一个 chip
+  const agentsByName: { name: string; list: typeof groupAgents }[] = [];
+  for (const a of groupAgents) {
+    let g = agentsByName.find(x => x.name === a.name);
+    if (!g) { g = { name: a.name, list: [] }; agentsByName.push(g); }
+    g.list.push(a);
+  }
   const arts = artifacts.filter(a => a.turn_id != null && memberIds.has(a.turn_id));
   const liveHere = live && memberIds.has(live.turnId) ? live : null;
 

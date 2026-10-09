@@ -1230,6 +1230,12 @@ button.attach-chip:hover { border-color: color-mix(in srgb, var(--accent) 40%, v
 .main-tabs::-webkit-scrollbar { display: none; }
 .mtab-agent-name { max-width: 96px; overflow: hidden; text-overflow: ellipsis;
   white-space: nowrap; }
+.chip-n { font-size: 10px; color: var(--text-dim); flex: none; }
+.agent-dispatch-group { display: flex; flex-direction: column; gap: 6px;
+  padding: 8px 0; border-bottom: 1px dashed var(--border); }
+.agent-dispatch-group:last-child { border-bottom: none; }
+.agent-dispatch-head { display: flex; align-items: center; gap: 8px;
+  font-size: 11px; color: var(--text-dim); }
 .agent-filter-bar { display: flex; align-items: center; gap: 8px;
   padding: 6px 16px; border-bottom: 1px solid var(--border);
   background: var(--accent-soft); font-size: 12px; }

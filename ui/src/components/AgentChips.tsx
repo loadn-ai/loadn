@@ -28,7 +28,7 @@ function AgentChipsBase() {
       {shown.map(a => (
         <button key={a.key} className={`chip-agent ${a.status}`}
                 title={`${a.name}${a.role ? ` · 负责：${a.role}` : ''}（点击看该 agent 视角）`}
-                onClick={() => setAgentFilter(a.key)}>
+                onClick={() => setAgentFilter(a.name)}>
           <AgentAvatar name={a.name} size={20} />
           <span className="chip-name">{a.name}</span>
           <span className={`chip-dot ${a.status}`} />

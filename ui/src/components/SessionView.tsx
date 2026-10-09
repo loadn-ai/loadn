@@ -78,9 +78,9 @@ export default function SessionView({ onMenu }: { onMenu: () => void }) {
   const activeFile = tabs.find(t => t.key === active)?.path;
   const activeSubtask = active.startsWith('s:')
     ? subtasks.find(x => x.id === Number(active.slice(2))) : undefined;
-  // agent 视角筛选（非 tab）：挂上时内容区切 AgentTab，清除回当前 tab
-  const filterAgent = agentFilter
-    ? agents.find(x => x.key === agentFilter) : undefined;
+  // agent 视角筛选（按人名聚合，非 tab）：挂上时内容区切该名字的聚合视图
+  const filterDispatches = agentFilter
+    ? agents.filter(x => x.name === agentFilter) : [];
   // 子任务运行点：任一成员 turn 在跑（live running 或 turns 表 running/queued）
   const subtaskRunning = (subId: number) =>
     turns.some(t => t.subtask_id === subId
@@ -151,13 +151,14 @@ export default function SessionView({ onMenu }: { onMenu: () => void }) {
               <Plus size={12} /> 新建子任务
             </button>
           </div>
-          {filterAgent && (
+          {agentFilter && filterDispatches.length > 0 && (
             <div className="agent-filter-bar">
               <span className="muted">视角筛选</span>
               <span className="chip-agent static">
-                <AgentAvatar name={filterAgent.name} size={18} />
-                <span className="chip-name">{filterAgent.name}</span>
-                <span className={`chip-dot ${filterAgent.status}`} />
+                <AgentAvatar name={agentFilter} size={18} />
+                <span className="chip-name">{agentFilter}</span>
+                <span className={`chip-dot ${filterDispatches.some(a => a.status === 'running')
+                  ? 'running' : 'done'}`} />
               </span>
               <span className="muted" style={{ flex: 1 }}>
                 只看该 agent 的过程与产物（顶部标签页始终是子任务）
@@ -169,8 +170,8 @@ export default function SessionView({ onMenu }: { onMenu: () => void }) {
           )}
           {active === 'chat' || !activeFile
             ? <>
-                {filterAgent
-                  ? <div className="agent-tab-scroll"><AgentTab agent={filterAgent} onOpenFile={openFile} /></div>
+                {filterDispatches.length > 0
+                  ? <div className="agent-tab-scroll"><AgentTab name={agentFilter!} dispatches={filterDispatches} onOpenFile={openFile} /></div>
                   : activeSubtask
                     ? <div className="agent-tab-scroll"><SubtaskTab subtask={activeSubtask} onOpenFile={openFile} /></div>
                     : <ChatStream onOpenFile={openFile} />}

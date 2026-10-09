@@ -170,10 +170,10 @@ interface Store {
   egressTick: number;
   /** 主区活动 tab：'chat' | 's:<subtaskId>' | 'a:<agentKey>' | 'f:<path>' */
   mainTab: string;
-  /** agent 视角筛选（chips/子任务内点击挂上；清除回原 tab）。顶部 tab
-   *  恒为子任务——agent 是筛选不是 tab（用户概念模型，勿再回退成 tab） */
+  /** agent 视角筛选（按人名聚合——引擎跨轮重名，名字才是稳定身份；
+   *  chips/子任务内点击挂上；清除回原 tab。顶部 tab 恒为子任务 */
   agentFilter: string | null;
-  setAgentFilter: (key: string | null) => void;
+  setAgentFilter: (name: string | null) => void;
   /** 侧栏当前空间：'recent' | 'starred' | 'archive' | 'cat:<id>' */
   activeSpace: string;
   /** Composer 注入请求（「新建子任务/招募」模板）：seq 递增防同文本去重失效 */
