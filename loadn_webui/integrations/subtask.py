@@ -100,18 +100,26 @@ def _user_prompt(text: str, subtasks: list) -> str:
     return "\n".join(lines)
 
 
-async def _decide(sid: str, user_text: str) -> tuple[dict | None, list]:
-    """守卫 + 读现有子任务 + LLM 决策（不写库）。返回 (decision, subtasks)。"""
+async def _decide(sid: str, user_text: str, *,
+                  shadow: list | None = None) -> tuple[dict | None, list]:
+    """守卫 + 读现有子任务 + LLM 决策（不写库）。返回 (decision, subtasks)。
+
+    shadow：dry-run 的影子列表（不读库）——否则预览每轮都看到「尚无子任务」，
+    全部误判为新建（真实回填是增量可见的，并入行为必须模拟出来才可验收）。
+    """
     cfg = CONFIG.titlegen
     text = _clean_text(user_text)
     if not (cfg.enabled and cfg.api_key and text):
         return None, []
-    from .. import db as db_mod
     from . import titlegen
 
-    with db_mod.conn() as c:
-        cur = db_mod.list_subtasks(c, sid)
-        valid_ids = {r["id"] for r in cur}
+    if shadow is None:
+        from .. import db as db_mod
+        with db_mod.conn() as c:
+            cur = db_mod.list_subtasks(c, sid)
+    else:
+        cur = shadow
+    valid_ids = {r["id"] for r in cur}
     try:
         raw = await titlegen._chat(_SYSTEM, _user_prompt(text, cur),
                                    max_tokens=200)
@@ -200,13 +208,16 @@ async def backfill(sid: str, *, dry_run: bool = False,
             return c.execute("SELECT COUNT(*) AS n FROM subtasks"
                              " WHERE session_id=?", (sid,)).fetchone()["n"]
 
+    # dry-run 影子列表：模拟真实回填的「子任务增量可见」，否则预览每轮
+    # 都看到空列表、全部误判新建（并入行为验收不出来）
+    sim: list[dict] = []
     for tid in tids:
         stats["scanned"] += 1
         text = (texts.get(tid) or "").strip()
         if not text:
             continue
         if dry_run:
-            decision, cur = await _decide(sid, text)
+            decision, cur = await _decide(sid, text, shadow=sim)
             if decision is None:
                 stats["qa"] += 1
                 print(f"  turn {tid} → 未打标（qa/失败）")
@@ -217,9 +228,11 @@ async def backfill(sid: str, *, dry_run: bool = False,
                 stats["merged"] += 1
                 title = next((r["title"] for r in cur
                               if r["id"] == decision["subtask_id"]), "?")
-                print(f"  turn {tid} → 并入 #{decision['subtask_id']} {title}")
+                print(f"  turn {tid} → 并入 {title}")
             else:
                 stats["created"] += 1
+                sim.append({"id": -(len(sim) + 1),
+                            "title": decision["new_title"]})
                 print(f"  turn {tid} → 新建子任务「{decision['new_title']}」")
             continue
         before = _n_subtasks()
