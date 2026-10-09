@@ -69,7 +69,7 @@ export default function SubtaskTab({ subtask, onOpenFile }: {
               {groupAgents.map(a => (
                 <button key={a.key} className="chip-agent static"
                         title={`${a.name}${a.role ? ` · 负责：${a.role}` : ''}（点击看该 agent 视角）`}
-                        onClick={() => useStore.getState().openAgentView(a.key)}>
+                        onClick={() => useStore.getState().setAgentFilter(a.key)}>
                   <AgentAvatar name={a.name} size={18} />
                   <span className="chip-name">{a.name}</span>
                   <span className={`chip-dot ${a.status}`} />

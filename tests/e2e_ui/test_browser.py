@@ -161,15 +161,21 @@ async def test_browser_subagent_dispatch_card_and_chips(server_url, ws_root,
             await page.keyboard.press("Enter")
             # 派发卡：引擎人名渲染（马洛）
             await page.wait_for_selector(".dispatch-card:has-text('马洛')")
-            # agent chips 出现；agent 视图按需开——初始无 agent tab
+            # agent chips 出现；顶部 tab 恒为子任务——agent 永远不是 tab
             await page.wait_for_selector(".chip-agent:has-text('马洛')")
             assert await page.locator(".mtab.agent").count() == 0
-            # 点击 chip → 该 agent 的钻取视图（tab + 头部 + 工具流水）
+            # 点击 chip = 筛选：视角筛选条 + 内容区切该 agent 视角，
+            # 顶部 tab 不新增任何 agent 条目
             await page.click(".chip-agent:has-text('马洛')")
-            await page.wait_for_selector(".mtab.agent:has-text('马洛')")
+            await page.wait_for_selector(".agent-filter-bar:has-text('马洛')")
             await page.wait_for_selector(".agent-head:has-text('马洛')")
             await page.wait_for_selector(".agent-tab .tool-card .tool-subtag:"
                                          "has-text('子1')")
+            assert await page.locator(".mtab.agent").count() == 0
+            # 清除视角 → 回主控合集
+            await page.click(".agent-filter-bar button:has-text('清除视角')")
+            await page.wait_for_selector(".chat-stream", timeout=5000)
+            assert await page.locator(".agent-filter-bar").count() == 0
         finally:
             await browser.close()
 

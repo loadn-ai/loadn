@@ -15,7 +15,7 @@ export const DISPATCH_TEMPLATE =
 function AgentChipsBase() {
   const agents = useStore(s => s.agents);
   const liveTurnId = useStore(s => s.live?.turnId ?? null);
-  const openAgentView = useStore(s => s.openAgentView);
+  const setAgentFilter = useStore(s => s.setAgentFilter);
   const requestCompose = useStore(s => s.requestCompose);
   // chips 只显示当前（或最近）turn 的 agent——全 session 的在 tab 栏
   const focusTurn = liveTurnId
@@ -28,7 +28,7 @@ function AgentChipsBase() {
       {shown.map(a => (
         <button key={a.key} className={`chip-agent ${a.status}`}
                 title={`${a.name}${a.role ? ` · 负责：${a.role}` : ''}（点击看该 agent 视角）`}
-                onClick={() => openAgentView(a.key)}>
+                onClick={() => setAgentFilter(a.key)}>
           <AgentAvatar name={a.name} size={20} />
           <span className="chip-name">{a.name}</span>
           <span className={`chip-dot ${a.status}`} />

@@ -170,10 +170,10 @@ interface Store {
   egressTick: number;
   /** 主区活动 tab：'chat' | 's:<subtaskId>' | 'a:<agentKey>' | 'f:<path>' */
   mainTab: string;
-  /** 已打开的 agent 钻取视图（按需开——chips/子任务内点击才进，不自动生成） */
-  agentViews: string[];
-  openAgentView: (key: string) => void;
-  closeAgentView: (key: string) => void;
+  /** agent 视角筛选（chips/子任务内点击挂上；清除回原 tab）。顶部 tab
+   *  恒为子任务——agent 是筛选不是 tab（用户概念模型，勿再回退成 tab） */
+  agentFilter: string | null;
+  setAgentFilter: (key: string | null) => void;
   /** 侧栏当前空间：'recent' | 'starred' | 'archive' | 'cat:<id>' */
   activeSpace: string;
   /** Composer 注入请求（「新建子任务/招募」模板）：seq 递增防同文本去重失效 */
@@ -262,24 +262,14 @@ export const useStore = create<Store>((set, get) => ({
   panelOpen: typeof window !== 'undefined' && window.innerWidth > 900,
   egressTick: 0,
   mainTab: 'chat',
-  agentViews: [],
+  agentFilter: null,
   activeSpace: initialSpace(),
   composeReq: null,
 
   setRightTab(t) { set({ rightTab: t }); },
   setPanelOpen(v) { set({ panelOpen: v }); },
   setMainTab(t) { set({ mainTab: t }); },
-  openAgentView(key) {
-    set(s => (s.agentViews.includes(key) ? {} : {
-      agentViews: [...s.agentViews, key], mainTab: `a:${key}` }));
-  },
-  closeAgentView(key) {
-    set(s => {
-      const agentViews = s.agentViews.filter(k => k !== key);
-      return { agentViews,
-               ...(s.mainTab === `a:${key}` ? { mainTab: 'chat' } : {}) };
-    });
-  },
+  setAgentFilter(key) { set({ agentFilter: key }); },
   setActiveSpace(s) {
     localStorage.setItem('wd_space', s);
     set({ activeSpace: s });
@@ -353,7 +343,7 @@ export const useStore = create<Store>((set, get) => ({
     get().closeSession();
     set({ currentSid: sid, messages: [], turns: [], artifacts: [], live: null,
           sessionExtras: null, timeline: [], agents: [], subtasks: [],
-          mainTab: 'chat', agentViews: [] });
+          mainTab: 'chat', agentFilter: null });
     localStorage.setItem('loadn_sid', sid);   // 刷新/重开恢复
     localStorage.removeItem('wd_sid');        // 旧键清理（迁移遗留）
     const d = await api<{ messages: MessageInfo[]; turns: TurnInfo[];
@@ -412,7 +402,7 @@ export const useStore = create<Store>((set, get) => ({
     localStorage.removeItem('loadn_sid'); localStorage.removeItem('wd_sid');
     set({ es: null, connected: false, currentSid: null, sessionExtras: null,
           timeline: [], agents: [], subtasks: [], live: null, mainTab: 'chat',
-          agentViews: [] });
+          agentFilter: null });
   },
 
   /** 前台恢复拉新（visibilitychange/focus 调用）。iOS PWA 后台冻结定时器与

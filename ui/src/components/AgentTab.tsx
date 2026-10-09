@@ -28,6 +28,7 @@ export default function AgentTab({ agent, onOpenFile }: {
   const subtaskId = useStore(s =>
     s.turns.find(t => t.id === agent.turnId)?.subtask_id ?? null);
   const setMainTab = useStore(s => s.setMainTab);
+  const setAgentFilter = useStore(s => s.setAgentFilter);
 
   // live：本 turn 正在跑的流水（回放是单一来源——重进时历史块走 messages 路）
   const liveItems = live && live.turnId === agent.turnId
@@ -68,8 +69,9 @@ export default function AgentTab({ agent, onOpenFile }: {
             </span>
             {subtaskId != null
               && <button className="link dispatch-open"
-                         title="回到该 turn 所属的子任务标签页"
-                         onClick={() => setMainTab(`s:${subtaskId}`)}>
+                         title="清除视角筛选并跳到该 turn 所属的子任务标签页"
+                         onClick={() => { setAgentFilter(null);
+                                          setMainTab(`s:${subtaskId}`); }}>
                    所属子任务 →
                  </button>}
           </div>
