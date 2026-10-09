@@ -77,6 +77,33 @@ def test_hahaness_argv_snapshot():
     assert "--no-compact" in cmd2                           # 外层轮换已设 → 禁内压
 
 
+@pytest.mark.parametrize("engine_name", ["loadn", "claude"])
+def test_engine_fallback_chain_precedence(monkeypatch, engine_name):
+    """argv 回退链对赌（DG-1 突变补）：call 值 > 全局 CONFIG > 引擎 CONFIG
+    ——or→and 变异会让回退全断（None and X=None，flag 消失）。"""
+    from loadn_webui.config import CONFIG
+    from loadn_webui.engines import ENGINES
+    spec = ENGINES[engine_name]
+    eng_cfg = getattr(CONFIG.engines, engine_name)
+    monkeypatch.setattr(CONFIG.claude, "model", "cfg-global-model")
+    monkeypatch.setattr(eng_cfg, "model", "cfg-engine-model")
+    monkeypatch.setattr(CONFIG.claude, "effort", "low")
+    monkeypatch.setattr(eng_cfg, "extra_args", ["--marker-x"])
+    # call 显式值最优先
+    cmd, _ = spec.build_argv(_call(engine=engine_name, model="call-model",
+                                   effort="high"))
+    assert _flag_value(cmd, "--model") == "call-model"
+    assert _flag_value(cmd, "--effort") == "high"
+    # call 缺省 → 回退全局/引擎配置（and 链在此变 None → flag 消失 → 杀）
+    cmd2, _ = spec.build_argv(_call(engine=engine_name, model=None,
+                                    effort=None))
+    assert _flag_value(cmd2, "--model") in ("cfg-global-model",
+                                            "cfg-engine-model")
+    assert _flag_value(cmd2, "--effort") == "low"
+    # extra_args 空回退：配置非空必须并入 argv（or []→and [] 变异会吃掉）
+    assert "--marker-x" in cmd and "--marker-x" in cmd2
+
+
 def test_opencode_argv_flag_face(monkeypatch, tmp_path):
     from loadn_webui.engines import ENGINES
     fake_bin = str(tmp_path / "opencode")
