@@ -250,6 +250,33 @@ TARGET_TESTS: dict[str, list[str]] = {
         "tests/test_rotation_anchor.py",
         "tests/test_agent_attrs.py",
         "tests/test_subtask_tag.py",
+        "tests/test_exec_domain_gate.py",
+    ],
+    # ---- 执行域门 argv 直通层（第 4 起实证 2026-10-10）
+    "loadn/cli/main.py": [
+        "tests/test_cli_main_units.py",
+        "tests/contract/test_contract_loadn.py",
+    ],
+    "loadn/core/permissions.py": [
+        "tests/test_permissions_context.py",
+        "tests/test_exec_domain_gate.py",
+        "tests/test_loop.py",
+        "tests/security/test_a6_policy_amend.py",
+    ],
+    "loadn/tools/base.py": [
+        "tests/test_loop.py",
+        "tests/test_mcp_lazy.py",
+        "tests/test_file_mutex.py",
+    ],
+    "loadn_webui/engines/loadn.py": [
+        "tests/test_engines.py",
+        "tests/contract/test_contract_loadn.py",
+        "tests/test_exec_domain_gate.py",
+    ],
+    "loadn_webui/engines/claude.py": [
+        "tests/test_engines.py",
+        "tests/contract/test_contract_loadn.py",
+        "tests/test_exec_domain_gate.py",
     ],
     "loadn_webui/integrations/subtask.py": [
         "tests/test_subtask_tag.py",

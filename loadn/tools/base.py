@@ -22,6 +22,24 @@ class ToolError(Exception):
     """工具级可读错误（回填给模型的提示语）。"""
 
 
+# ---------------------------------------------------------------- 执行域改道路标
+# 第 4 起生产实证（2026-10-10 会话 6f12）：off 档 deny 推回内建 Bash 的设计
+# 意图没兑现——裸拒绝不带「该用什么」，冷启动模型原地重试 3 次后误诊
+# 「内建工具未注入」。拒绝文案必须点名改道目标；「已在工具面」按活面断言
+# （内建也全被禁时不虚报）。
+_BUILTIN_REDIRECTS = ("Bash", "Read", "Write", "Edit", "Grep", "Glob")
+
+
+def mcp_redirect_note(tools_dict: dict | None = None) -> str:
+    """MCP 工具被策略禁用时的改道提示（面感知：只点名真实在场的内建工具）。"""
+    if tools_dict:
+        have = [n for n in _BUILTIN_REDIRECTS if n in tools_dict]
+        if have:
+            return ("本机命令/文件操作请改用内建 " + "/".join(have[:3])
+                    + " 等——已在工具面，不受此限。")
+    return "请改用工具面中已有的内建工具完成同类操作。"
+
+
 # ---------------------------------------------------------------- 同文件写互斥
 # P0-1（pi file-mutation-queue 同构）：并行子代理/并行 plan 下同文件写
 # 的 lost-update 防护。刻意**模块级**注册表而非挂 ToolContext——子代理各持

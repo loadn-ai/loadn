@@ -39,7 +39,8 @@ class PermissionEngine:
 
     # ------------------------------------------------------------ 加载
     @classmethod
-    def load(cls, cwd: Path, mode: str = "default") -> PermissionEngine:
+    def load(cls, cwd: Path, mode: str = "default", *,
+             extra_deny: list[str] | None = None) -> PermissionEngine:
         """合并序：全局 < 项目（项目同名键覆盖）。文件缺失 = 空规则。
 
         P0-2 信任门：项目级规则未过信任门即不加载——未信任仓库不得用
@@ -49,6 +50,10 @@ class PermissionEngine:
         P0-4：permissions.bash_rules（有序 token 前缀规则）+ 回写规则
         .loadn/policy.json 合入；任一源解析/自测失败 → 该源全部规则拒载
         （fail-closed，日志显著告警）。
+
+        extra_deny：argv 真源（--disallowedTools，宿主平台 off 档执行域门）
+        ——与文件源合流后同评（deny 最严优先、bypass 不豁免：argv 门与
+        文件门同级，非建议性）。
         """
         from loadn.core import trust
         sources = [(loadn_home() / "settings.json", True)]
@@ -88,7 +93,8 @@ class PermissionEngine:
                     "policy.json 回写规则解析失败，拒载：%s", e)
             except OSError:
                 pass
-        return cls(mode=mode, deny=deny, allow=allow, bash_rules=bash_rules)
+        return cls(mode=mode, deny=deny + [str(t) for t in (extra_deny or [])],
+                   allow=allow, bash_rules=bash_rules)
 
     # ------------------------------------------------------------ 评估
     def check(self, tool: str, args: dict) -> Decision:

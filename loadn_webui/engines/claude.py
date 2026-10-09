@@ -64,6 +64,10 @@ class ClaudeSpec(EngineSpec):
             cmd += ["--model", model]
         if call.max_turns:                # 收敛闸：agentic 轮次上限（result subtype=error_max_turns）
             cmd += ["--max-turns", str(call.max_turns)]
+        # off 档执行域门与 loadn 引擎同源（TurnCall.disallowed_tools：
+        # profile + off_tier 门）——claude CLI 原生同名旗标，面级隐藏+调用拒。
+        for t in (call.disallowed_tools or []):
+            cmd += ["--disallowedTools", t]
         session = _uuid_or_new(call.session_id)
         if call.resume:
             cmd += ["--resume", session]

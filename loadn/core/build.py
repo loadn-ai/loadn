@@ -48,6 +48,11 @@ async def build_agent(cwd: Path, *, session_id: str | None = None,
     cwd = Path(cwd)
     cfg = cfg or provider_config()
     disallow = set(disallow or [])
+    if disallow:
+        # 可诊断性：第 4 起执行域误诊排查靠 DB+transcript 考古——生效清单
+        # 落引擎日志一眼可查（面预过滤 + 调用拒绝双生效）。
+        log.info("disallowedTools 生效（工具面/延迟索引/调用三层拒）：%s",
+                 sorted(disallow))
 
     # P3-5a：loadn.ext 扩展先于一切装配加载——register_provider 进全局
     # 注册面（build_provider 生效）、register_tool/on 后面接线
@@ -133,8 +138,14 @@ async def build_agent(cwd: Path, *, session_id: str | None = None,
     window = context_window or _window_of(cfg.get("model") or "")
     from loadn.supervisor.process import ProcessSupervisor
     supervisor = ProcessSupervisor()
+    # disallow 第三层：权限 deny（argv 真源与 settings 文件源合流——
+    # bypass 模式下 deny 仍最严优先，面预过滤漏网/盲调当场拒）。
+    from loadn.core.permissions import PermissionEngine
+    permissions = PermissionEngine.load(cwd, mode=permission_mode,
+                                        extra_deny=sorted(disallow))
     core = AgentCore(
         provider=provider, tools=tools, session=session, cwd=cwd,
+        permissions=permissions,
         settings=LoopSettings(max_turns=max_turns, permission_mode=permission_mode,
                               no_compact=no_compact, no_plan=no_plan,
                               grind=grind,

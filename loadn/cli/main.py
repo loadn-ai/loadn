@@ -48,6 +48,11 @@ def build_parser() -> argparse.ArgumentParser:
                     help="--dangerously-skip-permissions 别名")
     ap.add_argument("--permission-mode", default=None,
                     choices=["default", "acceptEdits", "plan", "bypassPermissions"])
+    ap.add_argument("--disallowedTools", dest="disallowed_tools", action="append",
+                    default=None,
+                    help="工具黑名单（可重复传多名；claude CLI 同名同义）——"
+                         "内建/MCP 工具面不注入、延迟索引不广告、物化即拒，"
+                         "调用时权限 deny 兜底（bypass 不豁免）")
     ap.add_argument("--append-system-prompt", default=None)
     ap.add_argument("--no-compact", action="store_true", help="禁用内置上下文压缩")
     ap.add_argument("--grind", action="store_true",
@@ -181,6 +186,7 @@ async def _run(args, prompt: str | None, cwd: Path, cfg: dict, mode: str) -> int
             sid = session.session_id
             bundle = await build_agent(cwd, session_id=sid, cfg=cfg,
                                        permission_mode=mode,
+                                       disallow=args.disallowed_tools,
                                        max_turns=args.max_turns,
                                        no_compact=args.no_compact,
                                        no_plan=args.no_plan,
@@ -189,6 +195,7 @@ async def _run(args, prompt: str | None, cwd: Path, cfg: dict, mode: str) -> int
         else:
             bundle = await build_agent(
                 cwd, session_id=sid, cfg=cfg, permission_mode=mode,
+                disallow=args.disallowed_tools,
                 max_turns=args.max_turns, no_compact=args.no_compact,
                 no_plan=args.no_plan,
                 grind=args.grind,

@@ -15,6 +15,7 @@
 loadn -p --verbose --output-format stream-json \
   [--session-id <uuid4> | --resume <uuid4>] \
   [--model M] [--effort E] [--max-turns N] [--no-compact] \
+  [--disallowedTools T]... \
   PROMPT
 ```
 
@@ -26,6 +27,11 @@ loadn -p --verbose --output-format stream-json \
 - `--no-compact`：双重压缩协调——webui 侧外层轮换（profile
   `rotate_input_tokens`）已设时传，禁引擎内压；`engines.no_compact` 显式
   覆盖两头。**loadn 特有**，claude CLI 无此旗标。
+- `--disallowedTools <name>`（可重复，claude CLI 同名同义）：工具黑名单
+  四层同拒——内建/MCP 工具面不注入、ToolSearch 延迟索引不广告、物化即拒
+  （带改道路标）、调用时权限 deny 兜底（bypass 不豁免）。webui 侧真源
+  `TurnCall.disallowed_tools`（profile 禁用 + off 档执行域门合流）；缺省
+  不传（argv 面零噪声）。
 
 ## 2. 事件流（stdout，NDJSON 每行一 JSON）
 
@@ -81,6 +87,7 @@ effort_flag` 是 webui `engines/base.py` 的适配器知识。PROTOCOL 附表：
 | `--effort` | ✓ | ✓（别名 `--variant`） | `--variant`（白名单档位） |
 | `--max-turns` | ✓ | ✓ | ✗（降级省略+警告） |
 | `--no-compact` | ✗ | ✓ | ✗ |
+| `--disallowedTools` | ✓ | ✓ | ✗（env 通道注入 OPENCODE 配置） |
 | transcript 判死 | `~/.claude/projects/*/<uuid>.jsonl` glob | `~/.loadn/sessions/<id>/transcript.jsonl`（`LOADN_HOME` 可覆盖） | ✗（仅 stdout+硬超时） |
 
 opencode 配置经 `OPENCODE_CONFIG_CONTENT` env 注入（方言差异详见

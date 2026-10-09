@@ -160,7 +160,7 @@ class TurnCall:
     engine: str = "claude"     # 执行引擎（engines/ 注册名）
     sandbox_requested: str | None = None   # 会话级沙箱档位覆盖（None=全局）
     rotate_input_tokens: int | None = None   # 外层上下文轮换阈值（loadn --no-compact 联动）
-    disallowed_tools: list[str] = field(default_factory=list)   # opencode env 注入用
+    disallowed_tools: list[str] = field(default_factory=list)   # opencode env / loadn·claude --disallowedTools argv（profile+off_tier 门）
     env_extra: dict = field(default_factory=dict)
     on_event: Callable[[dict], Awaitable[None]] | None = None   # 每个 stream-json 事件
     # spawn 后立刻回调（engine 落 turns.pid/log_out/log_err——daemon 中途死也

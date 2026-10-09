@@ -209,6 +209,42 @@ async def test_permission_denied(tmp_path):
     await core.run_turn("调 Echo", emit=events.append)
     tr = next(e for e in events if e["type"] == "tool_result")
     assert tr["block"].is_error and "权限拒绝" in tr["block"].content
+    # 非 MCP 工具的策略拒绝不带执行域改道提示（提示只服务 MCP 错域场景）
+    assert "内建 Bash" not in tr["block"].content
+
+
+async def test_permission_denied_mcp_carries_redirect(tmp_path):
+    """第 4 起生产实证（2026-10-10 会话 6f12）回归：off 档 deny 推回内建
+    的设计意图靠拒绝文案兑现——裸拒绝曾让模型原地重试 3 次后误诊「内建
+    工具未注入」。MCP 工具被策略拒绝必须点名改道目标，且按活面断言
+    （面里没有内建时不虚报「已在工具面」）。"""
+    from loadn.core.permissions import PermissionEngine
+
+    async def _run(tools: dict) -> str:
+        rounds = [H.tool_round("tu_1", "mcp__sandbox__sandbox_execute_bash",
+                               {"cmd": "ls"}),
+                  H.text_round("改道")]
+        session = SessionManager.create(tmp_path / f"s{len(tools)}")
+        core = AgentCore(provider=H.ScriptedProvider(rounds), tools=tools,
+                         session=session, cwd=tmp_path,
+                         permissions=PermissionEngine(
+                             mode="bypassPermissions",
+                             deny=["mcp__sandbox__sandbox_execute_bash"]),
+                         settings=LoopSettings(max_turns=5))
+        events = []
+        await core.run_turn("跑命令", emit=events.append)
+        tr = next(e for e in events if e["type"] == "tool_result")
+        assert tr["block"].is_error
+        return tr["block"].content
+
+    # bypass 档 deny 仍最严优先；文案点名 Bash 且只在真在场时说「已在工具面」
+    c1 = await _run({"Bash": H.EchoTool()})
+    assert "权限规则拒绝" in c1 and "mcp__sandbox__sandbox_execute_bash" in c1
+    assert "内建 Bash" in c1 and "已在工具面" in c1
+    # 面感知否定路径：内建全不在场 → 泛化提示，不虚报在场
+    c2 = await _run({})
+    assert "内建 Bash" not in c2 and "已在工具面" not in c2
+    assert "请改用工具面中已有的内建工具" in c2
 
 
 async def test_result_event_usage_contract(tmp_path):

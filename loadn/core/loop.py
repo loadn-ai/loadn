@@ -37,7 +37,7 @@ from loadn.core.permissions import PermissionEngine
 from loadn.core.streamsynth import StreamEventSynthesizer
 from loadn.providers import Chunk
 from loadn.providers.retry import StreamInterrupted, backoff_delay, classify_error
-from loadn.tools.base import Tool, ToolContext, ToolError
+from loadn.tools.base import Tool, ToolContext, ToolError, mcp_redirect_note
 from loadn.types import Message, TextBlock, ThinkingBlock, ToolResultBlock, ToolUseBlock
 from loadn.util import get_logger
 
@@ -875,6 +875,12 @@ class AgentCore:
         decision = self.permissions.check(name, tu.input)
         if not decision.allowed:
             content = f"权限拒绝：{decision.reason}"
+            if name.startswith("mcp__") and "权限规则拒绝" in decision.reason:
+                # 第 4 起实证（2026-10-10 会话 6f12）：off 档 deny 推回内建
+                # 的设计意图没兑现——裸拒绝无「该用什么」，模型原地重试 3
+                # 次后误诊「内建未注入」。策略拒绝点名改道目标（面感知，
+                # 内建也全被禁时不虚报）。
+                content += "。" + mcp_redirect_note(self.tools)
             is_error = True
             # P2-3 v2：permission_request 上抛（宿主审批面/webui approve
             # 消费；params_hash 供规则化回写 P0-4 关联）——emit 为 None 时

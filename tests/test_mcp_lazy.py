@@ -184,9 +184,22 @@ async def test_toolsearch_execute_guards(monkeypatch, tmp_path):
     with pytest.raises(ToolError, match="未知或已全量注入") as ei:
         await ts.execute({"tool": "nope"}, None)
     assert "mcp__big__t20" in str(ei.value) and "mcp__big__t21" not in str(ei.value)
-    with pytest.raises(ToolError, match="disallow"):
+    # disallow 拒物化带改道路标（第 4 起实证：裸拦截让模型原地打转）——
+    # 面感知：在场内建被点名，不在场不虚报
+    with pytest.raises(ToolError, match="策略禁用") as ei2:
         await ts.execute({"tool": "mcp__big__t01"}, None)
+    assert "请改用工具面中已有的内建工具" in str(ei2.value)
     assert "mcp__big__t01" not in tools
+    tools["Bash"] = index["mcp__big__t00"]      # 面里有内建（键名即面名）
+    with pytest.raises(ToolError, match="内建 Bash") as ei3:
+        await ts.execute({"tool": "mcp__big__t01"}, None)
+    assert "已在工具面" in str(ei3.value)
+    # build 预过滤形态（索引里根本没有该名）盲猜：策略禁用文案而非「未知」
+    ts2 = ToolSearchTool({n: t for n, t in index.items() if n != "mcp__big__t01"},
+                         tools, disallow={"mcp__big__t01"})
+    with pytest.raises(ToolError, match="策略禁用") as ei4:
+        await ts2.execute({"tool": "mcp__big__t01"}, None)
+    assert "未知或已全量注入" not in str(ei4.value)
 
 
 # ---------------------------------------------------------------- 验收②（loop 级）
@@ -273,6 +286,11 @@ async def test_build_wires_toolsearch_and_disallow_prefilter(tmp_path, monkeypat
     assert len(idx) == 18
     assert "mcp__small__s0" not in bundle2.core.tools   # 非延迟路径同受约束
     assert "mcp__small__s1" in bundle2.core.tools
+    # disallow 第三层（argv 真源）：权限 deny 合流——bypass 档仍最严优先，
+    # 面预过滤漏网/盲调当场拒（--disallowedTools 的调用点兜底）
+    assert "mcp__big__t03" in bundle2.core.permissions.deny
+    assert not bundle2.core.permissions.check(
+        "mcp__big__t03", {"x": "1"}).allowed
     enum = bundle2.core.tools["ToolSearch"].input_schema["properties"]["tool"]["enum"]
     assert "mcp__big__t03" not in enum
     for c in bundle2.mcp_conns:

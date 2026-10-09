@@ -75,6 +75,12 @@ class LoadnSpec(EngineSpec):
             no_compact = call.rotate_input_tokens is not None
         if no_compact:
             cmd += ["--no-compact"]
+        # off 档执行域门（第 4 起实证 2026-10-10）：settings deny 只拦调用，
+        # 模型仍被 ToolSearch enum 里的容器 bash 广告吸走、deny 后原地重试
+        # 3 次放弃——argv 直通引擎 disallow 四层同拒（面不注入/索引不广告/
+        # 物化即拒带改道路标/调用兜底），冷启动不再看见诱饵。
+        for t in (call.disallowed_tools or []):
+            cmd += ["--disallowedTools", t]
         session = _uuid_or_new(call.session_id)
         if call.resume:
             cmd += ["--resume", session]

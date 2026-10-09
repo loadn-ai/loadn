@@ -52,6 +52,15 @@ def _off_tier_mcp_gate() -> list[str]:
     return [str(t) for t in CONFIG.security.off_tier_mcp_disallow or []]
 
 
+def turn_disallow(prof) -> list[str]:
+    """TurnCall.disallowed_tools 真源：profile 禁用 + off 档执行域门合流。
+
+    settings deny 只拦调用（第 4 起实证 2026-10-10：模型仍被 ToolSearch enum
+    广告吸走、deny 后原地重试放弃）——argv 直通引擎 disallow 才是面级拦截。
+    """
+    return [*getattr(prof, "disallowed_tools", []), *_off_tier_mcp_gate()]
+
+
 def new_session_id(title: str) -> str:
     base = "".join(w for w in slugify(title).split("-")[:4]) or "task"
     rand = uuid.uuid4().hex[:4]

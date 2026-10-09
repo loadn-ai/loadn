@@ -41,6 +41,17 @@ def test_parser_matrix():
     assert c.protocol == "v1" and c.permission_mode is None
 
 
+def test_parser_disallowed_tools_repeatable():
+    """--disallowedTools（claude CLI 同名同义）：可重复累积；缺省 None——
+    build_agent 侧 disallow=None 与空清单同形（旧调用零改动）。"""
+    a = build_parser().parse_args([
+        "--disallowedTools", "mcp__sandbox__sandbox_execute_bash",
+        "--disallowedTools", "WebSearch", "x"])
+    assert a.disallowed_tools == ["mcp__sandbox__sandbox_execute_bash",
+                                  "WebSearch"]
+    assert build_parser().parse_args(["x"]).disallowed_tools is None
+
+
 def test_parser_choices_reject_bad():
     with pytest.raises(SystemExit):
         build_parser().parse_args(["--output-format", "yaml", "x"])

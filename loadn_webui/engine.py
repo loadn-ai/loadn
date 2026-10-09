@@ -545,7 +545,7 @@ class Engine:
                 max_turns=eff["max_turns"],
                 engine=spec.name, rotate_input_tokens=eff["rotate_input_tokens"],
                 sandbox_requested=ov.get("sandbox"),
-                disallowed_tools=list(prof.disallowed_tools),
+                disallowed_tools=ws_mod.turn_disallow(prof),
                 turn_id=tid, sid=sid, env_extra=extra_env, on_event=on_event,
                 on_spawned=_on_spawned)
             res = await run_turn(call, at.stop)

@@ -16,7 +16,7 @@ from __future__ import annotations
 
 import json
 
-from loadn.tools.base import Tool, ToolContext, ToolError
+from loadn.tools.base import Tool, ToolContext, ToolError, mcp_redirect_note
 
 AUTO_REGISTER = False
 
@@ -76,13 +76,18 @@ class ToolSearchTool(Tool):
         name = args.get("tool")
         if not name or not isinstance(name, str):
             raise ToolError("缺少必填参数 tool（延迟索引中的工具全名，见 enum）")
+        if name in self.disallow:
+            # off 档执行域门（--disallowedTools）：build 预过滤后该名不在
+            # 索引（盲猜），或直构索引在场——一律在物化点拦截并给改道路标
+            # （第 4 起实证 2026-10-10：deny 后模型原地重试 3 次放弃，
+            # 从未试内建 Bash——裸拦截必须自带「该用什么」）。
+            raise ToolError(f"工具 {name} 被会话策略禁用（disallow），"
+                            "不可物化。" + mcp_redirect_note(self.tools_dict))
         t = self.index.get(name)
         if t is None:
             avail = sorted(set(self.index) - self.disallow)[:20]
             raise ToolError(f"未知或已全量注入的工具：{name}"
                             f"（延迟索引可用：{avail}）")
-        if name in self.disallow:
-            raise ToolError(f"工具 {name} 在 disallow 黑名单——不可物化")
         if name not in self.tools_dict:
             self.tools_dict[name] = t       # 物化（下一次 LLM 调用进工具面）
             log_note = "已物化，下一次请求即可调用"
