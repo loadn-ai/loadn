@@ -74,15 +74,41 @@ function ArtifactsTab({ onOpenFile }: { onOpenFile: (path: string) => void }) {
   const artifacts = useStore(s => s.artifacts);
   const currentSid = useStore(s => s.currentSid);
   const live = useStore(s => s.live);
+  const subtasks = useStore(s => s.subtasks);
+  const turns = useStore(s => s.turns);
   if (artifacts.length === 0) return <div className="panel-empty">还没有产物<br />agent 的交付物会出现在 workspace/artifacts/</div>;
-  // 分组（多 Agent 工作台）：有归属的产物按 agent 分组（turn 降序，最近在前）；
-  // 运行中 turn 的组挂「写入中」徽标（mtime ≥ turn 开始）。其余落全局组
+  // 分组（rev10）：产物按「子任务 > agent」两级（turn→subtask join 派生）；
+  // 落不进子任务的（旧数据未 backfill / 主控问答产物）按既有「agent 分组 +
+  // 全局」呈现。运行中子任务组挂「写入中」徽标（mtime ≥ turn 开始）
   const runningTurn = live?.status === 'running' ? live.turnId : null;
   const startedAt = live?.startedAt ?? 0;
+  const turnSub = new Map(turns.map(t => [t.id, t.subtask_id ?? null]));
+  const subOf = (a: (typeof artifacts)[number]) =>
+    a.turn_id != null ? turnSub.get(a.turn_id) ?? null : null;
   const attributed = artifacts.filter(a => a.agent_id);
   const globals = artifacts.filter(a => !a.agent_id);
+  // 一级：子任务（有成员产物的才建组）
+  const subGroups: { key: string; title: string; arts: typeof artifacts; writing: boolean }[] = [];
+  for (const a of attributed) {
+    const subId = subOf(a);
+    if (subId == null) continue;
+    const gk = `s:${subId}`;
+    let g = subGroups.find(x => x.key === gk);
+    if (!g) {
+      const st = subtasks.find(x => x.id === subId);
+      g = { key: gk, title: st?.title ?? `子任务 #${subId}`, arts: [],
+            writing: false };
+      subGroups.push(g);
+    }
+    g.arts.push(a);
+  }
+  for (const g of subGroups) {
+    g.writing = g.arts.some(a => a.turn_id === runningTurn);
+  }
+  // 二级：子任务组内的 agent 聚合 + 落不进子任务的 agent 旧分组
   const groups: { key: string; title: string; arts: typeof artifacts; writing: boolean }[] = [];
   for (const a of attributed) {
+    if (subOf(a) != null) continue;
     const gk = `${a.turn_id}:${a.agent_id}`;
     let g = groups.find(x => x.key === gk);
     if (!g) {
@@ -133,6 +159,30 @@ function ArtifactsTab({ onOpenFile }: { onOpenFile: (path: string) => void }) {
           {globals.map(a => artCard(a))}
         </>
       )}
+      {subGroups.map(g => (
+        <div key={g.key} className="art-agent-group">
+          <div className="art-group-head">
+            子任务 · {g.title}（{g.arts.length}）
+            {g.writing && <span className="writing-badge">写入中</span>}
+          </div>
+            {(() => {
+              // 组内二级：agent 聚合
+              const byAgent = new Map<string, { name: string; arts: typeof artifacts }>();
+              for (const a of g.arts) {
+                const k = a.agent_id ?? '_';
+                let e = byAgent.get(k);
+                if (!e) { e = { name: a.agent_name ?? a.agent_id ?? '主代理', arts: [] }; byAgent.set(k, e); }
+                e.arts.push(a);
+              }
+              return [...byAgent.entries()].map(([k, e]) => (
+                <div key={k}>
+                  <div className="art-group-head dim">{e.name}（{e.arts.length}）</div>
+                  {e.arts.map(a => artCard(a, isWriting(a)))}
+                </div>
+              ));
+            })()}
+        </div>
+      ))}
       {groups.map(g => (
         <div key={g.key} className="art-agent-group">
           <div className="art-group-head dim">

@@ -5,6 +5,24 @@ import type { MessageInfo, ToolEvent, TurnInfo } from './sessions';
 
 export const SUB_TAG_RE = /^子(\d+)·/;
 
+/** 引擎 AGENT_NAME_POOL 镜像（loadn/constants.py，顺序敏感：兜底取名公式
+ *  (n-1)%len 必须与引擎 subagent.py 一致——旧数据无 agent_name 时确定性
+ *  retro 命名）。同步纪律：tests/contract/test_agent_name_pool.py 对赌。 */
+export const AGENT_NAME_POOL: readonly string[] = [
+  // 侦探/调研系
+  '马洛', '波洛', '布朗', '梅格雷', '马普尔', '阿彻',
+  '斯佩德', '昆恩', '万斯', '华生', '霍桑', '雷斯垂德',
+  // 科研/工程系（三体/基地/银河系漫游指南/我，机器人）
+  '谢顿', '罗辑', '汪淼', '章北海', '丁仪', '云天明',
+  '史强', '韦德', '叶文洁', '程心', '关一帆', '凯文',
+  // 航海/实干系（凡尔纳/海明威/麦尔维尔/大仲马/银英）
+  '尼摩', '阿龙纳斯', '康塞尔', '圣地亚哥', '以实玛利', '法利亚',
+  '格列佛', '杨威利', '安德', '马文',
+  // 东方侠义/写实系（金庸/西游/骆驼祥子/平凡的世界）
+  '黄蓉', '风清扬', '沙僧', '韦小宝', '令狐冲', '唐僧',
+  '悟空', '祥子', '孙少平', '孙少安',
+];
+
 export interface AgentInfo {
   /** `${turnId}:${agentId}` —— turn 域复合键（跨 turn 不串台） */
   key: string;
@@ -64,7 +82,8 @@ export function applyTool(list: AgentInfo[], turnId: number, tool: ToolLike): Ag
   const idx = list.findIndex(a => a.key === key);
   const base = idx >= 0 ? list[idx]
     : { key, turnId, agentId: ref.agentId, n: ref.n,
-        name: ref.name || `子${ref.n}`, status: 'running' as const };
+        name: ref.name || AGENT_NAME_POOL[(ref.n - 1) % AGENT_NAME_POOL.length],
+        status: 'running' as const };
   const next: AgentInfo = { ...base };
   if (ref.name) next.name = ref.name;
   if (ref.role) next.role = ref.role;

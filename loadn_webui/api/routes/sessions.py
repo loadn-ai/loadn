@@ -96,6 +96,7 @@ def session_detail(sid: str, request: Request):
                 m["blocks_json"] = _fold_blocks(m.get("blocks_json"))
         sess["turns"] = [db_mod.to_dict(r) for r in c.execute(
             "SELECT * FROM turns WHERE session_id=? ORDER BY id", (sid,)).fetchall()]
+        sess["subtasks"] = [db_mod.to_dict(r) for r in db_mod.list_subtasks(c, sid)]
         sess["schedules"] = [db_mod.to_dict(r) for r in db_mod.list_jobs(c, sid)]
     sess["artifacts"] = art.list_artifacts(sid)
     sess["skills_available"] = [s["name"] for s in skills_mod.available()]

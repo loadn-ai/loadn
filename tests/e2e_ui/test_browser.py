@@ -137,11 +137,11 @@ async def test_browser_always_allow_creates_policy(server_url, ws_root,
             await browser.close()
 
 
-async def test_browser_subagent_dispatch_card_and_tab(server_url, ws_root,
-                                                       logged_context):
-    """多 Agent 工作台 UI 对赌：.fake/subagent 场景 → SSE 带归属字段 →
-    派发卡（人名+状态）+ 子任务标签页 + agent chips 渲染，点击 tab 可看
-    该子代理的工具流水。"""
+async def test_browser_subagent_dispatch_card_and_chips(server_url, ws_root,
+                                                        logged_context):
+    """多 Agent 工作台 UI 对赌（rev10 概念模型更新）：.fake/subagent 场景 →
+    SSE 带归属字段 → 派发卡（人名+状态）+ agent chips 渲染；agent 不再占
+    tab（tab=子任务）——子代理工具流水在主控合集里可见。"""
     from playwright.async_api import async_playwright
 
     async with async_playwright() as pw:
@@ -161,13 +161,56 @@ async def test_browser_subagent_dispatch_card_and_tab(server_url, ws_root,
             await page.keyboard.press("Enter")
             # 派发卡：引擎人名渲染（马洛）
             await page.wait_for_selector(".dispatch-card:has-text('马洛')")
-            # 子任务标签页 + agent chips 出现
-            await page.wait_for_selector(".mtab.agent:has-text('马洛')")
+            # agent chips 出现；agent tab 不存在（rev10：tab=子任务，agent 走 chips）
             await page.wait_for_selector(".chip-agent:has-text('马洛')")
-            # 点击马洛的 tab → 该子代理的工具流水（子1·Write → Write + 子1 徽标）
-            await page.click(".mtab.agent:has-text('马洛')")
-            await page.wait_for_selector(".agent-head:has-text('马洛')")
-            await page.wait_for_selector(".agent-tab .tool-card .tool-subtag:"
-                                         "has-text('子1')")
+            assert await page.locator(".mtab.agent").count() == 0
+            # 子代理工具流水在主控合集（子1·Write → 子1 徽标）
+            await page.wait_for_selector(".tool-card .tool-subtag:has-text('子1')")
         finally:
+            await browser.close()
+
+
+async def test_browser_subtask_tab_appears(server_url, ws_root, logged_context,
+                                           monkeypatch):
+    """rev10 子任务自动分类 UI 对赌：mock 分类器（in-process monkeypatch 对
+    同进程 uvicorn 线程生效）→ 发消息 → SSE subtask 事件 → 子任务 tab 弹出
+    → 点击看筛选视图（该 turn 的用户消息+agent 活动都在 tab 内）。"""
+    from playwright.async_api import async_playwright
+    from loadn_webui.config import CONFIG
+    from loadn_webui.integrations import titlegen
+
+    old_enabled, old_key = CONFIG.titlegen.enabled, CONFIG.titlegen.api_key
+
+    async def fake_chat(system, user, max_tokens=64):
+        return '{"type":"task","new_title":"调研竞品"}'
+
+    monkeypatch.setattr(titlegen, "_chat", fake_chat)
+    CONFIG.titlegen.enabled = True
+    CONFIG.titlegen.api_key = "fake-key"
+
+    async with async_playwright() as pw:
+        browser = await pw.chromium.launch()
+        try:
+            page = await (await logged_context(browser)).new_page()
+            page.set_default_timeout(20000)
+            await page.goto(server_url)
+            await page.wait_for_selector("text=新任务")
+            await page.click("text=新任务")
+            await page.wait_for_selector("textarea.cinput")
+            ctrl = ws_root / (await _latest_sid(server_url)) / ".fake"
+            ctrl.mkdir(parents=True, exist_ok=True)
+            (ctrl / "subagent").touch()
+            await page.fill("textarea.cinput", "帮我深度调研竞品并写报告")
+            await page.keyboard.press("Enter")
+            # 子任务 tab 弹出（分类器打标 → SSE subtask → turns patch）
+            await page.wait_for_selector(".mtab.subtask:has-text('调研竞品')")
+            # 点击 → 筛选视图：该 turn 的用户消息在 tab 内
+            await page.click(".mtab.subtask:has-text('调研竞品')")
+            await page.wait_for_selector(".agent-tab .msg.user .bubble:"
+                                         "has-text('深度调研竞品')")
+            # 派发卡也在子任务视图内（agent 活动归组）
+            await page.wait_for_selector(".agent-tab .dispatch-card:has-text('马洛')")
+        finally:
+            CONFIG.titlegen.enabled = old_enabled
+            CONFIG.titlegen.api_key = old_key
             await browser.close()

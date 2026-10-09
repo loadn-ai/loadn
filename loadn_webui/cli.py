@@ -712,6 +712,12 @@ def main(argv: list[str] | None = None) -> int:
     sub.add_parser("scan", help="重扫全部会话产物")
     p_bf = sub.add_parser("backfill-costs", help="回填历史 turns.models_json（var/logs/calls）")
     p_bf.add_argument("--force", action="store_true", help="覆盖已回填的 turns")
+    p_st = sub.add_parser("subtask", help="会话内子任务（rev10：turn 自动分类打标）")
+    st_sub = p_st.add_subparsers(dest="stcmd", required=True)
+    p_stb = st_sub.add_parser("backfill", help="存量 turn 补打标（按时间序调分类器）")
+    p_stb.add_argument("--sid", required=True, help="会话 id")
+    p_stb.add_argument("--dry-run", action="store_true", help="只打印决策不写库")
+    p_stb.add_argument("--limit", type=int, default=0, help="最多处理 N 条（0=全部）")
     _build_schedule_parser(sub)
     _build_r_parser(sub)
 
@@ -1028,6 +1034,19 @@ def main(argv: list[str] | None = None) -> int:
         print(f"扫描 {stats['scanned']} 个 .out（含 modelUsage {stats['with_model_usage']}）"
               f"→ 回填 {stats['backfilled']}，已存在跳过 {stats['skipped_existing']}，"
               f"孤儿 {stats['orphan_files']}")
+        return 0
+    if args.cmd == "subtask":
+        import asyncio as _aio
+
+        from .config import ensure_dirs
+        from .integrations import subtask as subtask_mod
+        ensure_dirs()
+        stats = _aio.run(subtask_mod.backfill(
+            args.sid, dry_run=args.dry_run, limit=args.limit))
+        mode = "（dry-run，未写库）" if args.dry_run else ""
+        print(f"会话 {args.sid}{mode}：扫描 {stats['scanned']} → 打标 "
+              f"{stats['tagged']}（新建 {stats['created']} / 并入 {stats['merged']}），"
+              f"未打标 {stats['qa']}")
         return 0
     if args.cmd == "verify":
         from . import verify as verify_mod

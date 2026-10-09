@@ -3,7 +3,7 @@
 // 「＋ 招募」按钮（往输入框注入派发模板——由主代理决定怎么拆）。
 import { memo } from 'react';
 import { useStore } from '../stores/sessions';
-import { AgentAvatar } from './AgentTab';
+import { AgentAvatar } from './SubtaskTab';
 import { Plus } from './icons';
 
 /** 「新建子任务/招募」共用模板（tab 栏按钮与 chips 尾部 +） */
@@ -15,6 +15,7 @@ export const DISPATCH_TEMPLATE =
 function AgentChipsBase() {
   const agents = useStore(s => s.agents);
   const liveTurnId = useStore(s => s.live?.turnId ?? null);
+  const turns = useStore(s => s.turns);
   const setMainTab = useStore(s => s.setMainTab);
   const requestCompose = useStore(s => s.requestCompose);
   // chips 只显示当前（或最近）turn 的 agent——全 session 的在 tab 栏
@@ -27,8 +28,12 @@ function AgentChipsBase() {
       <span className="agent-chips-label">当前 Task 调用的 Agent：</span>
       {shown.map(a => (
         <button key={a.key} className={`chip-agent ${a.status}`}
-                title={`${a.name}${a.role ? ` · 负责：${a.role}` : ''}（点击查看子任务）`}
-                onClick={() => setMainTab(`a:${a.key}`)}>
+                title={`${a.name}${a.role ? ` · 负责：${a.role}` : ''}（点击跳该 turn 所属子任务）`}
+                onClick={() => {
+                  // agent 不占 tab：chip 点击跳其 turn 所属的子任务 tab（无标签不跳）
+                  const sub = turns.find(t => t.id === a.turnId)?.subtask_id;
+                  if (sub != null) setMainTab(`s:${sub}`);
+                }}>
           <AgentAvatar name={a.name} size={20} />
           <span className="chip-name">{a.name}</span>
           <span className={`chip-dot ${a.status}`} />

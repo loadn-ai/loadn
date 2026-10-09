@@ -25,7 +25,8 @@ from .config import PATHS
 # R7 回滚门禁：每次加列/加表 +1；RELEASE.json 记此值，rollback 时比对。
 # additive-only 契约：只加列/加表（旧代码可跑新 schema，多余列无害）。
 # rev9：categories.icon（侧栏空间图标）+ artifacts 归属三列 + agent_files 表
-SCHEMA_REV = 9
+# rev10：会话内子任务（subtasks 表 + turns.subtask_id 打标列）
+SCHEMA_REV = 10
 from .util import iso
 
 SCHEMA = """
@@ -140,6 +141,15 @@ CREATE TABLE IF NOT EXISTS agent_files (       -- 子代理文件写入轨迹（
   seen_at TEXT,
   UNIQUE(turn_id, path)                 -- 同 turn 同路径后写覆盖（最后写者归属）
 );
+
+CREATE TABLE IF NOT EXISTS subtasks (           -- 会话内子任务（turn 自动分类打标，rev10）
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  session_id TEXT REFERENCES sessions(id),
+  title TEXT,                           -- ≤12 字子任务名（分类器生成）
+  status TEXT CHECK(status IN ('active','archived')) DEFAULT 'active',
+  created_at TEXT, updated_at TEXT
+);
+CREATE INDEX IF NOT EXISTS idx_subtask_session ON subtasks(session_id, id);
 
 CREATE TABLE IF NOT EXISTS kv (key TEXT PRIMARY KEY, value TEXT);
 
@@ -344,6 +354,11 @@ def _migrate(c: sqlite3.Connection) -> None:
         if col not in acols:
             c.execute(f"ALTER TABLE artifacts ADD COLUMN {col} {ddl}")
 
+    # rev10（会话内子任务）：turns.subtask_id 打标列（subtasks 表走 SCHEMA 建表）
+    tcols = {r["name"] for r in c.execute("PRAGMA table_info(turns)")}
+    if "subtask_id" not in tcols:
+        c.execute("ALTER TABLE turns ADD COLUMN subtask_id INTEGER")
+
     # 三轮修（backlog 清）：artifacts (session_id,path) 唯一索引——先清
     # 存量重复行（保最新），建索引后 upsert_artifact 的 ON CONFLICT 原子化。
     # 门禁：索引已在=零成本直过（DELETE 只在首建前跑一次——每连接都全表
@@ -420,7 +435,8 @@ def delete_session(c: sqlite3.Connection, sid: str) -> None:
     # 回填）——purge 一个实例不得删掉整个递归 job/内置心跳（先摘指针）
     c.execute("UPDATE scheduled_jobs SET session_id=NULL "
               "WHERE session_id=? AND kind='new_session'", (sid,))
-    for t in ("messages", "turns", "artifacts", "session_events", "scheduled_jobs"):
+    for t in ("messages", "turns", "artifacts", "session_events", "scheduled_jobs",
+              "subtasks"):
         c.execute(f"DELETE FROM {t} WHERE session_id=?", (sid,))
     c.execute("DELETE FROM sessions WHERE id=?", (sid,))
     for key in (f"title_auto:{sid}", f"profile_auto:{sid}"):
@@ -543,11 +559,14 @@ def get_turn(c: sqlite3.Connection, tid: int) -> sqlite3.Row | None:
     return c.execute("SELECT * FROM turns WHERE id=?", (tid,)).fetchone()
 
 
-def update_turn(c: sqlite3.Connection, tid: int, **fields: Any) -> None:
+def update_turn(c: sqlite3.Connection, tid: int, **fields: Any) -> int:
+    """返回受影响行数（0=turn 行已删——分类器打标竞态判定用）。"""
     if not fields:
-        return
+        return 0
     sets = ", ".join(f"{k}=?" for k in fields)
-    c.execute(f"UPDATE turns SET {sets}, updated_at=? WHERE id=?", (*fields.values(), iso(), tid))
+    cur = c.execute(f"UPDATE turns SET {sets}, updated_at=? WHERE id=?",
+                    (*fields.values(), iso(), tid))
+    return cur.rowcount
 
 
 def active_turns(c: sqlite3.Connection, sid: str | None = None) -> list[sqlite3.Row]:
@@ -713,6 +732,35 @@ def record_agent_file(c: sqlite3.Connection, sid: str, turn_id: int, path: str,
         " UPDATE SET agent_id=excluded.agent_id,"
         " agent_name=excluded.agent_name, seen_at=excluded.seen_at",
         (sid, turn_id, agent_id, agent_name, path, iso()))
+
+
+# ---------------------------------------------------------------- subtasks（会话内子任务）
+def create_subtask(c: sqlite3.Connection, sid: str, title: str) -> int:
+    now = iso()
+    return c.execute(
+        "INSERT INTO subtasks(session_id, title, created_at, updated_at)"
+        " VALUES(?,?,?,?)", (sid, title, now, now)).lastrowid
+
+
+def list_subtasks(c: sqlite3.Connection, sid: str) -> list[sqlite3.Row]:
+    return c.execute(
+        "SELECT * FROM subtasks WHERE session_id=? ORDER BY id", (sid,)).fetchall()
+
+
+def find_subtask_by_title(c: sqlite3.Connection, sid: str,
+                          title: str) -> sqlite3.Row | None:
+    """同名复用（belt-and-braces：LLM 复用决策之外的第二道合并闸）。"""
+    return c.execute(
+        "SELECT * FROM subtasks WHERE session_id=? AND title=? ORDER BY id LIMIT 1",
+        (sid, title)).fetchone()
+
+
+def update_subtask(c: sqlite3.Connection, stid: int, **fields: Any) -> None:
+    if not fields:
+        return
+    sets = ", ".join(f"{k}=?" for k in fields)
+    c.execute(f"UPDATE subtasks SET {sets}, updated_at=? WHERE id=?",
+              (*fields.values(), iso(), stid))
 
 
 # ---------------------------------------------------------------- shares（产物分享）

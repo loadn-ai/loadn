@@ -24,13 +24,14 @@ def _fmt(eid: int, type_: str, data: dict) -> str:
 
 
 def _resync_snapshot(sid: str) -> dict:
-    """整包快照：DB messages + turns + todos + 最近文件（transcript 兜底）。"""
+    """整包快照：DB messages + turns + subtasks + todos + 最近文件（transcript 兜底）。"""
     from .. import transcript as ts
     with db_mod.conn() as c:
         sess = db_mod.get_session(c, sid)
         msgs = [db_mod.to_dict(r) for r in db_mod.list_messages(c, sid)]
         turns = [db_mod.to_dict(r) for r in c.execute(
             "SELECT * FROM turns WHERE session_id=? ORDER BY id", (sid,)).fetchall()]
+        subtasks = [db_mod.to_dict(r) for r in db_mod.list_subtasks(c, sid)]
     if sess is None:
         return {"session": None}
     todos = ts.latest_todos(sess["claude_session_id"]) if sess["session_fresh"] == 0 else None
@@ -39,7 +40,7 @@ def _resync_snapshot(sid: str) -> dict:
     except OSError:
         files = []
     return {"session": db_mod.to_dict(sess), "messages": msgs, "turns": turns,
-            "todos": todos, "recent_files": files}
+            "subtasks": subtasks, "todos": todos, "recent_files": files}
 
 
 async def event_stream(sid: str, request: Request):

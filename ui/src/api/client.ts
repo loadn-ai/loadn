@@ -112,7 +112,9 @@ export async function connectSse(
     // 六轮修 A2/A4：approval（审批卡实时出现——agent 请求审批时不刷新页面
     // 就看不到卡，冻结等裁决）与 job_fired/interrupted_salvaged（定时触发
     // /重启补记账的即时反馈）
-    'approval', 'job_fired', 'interrupted_salvaged'];
+    'approval', 'job_fired', 'interrupted_salvaged',
+    // rev10：子任务分类打标（tab 弹出/计数 + turns 局部 patch）
+    'subtask'];
   let backoff = 1000;
   // 断点续传游标：手动重建的 EventSource 不带浏览器内建的 Last-Event-ID
   // 状态——不带上次见到的 eid，服务端每次重连都精准回放活跃 turn 尾部，

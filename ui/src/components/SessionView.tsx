@@ -8,8 +8,7 @@ import ChatStream from './ChatStream';
 import Composer from './Composer';
 import RightPanel from './RightPanel';
 import FilePreview from './FilePreview';
-import AgentTab from './AgentTab';
-import { AgentAvatar, } from './AgentTab';
+import SubtaskTab from './SubtaskTab';
 import { AgentChips, DISPATCH_TEMPLATE } from './AgentChips';
 import { Menu, Chat, FileDoc, Plus } from './icons';
 
@@ -27,19 +26,19 @@ export default function SessionView({ onMenu }: { onMenu: () => void }) {
   // 仍是本地态（agent tab 派生自 agents，不落本地）
   const active = useStore(s => s.mainTab);
   const setActive = useStore(s => s.setMainTab);
-  const agents = useStore(s => s.agents);
-  const live = useStore(s => s.live);
+  const subtasks = useStore(s => s.subtasks);
+  const turns = useStore(s => s.turns);
   const requestCompose = useStore(s => s.requestCompose);
   const [tabs, setTabs] = useState<MainTab[]>([]);
   const s = useStore(st => st.sessions.find(x => x.id === st.currentSid));
-  // agent tab 指向已被清理的 key（极旧 turn 等）→ 回主控。
+  // 子任务 tab 指向已不存在的 id（会话切换残留等）→ 回主控。
   // （hook 必须在早退 return 之前——否则条件 hook 违反规则）
   useEffect(() => {
     const a = useStore.getState().mainTab;
-    if (a.startsWith('a:') && !useStore.getState().agents.some(x => `a:${x.key}` === a)) {
+    if (a.startsWith('s:') && !useStore.getState().subtasks.some(x => `s:${x.id}` === a)) {
       setActive('chat');
     }
-  }, [agents, active]);
+  }, [subtasks, active]);
   if (!currentSid || !s) return null;
 
   const wake = s.next_wake;
@@ -70,11 +69,14 @@ export default function SessionView({ onMenu }: { onMenu: () => void }) {
   };
 
   const activeFile = tabs.find(t => t.key === active)?.path;
-  const activeAgent = active.startsWith('a:')
-    ? agents.find(a => a.key === active.slice(2)) : undefined;
-
-  const agentRunning = (turnId: number) =>
-    live?.turnId === turnId && live.status === 'running';
+  const activeSubtask = active.startsWith('s:')
+    ? subtasks.find(x => x.id === Number(active.slice(2))) : undefined;
+  // 子任务运行点：任一成员 turn 在跑（live running 或 turns 表 running/queued）
+  const subtaskRunning = (subId: number) =>
+    turns.some(t => t.subtask_id === subId
+      && (t.status === 'running' || t.status === 'queued'));
+  const subtaskCount = (subId: number) =>
+    turns.filter(t => t.subtask_id === subId).length;
 
   return (
     <div className="session-view">
@@ -113,17 +115,16 @@ export default function SessionView({ onMenu }: { onMenu: () => void }) {
                  title="主控对话" onClick={() => setActive('chat')}>
               <span className="mtab-name"><Chat size={13} /> 主控与规划</span>
             </div>
-            {agents.map(a => (
-              <div key={a.key} className={`mtab agent ${active === `a:${a.key}` ? 'on' : ''}`}
-                   title={`${a.name}${a.role ? ` · 负责：${a.role}` : ''}（子任务）`}
-                   onClick={() => setActive(`a:${a.key}`)}>
+            {subtasks.map(st => (
+              <div key={`s:${st.id}`} className={`mtab subtask ${active === `s:${st.id}` ? 'on' : ''}`}
+                   title={`${st.title}（子任务：本会话内该工作线的全部对话/agent/产物）`}
+                   onClick={() => setActive(`s:${st.id}`)}>
                 <span className="mtab-name">
-                  <AgentAvatar name={a.name} size={16} />
-                  <span className="mtab-agent-name">{a.name}</span>
+                  <span className="mtab-sub-name">{st.title}</span>
+                  {subtaskCount(st.id) > 0
+                    && <span className="mtab-count">{subtaskCount(st.id)}</span>}
                 </span>
-                {a.status === 'running' && agentRunning(a.turnId)
-                  && <span className="mtab-dot pulse" />}
-                {a.status === 'error' && <span className="mtab-dot err" />}
+                {subtaskRunning(st.id) && <span className="mtab-dot pulse" />}
               </div>
             ))}
             {tabs.map(t => (
@@ -142,8 +143,8 @@ export default function SessionView({ onMenu }: { onMenu: () => void }) {
           </div>
           {active === 'chat' || !activeFile
             ? <>
-                {activeAgent
-                  ? <div className="agent-tab-scroll"><AgentTab agent={activeAgent} onOpenFile={openFile} /></div>
+                {activeSubtask
+                  ? <div className="agent-tab-scroll"><SubtaskTab subtask={activeSubtask} onOpenFile={openFile} /></div>
                   : <ChatStream onOpenFile={openFile} />}
                 <AgentChips />
                 <Composer />

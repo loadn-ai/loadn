@@ -11,7 +11,7 @@ import {
 } from './icons';
 import type { ComponentType } from 'react';
 import { useAutoScroll } from './SessionView';
-import { DispatchCard } from './AgentTab';
+import { DispatchCard } from './SubtaskTab';
 
 /** 历史消息尾窗：大会话百余条带完整过程块的消息全量渲染，打开要卡好几秒
  *  （2.7MB DOM 一次进页面）；默认只铺尾部，更早的按需「加载更早」展开 */

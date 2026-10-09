@@ -324,7 +324,7 @@ function ProjectGroup({ project, kids, collapsed: collapsedProp, onToggle, onOpe
       if (overlay) location.hash = '';
       void useStore.getState().openSession(s.id);
     } catch (e) {
-      alert(`新建子任务失败：${e instanceof Error ? e.message : e}`);
+      alert(`新建任务失败：${e instanceof Error ? e.message : e}`);
     } finally { setBusy(false); }
   };
   const purge = async () => {
@@ -341,7 +341,7 @@ function ProjectGroup({ project, kids, collapsed: collapsedProp, onToggle, onOpe
     { key: 'move', label: '移动到…', icon: ArrowRight, subTitle: '移动到',
       sub: moveEntries(bucketOf(project), d => void moveProject(project.id, d),
                        categories, createCategory) },
-    { key: 'sub', label: '新建子任务（共享工作区）', icon: Plus, onClick: () => void addSub() },
+    { key: 'sub', label: '新建任务（共享工作区）', icon: Plus, onClick: () => void addSub() },
     { key: 'rename', label: '改名', icon: Pencil, onClick: () => setEditing(true) },
     { kind: 'divider', key: 'sep-arch' } as MenuEntry,
     { key: 'archive', label: '归档项目（子任务一并归档）', icon: Archive,
@@ -384,7 +384,7 @@ function ProjectGroup({ project, kids, collapsed: collapsedProp, onToggle, onOpe
       ))}
       {!collapsed && !archived && kids.length === 0 && (
         <button className="proj-empty-add" onClick={() => void addSub()}>
-          <Plus size={12} /> 还没有子任务，点这里开一个
+          <Plus size={12} /> 还没有任务，点这里开一个
         </button>
       )}
       {menuEl && <PopupMenu anchor={menuEl} items={items} onClose={() => setMenuEl(null)} />}

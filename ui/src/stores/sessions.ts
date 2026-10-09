@@ -46,6 +46,15 @@ export interface TurnInfo {
   duration_s?: number | null; cost_usd?: number | null;
   usage_json?: string | null; error?: string | null;
   started_at?: string | null;
+  /** 子任务标签（rev10 分类器打标；NULL=应答形态，留在主控合集） */
+  subtask_id?: number | null;
+}
+
+/** 会话内子任务（rev10 概念模型：项目 ⊃ 会话=任务 ⊃ 子任务）。
+ *  成员=turns.filter(subtask_id===id)；agent/产物经 turn join 派生 */
+export interface SubtaskInfo {
+  id: number; session_id: string; title: string; status: string;
+  created_at: string; updated_at: string;
 }
 
 export interface MessageInfo {
@@ -146,6 +155,8 @@ interface Store {
   artifacts: ArtifactInfo[];
   /** 当前会话的子代理注册表（turn 域复合键，见 stores/agents.ts） */
   agents: AgentInfo[];
+  /** 当前会话的子任务清单（rev10 分类器打标；tab=子任务，agent 走 chips） */
+  subtasks: SubtaskInfo[];
   live: LiveTurn | null;
   approvals: ApprovalInfo[];
   timeline: TimelineMarker[];
@@ -157,7 +168,7 @@ interface Store {
   rightTab: 'properties' | 'artifacts' | 'files';
   panelOpen: boolean;
   egressTick: number;
-  /** 主区活动 tab：'chat' | 'a:<agentKey>' | 'f:<path>'（agent/文件 tab 的开合态） */
+  /** 主区活动 tab：'chat' | 's:<subtaskId>' | 'f:<path>'（子任务/文件 tab） */
   mainTab: string;
   /** 侧栏当前空间：'recent' | 'starred' | 'archive' | 'cat:<id>' */
   activeSpace: string;
@@ -237,7 +248,7 @@ export const useStore = create<Store>((set, get) => ({
   sessions: [], projects: [], categories: [], profiles: [], skills: [], engines: {},
   defaultEngine: 'claude',
   currentSid: null, messages: [], turns: [], artifacts: [],
-  agents: [],
+  agents: [], subtasks: [],
   live: null,
   approvals: [], timeline: [], es: null, connected: false,
   theme: initialTheme(),
@@ -325,13 +336,16 @@ export const useStore = create<Store>((set, get) => ({
   async openSession(sid) {
     get().closeSession();
     set({ currentSid: sid, messages: [], turns: [], artifacts: [], live: null,
-          sessionExtras: null, timeline: [], agents: [], mainTab: 'chat' });
+          sessionExtras: null, timeline: [], agents: [], subtasks: [],
+          mainTab: 'chat' });
     localStorage.setItem('loadn_sid', sid);   // 刷新/重开恢复
     localStorage.removeItem('wd_sid');        // 旧键清理（迁移遗留）
-    const d = await api<{ messages: MessageInfo[]; turns: TurnInfo[]; artifacts: ArtifactInfo[] } & SessionExtras>(
+    const d = await api<{ messages: MessageInfo[]; turns: TurnInfo[];
+                        artifacts: ArtifactInfo[]; subtasks: SubtaskInfo[] } & SessionExtras>(
       `/api/sessions/${encodeURIComponent(sid)}`);
     set({ messages: d.messages, turns: d.turns, artifacts: d.artifacts,
-          agents: deriveAgents(d.messages, d.turns) });
+          agents: deriveAgents(d.messages, d.turns),
+          subtasks: d.subtasks ?? [] });
     fillExtras(set, sid, d);
     // 进行中 turn：凭 /live 重建元信息（turnId/status/startedAt/todos——计时与停止按钮）。
     // 过程节点（items）不播种：SSE 新连接会精准回放本 turn 尾部事件（sse.py：
@@ -381,7 +395,7 @@ export const useStore = create<Store>((set, get) => ({
     if (es) { es.close(); }
     localStorage.removeItem('loadn_sid'); localStorage.removeItem('wd_sid');
     set({ es: null, connected: false, currentSid: null, sessionExtras: null,
-          timeline: [], agents: [], live: null, mainTab: 'chat' });
+          timeline: [], agents: [], subtasks: [], live: null, mainTab: 'chat' });
   },
 
   /** 前台恢复拉新（visibilitychange/focus 调用）。iOS PWA 后台冻结定时器与
@@ -400,11 +414,12 @@ export const useStore = create<Store>((set, get) => ({
     (async () => {
       try {
         const d = await api<{ messages: MessageInfo[]; turns: TurnInfo[];
-                              artifacts: ArtifactInfo[] }>(
+                              artifacts: ArtifactInfo[]; subtasks: SubtaskInfo[] }>(
           `/api/sessions/${encodeURIComponent(sid)}`);
         if (get().currentSid !== sid) return;
         set({ messages: d.messages, turns: d.turns, artifacts: d.artifacts,
-              agents: deriveAgents(d.messages, d.turns) });
+              agents: deriveAgents(d.messages, d.turns),
+              subtasks: d.subtasks ?? [] });
         const wasConnected = get().connected;
         const act = d.turns.find(t => t.status === 'running')
                  ?? d.turns.find(t => t.status === 'queued');
@@ -663,11 +678,13 @@ export const useStore = create<Store>((set, get) => ({
     }
     const sid = get().currentSid;
     if (!sid) return;
-    const d = await api<{ messages: MessageInfo[]; turns: TurnInfo[]; artifacts: ArtifactInfo[] }>(
+    const d = await api<{ messages: MessageInfo[]; turns: TurnInfo[];
+                          artifacts: ArtifactInfo[]; subtasks: SubtaskInfo[] }>(
       `/api/sessions/${encodeURIComponent(sid)}`);
     if (get().currentSid === sid) {
       set({ messages: d.messages, turns: d.turns, artifacts: d.artifacts,
-            agents: deriveAgents(d.messages, d.turns) });
+            agents: deriveAgents(d.messages, d.turns),
+            subtasks: d.subtasks ?? [] });
     }
     void get().loadSessions();
   },
@@ -880,12 +897,14 @@ function handleEvent(
         await new Promise(r => setTimeout(r, 300));
         const sid2 = get().currentSid;
         if (sid2 !== sid) return;
-        const d = await api<{ messages: MessageInfo[]; turns: TurnInfo[]; artifacts: ArtifactInfo[] }>(
+        const d = await api<{ messages: MessageInfo[]; turns: TurnInfo[];
+                              artifacts: ArtifactInfo[]; subtasks: SubtaskInfo[] }>(
           `/api/sessions/${encodeURIComponent(sid)}`);
         const cur = get().live;
         // 旧 turn 的终态：不清当前活跃 turn 的 live；自己的终态：清（消息已落库渲染）
         set(() => ({ messages: d.messages, turns: d.turns, artifacts: d.artifacts,
                      agents: deriveAgents(d.messages, d.turns),
+                     subtasks: d.subtasks ?? [],
                      live: cur && cur.turnId !== data.turn_id ? cur : null }));
         void get().loadSessions();
         void get().loadTimeline();   // P3-7：compact/turn 标记可能新增
@@ -914,7 +933,8 @@ function handleEvent(
       (async () => {
         const sid2 = get().currentSid;
         if (sid2 !== sid) return;
-        const d = await api<{ messages: MessageInfo[]; turns: TurnInfo[]; artifacts: ArtifactInfo[] }>(
+        const d = await api<{ messages: MessageInfo[]; turns: TurnInfo[];
+                              artifacts: ArtifactInfo[]; subtasks: SubtaskInfo[] }>(
           `/api/sessions/${encodeURIComponent(sid)}`);
         if (get().currentSid === sid) {
           set(() => ({ messages: d.messages, turns: d.turns, artifacts: d.artifacts }));
@@ -930,7 +950,15 @@ function handleEvent(
       break;
     case 'resync':
       set(() => ({ messages: data.messages ?? [], turns: data.turns ?? [], artifacts: [],
-                   agents: deriveAgents(data.messages ?? [], data.turns ?? []) }));
+                   agents: deriveAgents(data.messages ?? [], data.turns ?? []),
+                   subtasks: data.subtasks ?? [] }));
+      break;
+    case 'subtask':
+      // 分类器打标：subtasks 全量替换 + turns 局部 patch（turn_queued 重拉的
+      // turns 无 subtask_id，不 patch 则 live 期间子任务 tab 漏成员）
+      set(s => ({ subtasks: data.subtasks ?? s.subtasks,
+        turns: s.turns.map(t => t.id === data.turn_id
+          ? { ...t, subtask_id: data.subtask_id ?? null } : t) }));
       break;
     default:
       break;

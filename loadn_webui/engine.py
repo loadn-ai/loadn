@@ -314,6 +314,11 @@ class Engine:
         if want_title:
             from .integrations import titlegen
             asyncio.create_task(titlegen.maybe_auto_title(sid, text))
+        # 子任务分类打标（rev10）：turn 一入队即后台分类——任务形态打已有/
+        # 新建子任务标签，应答形态留主控。fire-and-forget 同 titlegen（失败
+        # 静默不打标，绝不阻塞 turn）
+        from .integrations import subtask as _subtask_mod
+        asyncio.create_task(_subtask_mod.maybe_tag(sid, tid, text))
         q = self._queues.get(sid)
         if q is None:
             q = asyncio.Queue()

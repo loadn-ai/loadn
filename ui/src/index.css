@@ -1228,9 +1228,13 @@ button.attach-chip:hover { border-color: color-mix(in srgb, var(--accent) 40%, v
 /* 子任务 tab 行 */
 .main-tabs { overflow-x: auto; scrollbar-width: none; }
 .main-tabs::-webkit-scrollbar { display: none; }
-.mtab.agent .mtab-name { gap: 5px; }
-.mtab-agent-name { max-width: 96px; overflow: hidden; text-overflow: ellipsis;
+.mtab.subtask .mtab-name { gap: 5px; }
+.mtab-sub-name { max-width: 120px; overflow: hidden; text-overflow: ellipsis;
   white-space: nowrap; }
+.mtab-count { font-size: 10px; color: var(--text-dim); background: var(--bg3);
+  border-radius: 999px; padding: 0 6px; flex: none; }
+.chip-agent.static { cursor: default; padding: 2px 8px 2px 3px; }
+.chip-agent.static .chip-name { font-size: 11px; }
 .mtab-dot { width: 6px; height: 6px; border-radius: 50%; flex: none; }
 .mtab-dot.pulse { background: var(--accent2); animation: mtab-pulse 1.4s ease infinite; }
 .mtab-dot.err { background: var(--red); }
