@@ -213,10 +213,10 @@ async def test_browser_subtask_tab_appears(server_url, ws_root, logged_context,
             (ctrl / "subagent").touch()
             await page.fill("textarea.cinput", "帮我深度调研竞品并写报告")
             await page.keyboard.press("Enter")
-            # 子任务 tab 弹出（分类器打标 → SSE subtask → turns patch）
-            await page.wait_for_selector(".mtab.subtask:has-text('调研竞品')")
-            # 点击 → 筛选视图：该 turn 的用户消息在 tab 内
-            await page.click(".mtab.subtask:has-text('调研竞品')")
+            # 子任务进入悬浮目录（分类器打标 → SSE subtask → 目录条目出现）
+            await page.wait_for_selector(".toc-panel .toc-item:has-text('调研竞品')")
+            # 点击 → 筛选视图：该 turn 的用户消息在视图内
+            await page.click(".toc-panel .toc-item:has-text('调研竞品')")
             await page.wait_for_selector(".agent-tab .msg.user .bubble:"
                                          "has-text('深度调研竞品')")
             # 派发卡也在子任务视图内（agent 活动归组）
