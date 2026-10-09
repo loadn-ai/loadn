@@ -11,8 +11,8 @@ from __future__ import annotations
 from loadn_webui.api.app import app
 
 # (path, "逗号排序的 method 集")——regen 脚本打 stdout，贴回来即可
-EXPECTED = {
-("/api/activity", "get"),
+EXPECTED = [
+    ("/api/activity", "get"),
     ("/api/admin/approvals", "get"),
     ("/api/admin/audit", "get"),
     ("/api/admin/audit/verify", "post"),
@@ -36,6 +36,7 @@ EXPECTED = {
     ("/api/admin/target-policy", "get,post"),
     ("/api/admin/target-policy/from-approval/{aid}", "post"),
     ("/api/admin/target-policy/{pid}", "delete,patch"),
+    ("/api/admin/tasks", "get"),
     ("/api/admin/vault", "get"),
     ("/api/admin/vault/entry", "post"),
     ("/api/admin/vault/entry/{platform}", "delete"),
@@ -132,7 +133,7 @@ EXPECTED = {
     ("/api/tools/profile/{profile}", "put"),
     ("/api/turns/{tid}", "delete"),
     ("/api/turns/{tid}/stop", "post"),
-}
+]
 
 
 def _surface() -> set[tuple[str, str]]:

@@ -1391,3 +1391,20 @@ button.attach-chip:hover { border-color: color-mix(in srgb, var(--accent) 40%, v
   .toc-panel { width: min(64vw, 240px); }
   .crumb-view { max-width: 24vw; }
 }
+
+/* ---------------- 任务管理页（admin tasks tab） ---------------- */
+.tasks-table-wrap { overflow-x: auto; border: 1px solid var(--border);
+  border-radius: var(--radius); background: var(--bg2); }
+.tasks-table { width: 100%; border-collapse: collapse; font-size: 12.5px; }
+.tasks-table th { text-align: left; padding: 9px 10px; color: var(--text-dim);
+  font-weight: 600; font-size: 11.5px; border-bottom: 1px solid var(--border);
+  white-space: nowrap; cursor: pointer; user-select: none;
+  position: sticky; top: 0; background: var(--bg2); z-index: 1; }
+.tasks-table th.sorted { color: var(--accent); }
+.tasks-table td { padding: 8px 10px; border-bottom: 1px solid var(--border);
+  white-space: nowrap; vertical-align: middle; }
+.tasks-table tbody tr:hover { background: var(--bg3); }
+.tasks-table tbody tr.sel { background: var(--accent-soft); }
+.tasks-table .tt-title a { font-weight: 500; }
+.bulk-bar { background: var(--accent-soft); border-radius: 10px; }
+.bulk-bar .btn.sm { display: inline-flex; align-items: center; gap: 4px; }

@@ -14,6 +14,7 @@ import EgressPanel from './admin/EgressPanel';
 import SkillsTab from './admin/SkillsTab';
 import SettingsTab from './admin/SettingsTab';
 import ToolsTab from './admin/ToolsTab';
+import TasksTab from './admin/TasksTab';
 import type { AdminTab } from './admin/shared';
 
 export type { AdminTab };
@@ -33,6 +34,7 @@ export default function AdminPanel({ onClose, initialTab, filterSid, onClearFilt
         <button className={`tab ${tab === 'skills' ? 'on' : ''}`} onClick={() => setTab('skills')}>Skills</button>
         <button className={`tab ${tab === 'tools' ? 'on' : ''}`} onClick={() => setTab('tools')}>工具</button>
         <button className={`tab ${tab === 'settings' ? 'on' : ''}`} onClick={() => setTab('settings')}>设置</button>
+        <button className={`tab ${tab === 'tasks' ? 'on' : ''}`} onClick={() => setTab('tasks')}>任务</button>
         <button className={`tab ${tab === 'schedules' ? 'on' : ''}`} onClick={() => setTab('schedules')}>定时</button>
         <button className={`tab ${tab === 'webhooks' ? 'on' : ''}`} onClick={() => setTab('webhooks')}>Webhooks</button>
         <button className={`tab ${tab === 'memory' ? 'on' : ''}`} onClick={() => setTab('memory')}>记忆</button>
@@ -42,7 +44,8 @@ export default function AdminPanel({ onClose, initialTab, filterSid, onClearFilt
         <button className={`tab ${tab === 'security' ? 'on' : ''}`} onClick={() => setTab('security')}>安全</button>
         <button className={`tab ${tab === 'resources' ? 'on' : ''}`} onClick={() => setTab('resources')}>资源</button>
       </div>
-      {tab === 'skills' ? <SkillsTab /> : tab === 'tools' ? <ToolsTab />
+      {tab === 'skills' ? <SkillsTab /> : tab === 'tasks' ? <TasksTab />
+        : tab === 'tools' ? <ToolsTab />
         : tab === 'schedules'
           ? <SchedulesTab filterSid={filterSid} onClearFilter={onClearFilter} />
           : tab === 'webhooks' ? <WebhooksTab />

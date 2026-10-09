@@ -29,7 +29,8 @@ export default function App() {
   const admin = hash.startsWith('#/admin') || hash.startsWith('#/cost');
   const path = hash.split('?')[0];
   const adminTab: AdminTab | undefined =
-    path.startsWith('#/admin/skills') ? 'skills'
+    path.startsWith('#/admin/tasks') ? 'tasks'
+    : path.startsWith('#/admin/skills') ? 'skills'
     : path.startsWith('#/admin/tools') ? 'tools'
     : path.startsWith('#/admin/settings') ? 'settings'
     : path.startsWith('#/admin/schedules') ? 'schedules'

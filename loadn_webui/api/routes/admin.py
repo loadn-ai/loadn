@@ -343,3 +343,125 @@ def kill_all_clear():
     return {"ok": True, "cleared": existed, "unlocked": unlocked,
             "kept_locked": kept,
             "hint": "调度已恢复" if existed else "本就未熔断"}
+
+
+# ---------------------------------------------------------------- 任务管理页
+_SIZE_CACHE: dict[str, tuple[float, int]] = {}      # sid → (monotonic, bytes)
+_SIZE_TTL_S = 600
+
+
+def _workspace_size(sid: str) -> int:
+    """workspace 磁盘占用（字节）。缓存 TTL 10 分钟；跳过重目录
+    （node_modules/chrome*——tree() 同款规则）+ 条目数止损。"""
+    import time as _t
+    now = _t.monotonic()
+    hit = _SIZE_CACHE.get(sid)
+    if hit and now - hit[0] < _SIZE_TTL_S:
+        return hit[1]
+    from ... import workspace as ws_mod
+    root = ws_mod.ws_of(sid)
+    total = 0
+    if root.exists():
+        walked = 0
+        for p in root.rglob("*"):
+            walked += 1
+            if walked > 50_000:                   # 病态工作区止损
+                break
+            if any(s == "node_modules" or s.startswith("chrome")
+                   for s in p.relative_to(root).parts):
+                continue
+            try:
+                if p.is_file():
+                    total += p.stat().st_size
+            except OSError:
+                continue
+    _SIZE_CACHE[sid] = (now, total)
+    return total
+
+
+@router.get("/admin/tasks")
+def tasks_overview(q: str = "", status: str = "all", project_id: str = "",
+                   category_id: int = 0, engine: str = "", pinned: str = "all",
+                   starred: str = "all", sort: str = "updated", dir: str = "desc"):
+    """任务管理页数据面：全量任务（会话）+ 聚合指标 + 筛选排序。
+
+    行：基础列 + n_turns/n_messages/n_artifacts/tokens/cost/size_bytes/
+    project_title/running。属主过滤同 categories（非 admin 只看自己的+
+    legacy 无主行）。批量操作不走本面——前端复用既有单任务端点逐个执行。
+    """
+    import json as _json
+
+    from ... import db as db_mod
+    from ...security import userauth as _ua
+
+
+    with db_mod.conn() as c:
+        rows = [db_mod.to_dict(r) for r in c.execute(
+            "SELECT s.*, p.title AS project_title FROM sessions s"
+            " LEFT JOIN projects p ON p.id=s.project_id").fetchall()]
+        n_turns = {r["session_id"]: r["n"] for r in c.execute(
+            "SELECT session_id, COUNT(*) AS n FROM turns GROUP BY session_id")}
+        n_msgs = {r["session_id"]: r["n"] for r in c.execute(
+            "SELECT session_id, COUNT(*) AS n FROM messages GROUP BY session_id")}
+        n_arts = {r["session_id"]: r["n"] for r in c.execute(
+            "SELECT session_id, COUNT(*) AS n FROM artifacts GROUP BY session_id")}
+        running = {r["session_id"] for r in c.execute(
+            "SELECT DISTINCT session_id FROM turns"
+            " WHERE status IN ('running','queued')")}
+
+    u = _ua.current_user()
+    if u is not None and u["role"] != "admin":
+        rows = [r for r in rows if r.get("owner_id") in (None, u["id"])]
+
+    q_ = (q or "").strip().lower()
+    cat_id = category_id or 0
+    out = []
+    for r in rows:
+        if status != "all" and r["status"] != status:
+            continue
+        if project_id and r.get("project_id") != project_id:
+            continue
+        if cat_id and (r.get("category_id") or 0) != cat_id:
+            continue
+        if engine and (r.get("engine") or "") != engine:
+            continue
+        if pinned != "all" and bool(r.get("pinned")) != (pinned == "yes"):
+            continue
+        if starred != "all" and bool(r.get("starred")) != (starred == "yes"):
+            continue
+        if q_ and q_ not in (r.get("title") or "").lower() \
+                and q_ not in (r.get("project_title") or "").lower():
+            continue
+        try:
+            usage = _json.loads(r.get("usage_json") or "{}")
+        except (ValueError, TypeError):
+            usage = {}
+        out.append({
+            "id": r["id"], "title": r.get("title") or "（未命名）",
+            "status": r["status"], "engine": r.get("engine"),
+            "profile": r.get("profile"),
+            "project_id": r.get("project_id"),
+            "project_title": r.get("project_title"),
+            "category_id": r.get("category_id"),
+            "pinned": bool(r.get("pinned")), "starred": bool(r.get("starred")),
+            "n_turns": n_turns.get(r["id"], 0),
+            "n_messages": n_msgs.get(r["id"], 0),
+            "n_artifacts": n_arts.get(r["id"], 0),
+            "tokens": usage.get("total_all") or usage.get("total") or 0,
+            "cost_usd": r.get("cost_usd") or 0,
+            "size_bytes": _workspace_size(r["id"]),
+            "running": r["id"] in running,
+            "created_at": r.get("created_at"),
+            "updated_at": r.get("updated_at"),
+        })
+
+    key = {"created": lambda x: x["created_at"] or "",
+           "updated": lambda x: x["updated_at"] or "",
+           "title": lambda x: x["title"],
+           "turns": lambda x: x["n_turns"],
+           "tokens": lambda x: x["tokens"],
+           "cost": lambda x: x["cost_usd"],
+           "size": lambda x: x["size_bytes"]}.get(sort)
+    if key:
+        out.sort(key=key, reverse=(dir != "asc"))
+    return {"tasks": out, "total": len(out)}
