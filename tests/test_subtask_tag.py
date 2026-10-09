@@ -55,8 +55,13 @@ def test_parse_decision_matrix():
         == {"type": "task", "subtask_id": 7}
     assert st._parse_decision('{"type":"task","new_title":"调研竞品"}', ids) \
         == {"type": "task", "new_title": "调研竞品"}
-    # 非法形态一律 None
+    # 标题截断：≤12 字（超长清洗到上限）
+    long = st._parse_decision('{"type":"task","new_title":"一二三四五六七八九十一'
+                              '二三四五六七八九十一"}', ids)
+    assert long is not None and len(long["new_title"]) == 12, long
+    # 非法形态一律 None（含：非法 type 但带合法字段——type 门必须先挡）
     for raw in ('', '垃圾文本', '{"type":"chat"}',
+                '{"type":"chat","subtask_id":7}',
                 '{"type":"task","subtask_id":999}',       # id 幻觉（不在列表）
                 '{"type":"task","new_title":"  "}',
                 '{"type":"task"}', '{"type":"task","subtask_id":"7"}'):
@@ -115,19 +120,24 @@ async def test_steer_prefix_stripped(home, monkeypatch):
 
 # ---------------------------------------------------------------- 守卫与降级
 async def test_guard_disabled_zero_calls(home, monkeypatch):
-    """>>> 守卫对赌：未配置 → 零 LLM 调用（patch 成必炸验零调用）。"""
+    """>>> 守卫对赌：未配置 → 零 LLM 调用（计数对赌——异常会被 _decide 吞掉，
+    必须数调用次数而非只看返回 None）。"""
+    calls = []
     CONFIG.titlegen.enabled = False
 
-    async def boom(system, user, max_tokens=64):
-        raise AssertionError("不应发起调用")
+    async def fake(system, user, max_tokens=64):
+        calls.append(user)
+        return '{"type":"qa"}'
 
-    monkeypatch.setattr(titlegen, "_chat", boom)
+    monkeypatch.setattr(titlegen, "_chat", fake)
     with db_mod.conn() as c:
         tid = _mk_turn(c)
     assert await st.maybe_tag("s1", tid, "做个调研") is None
+    assert calls == [], "未配置必须零 LLM 调用"
     CONFIG.titlegen.enabled = True
     CONFIG.titlegen.api_key = ""
     assert await st.maybe_tag("s1", tid, "做个调研") is None
+    assert calls == []
     CONFIG.titlegen.api_key = "fake-key"
 
 
