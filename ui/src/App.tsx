@@ -136,23 +136,22 @@ export default function App() {
         <IconRail
           onAdmin={tab => {
             setNavOpen(false);
-            const target = tab === 'cost' ? '#/admin/cost' : '#/admin';
-            setHash(admin && path === target ? '' : target);
+            // AC-3.2：统一语义——已在管理页（任意子 tab）点击=退出；不在=进入（tab 参数仅入口快捷）
+            setHash(admin ? '' : (tab === 'cost' ? '#/admin/cost' : '#/admin'));
           }}
           adminActive={admin} />
         <Sidebar
           onNew={() => void quickNew()}
           onAdmin={tab => {
             setNavOpen(false);
-            const target = tab === 'cost' ? '#/admin/cost' : '#/admin';
-            setHash(admin && path === target ? '' : target);
+            setHash(admin ? '' : (tab === 'cost' ? '#/admin/cost' : '#/admin'));
           }}
           onNav={() => setNavOpen(false)}
           adminActive={admin} />
       </div>
       <main className="main">
         {admin
-          ? <AdminPanel key={adminTab ?? 'default'} onClose={() => { setHash(''); void loadMeta(); }}
+          ? <AdminPanel onClose={() => { setHash(''); void loadMeta(); }}
               initialTab={adminTab} filterSid={filterSid}
               onClearFilter={() => setHash('#/admin/schedules')} />
           : currentSid

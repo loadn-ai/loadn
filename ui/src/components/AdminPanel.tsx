@@ -55,7 +55,25 @@ function AdminDenied() {
 export default function AdminPanel({ onClose, initialTab, filterSid, onClearFilter }:
   { onClose: () => void; initialTab?: AdminTab;
     filterSid?: string; onClearFilter?: () => void }) {
-  const [tab, setTab] = useState<AdminTab>(initialTab ?? 'skills');
+  const [tab, setTabRaw] = useState<AdminTab>(initialTab ?? 'skills');
+  // AC-3.1：tab↔hash 双向同步——切 tab 写地址栏（可收藏/分享/回退），
+  // 浏览器回退/前进或站内 hash 跳转驱动 tab（替代 App.tsx 的 key remount）
+  const setTab = (t: AdminTab) => {
+    setTabRaw(t);
+    const q = location.hash.split('?')[1];   // 保留 schedules?sid= 类查询参数
+    history.replaceState(null, '', `#/admin/${t}${q ? '?' + q : ''}`);
+  };
+  useEffect(() => {
+    const onHash = () => {
+      const m = location.hash.match(/^#\/admin\/(\w+)/);
+      if (m) {
+        const t = TABS.find(x => x.id === m[1]);
+        if (t) setTabRaw(t.id);
+      }
+    };
+    window.addEventListener('hashchange', onHash);
+    return () => window.removeEventListener('hashchange', onHash);
+  }, []);
   // null = 未登录（token 单用户模式）或状态未返回 → 不裁剪（全量开放）
   const [userRole, setUserRole] = useState<string | null>(null);
   useEffect(() => {
@@ -87,7 +105,7 @@ export default function AdminPanel({ onClose, initialTab, filterSid, onClearFilt
           : tab === 'memory' ? <MemoryTab />
           : tab === 'activity' ? <ActivityTab />
           : tab === 'cost' ? <CostTab />
-          : tab === 'security' ? <SecurityTab onClose={onClose} />
+          : tab === 'security' ? <SecurityTab />
           : tab === 'resources' ? <ResourcesTab /> : <SettingsTab />}
     </div>
   );

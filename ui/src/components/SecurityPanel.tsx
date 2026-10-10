@@ -145,7 +145,7 @@ function SessionLink({ sid, jump, truncate = false }: {
 const card = { border: '1px solid var(--border,#333)', borderRadius: 8, padding: '10px 12px' };
 type CardKey = 'sandbox' | 'approvals' | 'egress' | 'vault' | 'audit' | 'canary' | 'target';
 
-export default function SecurityPanel({ onClose }: { onClose: () => void }) {
+export default function SecurityPanel() {
   const [posture, setPosture] = useState<Posture | null>(null);
   const [events, setEvents] = useState<AuditEvent[]>([]);
   const [filter, setFilter] = useState('');
@@ -210,8 +210,9 @@ export default function SecurityPanel({ onClose }: { onClose: () => void }) {
   };
 
   const jump = (sid: string | null) => {
+    // AC-3.4：统一跳转协议（与 TasksTab/ActivityTab 一致）——hash 清空 + openSession
     if (!sid) return;
-    onClose();
+    location.hash = '';
     void openSession(sid);
   };
 
