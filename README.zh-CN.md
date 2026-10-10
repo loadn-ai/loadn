@@ -1,5 +1,11 @@
 # loadn（老登，读 **load-n**）
 
+[![CI](https://img.shields.io/github/actions/workflow/status/loadn-ai/loadn/ci.yml?branch=main&label=CI)](https://github.com/loadn-ai/loadn/actions/workflows/ci.yml)
+[![Release](https://img.shields.io/github/v/release/loadn-ai/loadn)](https://github.com/loadn-ai/loadn/releases)
+[![License](https://img.shields.io/badge/license-Apache--2.0-blue)](LICENSE)
+[![Python](https://img.shields.io/badge/python-3.10%2B-blue)](pyproject.toml)
+[![Code Style: ruff](https://img.shields.io/badge/code%20style-ruff-261230.svg)](https://github.com/astral-sh/ruff)
+
 简体中文 | **[English](README.md)**
 
 **A self-contained coding-agent engine in pure Python.** One `pip install`, any
@@ -8,9 +14,9 @@ tools, MCP, subagents, session persistence, and context compaction — speaking
 the Claude Code `stream-json` dialect, so existing harnesses can drive it as a
 drop-in subprocess engine.
 
-> 🚧 **抢先版（预发布）**——本仓库当前公开的是 `v0.6.16` 抢先版快照。
-> **正式版承诺于 2026-10-10 前发布**；在此之前 API、配置键与文档仍可能
-> 调整。欢迎提 issue 反馈。
+> **状态：** `v0.7.x`（beta）持续演进中。CLI argv 契约、`stream-json`
+> 方言与配置键遵循 SemVer；破坏性变更随每次 minor bump 在
+> [CHANGELOG.md](CHANGELOG.md) 预告。
 
 > 命名：loadn 是 loadn-ai 平台的引擎包（org: **loadn-ai**）。吉祥物「老登」，
 > 昵称老 bike，仅作文案。平台产品形态：loadn webui / loadn desktop。
@@ -65,6 +71,7 @@ loadn 是一组预印本（2026，即将公开）的**部署态参考系统**，
 |---|---|---|
 | `loadn/` | 引擎（本 README 主体） | `pip install loadn` |
 | `loadn_webui/` | Web 平台：会话管理/调度/成本/分享，内置框架原生**七层执行安全栈**（凭证保险库·bash AST 策略·出口白名单代理·bwrap 沙箱·不可逆动作审批门·蜜罐+审计链·供应链信任门） | `pip install -e ".[webui]"` → `loadn-web init` → `loadn-web serve` |
+| `desktop/` | 桌面形态（Tauri 壳+Debian rootfs：整个执行域跑在 mac/win 内的 Linux VM 里） | `desktop/image/` 构建链 |
 | `ui/` | React 前端（管理中心含安全中心/流量/成本面板） | `cd ui && npm run build` |
 
 文档索引：[ARCHITECTURE](docs/ARCHITECTURE.md)（三平面/数据布局）·
@@ -104,7 +111,7 @@ resource landlord 角色，每次裁决都落审计账本。
 
 ## Why another agent engine
 
-- **Embeddable & hackable.** ~7k lines of typed Python 3.10+, one runtime
+- **Embeddable & hackable.** ~14k lines of typed Python 3.10+, one runtime
   dependency (`httpx`). The core loop (`AgentCore.run_turn`) is a library
   first; the CLI is a thin shell around it.
 - **Speaks `stream-json` natively.** The CLI's argv contract and event stream
@@ -139,8 +146,8 @@ resource landlord 角色，每次裁决都落审计账本。
   a user-level `AGENT.md`, a skills index, and long-term memory — mirroring
   Claude Code's layered memory. Skills load on demand via the `Skill` tool;
   custom subagent types come from `.claude/agents/*.md` frontmatter.
-- **Zero-token test suite.** 1373 tests drive every loop branch through a
-  scripted fake provider — CI needs no API keys. Beyond coverage (83.1%):
+- **Zero-token test suite.** 1600+ tests drive every loop branch through a
+  scripted fake provider — CI needs no API keys. Beyond coverage (83%):
   a homegrown mutation runner injected **4055 bugs into 47 core files** with
   a **78% kill rate** — assertions are proven to catch regressions, not just
   execute paths (tests/TEST-PLAN.md §7).
@@ -249,13 +256,15 @@ spawns `claude -p --output-format stream-json` can spawn `loadn` instead:
 
 ```bash
 pip install -e ".[dev]"
-pytest            # 1373 tests, zero API calls
+pytest            # 1600+ tests, zero API calls
 ruff check .
 ```
 
 The fake provider (`LOADN_PROVIDER=fake`) replays control files from
 `$LOADN_FAKE_DIR` (`reply`/`tools`/`todos`/`fail`/`fastfail`/`bigusage`/
 `hang`/`giantline`) — the same protocol used by the end-to-end CLI tests.
+贡献纪律（新守卫配否定路径测试；改动文件跑突变窄集）见
+[CONTRIBUTING](CONTRIBUTING.md) §断言强度。
 
 ## Status & roadmap
 
@@ -271,10 +280,19 @@ The fake provider (`LOADN_PROVIDER=fake`) replays control files from
       truncation-with-actions, handoff compactor (prune + ledger + UPDATE),
       grace call, two-tier loop-guard, truncated-toolCall refusal,
       context-overflow self-rescue, normalized-fuzzy Edit
+- [x] v0.4.x–v0.6.5 — 开源就绪（可移植默认值/插件入口/社区文件）、任务
+      隔离与断线回放、交互式出口管控、全量显式配置化+资源桥接
+- [x] 测试质量战役 — 83% 行覆盖 + 47 文件 4055 变异 78% 杀伤 + 周跑
+      突变回归门
+- [x] v0.7.x — 运维加固：非空闲升级守卫、技能教学建议闭环、管理中心
+      重设计（见 CHANGELOG）
+- [ ] PyPI 首发（包名已占位；tag → build → publish 自动化）
+- [ ] desktop 真机验证（mac/win）
+- [ ] 文档站（GitHub Pages：README/ARCHITECTURE/CONFIG/EXTENDING 汇编）
 - [ ] Terminal-Bench baseline numbers
 - [ ] Ollama provider, DeepSeek native
 - [ ] TUI (textual)
-- [ ] MCP server mode (loadn as an MCP server)
+- [ ] MCP server mode（loadn 作为 MCP server 被别的 agent 驱动）
 
 变更与方向见 [CHANGELOG.md](CHANGELOG.md) 与 [ROADMAP.md](ROADMAP.md)。
 欢迎贡献——[CONTRIBUTING.md](CONTRIBUTING.md) 说明仓库结构、一文件加

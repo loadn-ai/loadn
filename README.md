@@ -1,5 +1,11 @@
 # loadn
 
+[![CI](https://img.shields.io/github/actions/workflow/status/loadn-ai/loadn/ci.yml?branch=main&label=CI)](https://github.com/loadn-ai/loadn/actions/workflows/ci.yml)
+[![Release](https://img.shields.io/github/v/release/loadn-ai/loadn)](https://github.com/loadn-ai/loadn/releases)
+[![License](https://img.shields.io/badge/license-Apache--2.0-blue)](LICENSE)
+[![Python](https://img.shields.io/badge/python-3.10%2B-blue)](pyproject.toml)
+[![Code Style: ruff](https://img.shields.io/badge/code%20style-ruff-261230.svg)](https://github.com/astral-sh/ruff)
+
 **[简体中文](README.zh-CN.md)** | English
 
 **A self-contained coding-agent engine in pure Python.** One `pip install`, any
@@ -8,10 +14,9 @@ tools, MCP, subagents, session persistence, and context compaction — speaking
 the Claude Code `stream-json` dialect, so existing harnesses can drive it as a
 drop-in subprocess engine.
 
-> 🚧 **Early access (preview)** — this repository publishes `v0.6.16` as an
-> early-access snapshot. The official release is scheduled **before
-> 2026-10-10**; until then APIs, config keys, and docs may still change.
-> Bug reports and issue feedback are welcome.
+> **Status:** `v0.7.x` (beta), actively maintained. The CLI argv contract,
+> `stream-json` dialect, and config keys follow SemVer; breaking changes are
+> announced in [CHANGELOG.md](CHANGELOG.md) with each minor bump.
 
 > Naming: loadn is the engine package of the loadn-ai platform (org:
 > **loadn-ai**). Product forms: `loadn` engine / `loadn-web` platform /
@@ -153,7 +158,7 @@ extensions, not the primary supply channel.
   AGENTS.md ancestor chain (git-root bounded, nearest last, `@import`
   support), a skills index, long-term memory with boundary-driven background
   extraction, and a repo map — mirroring Claude Code's layered memory.
-- **Mutation-tested.** 1373 tests (zero token, fake-provider driven) at 83.1%
+- **Mutation-tested.** 1600+ tests (zero token, fake-provider driven) at 83%
   line coverage — and beyond coverage, a homegrown mutation-testing runner
   has injected **4055 bugs into 47 core files with a 78% kill rate**,
   proving the assertions actually catch regressions, not just execute code
@@ -257,7 +262,7 @@ spawns `claude -p --output-format stream-json` can spawn `loadn` instead:
 
 ```bash
 pip install -e ".[dev]"
-pytest            # 1373 tests, zero API calls
+pytest            # 1600+ tests, zero API calls
 ruff check .
 ```
 
@@ -279,12 +284,17 @@ mutation TARGET_TESTS map).
       cards, session-level overrides, per-session attribution
 - [x] v0.6.5 — every security mechanism explicitly configurable; host
       resource bridges
-- [x] post-0.6.5 — test-quality campaign: 83.1% coverage, 2589-mutant
-      verification across 41 files (76% kill rate), weekly mutation gate in CI
-- [ ] PyPI publication
+- [x] post-0.6.5 — test-quality campaign: 83% coverage, mutation
+      verification at 47 files / 4055 mutants (78% kill rate), weekly
+      mutation gate in CI
+- [x] v0.7.x — operational hardening: non-idle upgrade guards, skill
+      teaching-suggestion loop, admin-center redesign (see CHANGELOG)
+- [ ] PyPI first release (name reserved; tag → build → publish automated)
 - [ ] desktop real-device validation (mac/win)
+- [ ] docs site (GitHub Pages: README/ARCHITECTURE/CONFIG/EXTENDING)
 - [ ] Terminal-Bench baseline numbers
 - [ ] Ollama provider, DeepSeek native; TUI (textual)
+- [ ] MCP server mode (loadn driven as an MCP server)
 
 See [CHANGELOG.md](CHANGELOG.md) and [ROADMAP.md](ROADMAP.md).
 Contributions welcome — [CONTRIBUTING.md](CONTRIBUTING.md) describes the
