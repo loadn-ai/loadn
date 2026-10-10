@@ -4,6 +4,7 @@
 import { useEffect, useRef, useState } from 'react';
 import ReactMarkdown from 'react-markdown';
 import { api } from '../../api/client';
+import { toast } from '../../stores/toasts';
 import { useAdminDirty } from '../../stores/adminDirty';
 import { Plus } from '../icons';
 
@@ -22,6 +23,7 @@ export default function MemoryTab() {
   const [verText, setVerText] = useState('');
   const [creating, setCreating] = useState(false);
   const [busy, setBusy] = useState(false);
+  const [opBusy, setOpBusy] = useState('');   // AC-5.5b：行操作 busy（del:<id>/restore:<hash>）
   const [msg, setMsg] = useState<{ t: string; err?: boolean } | null>(null);
   // AC-5.3 竞态守卫：快速切条目/切域/点版本时旧响应后到覆盖新状态——
   // 各异步面独立递增序号，响应回程序号不匹配即丢弃
@@ -86,29 +88,33 @@ export default function MemoryTab() {
     try {
       await api('/api/memory/file', { method: 'PUT', body: JSON.stringify({
         domain, id: sel.id, content: text, summary }) });
-      setMsg({ t: '已保存（一次 commit，历史可回溯）' });
+      toast('已保存（一次 commit，历史可回溯）');
       pick(sel); void reloadEntries();
-    } catch (e) { setMsg({ t: `保存被拒：${String(e)}`, err: true }); }   // 护栏拒绝原因直显
+    } catch (e) { toast(`保存被拒：${String(e)}`, false); }   // 护栏拒绝原因直显
     finally { setBusy(false); }
   }
 
   async function del(e: Entry) {
     if (!confirm(`删除记忆「${e.summary}」？git 历史保留（可经历史恢复）。`)) return;
+    setOpBusy(`del:${e.id}`);
     try {
       await api(`/api/memory/entry?domain=${domain}&id=${e.id}`, { method: 'DELETE' });
-      setSel(null); setMsg({ t: `已删除 ${e.summary}（历史在，可恢复）` });
+      setSel(null); toast(`已删除 ${e.summary}（历史在，可恢复）`);
       void reloadEntries();
-    } catch (err) { setMsg({ t: `删除失败：${String(err)}`, err: true }); }
+    } catch (err) { toast(`删除失败：${String(err)}`, false); }
+    finally { setOpBusy(''); }
   }
 
   async function restore(v: Ver) {
     if (!sel) return;
+    setOpBusy(`restore:${v.hash}`);
     try {
       await api('/api/memory/restore', { method: 'POST', body: JSON.stringify({
         domain, id: sel.id, ref: v.hash }) });
-      setMsg({ t: `已恢复到 ${v.hash}（${v.subject}）` });
+      toast(`已恢复到 ${v.hash}（${v.subject}）`);
       pick(sel);
-    } catch (e) { setMsg({ t: `恢复失败：${String(e)}`, err: true }); }
+    } catch (e) { toast(`恢复失败：${String(e)}`, false); }
+    finally { setOpBusy(''); }
   }
 
   async function showVer(v: Ver) {
@@ -154,7 +160,7 @@ export default function MemoryTab() {
               <div className="sk-foot">
                 <span className="sk-time">{e.origin_session.slice(0, 18)} · {e.created_at?.slice(5, 16)}</span>
                 <span className="sk-actions">
-                  <button className="link danger-link" onClick={ev => {
+                  <button className="link danger-link" disabled={opBusy === `del:${e.id}`} onClick={ev => {
                     ev.stopPropagation(); void del(e);
                   }}>删除</button>
                 </span>
@@ -192,7 +198,8 @@ export default function MemoryTab() {
               <div style={{ fontSize: 12 }}>{v.subject}</div>
               <span className="sk-actions">
                 <button className="link" onClick={() => void showVer(v)}>查看</button>
-                <button className="link" onClick={() => void restore(v)}>恢复</button>
+                <button className="link" disabled={opBusy === `restore:${v.hash}`}
+                  onClick={() => void restore(v)}>恢复</button>
               </span>
             </div>
           ))}

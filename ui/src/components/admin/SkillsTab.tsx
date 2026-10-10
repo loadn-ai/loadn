@@ -2,6 +2,7 @@
 import { useEffect, useRef, useState } from 'react';
 import { api, withToken } from '../../api/client';
 import { fetchZhDesc } from '../../api/zh';
+import { toast } from '../../stores/toasts';
 import SkillEditor from '../SkillEditor';
 import InstallDialog from '../InstallDialog';
 import { Plus, Upload, Globe } from '../icons';
@@ -31,8 +32,8 @@ export default function SkillsTab() {
     if (!confirm(`删除 skill「${s.name}」？整目录移除，不可恢复。`)) return;
     try {
       await api(`/api/skills/${encodeURIComponent(s.name)}?force=true`, { method: 'DELETE' });
-      setMsg({ t: `已删除 ${s.name}` });
-    } catch (e) { setMsg({ t: `删除失败：${String(e)}`, err: true }); }
+      toast(`已删除 ${s.name}`);
+    } catch (e) { toast(`删除失败：${String(e)}`, false); }
     void reload();
   }
 
@@ -40,21 +41,21 @@ export default function SkillsTab() {
     try {
       await api(`/api/skills/${encodeURIComponent(s.name)}/toggle`, {
         method: 'POST', body: JSON.stringify({ disabled: !s.disabled }) });
-      setMsg({ t: s.disabled ? `已启用 ${s.name}（新会话生效，引用它的 active 会话已补挂）`
-                        : `已禁用 ${s.name}（新会话不挂载，active 会话下一 turn 失效）` });
-    } catch (e) { setMsg({ t: `操作失败：${String(e)}`, err: true }); }
+      toast(s.disabled ? `已启用 ${s.name}（新会话生效，引用它的 active 会话已补挂）`
+                      : `已禁用 ${s.name}（新会话不挂载，active 会话下一 turn 失效）`);
+    } catch (e) { toast(`操作失败：${String(e)}`, false); }
     void reload();
   }
 
   async function uploadZip(f: File) {
     const fd = new FormData();
     fd.append('file', f);
-    setMsg({ t: `安装 ${f.name} 中…` });
+    toast(`安装 ${f.name} 中…`);
     try {
-      const d = await api<{ installed: string[]; skipped?: string[] }>(
+      const d = await api<{ installed: string[]; skipped?: string[]}>(
         withQ('/api/skills/upload'), { method: 'POST', body: fd });
-      setMsg({ t: `已安装：${d.installed.join(', ')}${d.skipped?.length ? '（跳过 ' + d.skipped.join('; ') + '）' : ''}` });
-    } catch (e) { setMsg({ t: `安装失败：${String(e)}`, err: true }); }
+      toast(`已安装：${d.installed.join(', ')}${d.skipped?.length ? '（跳过 ' + d.skipped.join('; ') + '）' : ''}`);
+    } catch (e) { toast(`安装失败：${String(e)}`, false); }
     void reload();
   }
 

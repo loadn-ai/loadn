@@ -2,6 +2,7 @@
 // 轮询状态/最近错误 + getMe 健康探测。WhatsApp/Signal 预留位未实现。
 import { useEffect, useState } from 'react';
 import { api } from '../../api/client';
+import { toast } from '../../stores/toasts';
 import { useStore } from '../../stores/sessions';
 
 interface ChanCfg { telegram_enabled: boolean; telegram_allow: string[]; token_set: boolean }
@@ -40,9 +41,9 @@ export default function ChannelsCard() {
           body: JSON.stringify({ token: token.trim() }) });
         setToken('');
       }
-      setMsg({ t: '已保存（启停即时生效；白名单即时生效）' });
+      toast('已保存（启停即时生效；白名单即时生效）');
       void reload();
-    } catch (e) { setMsg({ t: `保存失败：${String(e)}`, err: true }); }
+    } catch (e) { toast(`保存失败：${String(e)}`, false); }
   }
 
   async function probe() {
@@ -50,7 +51,7 @@ export default function ChannelsCard() {
     try {
       const d = await api<{ ok: boolean; bot?: string; error?: string }>(
         '/api/admin/channels/probe');
-      setMsg(d.ok ? { t: `✅ @${d.bot} 连通` } : { t: `❌ ${d.error}`, err: true });
+      setMsg(d.ok ? { t: `✅ @${d.bot} 连通` } : { t: `❌ ${d.error}`, err: true });   // 探测过程/结果原地展示（含"探测中…"过渡态）
     } catch (e) { setMsg({ t: `探测失败：${String(e)}`, err: true }); }
   }
 

@@ -3,6 +3,7 @@
 // 本地状态自取自放（对齐 SkillsTab 模式，不动 zustand store）。
 import { useEffect, useMemo, useState } from 'react';
 import { api } from '../api/client';
+import { toast } from '../stores/toasts';
 import { useStore } from '../stores/sessions';
 import { Clock, Pause, Pencil, Play, Plus, Trash, X } from './icons';
 
@@ -109,7 +110,7 @@ export default function SchedulesTab({ filterSid, onClearFilter }: {
       await api(`/api/schedules/${j.id}`, { method: 'PATCH', body: JSON.stringify({ status }) });
       await reload();
       void useStore.getState().loadSessions();   // 会话头徽章 next_wake 同步
-    } catch (e) { setMsg({ t: `操作失败：${e instanceof Error ? e.message : e}`, err: true }); }
+    } catch (e) { toast(`操作失败：${e instanceof Error ? e.message : e}`, false); }
   }
 
   async function del(j: ScheduleInfo) {
@@ -121,7 +122,7 @@ export default function SchedulesTab({ filterSid, onClearFilter }: {
       await api(`/api/schedules/${j.id}`, { method: 'DELETE' });
       await reload();
       void useStore.getState().loadSessions();
-    } catch (e) { setMsg({ t: `删除失败：${e instanceof Error ? e.message : e}`, err: true }); }
+    } catch (e) { toast(`删除失败：${e instanceof Error ? e.message : e}`, false); }
   }
 
   return (
@@ -585,7 +586,6 @@ function JobForm({ job, presetSid, onDone }: {
 /** P11 模板库：例程模板卡片（安装=复制为用户 schedule，与平台升级解耦） */
 export function RoutinesLib() {
   const [items, setItems] = useState<RoutineInfo[]>([]);
-  const [msg, setMsg] = useState<{ t: string; err?: boolean } | null>(null);
   useEffect(() => {
     void (async () => {
       try {
@@ -598,10 +598,10 @@ export function RoutinesLib() {
     try {
       const d = await api<{ job: { id: number; label: string }; existing?: boolean }>(
         `/api/routines/${key}/install`, { method: 'POST' });
-      setMsg(d.existing
-        ? { t: `「${d.job.label}」此前已安装——已定位既有任务（未重复创建）` }
-        : { t: `已安装「${d.job.label}」为你的定时任务（可在上方列表编辑）` });
-    } catch (e) { setMsg({ t: `安装失败：${String(e)}`, err: true }); }
+      toast(d.existing
+        ? `「${d.job.label}」此前已安装——已定位既有任务（未重复创建）`
+        : `已安装「${d.job.label}」为你的定时任务（可在上方列表编辑）`);
+    } catch (e) { toast(`安装失败：${String(e)}`, false); }
   }
   if (!items.length) return null;
   return (
@@ -634,7 +634,6 @@ export function RoutinesLib() {
           </div>
         ))}
       </div>
-      {msg && <div className={msg.err ? 'admin-msg err' : 'admin-msg'}>{msg.t}</div>}
     </div>
   );
 }

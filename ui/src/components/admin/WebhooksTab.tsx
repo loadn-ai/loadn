@@ -3,6 +3,7 @@
 // 只能删了重建，token 随之吊销、外部调用方全部要换 URL）。
 import { useEffect, useState } from 'react';
 import { api } from '../../api/client';
+import { toast } from '../../stores/toasts';
 import { Plus } from '../icons';
 
 interface Hook {
@@ -18,6 +19,7 @@ export default function WebhooksTab() {
   const [editing, setEditing] = useState<Hook | null>(null);
   const [msg, setMsg] = useState<{ t: string; err?: boolean } | null>(null);
   const [copied, setCopied] = useState<number | null>(null);
+  const [busyId, setBusyId] = useState<number | null>(null);   // AC-5.5b：行操作 busy（防双击重复提交）
 
   async function reload() {
     try {
@@ -40,19 +42,23 @@ export default function WebhooksTab() {
   }
 
   async function toggle(h: Hook) {
+    setBusyId(h.id);
     try {
       await api(`/api/hooks/${h.id}`, { method: 'PATCH',
         body: JSON.stringify({ enabled: !h.enabled }) });
-    } catch (e) { setMsg({ t: `操作失败：${String(e)}`, err: true }); }
+    } catch (e) { toast(`操作失败：${String(e)}`, false); }
+    finally { setBusyId(null); }
     void reload();
   }
 
   async function del(h: Hook) {
     if (!confirm(`删除 webhook「${h.name}」？token 立即吊销，外部调用将 401。`)) return;
+    setBusyId(h.id);
     try {
       await api(`/api/hooks/${h.id}`, { method: 'DELETE' });
-      setMsg({ t: `已删除 ${h.name}（token 已吊销）` });
-    } catch (e) { setMsg({ t: `删除失败：${String(e)}`, err: true }); }
+      toast(`已删除 ${h.name}（token 已吊销）`);
+    } catch (e) { toast(`删除失败：${String(e)}`, false); }
+    finally { setBusyId(null); }
     void reload();
   }
 
@@ -98,8 +104,10 @@ export default function WebhooksTab() {
                   {copied === h.id ? '已复制' : '复制 URL'}
                 </button>
                 <button className="link" onClick={() => setEditing(h)}>编辑</button>
-                <button className="link" onClick={() => void toggle(h)}>{h.enabled ? '禁用' : '启用'}</button>
-                <button className="link danger-link" onClick={() => void del(h)}>删除</button>
+                <button className="link" disabled={busyId === h.id}
+                  onClick={() => void toggle(h)}>{h.enabled ? '禁用' : '启用'}</button>
+                <button className="link danger-link" disabled={busyId === h.id}
+                  onClick={() => void del(h)}>删除</button>
               </span>
             </div>
             <div className="mono sk-desc" style={{ fontSize: 11, opacity: 0.75 }}>

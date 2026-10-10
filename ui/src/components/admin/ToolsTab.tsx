@@ -1,6 +1,7 @@
 // 工具页（全局 MCP servers + 内建开关）——从 AdminPanel 拆出（v0.6.12）
 import { useEffect, useState } from 'react';
 import { api } from '../../api/client';
+import { toast } from '../../stores/toasts';
 import { Plus } from '../icons';
 import type { McpServer, ProfileTools } from './shared';
 
@@ -23,8 +24,8 @@ export default function ToolsTab() {
     if (!confirm(`删除全局 MCP server「${s.name}」？（会话级覆盖不受影响）`)) return;
     try {
       await api(`/api/tools/mcp/${encodeURIComponent(s.name)}`, { method: 'DELETE' });
-      setMsg({ t: `已删除 ${s.name}` });
-    } catch (e) { setMsg({ t: String(e), err: true }); }
+      toast(`已删除 ${s.name}`);
+    } catch (e) { toast(String(e), false); }
     void reload();
   }
 
@@ -35,7 +36,7 @@ export default function ToolsTab() {
       await api(`/api/tools/profile/${encodeURIComponent(p.name)}`, {
         method: 'PUT', body: JSON.stringify({ disallowed_tools: next }),
       });
-    } catch (e) { setMsg({ t: String(e), err: true }); }
+    } catch (e) { toast(String(e), false); }
     void reload();
   }
 

@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react';
 import { api } from '../../api/client';
+import { toast } from '../../stores/toasts';
 
 /** 多用户批2：用户管理卡（admin）——列表/建号/角色/启停/重置密码。
  *  禁用即时踢下线（服务端删会话）；不能禁用/降级自己（防锁死管理面）。 */
@@ -34,10 +35,10 @@ export default function UsersCard() {
     try {
       await api(`/api/auth/users/${uid}`, { method: 'PATCH',
         body: JSON.stringify(body) });
-      setMsg({ t: what + ' ✓' });
+      toast(what + ' ✓');
       await load();
     } catch (e) {
-      setMsg({ t: `${what} 失败：${e instanceof Error ? e.message : e}`, err: true });
+      toast(`${what} 失败：${e instanceof Error ? e.message : e}`, false);
     }
   };
 
@@ -122,10 +123,10 @@ export default function UsersCard() {
               await api('/api/auth/users', { method: 'POST',
                 body: JSON.stringify(adding) });
               setAdding(a => ({ ...a, username: '', password: '' }));
-              setMsg({ t: '建号 ✓' });
+              toast('建号 ✓');
               await load();
             } catch (e) {
-              setMsg({ t: `建号失败：${e instanceof Error ? e.message : e}`, err: true });
+              toast(`建号失败：${e instanceof Error ? e.message : e}`, false);
             }
           }}>建号</button>
       </div>
