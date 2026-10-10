@@ -656,7 +656,7 @@ export default function SettingsTab() {
         <h4>服务器 <span className="muted">（只读——host/port/令牌属启动期与部署面）</span></h4>
         <div style={{ display: 'flex', gap: 16, marginBottom: 8, flexWrap: 'wrap', fontSize: 13 }}>
           <span>监听 <b className="mono-cell">{srv.host}:{srv.port}</b></span>
-          <span>API token <b style={{ color: srv.token_set ? '#3aa675' : undefined }}>{srv.token_set ? '已配置' : '未配置'}</b></span>
+          <span>API token <b style={{ color: srv.token_set ? 'var(--green)' : undefined }}>{srv.token_set ? '已配置' : '未配置'}</b></span>
           <span>管理令牌 <b>{srv.admin_token_set ? '独立配置' : '复用 API token'}</b></span>
           {srv.token_grace_until > 0 && (
             <span className="muted">机生 token 宽限期至 {new Date(srv.token_grace_until * 1000).toLocaleString()}</span>

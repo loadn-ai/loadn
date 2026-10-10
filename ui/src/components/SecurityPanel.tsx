@@ -122,7 +122,7 @@ function aggregate(events: AuditEvent[]): (AuditEvent & { count?: number })[] {
 }
 
 function Dot({ ok, warn }: { ok: boolean; warn?: boolean }) {
-  const color = ok ? (warn ? '#d4a017' : '#3aa675') : '#888';
+  const color = ok ? (warn ? 'var(--yellow)' : 'var(--green)') : 'var(--muted)';
   return <span style={{ display: 'inline-block', width: 8, height: 8, borderRadius: '50%', background: color, marginRight: 6, flexShrink: 0 }} />;
 }
 
@@ -142,7 +142,7 @@ function SessionLink({ sid, jump, truncate = false }: {
   );
 }
 
-const card = { border: '1px solid var(--border,#333)', borderRadius: 8, padding: '10px 12px' };
+const card = { border: '1px solid var(--border)', borderRadius: 8, padding: '10px 12px' };
 type CardKey = 'sandbox' | 'approvals' | 'egress' | 'vault' | 'audit' | 'canary' | 'target';
 
 export default function SecurityPanel() {
@@ -332,13 +332,13 @@ export default function SecurityPanel() {
             style={{
               ...card,
               borderColor: c.danger ? 'var(--danger)'
-                : open === c.key ? 'var(--accent,#4f6bf0)' : undefined,
+                : open === c.key ? 'var(--accent)' : undefined,
               cursor: 'pointer',
               transition: 'border-color .15s, transform .1s',
               transform: open === c.key ? 'translateY(-1px)' : undefined,
             }}
-            onMouseEnter={e => { if (!c.danger && open !== c.key) e.currentTarget.style.borderColor = 'var(--accent,#4f6bf0)'; }}
-            onMouseLeave={e => { if (!c.danger && open !== c.key) e.currentTarget.style.borderColor = 'var(--border,#333)'; }}>
+            onMouseEnter={e => { if (!c.danger && open !== c.key) e.currentTarget.style.borderColor = 'var(--accent)'; }}
+            onMouseLeave={e => { if (!c.danger && open !== c.key) e.currentTarget.style.borderColor = 'var(--border)'; }}>
             <div style={{ display: 'flex', alignItems: 'center', fontWeight: 600 }}>
               <Dot ok={c.ok} warn={c.warn} /><span style={{ marginRight: 6 }}>{c.icon}</span>{c.name}
               <span className="muted" style={{ marginLeft: 'auto', fontSize: 11 }}>
@@ -347,7 +347,7 @@ export default function SecurityPanel() {
             </div>
             <div style={{ fontSize: 13, marginTop: 4, color: c.ok || c.danger ? undefined : 'var(--muted)' }}>{c.top}</div>
             <div className="muted" style={{ fontSize: 12, marginTop: 6, lineHeight: 1.5 }}>{c.sub}</div>
-            {c.hint && <div style={{ fontSize: 12, marginTop: 6, color: '#d4a017' }}>→ {c.hint}</div>}
+            {c.hint && <div style={{ fontSize: 12, marginTop: 6, color: 'var(--yellow)' }}>→ {c.hint}</div>}
           </div>
         ))}
       </div>
@@ -388,8 +388,8 @@ export default function SecurityPanel() {
           <div style={{
             flex: 1, minWidth: 260, padding: '8px 12px', borderRadius: 8, fontSize: 13,
             whiteSpace: 'pre-wrap', lineHeight: 1.5,
-            border: `1px solid ${verify.ok ? '#3aa675' : 'var(--danger)'}`,
-            color: verify.ok ? '#3aa675' : 'var(--danger)',
+            border: `1px solid ${verify.ok ? 'var(--green)' : 'var(--danger)'}`,
+            color: verify.ok ? 'var(--green)' : 'var(--danger)',
           }}>{verify.text}</div>
         )}
       </div>
@@ -627,7 +627,7 @@ function SandboxDetail({ events, jump, tier }: {
               <tr key={s.id}>
                 <td style={{ fontVariantNumeric: 'tabular-nums' }}>{(s.ts || '').slice(5, 19).replace('T', ' ')}</td>
                 <td>{d.engine ?? '?'}</td>
-                <td style={{ color: ok ? '#3aa675' : 'var(--danger)' }}>{ok ? '沙箱内' : '⚠ 直跑'}</td>
+                <td style={{ color: ok ? 'var(--green)' : 'var(--danger)' }}>{ok ? '沙箱内' : '⚠ 直跑'}</td>
                 <td><SessionLink sid={s.sid} jump={jump} /></td>
               </tr>
             );
@@ -774,7 +774,7 @@ function EgressDetail() {
   return (
     <div>
       <DetailHead title="窗口内外发的目标域" note={`mode=${mode || '-'} · 观测与管控一体（原「流量」tab 已并入此处）`} />
-      <div style={{ border: '1px solid var(--border,#333)', borderRadius: 8, padding: '8px 10px', marginBottom: 10 }}>
+      <div style={{ border: '1px solid var(--border)', borderRadius: 8, padding: '8px 10px', marginBottom: 10 }}>
         <div className="muted" style={{ fontSize: 12, marginBottom: 6 }}>出口策略（保存即热生效，不杀在跑任务）</div>
         <div className="setting-row" style={{ marginBottom: 4 }}>
           <span style={{ minWidth: 64 }}>模式</span>
@@ -821,7 +821,7 @@ function EgressDetail() {
             <tr key={r.host}>
               <td>{r.host}</td>
               <td style={{ fontVariantNumeric: 'tabular-nums' }}>{r.n}</td>
-              <td style={{ color: r.denied ? 'var(--danger)' : '#3aa675' }}>
+              <td style={{ color: r.denied ? 'var(--danger)' : 'var(--green)' }}>
                 {r.denied ? `拒绝 ${r.denied}/${r.n}` : '放行'}
               </td>
               <td style={{ fontVariantNumeric: 'tabular-nums' }}>{(r.last || '').slice(11, 19)}</td>
@@ -907,7 +907,7 @@ function VaultDetail() {
               <tr>
                 <td>{p.platform}</td>
                 <td className="muted">{p.user || p.email || '-'}</td>
-                <td style={{ color: p.has_password ? '#3aa675' : 'var(--danger)' }}>
+                <td style={{ color: p.has_password ? 'var(--green)' : 'var(--danger)' }}>
                   {p.has_password ? '已存' : '缺'}
                 </td>
                 <td style={{ fontVariantNumeric: 'tabular-nums' }}>{(p.updated_at || '').slice(0, 10)}</td>

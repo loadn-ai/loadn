@@ -13,7 +13,7 @@
   --grad-accent: linear-gradient(135deg, #6366f1, #8b5cf6);
   --glow: radial-gradient(60rem 32rem at 50% -12%, rgba(99, 102, 241, .1), transparent 70%);
   --green: #4ade80;
-  --red: #f87171;
+  --red: var(--danger);   /* 双红收敛（AC-5.6）：断连/错误/危险按钮统一主红 */
   --yellow: #fbbf24;
   --fg-on-accent: #fff;        /* accent 面上的前景色 */
   --k-html: #e88845;           /* artifact 类型徽章 */
@@ -47,7 +47,7 @@
   --grad-accent: linear-gradient(135deg, #4f46e5, #6366f1);
   --glow: radial-gradient(60rem 32rem at 50% -12%, #e5e9fd, transparent 70%);
   --green: #16a34a;
-  --red: #dc2626;
+  --red: var(--danger);
   --yellow: #b45309;
   --k-html: #c05621;
   --k-docx: #2b6cb0;

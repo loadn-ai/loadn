@@ -32,7 +32,7 @@ const input: React.CSSProperties = {
 };
 const btn: React.CSSProperties = {
   padding: '10px 0', borderRadius: 8, fontSize: 14, fontWeight: 600,
-  border: 'none', background: 'var(--accent,#4f6bf0)', color: '#fff',
+  border: 'none', background: 'var(--accent)', color: '#fff',
 };
 
 export default function TokenGate() {

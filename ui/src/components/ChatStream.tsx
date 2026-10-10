@@ -448,7 +448,7 @@ function MemoryChips({ mid, hits }: { mid?: number; hits: { id: string; domain: 
       {open && src && (
         <div className="hooks-aside panel" style={{ width: '100%', fontSize: 12, padding: 8 }}>
           {src.hits.map((h, i) => (
-            <div key={i} style={{ borderTop: i ? '1px dashed #8884' : undefined, padding: '4px 0' }}>
+            <div key={i} style={{ borderTop: i ? '1px dashed var(--border)' : undefined, padding: '4px 0' }}>
               <b>{icon(h.domain)} {h.id}</b>
               <span style={{ opacity: 0.7 }}>
                 {' '}· {h.status === 'present' ? '存在' : h.status === 'modified' ? '已修改' : '已删除'}
