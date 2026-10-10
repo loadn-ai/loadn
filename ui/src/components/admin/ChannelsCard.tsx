@@ -28,7 +28,6 @@ export default function ChannelsCard() {
       .then(d => setRole(d.logged_in && d.user ? d.user.role : null))
       .catch(() => setRole(null));
   }, []);
-  if (role !== null && role !== 'admin') return null;   // 普通用户：渠道管理不可见
 
   async function reload() {
     try {
@@ -40,6 +39,8 @@ export default function ChannelsCard() {
     } catch (e) { setCfgErr(`渠道面板加载失败：${String(e)}`); }  // 不可达≠无配置，卡壳显示错误
   }
   useEffect(() => { void reload(); }, []);
+  // 守卫须在全部 hooks 之后（rules-of-hooks：条件 return 不得插在 hook 间）
+  if (role !== null && role !== 'admin') return null;   // 普通用户：渠道管理不可见
 
   async function save() {
     try {
