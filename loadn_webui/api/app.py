@@ -51,6 +51,17 @@ _ADMIN_PREFIXES = ("/api/skills", "/api/skillhub", "/api/tools",
 # 路由内（建号落主/列表过滤/patch+delete 属主 404）；hooks 触发面 token
 # 即凭证不变
 
+# 管理面敏感读清单（AC-1.1 读面分级）：cookie 登录用户对这些 GET 也要求
+# admin 角色——凭证平台名/审计流/安全姿态/外联域名/渠道绑定/目标策略/
+# 全量设置属平台级数据，普通用户可读与「属主隔离」承诺相悖（横向信息
+# 泄露面）。token 双头通道不判（CLI/存量部署语义不变，W0 测试锁定）。
+# /api/admin/tasks 不在此列：路由内已做属主过滤（非 admin 只见自己的）。
+_ADMIN_READ_PREFIXES = ("/api/admin/vault", "/api/admin/security",
+                        "/api/admin/audit", "/api/admin/egress",
+                        "/api/admin/channels", "/api/admin/target-policy",
+                        "/api/admin/approvals", "/api/admin/resources",
+                        "/api/settings")
+
 # 会话级破坏性端点（W6.4）：路径形如 /api/sessions/{sid}/kill，前缀表
 # 表达不了通配，按末段判定（kill/rollback/unlock 非法 GET 一律双头）
 _SESSION_ADMIN_SUFFIXES = ("kill", "rollback", "unlock")
@@ -243,6 +254,12 @@ def _is_admin_plane(path: str, method: str) -> bool:
             and path.rsplit("/", 1)[-1] in _SESSION_ADMIN_SUFFIXES)
 
 
+def _admin_read_required(path: str, method: str) -> bool:
+    """敏感读面（AC-1.1）：cookie 用户需 admin 角色；token 通道不判。"""
+    return (method in ("GET", "HEAD")
+            and path.startswith(_ADMIN_READ_PREFIXES))
+
+
 app = FastAPI(title="loadn webui", lifespan=lifespan)
 
 
@@ -265,10 +282,11 @@ async def auth_middleware(request: Request, call_next):
     if path.startswith("/api/auth/"):
         return await call_next(request)
     if request.state.user is not None:
-        # 已登录：普通面放行；管理面要求 admin 角色（token 双头通道继续
-        # 兼容——CLI/存量部署不经 cookie）
-        if _is_admin_plane(path, request.method) \
-                and request.state.user["role"] != "admin":
+        # 已登录：普通面放行；管理面（含敏感读面 AC-1.1）要求 admin 角色
+        # （token 双头通道继续兼容——CLI/存量部署不经 cookie）
+        if request.state.user["role"] != "admin" and (
+                _is_admin_plane(path, request.method)
+                or _admin_read_required(path, request.method)):
             return JSONResponse({"error": "admin required"}, status_code=403)
         return await call_next(request)
     protected = (path.startswith("/api") or path in ("/docs", "/openapi.json")

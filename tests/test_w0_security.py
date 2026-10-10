@@ -392,3 +392,49 @@ def test_noauth_mode_admin_plane_open(w0):
     # 普通面读同样放行
     r2 = httpx.get(w0["url"] + "/api/sessions", timeout=10)
     assert r2.status_code == 200
+
+
+# ---------------------------------------------------------------- 读面分级（AC-1.1）
+# cookie 登录用户对敏感 GET（凭证/审计/姿态/外联/绑定/全量设置）要求 admin
+# 角色；token 双头通道 GET 语义不变（test_admin_plane_get_reads_allowed 锁定）。
+
+async def test_admin_read_plane_user_403(client, monkeypatch):
+    """>>> 否定路径对赌：普通 cookie 用户读敏感面 → 403（GET 不再全放行）。"""
+    from loadn_webui.security import userauth as ua
+    monkeypatch.setattr(ua, "session_user",
+                        lambda _c: {"id": 7, "role": "user", "username": "u"})
+    for path in ("/api/admin/vault", "/api/admin/security", "/api/admin/audit",
+                 "/api/admin/egress", "/api/admin/channels",
+                 "/api/admin/approvals", "/api/admin/resources",
+                 "/api/admin/target-policy", "/api/settings"):
+        r = await client.get(path)
+        assert r.status_code == 403, f"{path} 应要求 admin（读面分级）"
+
+
+async def test_admin_read_plane_admin_ok(client, monkeypatch):
+    """admin cookie 用户读敏感面放行（回归：分级只拦普通用户）。"""
+    from loadn_webui.security import userauth as ua
+    monkeypatch.setattr(ua, "session_user",
+                        lambda _c: {"id": 1, "role": "admin", "username": "root"})
+    for path in ("/api/admin/vault", "/api/settings"):
+        r = await client.get(path)
+        assert r.status_code == 200, path
+
+
+async def test_admin_read_plane_tasks_still_scoped(client, monkeypatch):
+    """>>> 防误伤对赌：/api/admin/tasks 不在敏感读清单——普通用户可读
+    （属主过滤在路由内，见 test_admin_tasks.py test_owner_scope_for_non_admin）。"""
+    from loadn_webui.security import userauth as ua
+    monkeypatch.setattr(ua, "session_user",
+                        lambda _c: {"id": 7, "role": "user", "username": "u"})
+    r = await client.get("/api/admin/tasks")
+    assert r.status_code == 200
+
+
+async def test_admin_read_plane_token_channel_unchanged(client, monkeypatch):
+    """>>> 通道语义对赌：无 cookie（token 双头）GET 敏感面仍放行——
+    CLI/存量部署读路径不受读面分级影响。"""
+    from loadn_webui.security import userauth as ua
+    monkeypatch.setattr(ua, "session_user", lambda _c: None)
+    r = await client.get("/api/admin/vault")   # client 默认带 token+admin 头
+    assert r.status_code == 200
