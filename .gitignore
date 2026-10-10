@@ -2,6 +2,8 @@ __pycache__/
 *.pyc
 .venv/
 .pytest_cache/
+.ruff_cache/
+.coverage
 dist/
 build/
 *.egg-info/
@@ -22,5 +24,6 @@ impl-specs/
 PROGRESS-impl.md
 evals/reports/
 evals/reports/maturity.md
-reports/mutate-*.json
+# reports/ = 突变扫描/评估的运行产物（mutate-*.json / ci-mutation.json），绝不入库
+reports/
 loadn/skills.lock.json
