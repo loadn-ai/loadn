@@ -27,7 +27,7 @@ export default function AdminPanel({ onClose, initialTab, filterSid, onClearFilt
   return (
     <div className="admin-page">
       <div className="admin-head">
-        <h3>管理中心</h3>
+        <h2>管理中心</h2>
         <button className="btn ghost" onClick={onClose}>← 返回</button>
       </div>
       <div className="admin-tabs">

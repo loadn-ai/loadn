@@ -102,7 +102,7 @@ export default function SchedulesTab({ filterSid, onClearFilter }: {
   }
 
   return (
-    <div>
+    <div className="admin-body">
       <div className="admin-toolbar">
         <button className="btn primary" onClick={() => setCreating(v => !v)}>
           {creating ? <X size={14} /> : <Plus size={14} />} {creating ? '收起新建' : '新建定时任务'}

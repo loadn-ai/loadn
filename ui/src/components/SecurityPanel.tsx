@@ -223,7 +223,7 @@ export default function SecurityPanel({ onClose }: { onClose: () => void }) {
     setOpen(open === k ? null : k);
   };
 
-  if (!posture) return <div className="pad muted">加载中…</div>;
+  if (!posture) return <div className="admin-body muted">加载中…</div>;
 
   // 档位三态：effective 是实际生效档（旧后端无该字段时回落 mode）
   const sbxReq = posture.sandbox.requested ?? posture.sandbox.mode;
@@ -323,14 +323,14 @@ export default function SecurityPanel({ onClose }: { onClose: () => void }) {
     filter === '__llm' ? visible : aggregate(visible);
 
   return (
-    <div className="pad">
+    <div className="admin-body">
       {/* ---- 姿态卡（可点开明细） ---- */}
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(290px, 1fr))', gap: 10, marginBottom: open ? 10 : 14 }}>
         {cards.map(c => (
           <div key={c.key} onClick={() => toggle(c.key)}
             style={{
               ...card,
-              borderColor: c.danger ? 'var(--accent,#e5484d)'
+              borderColor: c.danger ? 'var(--danger)'
                 : open === c.key ? 'var(--accent,#4f6bf0)' : undefined,
               cursor: 'pointer',
               transition: 'border-color .15s, transform .1s',
@@ -372,14 +372,14 @@ export default function SecurityPanel({ onClose }: { onClose: () => void }) {
           {verifying ? '校验中…' : '校验账本是否被篡改'}
         </button>
         {posture.canary.kill_all ? (
-          <button style={{ borderColor: 'var(--accent,#e5484d)', color: 'var(--accent,#e5484d)' }} onClick={doClear} disabled={!!busy}>
+          <button style={{ borderColor: 'var(--danger)', color: 'var(--danger)' }} onClick={doClear} disabled={!!busy}>
             {busy || '解除熔断，恢复运行'}
           </button>
         ) : (
           <button
             style={armed
-              ? { background: 'var(--accent,#e5484d)', color: '#fff' }
-              : { borderColor: 'var(--accent,#e5484d)', color: 'var(--accent,#e5484d)' }}
+              ? { background: 'var(--danger)', color: '#fff' }
+              : { borderColor: 'var(--danger)', color: 'var(--danger)' }}
             onClick={doKillAll} disabled={!!busy}>
             {busy || (armed ? '⚠ 再点一次确认熔断（5 秒内）' : '全局紧急停止')}
           </button>
@@ -388,13 +388,13 @@ export default function SecurityPanel({ onClose }: { onClose: () => void }) {
           <div style={{
             flex: 1, minWidth: 260, padding: '8px 12px', borderRadius: 8, fontSize: 13,
             whiteSpace: 'pre-wrap', lineHeight: 1.5,
-            border: `1px solid ${verify.ok ? '#3aa675' : 'var(--accent,#e5484d)'}`,
-            color: verify.ok ? '#3aa675' : 'var(--accent,#e5484d)',
+            border: `1px solid ${verify.ok ? '#3aa675' : 'var(--danger)'}`,
+            color: verify.ok ? '#3aa675' : 'var(--danger)',
           }}>{verify.text}</div>
         )}
       </div>
       {posture.canary.kill_all && (
-        <div style={{ ...card, borderColor: 'var(--accent,#e5484d)', marginBottom: 14, fontSize: 13 } as never}>
+        <div style={{ ...card, borderColor: 'var(--danger)', marginBottom: 14, fontSize: 13 } as never}>
           ⚠ <b>全局熔断激活中</b>：调度已暂停、新任务被拒、原有任务已停止。这是紧急刹车，
           排查完原因后点上方「解除熔断」恢复。
         </div>
@@ -502,7 +502,7 @@ function OpsDetail({ ops, reload, approvalEnforce }: {
   return (
     <div className="setting-card" style={{ marginTop: 14 }}>
       <h4>安全运维面 <span className="muted">（yaml round-trip 持久化 · 全部热生效：沙箱档位自下一任务起，其余立即）</span></h4>
-      {err && <div style={{ color: 'var(--accent,#e5484d)', fontSize: 12, margin: '6px 0' }}>写入被拒：{err}</div>}
+      {err && <div style={{ color: 'var(--danger)', fontSize: 12, margin: '6px 0' }}>写入被拒：{err}</div>}
       <div className="setting-row">
         <span className="setting-k">沙箱档位</span>
         <select value={sandbox} onChange={e => setSandbox(e.target.value)} defaultValue=''
@@ -625,7 +625,7 @@ function SandboxDetail({ events, jump, tier }: {
               <tr key={s.id}>
                 <td style={{ fontVariantNumeric: 'tabular-nums' }}>{(s.ts || '').slice(5, 19).replace('T', ' ')}</td>
                 <td>{d.engine ?? '?'}</td>
-                <td style={{ color: ok ? '#3aa675' : 'var(--accent,#e5484d)' }}>{ok ? '沙箱内' : '⚠ 直跑'}</td>
+                <td style={{ color: ok ? '#3aa675' : 'var(--danger)' }}>{ok ? '沙箱内' : '⚠ 直跑'}</td>
                 <td><SessionLink sid={s.sid} jump={jump} /></td>
               </tr>
             );
@@ -787,7 +787,7 @@ function EgressDetail() {
             <tr key={r.host}>
               <td>{r.host}</td>
               <td style={{ fontVariantNumeric: 'tabular-nums' }}>{r.n}</td>
-              <td style={{ color: r.denied ? 'var(--accent,#e5484d)' : '#3aa675' }}>
+              <td style={{ color: r.denied ? 'var(--danger)' : '#3aa675' }}>
                 {r.denied ? `拒绝 ${r.denied}/${r.n}` : '放行'}
               </td>
               <td style={{ fontVariantNumeric: 'tabular-nums' }}>{(r.last || '').slice(11, 19)}</td>
@@ -873,7 +873,7 @@ function VaultDetail() {
               <tr>
                 <td>{p.platform}</td>
                 <td className="muted">{p.user || p.email || '-'}</td>
-                <td style={{ color: p.has_password ? '#3aa675' : 'var(--accent,#e5484d)' }}>
+                <td style={{ color: p.has_password ? '#3aa675' : 'var(--danger)' }}>
                   {p.has_password ? '已存' : '缺'}
                 </td>
                 <td style={{ fontVariantNumeric: 'tabular-nums' }}>{(p.updated_at || '').slice(0, 10)}</td>
@@ -948,7 +948,7 @@ function VaultEditor({ platform, onDone }: { platform: string; onDone: () => voi
       <div style={{ display: 'flex', gap: 8, alignItems: 'center', marginTop: 6 }}>
         <button className="btn ghost" disabled={busy} onClick={save}>{busy ? '保存中…' : '保存'}</button>
         <button className="mini-btn" disabled={busy} onClick={onDone}>取消</button>
-        <button className="mini-btn" style={{ marginLeft: 'auto', color: 'var(--accent,#e5484d)' }}
+        <button className="mini-btn" style={{ marginLeft: 'auto', color: 'var(--danger)' }}
           disabled={busy} onClick={del}>删除条目</button>
       </div>
     </td></tr>

@@ -36,12 +36,12 @@ export default function EgressPanel() {
   const external = hosts.filter(([, v]) => v.denied === 0).length;
 
   return (
-    <div className="pad">
+    <div className="admin-body">
       <div style={{ display: 'flex', gap: 16, marginBottom: 12, flexWrap: 'wrap', fontSize: 13 }}>
         <span>模式 <b style={{ color: mode === 'enforce' ? undefined : '#d4a017' }}>{mode || '-'}</b></span>
         <span>窗口内请求 <b>{events.length}</b></span>
         <span>放行域 <b style={{ color: '#3aa675' }}>{external}</b></span>
-        <span>被拒 <b style={{ color: deniedTotal ? 'var(--accent,#e5484d)' : undefined }}>{deniedTotal}</b></span>
+        <span>被拒 <b style={{ color: deniedTotal ? 'var(--danger)' : undefined }}>{deniedTotal}</b></span>
         {gw && <span className="muted">另有模型调用 {gw.n} 次（走内部网关，不外发）</span>}
       </div>
       <div className="muted" style={{ marginBottom: 10, fontSize: 12, lineHeight: 1.6 }}>
@@ -64,7 +64,7 @@ export default function EgressPanel() {
                   {h}
                 </td>
                 <td style={{ fontVariantNumeric: 'tabular-nums' }}>{v.n}</td>
-                <td style={{ color: v.denied ? 'var(--accent,#e5484d)' : '#3aa675' }}>
+                <td style={{ color: v.denied ? 'var(--danger)' : '#3aa675' }}>
                   {v.denied ? `拒绝 ${v.denied}/${v.n}` : '放行'}
                 </td>
                 <td style={{ fontVariantNumeric: 'tabular-nums' }}>{v.last.slice(11, 19)}</td>

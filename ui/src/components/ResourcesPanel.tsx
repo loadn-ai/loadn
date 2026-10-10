@@ -207,7 +207,7 @@ export default function ResourcesPanel() {
     } catch (e) { flash(`保存失败：${String(e)}`, false); }
   };
 
-  if (!data) return <div className="pad muted">加载中…</div>;
+  if (!data) return <div className="admin-body muted">加载中…</div>;
   const valOf = (k: string) => data.services.find(s => s.key === k)?.value ?? '';
   const secretSet = (k: string) => data.secrets.find(s => s.key === k)?.set ?? false;
   const cardStatus = (c: CardDef) => {
@@ -227,7 +227,7 @@ export default function ResourcesPanel() {
     || (p.email || '').toLowerCase().includes(vSearch.toLowerCase()));
 
   return (
-    <div className="pad">
+    <div className="admin-body">
       {/* 分区切换 + 汇总 */}
       <div className="res-toolbar">
         {([['service', '服务'], ['mcp', 'MCP'], ['vault', `凭证库`]] as [Section, string][]).map(([k, lb]) => (

@@ -19,6 +19,8 @@
   --k-html: #e88845;           /* artifact 类型徽章 */
   --k-docx: #4f9cf9;
   --danger: #e5484d;
+  --muted: var(--text-dim);    /* 别名：历史引用兼容（SecurityPanel 等） */
+  --panel: var(--bg2);         /* 别名：历史引用兼容（approval-card 等） */
   --radius: 14px;
   --radius-lg: 18px;           /* composer / 弹窗 */
   --shadow-sm: 0 1px 2px rgba(0, 0, 0, .35);
@@ -562,8 +564,9 @@ button:focus-visible, .tab:focus-visible, .chip:focus-visible {
 .admin-head { display: flex; justify-content: space-between; align-items: center; flex-shrink: 0; }
 .admin-head h2 { font-size: 18px; font-weight: 600; letter-spacing: -.01em; }
 .admin-tabs { display: flex; border-bottom: 1px solid var(--border); margin-top: 12px; flex-shrink: 0;
-  padding: 0 8px; }
-.admin-tabs .tab { flex: none; padding: 12px 14px; }
+  padding: 0 8px; overflow-x: auto; scrollbar-width: none; }
+.admin-tabs::-webkit-scrollbar { display: none; }
+.admin-tabs .tab { flex: none; padding: 12px 14px; white-space: nowrap; }
 .admin-body { overflow-y: auto; min-height: 0; flex: 1; padding-top: 14px; }
 .admin-toolbar { display: flex; gap: 8px; align-items: center; margin-bottom: 14px; flex-wrap: wrap; }
 .admin-msg { font-size: 12px; color: var(--green); overflow: hidden; text-overflow: ellipsis;

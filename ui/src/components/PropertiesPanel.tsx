@@ -314,7 +314,7 @@ function EgressSection() {
         })}
       </div>
       <div className="muted" style={{ fontSize: 12, marginBottom: 6 }}>
-        出口模式 <b style={{ color: (data?.effective ?? mode) === 'enforce' ? 'var(--accent,#e5484d)' : '#3aa675' }}>
+        出口模式 <b style={{ color: (data?.effective ?? mode) === 'enforce' ? 'var(--danger)' : '#3aa675' }}>
           {data?.effective ?? mode}</b>
         {data?.override ? '（本任务覆盖）' : `（全局 ${mode}）`}
         {data?.effective === 'enforce' && data.on_deny === 'ask'
@@ -349,7 +349,7 @@ function EgressSection() {
               <td>{r.host}{allow.includes(r.host)
                 ? <span className="muted" style={{ fontSize: 11 }}>（已放行）</span> : null}</td>
               <td style={{ fontVariantNumeric: 'tabular-nums' }}>{r.n}</td>
-              <td style={{ color: r.denied ? 'var(--accent,#e5484d)' : '#3aa675' }}>
+              <td style={{ color: r.denied ? 'var(--danger)' : '#3aa675' }}>
                 {r.denied ? `拒绝 ${r.denied}/${r.n}` : '放行'}</td>
               <td style={{ fontVariantNumeric: 'tabular-nums' }}>{(r.last || '').slice(11, 19)}</td>
               {r.denied > 0 && !allow.includes(r.host) && (

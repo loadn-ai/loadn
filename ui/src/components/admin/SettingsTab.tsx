@@ -819,7 +819,7 @@ function PriceTable({ label, unit, cacheKey, rows, setRows, builtin }: {
                 </tr>
               ))}
               {rows.some(r => r.err) && (
-                <tr><td colSpan={5} style={{ color: 'var(--accent,#e5484d)', fontSize: 12 }}>
+                <tr><td colSpan={5} style={{ color: 'var(--danger)', fontSize: 12 }}>
                   {rows.filter(r => r.err).map(r => `${r.model || '(空名)'}：${r.err}`).join('；')}
                 </td></tr>
               )}
