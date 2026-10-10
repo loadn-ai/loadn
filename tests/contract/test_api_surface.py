@@ -41,6 +41,7 @@ EXPECTED = [
     ("/api/admin/target-policy/from-approval/{aid}", "post"),
     ("/api/admin/target-policy/{pid}", "delete,patch"),
     ("/api/admin/tasks", "get"),
+    ("/api/admin/tasks/size-rescan", "post"),
     ("/api/admin/vault", "get"),
     ("/api/admin/vault/entry", "post"),
     ("/api/admin/vault/entry/{platform}", "delete"),

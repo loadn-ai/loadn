@@ -170,6 +170,15 @@ export default function TasksTab() {
           · ${totals.cost.toFixed(2)} · {fmtBytes(totals.size)}
           {totals.running > 0 && ` · ${totals.running} 个在跑`}
         </span>
+        <button className="btn sm ghost" title="后台重算全部任务的磁盘占用（落库后按占用排序才全局准确；平时翻页所见即缓存值）"
+                onClick={async () => {
+                  try {
+                    await api('/api/admin/tasks/size-rescan', { method: 'POST' });
+                    toast('后台重算占用中——完成后刷新页面可见最新值');
+                  } catch (e) {
+                    toast(String(e).includes('409') ? '占用重算进行中，稍候' : `触发失败：${String(e)}`, false);
+                  }
+                }}>重算占用</button>
       </div>
 
       {selRows.length > 0 && (

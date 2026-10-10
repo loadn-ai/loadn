@@ -406,10 +406,12 @@ def kill_all_clear():
 # ---------------------------------------------------------------- 任务管理页
 _SIZE_CACHE: dict[str, tuple[float, int]] = {}      # sid → (monotonic, bytes)
 _SIZE_TTL_S = 600
+_SIZE_RESCAN = {"running": False}   # BD-3：后台全量重算防重入（进程内单例）
 
 
 def _workspace_size(sid: str) -> int:
-    """workspace 磁盘占用（字节）。缓存 TTL 10 分钟；跳过重目录
+    """workspace 磁盘占用（字节）。内存缓存 TTL 10 分钟；BD-3：算完落
+    sessions.size_bytes（重启不蒸发、排序可下推 SQL）。跳过重目录
     （node_modules/chrome*——tree() 同款规则）+ 条目数止损。"""
     import time as _t
     now = _t.monotonic()
@@ -434,7 +436,41 @@ def _workspace_size(sid: str) -> int:
             except OSError:
                 continue
     _SIZE_CACHE[sid] = (now, total)
+    try:   # 落库失败不影响返回值（缓存列是优化非主路径）
+        from ... import db as _db
+        from ...util import iso as _iso
+        with _db.conn() as _c:
+            _c.execute("UPDATE sessions SET size_bytes=?, size_checked_at=? "
+                       "WHERE id=?", (total, _iso(), sid))
+    except Exception:   # noqa: BLE001
+        pass
     return total
+
+
+@router.post("/admin/tasks/size-rescan")
+def tasks_size_rescan():
+    """后台全量重算 workspace 占用（BD-3）：daemon 线程逐会话落库，
+    防重入 409。立即返回（进度不暴露——size 列随算随新）。"""
+    if _SIZE_RESCAN["running"]:
+        raise HTTPException(409, "占用重算进行中")
+    _SIZE_RESCAN["running"] = True
+
+    def _scan() -> None:
+        try:
+            from ... import db as _db
+            with _db.conn() as _c:
+                sids = [r["id"] for r in _c.execute("SELECT id FROM sessions")]
+            for sid in sids:
+                try:
+                    _SIZE_CACHE.pop(sid, None)   # 清短缓存强制重算
+                    _workspace_size(sid)
+                except Exception:   # noqa: BLE001 —— 单会话失败不中断全量
+                    continue
+        finally:
+            _SIZE_RESCAN["running"] = False
+
+    threading.Thread(target=_scan, daemon=True, name="size-rescan").start()
+    return {"started": True}
 
 
 @router.get("/admin/tasks")
@@ -481,9 +517,11 @@ def tasks_overview(q: str = "", status: str = "all", project_id: str = "",
         params.append(u["id"])
     wsql = (" WHERE " + " AND ".join(where)) if where else ""
 
-    # SQL 可下推的排序列（turns/tokens/size 无列，Python 兜底）
+    # SQL 可下推的排序列（BD-3：size 落库后可下推——分页模式下全局序正确，
+    # 旧实现 Python 页内重排只是局部序；turns/tokens 无列仍 Python 兜底）
     order_col = {"created": "s.created_at", "updated": "s.updated_at",
-                 "title": "s.title", "cost": "s.cost_usd"}.get(sort)
+                 "title": "s.title", "cost": "s.cost_usd",
+                 "size": "s.size_bytes"}.get(sort)
     order_sql = (f" ORDER BY {order_col} {'ASC' if dir == 'asc' else 'DESC'}"
                  if order_col else "")
 
@@ -527,16 +565,18 @@ def tasks_overview(q: str = "", status: str = "all", project_id: str = "",
             "n_artifacts": n_arts.get(r["id"], 0),
             "tokens": usage.get("total_all") or usage.get("total") or 0,
             "cost_usd": r.get("cost_usd") or 0,
-            "size_bytes": _workspace_size(r["id"]),   # 只算返回页（AC-4.3b）
+            "size_bytes": r.get("size_bytes")
+                if r.get("size_bytes") is not None
+                else _workspace_size(r["id"]),   # BD-3：缓存列优先，miss 惰性算+落库
             "running": r["id"] in running,
             "created_at": r.get("created_at"),
             "updated_at": r.get("updated_at"),
         })
 
-    # 无 SQL 列的排序键（turns/tokens/size）在页内/全量结果上 Python 兜底
+    # 无 SQL 列的排序键（turns/tokens）在页内/全量结果上 Python 兜底；
+    # size 已落库走 SQL 下推（见上）
     key = {"turns": lambda x: x["n_turns"],
-           "tokens": lambda x: x["tokens"],
-           "size": lambda x: x["size_bytes"]}.get(sort)
+           "tokens": lambda x: x["tokens"]}.get(sort)
     if key:
         out.sort(key=key, reverse=(dir != "asc"))
         if limit > 0:

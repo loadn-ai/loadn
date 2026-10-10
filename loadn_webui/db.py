@@ -28,11 +28,14 @@ from .config import PATHS
 # rev10：会话内子任务（subtasks 表 + turns.subtask_id 打标列）
 # rev11：projects.repo（项目绑定代码仓——任务目录落 <repo>/tasks/，宪法链带仓规则）
 # rev12：ping_history（AC-5.10f——资源探测历史入库，可回看趋势）
-SCHEMA_REV = 12
+# rev13：sessions.size_bytes/size_checked_at（BD-3——磁盘占用落库，排序可下推 SQL）
+SCHEMA_REV = 13
 from .util import iso
 
 SCHEMA = """
 CREATE TABLE IF NOT EXISTS sessions (
+  size_bytes INTEGER,                    -- BD-3：workspace 占用缓存（后台/惰性重算）
+  size_checked_at TEXT,                  -- BD-3：最近一次占用统计时刻（iso）
   id TEXT PRIMARY KEY,              -- 形如 20260902_1430-a1b2
   title TEXT,
   profile TEXT,                     -- researcher|coder|assistant|...
@@ -373,6 +376,13 @@ def _migrate(c: sqlite3.Connection) -> None:
     tcols = {r["name"] for r in c.execute("PRAGMA table_info(turns)")}
     if "subtask_id" not in tcols:
         c.execute("ALTER TABLE turns ADD COLUMN subtask_id INTEGER")
+
+    # rev13（BD-3）：sessions 占用缓存双列（旧库补列；新表走 SCHEMA）
+    scols = {r["name"] for r in c.execute("PRAGMA table_info(sessions)")}
+    if "size_bytes" not in scols:
+        c.execute("ALTER TABLE sessions ADD COLUMN size_bytes INTEGER")
+    if "size_checked_at" not in scols:
+        c.execute("ALTER TABLE sessions ADD COLUMN size_checked_at TEXT")
 
     # 三轮修（backlog 清）：artifacts (session_id,path) 唯一索引——先清
     # 存量重复行（保最新），建索引后 upsert_artifact 的 ON CONFLICT 原子化。
