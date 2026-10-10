@@ -3,12 +3,15 @@ import { api } from '../../api/client';
 import { toast } from '../../stores/toasts';
 
 /** 多用户批2：用户管理卡（admin）——列表/建号/角色/启停/重置密码。
- *  禁用即时踢下线（服务端删会话）；不能禁用/降级自己（防锁死管理面）。 */
+ *  禁用即时踢下线（服务端删会话）；不能禁用/降级自己（防锁死管理面）。
+ *  AC-5.10d（P2-4）：行内 last_login + 搜索 + 前端分页（20/页）。 */
 interface UserRow {
   id: number; username: string; role: string; display_name?: string | null;
   disabled: number; created_at?: string; last_login_at?: string | null;
   active_sessions: number;
 }
+
+const PAGE = 20;
 
 export default function UsersCard() {
   const [users, setUsers] = useState<UserRow[]>([]);
@@ -16,6 +19,8 @@ export default function UsersCard() {
   const [msg, setMsg] = useState<{ t: string; err?: boolean } | null>(null);
   const [adding, setAdding] = useState({ username: '', password: '', role: 'user' });
   const [resetPw, setResetPw] = useState<{ uid: number; pw: string } | null>(null);
+  const [q, setQ] = useState('');
+  const [page, setPage] = useState(1);
 
   const load = async () => {
     try {
@@ -48,6 +53,12 @@ export default function UsersCard() {
       <div className="muted">用户管理需要管理员权限。</div>
     </div>
   );
+  const filtered = users.filter(u => !q.trim()
+    || u.username.toLowerCase().includes(q.trim().toLowerCase())
+    || (u.display_name ?? '').toLowerCase().includes(q.trim().toLowerCase()));
+  const pages = Math.max(1, Math.ceil(filtered.length / PAGE));
+  const cur = Math.min(page, pages);
+  const show = filtered.slice((cur - 1) * PAGE, cur * PAGE);
   return (
     <div className="setting-card">
       <h4>用户与账号</h4>
@@ -55,7 +66,14 @@ export default function UsersCard() {
         账号密码登录（token 通道继续可用于 CLI/旧部署）。属主隔离：普通用户
         只见自己的任务/项目/调度/webhook；admin 全见。
       </div>
-      {users.map(u => (
+      <div className="admin-toolbar" style={{ marginBottom: 6 }}>
+        <input placeholder="搜索用户名/昵称…" value={q} style={{ width: 200 }}
+               onChange={e => { setQ(e.target.value); setPage(1); }} />
+        <span className="muted" style={{ fontSize: 12 }}>
+          共 {users.length} 个账号{q.trim() ? ` · 命中 ${filtered.length}` : ''}
+        </span>
+      </div>
+      {show.map(u => (
         <div key={u.id} className="setting-row"
              style={{ justifyContent: 'space-between', alignItems: 'center' }}>
           <span>
@@ -65,6 +83,9 @@ export default function UsersCard() {
             {u.disabled ? <span className="chip">已禁用</span> : null}
             {u.active_sessions > 0
               ? <span className="muted"> · {u.active_sessions} 活跃会话</span> : null}
+            <span className="muted"> · {u.last_login_at
+              ? `最近登录 ${u.last_login_at.slice(5, 16).replace('T', ' ')}`
+              : '未登录过'}</span>
             {me?.id === u.id ? <span className="muted"> · 这是我</span> : null}
           </span>
           <span>
@@ -106,6 +127,13 @@ export default function UsersCard() {
           </span>
         </div>
       ))}
+      {pages > 1 && (
+        <div className="admin-toolbar" style={{ justifyContent: 'center' }}>
+          <button className="btn sm" disabled={cur <= 1} onClick={() => setPage(cur - 1)}>‹ 上一页</button>
+          <span className="muted" style={{ fontSize: 12 }}>第 {cur} / {pages} 页</span>
+          <button className="btn sm" disabled={cur >= pages} onClick={() => setPage(cur + 1)}>下一页 ›</button>
+        </div>
+      )}
       <div className="setting-row" style={{ gap: 6 }}>
         <input placeholder="新用户名" value={adding.username}
                onChange={e => setAdding(a => ({ ...a, username: e.target.value }))} />
