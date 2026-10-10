@@ -102,6 +102,45 @@ async def test_api_full_flow(client, sid):
     assert r3.json()["ok"]
 
 
+# ---------------------------------------------------- AC-4.2：管理面驳回
+
+async def test_admin_deny_any_session(client, sid, monkeypatch):
+    """>>> admin 驳回他人会话的待审：放行（管理面止损），decided_by=admin 入审计。"""
+    from loadn_webui.security import userauth as ua
+    r = await client.post(f"/api/sessions/{sid}/approvals",
+                          json={"action_type": "mail_send",
+                                "params": {"to": "x@y.z", "subject": "s"}})
+    aid = r.json()["id"]
+    monkeypatch.setattr(ua, "current_user",
+                        lambda: {"id": 1, "role": "admin", "username": "root"})
+    r2 = await client.post(f"/api/approvals/{aid}/decide", json={"approve": False})
+    assert r2.status_code == 200 and r2.json()["ok"]
+    assert approve.status(aid)["status"] == "denied"
+    # decided_by='admin' 直查库断言（status() 面向终端不回该列）
+    with approve._conn() as _c:
+        _row = _c.execute("SELECT decided_by FROM approvals WHERE id=?",
+                          (aid,)).fetchone()
+    assert _row["decided_by"] == "admin"
+
+
+async def test_plain_user_deny_others_404(client, sid, monkeypatch):
+    """>>> 否定路径对赌：普通用户驳回他人会话待审 → 404（存在性不暴露）。"""
+    from loadn_webui.security import userauth as ua
+    r = await client.post(f"/api/sessions/{sid}/approvals",
+                          json={"action_type": "mail_send",
+                                "params": {"to": "x@y.z", "subject": "s"}})
+    aid = r.json()["id"]
+    # 会话属主设为别人（owner_id=99），当前用户 id=7
+    from loadn_webui import db as db_mod
+    with db_mod.conn() as c:
+        c.execute("UPDATE sessions SET owner_id=99 WHERE id=?", (sid,))
+    monkeypatch.setattr(ua, "current_user",
+                        lambda: {"id": 7, "role": "user", "username": "u"})
+    r2 = await client.post(f"/api/approvals/{aid}/decide", json={"approve": False})
+    assert r2.status_code == 404
+    assert approve.status(aid)["status"] == "pending"   # 未被误杀
+
+
 # ---------------------------------------------------- CLI 门函数级（A3 场景）
 
 async def test_a3_gate_enforce_blocks_without_code(client, sid, monkeypatch, capsys):

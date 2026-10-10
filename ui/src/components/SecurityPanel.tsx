@@ -641,26 +641,50 @@ function SandboxDetail({ events, jump, tier }: {
 function ApprovalsDetail({ events, jump }: { events: AuditEvent[]; jump: (s: string | null) => void }) {
   const [pending, setPending] = useState<{ id: number; sid: string; summary: string; created_at: string; ttl_s: number }[]>([]);
   const [err, setErr] = useState('');
+  const [busy, setBusy] = useState<number | null>(null);
   useEffect(() => {
     void api<{ pending: typeof pending }>('/api/admin/approvals')
       .then(d => setPending(d.pending))
       .catch(e => setErr(String(e)));
   }, []);
+  // AC-4.2：管理面驳回（decide approve=false，admin 角色后端放行）——
+  // 批准语义不变（会话内确认码输入，防伪造）；高危堆积时止损有门
+  const deny = (aid: number) => {
+    if (!confirm(`驳回审批 #${aid}？agent 侧立即收到否决（可重新规划替代方案）。`)) return;
+    setBusy(aid); setErr('');
+    void api(`/api/approvals/${aid}/decide`, {
+      method: 'POST', body: JSON.stringify({ approve: false }),
+    }).then(d => {
+      if ((d as { ok?: boolean }).ok) setPending(p => p.filter(x => x.id !== aid));
+      else setErr(`驳回未生效：${JSON.stringify(d)}`);
+    }).catch(e => setErr(`驳回失败：${String(e)}`))
+      .finally(() => setBusy(null));
+  };
+  const ttlLeft = (p: { created_at: string; ttl_s: number }) => {
+    const age = (Date.now() - new Date(p.created_at.includes('T') ? p.created_at : p.created_at.replace(' ', 'T')).getTime()) / 1000;
+    const m = Math.round((p.ttl_s - age) / 60);
+    return m > 0 ? `≈${m} 分钟` : '已超时';
+  };
   const decisions = events.filter(e => e.type === 'approval_decision').slice(0, 8);
   return (
     <div>
-      <DetailHead title="待审清单" note="确认码在对应会话的聊天卡片里输入（防伪造：平台渲染摘要）" />
-      {err && <div className="muted" style={{ fontSize: 12 }}>读取失败：{err}</div>}
+      <DetailHead title="待审清单" note="批准=会话内输入确认码（防伪造）；驳回=此处一键（AC-4.2）" />
+      {err && <div className="admin-msg err" style={{ marginBottom: 8 }}>{err}</div>}
       <table className="kv-table" style={{ width: '100%', marginBottom: 10 }}>
-        <thead><tr><th style={{ width: 50 }}>#</th><th style={{ width: 96 }}>时间</th><th>操作摘要</th><th style={{ width: 140 }}>会话</th></tr></thead>
+        <thead><tr><th style={{ width: 50 }}>#</th><th style={{ width: 96 }}>时间</th><th>操作摘要</th><th style={{ width: 90 }}>剩余</th><th style={{ width: 140 }}>会话</th><th style={{ width: 64 }}>操作</th></tr></thead>
         <tbody>
-          {pending.length === 0 && <tr><td colSpan={4} className="muted" style={{ textAlign: 'center', padding: 12 }}>（没有等待审批的操作）</td></tr>}
+          {pending.length === 0 && <tr><td colSpan={6} className="muted" style={{ textAlign: 'center', padding: 12 }}>（没有等待审批的操作）</td></tr>}
           {pending.map(p => (
             <tr key={p.id}>
               <td>{p.id}</td>
               <td style={{ fontVariantNumeric: 'tabular-nums' }}>{(p.created_at || '').slice(5, 19).replace('T', ' ')}</td>
               <td>{p.summary}</td>
+              <td className="muted" style={{ fontSize: 11.5 }}>{ttlLeft(p)}</td>
               <td><SessionLink sid={p.sid} jump={jump} truncate /></td>
+              <td>
+                <button className="mini-btn" disabled={busy === p.id}
+                  onClick={() => deny(p.id)}>{busy === p.id ? '…' : '驳回'}</button>
+              </td>
             </tr>
           ))}
         </tbody>
