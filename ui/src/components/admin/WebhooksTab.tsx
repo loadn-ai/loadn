@@ -1,4 +1,6 @@
-// Webhooks 管理页（P3：事件触发入口——列表/新建/启停/删除，token 展示即触发 URL）
+// Webhooks 管理页（P3：事件触发入口——列表/新建/编辑/启停/删除，token 展示即触发 URL）
+// AC-5.4：补编辑（复用同一表单组件，PATCH 全字段——后端早已支持，前端此前
+// 只能删了重建，token 随之吊销、外部调用方全部要换 URL）。
 import { useEffect, useState } from 'react';
 import { api } from '../../api/client';
 import { Plus } from '../icons';
@@ -13,6 +15,7 @@ export default function WebhooksTab() {
   const [hooks, setHooks] = useState<Hook[]>([]);
   const [profiles, setProfiles] = useState<string[]>([]);
   const [creating, setCreating] = useState(false);
+  const [editing, setEditing] = useState<Hook | null>(null);
   const [msg, setMsg] = useState<{ t: string; err?: boolean } | null>(null);
   const [copied, setCopied] = useState<number | null>(null);
 
@@ -66,8 +69,11 @@ export default function WebhooksTab() {
         <button className="btn sm" onClick={() => setCreating(true)}><Plus size={13} /> 新建</button>
         {msg && <span className={msg.err ? 'admin-msg err' : 'admin-msg'}>{msg.t}</span>}
       </div>
-      {creating && <NewHookForm profiles={profiles} onDone={() => {
+      {creating && <HookForm profiles={profiles} onDone={() => {
         setCreating(false); void reload();
+      }} />}
+      {editing && <HookForm profiles={profiles} hook={editing} onDone={() => {
+        setEditing(null); void reload();
       }} />}
       <div className="hub-results">
         {hooks.map(h => (
@@ -91,6 +97,7 @@ export default function WebhooksTab() {
                 <button className="link" onClick={() => copy(h)}>
                   {copied === h.id ? '已复制' : '复制 URL'}
                 </button>
+                <button className="link" onClick={() => setEditing(h)}>编辑</button>
                 <button className="link" onClick={() => void toggle(h)}>{h.enabled ? '禁用' : '启用'}</button>
                 <button className="link danger-link" onClick={() => void del(h)}>删除</button>
               </span>
@@ -109,15 +116,34 @@ export default function WebhooksTab() {
 }
 
 
-function NewHookForm({ profiles, onDone }: { profiles: string[]; onDone: () => void }) {
-  const [name, setName] = useState('');
-  const [tpl, setTpl] = useState('处理这个事件：{{payload}}');
-  const [profile, setProfile] = useState('auto');
-  const [ips, setIps] = useState('');
-  const [rate, setRate] = useState(6);
+/** 新建 / 编辑共用表单。编辑态（hook 给定）：全字段回填、提交走 PATCH——
+ * token 恒不变（换 token = 删了重建）；取消时未保存改动 confirm。 */
+function HookForm({ profiles, hook, onDone }: {
+  profiles: string[]; hook?: Hook; onDone: () => void }) {
+  const editing = !!hook;
+  const ipsInit = (() => {
+    try { return hook?.allowed_ips_json ? (JSON.parse(hook.allowed_ips_json) as string[]).join(',') : ''; }
+    catch { return ''; }
+  })();
+  const [name, setName] = useState(hook?.name || '');
+  const [tpl, setTpl] = useState(hook?.prompt_template || '处理这个事件：{{payload}}');
+  const [profile, setProfile] = useState(hook?.profile || 'auto');
+  const [ips, setIps] = useState(ipsInit);
+  const [rate, setRate] = useState(hook?.rate_limit_per_min ?? 6);
+  const [busy, setBusy] = useState(false);
   const [err, setErr] = useState('');
+  const initial = { name, tpl, profile, ips, rate };
+  const cancel = () => {
+    const changed = name !== initial.name || tpl !== initial.tpl
+      || profile !== initial.profile || ips !== initial.ips || rate !== initial.rate;
+    if (editing && changed && !confirm('未保存的修改将丢弃，确认取消？')) return;
+    onDone();
+  };
   return (
     <div className="new-skill-form">
+      <div className="sk-head"><b>{editing ? `编辑 #${hook!.id} · ${hook!.name}` : '新建 webhook'}</b>
+        {editing && <span className="muted" style={{ fontSize: 12 }}>（token 不变，外部 URL 无需更换）</span>}
+      </div>
       <input placeholder="名称（例：PR 合并处理）" value={name} onChange={e => setName(e.target.value)} />
       <textarea className="mono" rows={4} value={tpl} onChange={e => setTpl(e.target.value)}
         placeholder="prompt 模板，须含 {{payload}} 占位符（payload 原样嵌入，不求值）" />
@@ -131,17 +157,23 @@ function NewHookForm({ profiles, onDone }: { profiles: string[]; onDone: () => v
         <input placeholder="IP 白名单（可选，逗号分隔）" value={ips} onChange={e => setIps(e.target.value)} />
       </div>
       <div className="modal-foot">
-        <button className="btn ghost sm" onClick={onDone}>取消</button>
-        <button className="btn primary sm" disabled={!name.trim() || !tpl.includes('{{payload}}')}
+        <button className="btn ghost sm" onClick={cancel}>取消</button>
+        <button className="btn primary sm" disabled={!name.trim() || !tpl.includes('{{payload}}') || busy}
           onClick={() => void (async () => {
+            setBusy(true);
             try {
-              await api('/api/hooks', { method: 'POST', body: JSON.stringify({
-                name: name.trim(), prompt_template: tpl,
+              const body = { name: name.trim(), prompt_template: tpl,
                 profile, rate_limit_per_min: rate,
-                allowed_ips: ips.trim() ? ips : null }) });
+                allowed_ips: ips.trim() ? ips : null };
+              if (editing) {
+                await api(`/api/hooks/${hook!.id}`, { method: 'PATCH', body: JSON.stringify(body) });
+              } else {
+                await api('/api/hooks', { method: 'POST', body: JSON.stringify(body) });
+              }
               onDone();
             } catch (e) { setErr(String(e)); }
-          })()}>创建</button>
+            finally { setBusy(false); }
+          })()}>{busy ? '保存中…' : editing ? '保存' : '创建'}</button>
       </div>
       {err && <div className="admin-err">{err}</div>}
     </div>
