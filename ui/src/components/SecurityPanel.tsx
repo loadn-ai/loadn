@@ -405,6 +405,8 @@ export default function SecurityPanel({ onClose }: { onClose: () => void }) {
         <span className="muted" style={{ fontSize: 12 }}>
           全部敏感动作的防篡改流水（{posture.audit.last_id} 条中的最近一段）
         </span>
+        <a className="link" title="台账 tab 双源合并视图（运营台账 + 审计账本，AC-2.4）"
+          onClick={() => { location.hash = '#/admin/activity'; }}>查看完整流水 →</a>
         <select value={filter} onChange={e => setFilter(e.target.value)}
           style={{ marginLeft: 'auto', padding: '4px 8px', borderRadius: 6 }}>
           {FILTERS.map(f => <option key={f.key} value={f.key}>{f.label}</option>)}
