@@ -505,14 +505,41 @@ button:focus-visible, .tab:focus-visible, .chip:focus-visible {
 .turns-table td { padding: 5px 6px; border-bottom: 1px solid var(--border); }
 .ts-done { color: var(--text-dim); } .ts-error { color: var(--red); } .ts-stopped { color: var(--yellow); }
 
-/* ---------------- 属性面板（右面板第一 tab） ---------------- */
+/* ---------------- 属性面板（右面板第一 tab） ----------------
+   PP 专项（2026-10-10）：320px 窄容器设计原则——单列竖排、行内紧凑、
+   宽表格转行卡；参数行 label 收窄+输入弹性+恢复键条件渲染（单行放下）。 */
 .props-tab { font-size: var(--fs-lg); }
 .props-section { margin: 0 0 18px; }
-.props-section > h4 {
+.props-section > h4, .props-section > h3 {
   margin: 0 0 8px; font-size: var(--fs-md); font-weight: 600;
   display: flex; align-items: center; gap: 6px;
 }
 .props-section .setting-row { margin: 8px 0; }
+/* PP-1：参数行——label 固定窄列、输入弹性、单行不换行（hint 进 placeholder） */
+.props-param { flex-wrap: nowrap !important; gap: 6px !important; }
+.props-k { width: 64px; flex-shrink: 0; font-size: var(--fs-sm); color: var(--text-dim); }
+.props-param input, .props-param select { flex: 1; min-width: 0; width: auto; }
+/* PP-5：kv 值可复制（长标识 hover 提示） */
+.kv code.copyable { cursor: copy; }
+.kv code.copyable:hover { color: var(--accent2); }
+/* PP-2：出口表 → 行卡（域名+统计首行 / 判定+时刻次行） */
+.eg-row { border: 1px solid var(--border); border-radius: var(--radius-sm);
+  padding: 7px 10px; margin-bottom: 8px; background: var(--bg); }
+.eg-row-top { display: flex; align-items: center; gap: 8px; min-width: 0; }
+.eg-host { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis;
+  white-space: nowrap; font-weight: 500; font-size: var(--fs-md); }
+.eg-meta { display: flex; align-items: center; gap: 10px; margin-top: 4px;
+  font-size: var(--fs-sm); color: var(--text-dim); font-variant-numeric: tabular-nums; }
+/* PP-9：details 折叠样式化（去原生 marker，箭头旋转） */
+.props-section summary { list-style: none; cursor: pointer; user-select: none; }
+.props-section summary::-webkit-details-marker { display: none; }
+.props-section summary::before { content: '▸'; margin-right: 6px;
+  display: inline-block; transition: transform .15s; }
+.props-section[open] > summary::before { transform: rotate(90deg); }
+/* PP-3：turns 明细表头 */
+.turns-table th { text-align: left; color: var(--text-dim); font-weight: 500;
+  font-size: var(--fs-sm); border-bottom: 1px solid var(--border); padding: 4px 6px; }
+.turns-table td { font-variant-numeric: tabular-nums; }
 .props-num { width: 110px; min-width: 90px; flex-shrink: 0; }
 .props-section select.props-num { width: auto; }
 .chips { display: flex; flex-wrap: wrap; gap: 6px; }

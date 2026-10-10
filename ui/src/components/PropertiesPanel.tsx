@@ -30,6 +30,14 @@ function fmtVal(k: string, v: unknown): string {
   return String(v);
 }
 
+/** PP-5：长标识一键复制（会话 ID/引擎会话/工作区——运维刚需，此前只能选中
+ *  ellipsis 隐藏部分连全文都选不到） */
+function copyText(text: string) {
+  void navigator.clipboard.writeText(text).then(
+    () => toast(`已复制 ${text.length > 20 ? text.slice(0, 20) + '…' : text}`),
+    () => toast('复制失败（剪贴板不可用）', false));
+}
+
 export default function PropertiesPanel() {
   const sid = useStore(s => s.currentSid);
   const s = useStore(st => st.sessions.find(x => x.id === st.currentSid));
@@ -81,15 +89,18 @@ function BasicSection() {
           </code>
         </div>
       )}
-      <div className="kv"><span>会话 ID</span><code>{s.id}</code></div>
+      <div className="kv"><span>会话 ID</span>
+        <code className="copyable" title="点击复制全文" onClick={() => copyText(s.id)}>{s.id}</code></div>
       <div className="kv"><span>引擎</span><code>{engine}</code></div>
       <div className="kv"><span>引擎会话</span>
-        <code>{s.claude_session_id ? `${s.claude_session_id.slice(0, 13)}…` : '-'}</code></div>
+        <code className="copyable" title="点击复制全文" onClick={() => copyText(s.claude_session_id ?? '-')}
+          >{s.claude_session_id ? `${s.claude_session_id.slice(0, 13)}…` : '-'}</code></div>
       <div className="kv"><span>角色</span>
         <code>{s.profile}{s.profile_auto ? ' ✨自动' : ''}</code></div>
       <div className="kv"><span>skills</span>
         <code>{skills.join(', ') || '-'}</code></div>
-      {s.workspace && <div className="kv"><span>工作区</span><code>{s.workspace}</code></div>}
+      {s.workspace && <div className="kv"><span>工作区</span>
+        <code className="copyable" title="点击复制全文" onClick={() => copyText(s.workspace!)}>{s.workspace}</code></div>}
       <div className="kv"><span>tokens</span>
         <code>in {fmtTokens(s.usage?.in)} / out {fmtTokens(s.usage?.out)}</code></div>
       <div className="kv"><span>创建</span><code>{fmtTime(s.created_at)}</code></div>
@@ -105,6 +116,7 @@ function ParamsSection() {
   const extras = useStore(st => st.sessionExtras);
   const patchParams = useStore(st => st.patchParams);
   const [draft, setDraft] = useState<Record<string, string>>({});
+  const [base, setBase] = useState<Record<string, string>>({});   // PP-6：服务端真相快照（脏判定基准）
   const [busy, setBusy] = useState(false);
 
   // extras 变化（打开会话 / PATCH 后重拉）→ 草稿回服务端真相
@@ -112,7 +124,7 @@ function ParamsSection() {
     const p: ParamsMap = extras?.params ?? {};
     const d: Record<string, string> = {};
     for (const r of PARAM_ROWS) d[r.key] = p[r.key] != null ? String(p[r.key]) : '';
-    setDraft(d);
+    setDraft(d); setBase(d);
   }, [sid, extras]);
 
   /** 草稿 → 提交体（skip 键 = 跟随 profile；skipKey 供「恢复默认」单键清除） */
@@ -128,10 +140,16 @@ function ParamsSection() {
   };
   const commit = async (skipKey?: string) => {
     setBusy(true);
-    try { await patchParams(sid, build(skipKey)); }
+    try {
+      await patchParams(sid, build(skipKey));
+      toast(skipKey ? '已恢复默认（跟随 profile）' : '参数已保存 · 下一轮生效');   // PP-6：不再静默成功
+    }
     catch (e) { toast(`参数保存失败：${e instanceof Error ? e.message : e}`, false); }
     finally { setBusy(false); }
   };
+
+  // PP-6：脏判定（与保存后重拉的 base 比对，非与初始 profile 比）
+  const dirty = PARAM_ROWS.some(r => (draft[r.key] ?? '') !== (base[r.key] ?? ''));
 
   const prof = extras?.params_profile ?? {};
   const eng = s.engine_override || s.engine || '';
@@ -140,23 +158,25 @@ function ParamsSection() {
       <h4>模型参数
         <span className="muted" style={{ fontWeight: 400 }}>（覆盖本会话，其余跟随 profile）</span>
       </h4>
-      {PARAM_ROWS.map(r => (
-        <div key={r.key} className="setting-row">
-          <span style={{ minWidth: 92 }}>{r.label}</span>
+      {PARAM_ROWS.map(r => {
+        const has = (draft[r.key] ?? '').trim().length > 0;   // PP-1：恢复键仅在有覆盖值时渲染（无值=本就跟随，无恢复语义）
+        return (
+        <div key={r.key} className="setting-row props-param">
+          <span className="props-k" title={r.hint}>{r.label}</span>
           {r.kind === 'select' ? (
-            <select value={draft[r.key] ?? ''} className="props-num"
+            <select value={draft[r.key] ?? ''}
               onChange={e => setDraft(d => ({ ...d, [r.key]: e.target.value }))}>
-              <option value="">跟随 profile（{fmtVal(r.key, prof[r.key])}）</option>
+              <option value="">跟随（{fmtVal(r.key, prof[r.key])}）</option>
               <option value="low">low</option>
               <option value="medium">medium</option>
               <option value="high">high</option>
             </select>
           ) : (
-            <input className={r.kind === 'num' ? 'props-num' : ''}
+            <input
               type={r.kind === 'num' ? 'number' : 'text'}
               list={r.key === 'model' ? 'props-model-hints' : undefined}
               value={draft[r.key] ?? ''}
-              placeholder={`跟随 profile（${fmtVal(r.key, prof[r.key])}）`}
+              placeholder={`跟随（${fmtVal(r.key, prof[r.key])}）`}
               onChange={e => setDraft(d => ({ ...d, [r.key]: e.target.value }))} />
           )}
           {r.key === 'model' && (
@@ -164,17 +184,21 @@ function ParamsSection() {
               {MODEL_HINTS.map(m => <option key={m} value={m} />)}
             </datalist>
           )}
-          {r.hint && <span className="muted" style={{ fontSize: 'var(--fs-sm)' }}>{r.hint}</span>}
-          <button className="mini-btn" disabled={busy || !(draft[r.key] ?? '').trim()}
-            title="清除本项覆盖（跟随 profile）"
-            onClick={() => void commit(r.key)}>恢复默认</button>
+          {has && (
+            <button className="mini-btn" disabled={busy}
+              title={`清除本项覆盖（跟随 profile）${r.hint ? `；${r.hint}` : ''}`}
+              onClick={() => void commit(r.key)}>↺</button>
+          )}
         </div>
-      ))}
+        );
+      })}
       <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
-        <button className="btn ghost" disabled={busy} onClick={() => void commit()}>
+        <button className={dirty ? 'btn primary' : 'btn ghost'} disabled={busy || !dirty}
+          onClick={() => void commit()}>
           {busy ? '保存中…' : '保存参数'}
         </button>
-        <span className="muted" style={{ fontSize: 'var(--fs-sm)' }}>下一轮生效（进行中 turn 不受影响）</span>
+        {dirty && <span className="chip warn" title="有未保存的改动（切会话/重拉即丢）">● 未保存</span>}
+        {!dirty && <span className="muted" style={{ fontSize: 'var(--fs-sm)' }}>下一轮生效</span>}
       </div>
       {eng === 'opencode' && (
         <div className="muted" style={{ fontSize: 'var(--fs-sm)', marginTop: 4 }}>
@@ -223,7 +247,7 @@ function SandboxSection() {
 
   return (
     <section className="props-section">
-      <h3>沙箱档位 <span className="muted">（下一 turn 生效）</span></h3>
+      <h4>沙箱档位 <span className="muted" style={{ fontWeight: 400 }}>（下一 turn 生效）</span></h4>
       <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
         {SANDBOX_TIERS_UI.map(t =>
           <button key={t.label} className={`chip ${cur === t.v ? 'on' : ''}`}
@@ -270,17 +294,31 @@ function EgressSection() {
       .finally(() => setBusy(''));
   };
 
-  const allowHost = (host: string) => {
+  const allowHost = async (host: string) => {
     setBusy(host);
-    void api<{ allow: string[] }>('/api/admin/egress/allow', {
-      method: 'POST', body: JSON.stringify({ host }),
-    }).then(load).catch(() => setBusy(''));
+    try {
+      await api<{ allow: string[] }>('/api/admin/egress/allow', {
+        method: 'POST', body: JSON.stringify({ host }),
+      });
+      toast(`已放行 ${host}（热生效）`);
+      load();
+    } catch (e) {   // PP-7：吞错修复（普通用户 403/网络错此前无声失败）
+      toast(`放行失败：${e instanceof Error ? e.message : e}`, false);
+      setBusy('');
+    }
   };
-  const revokeGrant = (host: string) => {
+  const revokeGrant = async (host: string) => {
     setBusy(host);
-    void api('/api/admin/egress/grant/revoke', {
-      method: 'POST', body: JSON.stringify({ sid, host }),
-    }).then(load).catch(() => setBusy(''));
+    try {
+      await api('/api/admin/egress/grant/revoke', {
+        method: 'POST', body: JSON.stringify({ sid, host }),
+      });
+      toast(`已收回 ${host} 的临时授权`);
+      load();
+    } catch (e) {   // PP-10：同款吞错修复
+      toast(`收回失败：${e instanceof Error ? e.message : e}`, false);
+      setBusy('');
+    }
   };
 
   // 按域聚合（承袭管理面 EgressDetail 的提取法）
@@ -331,42 +369,37 @@ function EgressSection() {
             <span key={g.host} className="chip" style={{ marginRight: 6 }}>
               {g.host} · 至 {g.expires_at.slice(5, 16).replace('T', ' ')}
               <a style={{ marginLeft: 4, cursor: 'pointer', opacity: 0.7 }}
-                 onClick={() => revokeGrant(g.host)} title="立即收回">×</a>
+                 onClick={() => void revokeGrant(g.host)} title="立即收回">×</a>
             </span>
           ))}
         </div>
       )}
-      <table className="kv-table" style={{ width: '100%' }}>
-        <thead><tr><th>目标域</th><th style={{ width: 50 }}>次数</th>
-          <th style={{ width: 110 }}>判定</th><th style={{ width: 110 }}>最近</th>
-          <th style={{ width: 60 }}>操作</th></tr></thead>   {/* D5 姊妹点：操作列常驻，消游离第 5 td */}
-        <tbody>
-          {rows.length === 0 && (
-            <tr><td colSpan={5} className="muted"
-              style={{ textAlign: 'center', padding: 10 }}>
-              （暂无本会话的外联记录）</td></tr>
-          )}
-          {rows.map(r => (
-            <tr key={r.host}>
-              <td>{r.host}{allow.includes(r.host)
-                ? <span className="muted" style={{ fontSize: 'var(--fs-sm)' }}>（已放行）</span> : null}</td>
-              <td style={{ fontVariantNumeric: 'tabular-nums' }}>{r.n}</td>
-              <td style={{ color: r.denied ? 'var(--danger)' : 'var(--green)' }}>
-                {r.denied ? `拒绝 ${r.denied}/${r.n}` : '放行'}</td>
-              <td style={{ fontVariantNumeric: 'tabular-nums' }}>{(r.last || '').slice(5, 19).replace('T', ' ')}</td>
-              {r.denied > 0 && !allow.includes(r.host)
-                ? (
-                <td style={{ width: 60 }}>
-                  <button className="mini-btn" disabled={busy === r.host}
-                    title="加入出口白名单（热生效，免重启）"
-                    onClick={() => allowHost(r.host)}>放行</button>
-                </td>
-                )
-                : <td />}
-            </tr>
-          ))}
-        </tbody>
-      </table>
+      {/* PP-2：五列表 → 行卡（域名+操作首行 / 统计+判定+时刻次行）——320px 窄容器
+          塞不下五列，原表格字号上调后更是挤压重叠 */}
+      {rows.map(r => (
+        <div key={r.host} className="eg-row">
+          <div className="eg-row-top">
+            <span className="eg-host" title={r.host}>{r.host}</span>
+            {allow.includes(r.host)
+              && <span className="chip on" title="在全局白名单，外发即放行">已放行</span>}
+            {r.denied > 0 && !allow.includes(r.host) && (
+              <button className="mini-btn" disabled={busy === r.host}
+                title="加入全局出口白名单（热生效，免重启）"
+                onClick={() => void allowHost(r.host)}>放行</button>
+            )}
+          </div>
+          <div className="eg-meta">
+            <span>{r.n} 次{r.denied ? ` · 拒绝 ${r.denied}` : ''}</span>
+            <span style={{ color: r.denied ? 'var(--danger)' : 'var(--green)' }}>
+              {r.denied ? '拦截中' : '放行'}</span>
+            <span className="mono" style={{ marginLeft: 'auto' }}>
+              {(r.last || '').slice(5, 16).replace('T', ' ')}</span>
+          </div>
+        </div>
+      ))}
+      {rows.length === 0 && (
+        <div className="panel-empty">（暂无本会话的外联记录）</div>
+      )}
       <div className="muted" style={{ fontSize: 'var(--fs-sm)', marginTop: 6 }}>
         拒绝历史自本版本起记录会话归属（更早的事件无归属，不在此列）·
         <a className="link" onClick={() => { location.hash = '#/admin/security'; }}>安全中心看全部</a>
@@ -488,9 +521,9 @@ function LegacyDetails() {
   const turns = useStore(s => s.turns);
   return (
     <details className="props-section">
-      <summary style={{ cursor: 'pointer', fontSize: 'var(--fs-md)', color: 'var(--text-dim)' }}>
-        历史详情（turns 明细）</summary>
+      <summary>历史详情（turns 明细）</summary>
       <table className="turns-table">
+        <thead><tr><th>#</th><th>状态</th><th>时长</th><th>费用</th><th>开始</th></tr></thead>
         <tbody>
           {turns.map(t => (
             <tr key={t.id} className={`ts-${t.status}`}>
