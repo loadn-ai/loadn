@@ -86,6 +86,32 @@ def test_a1_parse_failure_blocks():
     assert policy.check_command("echo $(( `", source="a1-test").action == ACTION_BLOCK
 
 
+def test_a1_heredoc_block_message_names_redirect():
+    """A1 补：引号定界 heredoc（<<'EOF'，模型实际最爱形态）bashlex 解析
+    失败——block 文案点名改道目标（Write/Edit），模型一次弹射改道不靠
+    撞墙悟（2026-10-10 生产实证：glm 撞多次后自悟并在旁白复述「heredoc
+    必被拦」）。"""
+    for cmd in ("cat > /tmp/x.md <<'EOF'\nhi\nEOF",
+                "cat >> app.py <<'PYEOF'\nimport os\nPYEOF"):
+        d = policy.check_command(cmd, source="a1-test")
+        assert d.action == ACTION_BLOCK
+        assert d.matched == "heredoc"
+        assert "Write/Edit" in d.reason and "heredoc" in d.reason
+    # 否定路径：非 heredoc 的解析失败保持通用文案（定向文案不得扩散）
+    d2 = policy.check_command("echo $(( `", source="a1-test")
+    assert d2.action == ACTION_BLOCK and d2.matched == "parse"
+    assert "Write/Edit" not in d2.reason
+    # 边界如实记录：算术位移 $((1<<3)) 同样解析失败（block 不变）但不是
+    # heredoc——形态判定不吃数字定界，吃通用文案
+    d3 = policy.check_command("echo $((1<<3))", source="a1-test")
+    assert d3.action == ACTION_BLOCK and d3.matched == "parse"
+    assert "Write/Edit" not in d3.reason
+    # 裸 <<EOF 可解析——走正常 L0/L1 判定，不到解析失败分支
+    # （裸 heredoc 喂解释器的绕过面记 backlog）
+    assert policy.check_command("cat >> a.py <<EOF\nx\nEOF",
+                                source="a1-test").matched != "heredoc"
+
+
 # ---------------------------------------------------------------- glob 兜底只告警
 
 def test_a1_glob_warn_not_block():

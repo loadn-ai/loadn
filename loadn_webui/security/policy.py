@@ -232,7 +232,22 @@ def check_command(cmd: str, *, source: str = "cli") -> Decision:
         import bashlex
         trees = bashlex.parse(cmd)
     except Exception:                                  # noqa: BLE001
-        d = Decision(ACTION_BLOCK, "bash 解析失败（fail-closed）", matched="parse")
+        # 引号定界 heredoc（<<'EOF'，模型实际最爱形态）bashlex 解析失败
+        # ——定向文案让模型一次弹射改道 Write/Edit（受治理的文件写路径：
+        # diff/审计/LSP 回注），不靠撞墙悟（2026-10-10 生产实证：glm 撞
+        # 多次后自悟并在旁白复述「heredoc 必被拦」——文案点名改道目标省掉
+        # 整个试错段）。只在解析失败后做形态判定：定界符形态（引号/标识符）
+        # 才认 heredoc，$((1<<3)) 这类算术位移同样解析失败但不是 heredoc、
+        # 吃通用文案；裸 <<EOF 可解析（到不了这）——喂解释器绕过面见
+        # backlog（heredoc-as-stdin 不经命令词分析）。
+        if re.search(r"<<-?\s*['\"A-Za-z_]", cmd):
+            d = Decision(ACTION_BLOCK,
+                         "命令含 heredoc（<<），bash 解析器不可解析"
+                         "（fail-closed 已拦）——写文件请改用 Write/Edit "
+                         "工具（受治理路径，先 Read 再写）",
+                         matched="heredoc")
+        else:
+            d = Decision(ACTION_BLOCK, "bash 解析失败（fail-closed）", matched="parse")
         _audit_decision(d, cmd, source)
         return d
 
