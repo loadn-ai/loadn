@@ -72,6 +72,9 @@ wd = "loadn_webui.cli:main"          # 旧名 alias（一版后移除）
 Homepage = "https://github.com/loadn-ai/loadn"
 Repository = "https://github.com/loadn-ai/loadn"
 Issues = "https://github.com/loadn-ai/loadn/issues"
+Discussions = "https://github.com/loadn-ai/loadn/discussions"
+Documentation = "https://github.com/loadn-ai/loadn/tree/main/docs"
+Security = "https://github.com/loadn-ai/loadn/blob/main/SECURITY.md"
 Changelog = "https://github.com/loadn-ai/loadn/blob/main/CHANGELOG.md"
 
 [tool.setuptools.packages.find]
