@@ -13,7 +13,6 @@ import MemoryTab from './admin/MemoryTab';
 import ActivityTab from './admin/ActivityTab';
 import SecurityTab from './SecurityPanel';
 import ResourcesTab from './ResourcesPanel';
-import EgressPanel from './admin/EgressPanel';
 import SkillsTab from './admin/SkillsTab';
 import SettingsTab from './admin/SettingsTab';
 import ToolsTab from './admin/ToolsTab';
@@ -35,7 +34,6 @@ const TABS: { id: AdminTab; label: string; adminOnly?: boolean }[] = [
   { id: 'memory', label: '记忆', adminOnly: true },
   { id: 'activity', label: '台账', adminOnly: true },
   { id: 'cost', label: '成本', adminOnly: true },
-  { id: 'egress', label: '流量', adminOnly: true },
   { id: 'security', label: '安全', adminOnly: true },
   { id: 'resources', label: '资源', adminOnly: true },
 ];
@@ -89,7 +87,6 @@ export default function AdminPanel({ onClose, initialTab, filterSid, onClearFilt
           : tab === 'memory' ? <MemoryTab />
           : tab === 'activity' ? <ActivityTab />
           : tab === 'cost' ? <CostTab />
-          : tab === 'egress' ? <EgressPanel />
           : tab === 'security' ? <SecurityTab onClose={onClose} />
           : tab === 'resources' ? <ResourcesTab /> : <SettingsTab />}
     </div>

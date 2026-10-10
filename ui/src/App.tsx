@@ -39,7 +39,8 @@ export default function App() {
     : path.startsWith('#/admin/webhooks') ? 'webhooks'
     : path.startsWith('#/admin/security') ? 'security'
     : path.startsWith('#/admin/resources') ? 'resources'
-    : path.startsWith('#/admin/egress') ? 'egress'
+    // 'egress' 流量 tab 已并入安全 tab 出口卡（AC-2.3）——旧深链落到安全
+    : path.startsWith('#/admin/egress') ? 'security'
     : (path === '#/admin/cost' || path === '#/cost') ? 'cost'
     : undefined;
   // #/admin/schedules?sid=xxx → 管理页定时 tab + 会话过滤（会话头徽章跳转目标）

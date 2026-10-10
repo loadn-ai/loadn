@@ -746,7 +746,7 @@ function EgressDetail() {
   ];
   return (
     <div>
-      <DetailHead title="窗口内外发的目标域" note={`mode=${mode || '-'} · 完整时间线在「流量」tab`} />
+      <DetailHead title="窗口内外发的目标域" note={`mode=${mode || '-'} · 观测与管控一体（原「流量」tab 已并入此处）`} />
       <div style={{ border: '1px solid var(--border,#333)', borderRadius: 8, padding: '8px 10px', marginBottom: 10 }}>
         <div className="muted" style={{ fontSize: 12, marginBottom: 6 }}>出口策略（保存即热生效，不杀在跑任务）</div>
         <div className="setting-row" style={{ marginBottom: 4 }}>
