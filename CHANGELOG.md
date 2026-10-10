@@ -3,6 +3,35 @@
 本项目的全部显著变更记录于此。格式遵循 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/)，
 版本遵循 [SemVer](https://semver.org/lang/zh-CN/)。
 
+## [0.7.15] - 2026-10-10
+
+- **管理中心全量优化**（三份走查报告 42 条 → 6 批收官 + backlog/留长专项，
+  共 51 commit；0.7.9-0.7.14 为内部迭代未留条目）：
+  - **权限与安全**：管理面读分级（九敏感面普通用户 403）+ role 裁剪
+    （普通用户仅任务/定时/Webhook 三可见面）；vault 收敛唯一编辑面（八字段
+    merge 编辑器，entry 端 deprecated 补审计）；审批驳回（admin 一键否决
+    +TTL 剩余）；裁决端 sqlite3.Row 兼容修复（e2e 抓出 500）。
+  - **导航与去重**：tab↔hash 双向同步 + 五组重排（能力·自动化·观测·治理·
+    平台）；流量 tab 并入安全出口卡（12→11）；设置页资源卡/资源页 MCP 收敛
+    只读跳转；台账双源审计视图（ops·audit·both + CSV 导出）。
+  - **补缺**：系统 tab（版本/uptime/磁盘/调度器/备份触发+校验，409 防重入）；
+    任务页服务端分页（过滤/排序下推 SQL）；成本时间窗 7/30/90 + by_owner
+    按属主聚合（「(无主)」桶不丢数）。
+  - **流程与视觉打磨**：cron 编辑回填+触发 diff 确认；脏状态保护（切 tab/
+    返回拦截）；Webhook 补编辑（token 不再随改吊销）；全局 Toast；命令面板
+    Ctrl+K + tab 栏 ARIA/方向键漫游；设计令牌收敛（双红归一/硬编码色清零/
+    圆角四档/字号五档 CSS+TSX 284 处/等宽栈单源）；emoji→feather 线性图标
+    统一；触屏热区；单滚轴列表容器；时间戳统一 MM-DD HH:MM。
+  - **交互升级**：原生 confirm/alert 全量退役（35+25 处）——全局确认对话框
+    （danger 红键/Esc/回车肌肉记忆）+ toast 反馈。
+  - **可观测**：资源探测历史入库（ping_history，最近结果+24h 失败数常驻）；
+    workspace 占用落库（sessions.size_bytes，sort=size SQL 下推修分页页内
+    重排旧缺陷）+ 后台全量重算端点。
+  - **schema**：SCHEMA_REV 13（rev12 ping_history 表；rev13 sessions 占用
+    缓存双列）；API 契约快照 +4 端点。
+  - **测试**：1593 passed（新增 17 例对赌：读面分级/分页翻页/ping 聚合/
+    by_owner 全覆盖/size 排序全局序等）；ruff/build/lint 全绿。
+
 ## [0.7.7] - 2026-10-09
 
 - **多 Agent 工作台**：子代理自动人名 + Task 卡 agent_name 归属、子任务
