@@ -17,6 +17,7 @@ import SkillsTab from './admin/SkillsTab';
 import SettingsTab from './admin/SettingsTab';
 import ToolsTab from './admin/ToolsTab';
 import TasksTab from './admin/TasksTab';
+import SystemTab from './admin/SystemTab';
 import { api } from '../api/client';
 import type { AdminTab } from './admin/shared';
 
@@ -38,6 +39,7 @@ const TABS: { id: AdminTab; label: string; group: string; adminOnly?: boolean }[
   { id: 'security', label: '安全', group: '治理', adminOnly: true },
   { id: 'settings', label: '设置', group: '平台', adminOnly: true },
   { id: 'resources', label: '资源', group: '平台', adminOnly: true },
+  { id: 'system', label: '系统', group: '平台', adminOnly: true },
 ];
 
 function AdminDenied() {
@@ -113,7 +115,8 @@ export default function AdminPanel({ onClose, initialTab, filterSid, onClearFilt
           : tab === 'activity' ? <ActivityTab />
           : tab === 'cost' ? <CostTab />
           : tab === 'security' ? <SecurityTab />
-          : tab === 'resources' ? <ResourcesTab /> : <SettingsTab />}
+          : tab === 'resources' ? <ResourcesTab />
+          : tab === 'system' ? <SystemTab /> : <SettingsTab />}
     </div>
   );
 }

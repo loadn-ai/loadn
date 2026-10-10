@@ -1,6 +1,6 @@
 // 管理中心各 tab 共享的类型与小件（AdminPanel 拆分沉淀，v0.6.12）
 // AC-2.3：'egress' 流量 tab 并入安全 tab 出口卡（AdminTab 收窄，旧深链 App.tsx 落 security）
-export type AdminTab = 'skills' | 'tools' | 'settings' | 'schedules' | 'webhooks' | 'memory' | 'activity' | 'cost' | 'security' | 'resources' | 'tasks';
+export type AdminTab = 'skills' | 'tools' | 'settings' | 'schedules' | 'webhooks' | 'memory' | 'activity' | 'cost' | 'security' | 'resources' | 'tasks' | 'system';
 
 export interface SkillItem {
   name: string; description: string; mtime: string; disabled: boolean;

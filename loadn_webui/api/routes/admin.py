@@ -1,15 +1,23 @@
 """管理面：资源中心/凭证库/安全中心/审计/egress 策略/熔断全停。"""
 from __future__ import annotations
 
+import contextlib
+import io
 import json
+import os
+import shutil
+import threading
+import time
+from pathlib import Path
 
 from fastapi import APIRouter, HTTPException
 
 from ... import db as db_mod
 from ... import settings_admin
-from ...config import CONFIG, PATHS
+from ...config import CODE_ROOT, CONFIG, PATHS
 from ...engine import ENGINE
 from ...integrations import mcp_admin
+from ...util import iso
 
 router = APIRouter(prefix="/api")
 
@@ -497,3 +505,196 @@ def tasks_overview(q: str = "", status: str = "all", project_id: str = "",
         if limit > 0:
             out = out[offset:offset + limit] if offset else out[:limit]
     return {"tasks": out, "total": total}
+
+
+# ---------------------------------------------------------------- 系统页（AC-4.1）
+
+_BACKUP_STATE: dict = {"running": False, "kind": "", "started_at": "",
+                       "finished_at": "", "rc": None, "detail": ""}
+_BACKUP_LOCK = threading.Lock()
+
+
+def _proc_started_epoch() -> float | None:
+    """本服务进程启动 epoch（/proc/self/stat 第 22 字段 + btime）——uptime 源。
+
+    uvicorn 单进程模型下 self 即服务进程；非 Linux/读失败返回 None（前端
+    显示「未知」而非报错）。
+    """
+    try:
+        stat = Path("/proc/self/stat").read_text()
+        ticks = int(stat.rsplit(")", 1)[1].split()[19])   # comm 可能含空格——括号后切
+        hz = os.sysconf("SC_CLK_TCK")
+        with open("/proc/stat") as f:
+            btime = next(float(ln.split()[1]) for ln in f if ln.startswith("btime"))
+        return btime + ticks / hz
+    except (OSError, ValueError, IndexError, StopIteration):
+        return None
+
+
+def _vkey(v: str) -> tuple:
+    """vX.Y.Z → 可比较元组（解析失败回落 (0,) 排最前）。"""
+    try:
+        return tuple(int(x) for x in v.lstrip("v").split("."))
+    except ValueError:
+        return (0,)
+
+
+def _start_backup_job(kind: str, fn) -> bool:
+    """备份/验证后台线程状态机：cmd_backup_run 是分钟级（DB backup API +
+    workspace rsync），同步路由会挂死请求——起 daemon 线程，前端轮询
+    GET /admin/system 的 backup.running 收敛。
+
+    输出（print）捕获进 detail 尾 200 字符（rc!=0 时前端可见失败原因）。
+    running 中重复触发返回 False（路由转 409）。
+    """
+    with _BACKUP_LOCK:
+        if _BACKUP_STATE["running"]:
+            return False
+        _BACKUP_STATE.update(running=True, kind=kind, rc=None, detail="",
+                             started_at=iso(), finished_at="")
+
+    def _worker() -> None:
+        buf = io.StringIO()
+        try:
+            with contextlib.redirect_stdout(buf), contextlib.redirect_stderr(buf):
+                rc = fn()
+            _BACKUP_STATE.update(running=False, finished_at=iso(), rc=rc,
+                                 detail="" if rc == 0
+                                 else buf.getvalue().strip()[-200:])
+        except Exception as e:  # noqa: BLE001 — 线程兜底：状态必须复位
+            _BACKUP_STATE.update(running=False, finished_at=iso(), rc=-1,
+                                 detail=str(e)[:200])
+
+    threading.Thread(target=_worker, daemon=True,
+                     name=f"admin-{kind}").start()
+    return True
+
+
+@router.get("/admin/system")
+def system_overview():
+    """系统页数据面：运行版本/部署 releases/uptime/磁盘/DB/调度器/备份。
+
+    管理面读（部署路径与备份清单属平台级信息——挂 _ADMIN_READ_PREFIXES）。
+    版本面复用 ops（R7 发布系统）的目录/符号链接探测：开发仓（无
+    /opt/loadn 部署结构）时 releases 为空、current 为 None，前端只显示
+    运行版本（RELEASE.json 或包版本）。engines 探测不在此聚合——
+    前端复用公开 /api/health（各 spec subprocess 探测已有现成面）。
+    """
+    from datetime import datetime, timezone
+
+    from ... import ops as ops_mod  # 同包复用（R7 常量与读法单一真源）
+    from ... import scheduler as sched_mod
+
+    # ---- 版本：运行版本（RELEASE.json → 包版本兜底）+ 部署面
+    running: dict = {}
+    try:
+        running = json.loads((CODE_ROOT / "RELEASE.json").read_text())
+    except (OSError, ValueError):
+        pass
+    if not running.get("version"):
+        try:
+            from loadn import __version__
+            running = {"version": __version__, "source": "repo"}
+        except ImportError:
+            running = {"source": "unknown"}
+    cur = ops_mod._current_version()
+    prev = ops_mod._read_deploy_json().get("previous")
+    releases = []
+    for v in ops_mod._list_releases():
+        info = ops_mod._read_release_json(v)
+        releases.append({"version": v,
+                         "git_sha": (info.get("git_sha") or "")[:10],
+                         "built_at": (info.get("built_at") or "")[:19],
+                         "current": v == cur, "previous": v == prev,
+                         "venv_ok": (ops_mod.RELEASES_DIR / v / ".venv" / "bin"
+                                     / "python").exists()})
+    newer = [r["version"] for r in releases
+             if cur and _vkey(r["version"]) > _vkey(cur)]
+
+    # ---- 运行时：uptime / 磁盘 / DB
+    started = _proc_started_epoch()
+    disk: dict = {}
+    try:
+        t_, used, free = shutil.disk_usage(str(PATHS["root"]))
+        disk = {"total_gb": round(t_ / (1 << 30), 1),
+                "free_gb": round(free / (1 << 30), 1),
+                "used_pct": round(used / t_ * 100, 1) if t_ else 0.0}
+    except OSError:
+        pass
+    try:
+        db_mb = round(PATHS["db"].stat().st_size / (1 << 20), 1)
+    except OSError:
+        db_mb = 0.0
+
+    # ---- 调度器：进程内单例存活 + 熔断标记 + job 统计
+    alive = bool(sched_mod.SCHEDULER and sched_mod.SCHEDULER._task
+                 and not sched_mod.SCHEDULER._task.done())
+    with db_mod.conn() as c:
+        jobs = {r["status"]: r["n"] for r in c.execute(
+            "SELECT status, COUNT(*) n FROM scheduled_jobs GROUP BY status")}
+        next_due = c.execute("SELECT MIN(due_at) m FROM scheduled_jobs"
+                             " WHERE status='active'").fetchone()["m"]
+
+    # ---- 备份：清单（manifest 摘要——大小统计 rglob 太贵不做）
+    from ... import backup as backup_mod
+    backups: list[dict] = []
+    root = backup_mod.BACKUP_ROOT
+    if root.exists():
+        for d in sorted(root.iterdir(), reverse=True)[:20]:
+            if not d.is_dir():
+                continue
+            m: dict = {}
+            mf = d / "manifest.json"
+            if mf.exists():
+                try:
+                    m = json.loads(mf.read_text())
+                except (OSError, ValueError):
+                    m = {"errors": ["manifest 损坏"]}
+            backups.append({"name": d.name,
+                            "timestamp": m.get("timestamp") or "",
+                            "full_workspace": bool(m.get("full_workspace")),
+                            "errors": m.get("errors") or [],
+                            "complete": mf.exists()})
+
+    return {
+        "version": {"running": running, "current": cur,
+                    "upgrade_available": newer, "releases": releases},
+        "runtime": {
+            "pid": os.getpid(),
+            "started_at": (datetime.fromtimestamp(started, timezone.utc).isoformat()
+                           if started else None),
+            "uptime_s": round(time.time() - started, 1) if started else None,
+            "disk": disk, "db_size_mb": db_mb},
+        "scheduler": {"alive": alive,
+                      "check_interval_s": sched_mod.CHECK_INTERVAL,
+                      "kill_all": (PATHS["run"] / "KILL_ALL").exists(),
+                      "jobs": jobs, "next_due_at": next_due},
+        "backup": {"root": str(root), **_BACKUP_STATE, "recent": backups},
+        "time": iso(),
+    }
+
+
+@router.post("/admin/system/backup")
+def system_backup_run(body: dict):
+    """立即备份（后台线程，不阻塞请求）。full_workspace=true 含全量 workspace。
+
+    管理面写——审计留痕；进度/结果由 GET /admin/system 的 backup 状态轮询。
+    """
+    from ... import backup as backup_mod
+    from ...security.audit import audit
+    fw = bool(body.get("full_workspace"))
+    if not _start_backup_job("backup", lambda: backup_mod.cmd_backup_run(fw)):
+        raise HTTPException(409, "已有备份/验证任务在跑")
+    audit("system", {"action": "backup_run", "full_workspace": fw})
+    return {"ok": True, "started": True, "full_workspace": fw}
+
+
+@router.post("/admin/system/backup/verify")
+def system_backup_verify():
+    """验证最近一次备份完整性（关键文件+DB 可开+manifest；后台线程）。"""
+    from ... import backup as backup_mod
+    from ...security.audit import audit
+    if not _start_backup_job("verify", backup_mod.cmd_backup_verify):
+        raise HTTPException(409, "已有备份/验证任务在跑")
+    audit("system", {"action": "backup_verify"})
+    return {"ok": True, "started": True}

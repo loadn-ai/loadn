@@ -60,7 +60,7 @@ _ADMIN_READ_PREFIXES = ("/api/admin/vault", "/api/admin/security",
                         "/api/admin/audit", "/api/admin/egress",
                         "/api/admin/channels", "/api/admin/target-policy",
                         "/api/admin/approvals", "/api/admin/resources",
-                        "/api/settings")
+                        "/api/admin/system", "/api/settings")
 
 # 会话级破坏性端点（W6.4）：路径形如 /api/sessions/{sid}/kill，前缀表
 # 表达不了通配，按末段判定（kill/rollback/unlock 非法 GET 一律双头）

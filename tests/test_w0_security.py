@@ -406,7 +406,8 @@ async def test_admin_read_plane_user_403(client, monkeypatch):
     for path in ("/api/admin/vault", "/api/admin/security", "/api/admin/audit",
                  "/api/admin/egress", "/api/admin/channels",
                  "/api/admin/approvals", "/api/admin/resources",
-                 "/api/admin/target-policy", "/api/settings"):
+                 "/api/admin/target-policy", "/api/admin/system",
+                 "/api/settings"):
         r = await client.get(path)
         assert r.status_code == 403, f"{path} 应要求 admin（读面分级）"
 
