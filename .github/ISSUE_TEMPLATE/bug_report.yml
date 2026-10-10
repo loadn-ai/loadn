@@ -1,0 +1,69 @@
+name: Bug 报告
+description: 什么东西坏了、怎么复现——请先搜索已有 issue 避免重复
+labels: [bug]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        感谢反馈！请尽量填全环境信息——版本号可以从 `loadn --version`
+        或 `/api/health` 的 release 字段拿到。敏感 token 请打码。
+  - type: input
+    id: version
+    attributes:
+      label: loadn 版本
+      description: '`loadn --version` 或 webui /api/health 的 release 字段'
+      placeholder: 'v0.7.20'
+    validations:
+      required: true
+  - type: dropdown
+    id: component
+    attributes:
+      label: 组件
+      options:
+        - 引擎 CLI（loadn 包）
+        - 平台后端（loadn_webui）
+        - 前端（ui/）
+        - desktop
+        - 文档
+    validations:
+      required: true
+  - type: input
+    id: env
+    attributes:
+      label: 操作系统 / Python 版本
+      placeholder: 'Ubuntu 24.04 / Python 3.12'
+    validations:
+      required: true
+  - type: textarea
+    id: repro
+    attributes:
+      label: 复现步骤
+      description: 最小可复现序列；涉及配置的请附上脱敏后的关键配置
+      placeholder: |
+        1. …
+        2. …
+    validations:
+      required: true
+  - type: textarea
+    id: expected
+    attributes:
+      label: 预期行为
+    validations:
+      required: true
+  - type: textarea
+    id: actual
+    attributes:
+      label: 实际行为
+      description: 报错原文请用 ``` 包裹；可附 var/logs/calls/turn*.err 相关尾部与审计流行（token 打码）
+      render: shell
+    validations:
+      required: true
+  - type: checkboxes
+    id: search
+    attributes:
+      label: 提交前自查
+      options:
+        - label: 我已搜索过已有 issue（含 closed），没有重复
+          required: true
+        - label: 如果是安全漏洞，我已改走 SECURITY.md 的私有通告渠道（不在此公开）
+          required: true
