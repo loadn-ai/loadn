@@ -111,6 +111,8 @@ zip 视作用户自备，不 pin。管理中心可把任一 skill 导出为 agen
 文本）在检测前剥离；压缩后反思（`LOADN_REFLECT_AFTER_COMPACT=on`）产物
 进记忆域 draft 待人工转正，与本通道互不触发。
 
+![技能建议卡](assets/skill-suggest-card.png)
+
 ## 4. 接外部工具服务（MCP）
 
 项目根 `.mcp.json` 声明 stdio server，工具以 `mcp__<server>__<tool>`
