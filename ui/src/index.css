@@ -697,6 +697,9 @@ button:focus-visible, .tab:focus-visible, .chip:focus-visible {
 .mono, .mono-cell { font-family: var(--mono); }
 .mono-cell { font-size: 12px; max-width: 380px; overflow: hidden; text-overflow: ellipsis;
   white-space: nowrap; }
+/* AC-5.10：数字表格对齐（tokens/成本/大小列成千位漂移难比读） */
+.mono-cell, .mcp-table td, .kpi-num, .kv-table td {
+  font-variant-numeric: tabular-nums; }
 
 .new-skill-form { background: var(--bg2); border: 1px solid var(--border); border-radius: var(--radius);
   padding: 14px 16px; margin-bottom: 12px; box-shadow: var(--shadow-sm); }
