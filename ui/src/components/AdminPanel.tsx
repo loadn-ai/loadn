@@ -4,7 +4,7 @@
 // AC-1.2 角色裁剪：cookie 普通用户只见有属主隔离的面（任务/定时/Webhooks）；
 // 其余 tab 平台级（凭证/设置/审计/成本无 owner 维度）——隐藏 + 深链兜底占位卡。
 // token 单用户模式（未 cookie 登录）无角色概念，全量开放不变。
-import { Fragment, useEffect, useState } from 'react';
+import { Fragment, useEffect, useRef, useState } from 'react';
 
 import CostTab from './CostPanel';
 import SchedulesTab from './SchedulePanel';
@@ -18,6 +18,7 @@ import SettingsTab from './admin/SettingsTab';
 import ToolsTab from './admin/ToolsTab';
 import TasksTab from './admin/TasksTab';
 import SystemTab from './admin/SystemTab';
+import CommandPalette from './admin/CommandPalette';
 import { api } from '../api/client';
 import { anyAdminDirty, useAdminDirty } from '../stores/adminDirty';
 import type { AdminTab } from './admin/shared';
@@ -95,19 +96,55 @@ export default function AdminPanel({ onClose, initialTab, filterSid, onClearFilt
   const visibleTabs = isPlainUser ? TABS.filter(t => !t.adminOnly) : TABS;
   const denied = isPlainUser && TABS.find(t => t.id === tab)?.adminOnly === true;
 
+  // AC-5.9：命令面板 Ctrl/Cmd+K 唤起（Esc 关）；选面板走统一 setTab
+  //（脏状态拦截/hash 同步语义不变）
+  const [cmdk, setCmdk] = useState(false);
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'k') {
+        e.preventDefault();
+        setCmdk(v => !v);
+      } else if (e.key === 'Escape') setCmdk(false);
+    };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, []);
+
+  // AC-5.9：tab 栏 ARIA tablist + 方向键漫游（roving tabindex：仅选中
+  // tab 可 Tab 聚焦，←→ 切换并把焦点交给新 tab）
+  const tabRefs = useRef<(HTMLButtonElement | null)[]>([]);
+  const onTablistKey = (e: React.KeyboardEvent) => {
+    if (e.key !== 'ArrowRight' && e.key !== 'ArrowLeft') return;
+    e.preventDefault();
+    const cur = visibleTabs.findIndex(t => t.id === tab);
+    const d = e.key === 'ArrowRight' ? 1 : -1;
+    const next = visibleTabs[(cur + d + visibleTabs.length) % visibleTabs.length];
+    if (next) {
+      setTab(next.id);
+      requestAnimationFrame(() =>
+        tabRefs.current[visibleTabs.indexOf(next)]?.focus());
+    }
+  };
+
   return (
     <div className="admin-page">
       <div className="admin-head">
         <h2>管理中心</h2>
         <button className="btn ghost" onClick={onClose}>← 返回</button>
       </div>
-      <div className="admin-tabs">
+      {cmdk && <CommandPalette tabs={visibleTabs}
+        onPick={t => setTab(t)} onClose={() => setCmdk(false)} />}
+      <div className="admin-tabs" role="tablist" aria-label="管理面板"
+        onKeyDown={onTablistKey}>
         {visibleTabs.map((t, i) => (
           <Fragment key={t.id}>
             {i > 0 && visibleTabs[i - 1].group !== t.group && (
               <span className="tab-group-sep" title={t.group}>{t.group}</span>
             )}
-            <button className={`tab ${tab === t.id ? 'on' : ''}`}
+            <button ref={el => { tabRefs.current[i] = el; }}
+              role="tab" aria-selected={tab === t.id}
+              tabIndex={tab === t.id ? 0 : -1}
+              className={`tab ${tab === t.id ? 'on' : ''}`}
               onClick={() => setTab(t.id)}>{t.label}</button>
           </Fragment>
         ))}

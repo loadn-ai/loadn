@@ -775,6 +775,25 @@ button:focus-visible, .tab:focus-visible, .chip:focus-visible {
   outline: none; border-color: color-mix(in srgb, var(--accent) 45%, transparent);
 }
 button.chip { cursor: pointer; }   /* AC-5.7：可点 chip 光标兜底 */
+/* AC-5.9：管理页命令面板（Ctrl+K） */
+.cmdk-overlay { position: fixed; inset: 0; z-index: 250;
+  background: rgba(0, 0, 0, .42); display: flex; justify-content: center;
+  align-items: flex-start; padding-top: 14vh; }
+.cmdk { width: min(460px, 92vw); background: var(--bg2);
+  border: 1px solid var(--border); border-radius: var(--radius);
+  box-shadow: var(--shadow-lg); overflow: hidden; }
+.cmdk input { width: 100%; background: transparent; border: none;
+  border-bottom: 1px solid var(--border); padding: 12px 14px;
+  font-size: 14px; color: var(--text); outline: none; }
+.cmdk-list { max-height: 46vh; overflow-y: auto; padding: 6px; }
+.cmdk-item { display: flex; align-items: center; gap: 10px;
+  padding: 9px 12px; border-radius: var(--radius-sm); cursor: pointer;
+  font-size: 13px; }
+.cmdk-item.on { background: var(--accent-soft); }
+.cmdk-item .muted { font-size: 11.5px; }
+.cmdk-hint { margin-left: auto; font-size: 11px; color: var(--text-dim);
+  border: 1px solid var(--border); border-radius: var(--radius-xs);
+  padding: 1px 6px; }
 .mcp-table { width: 100%; border-collapse: collapse; font-size: 13px; }
 .mcp-table .chip:not(button) { cursor: default; }   /* AC-5.7：收窄到非按钮 chip（原全量 default 误伤表内开关） */
 .mcp-table th { text-align: left; color: var(--text-dim); font-weight: 500; font-size: 12px;
