@@ -490,7 +490,7 @@ def _refresh_session_settings() -> int:
 
 def cmd_upgrade(version: str | None = None, *, wait_idle: int = 1800,
                 health_timeout: int = 90, no_backup: bool = False,
-                yes: bool = False) -> int:
+                yes: bool = False, require_idle: bool = False) -> int:
     """升级到指定版本（缺省=最新已 build 的）。失败自动回滚（L1）。"""
     with _ops_lock():
         rels = _list_releases()
@@ -515,6 +515,17 @@ def cmd_upgrade(version: str | None = None, *, wait_idle: int = 1800,
                 print(f"  ✗ {p}", file=sys.stderr)
             return EXIT_PRECONDITION
 
+        # 1.5) 严格模式：有活跃 turn 直接拒绝（动任何东西之前——DB 备份/
+        #      资产重刷都不做）。沙箱任务升级必被打断（die-with-parent），
+        #      直跑任务虽收养续跑但网页断流——非空闲升级须显式决策。
+        if require_idle:
+            active = _active_turns()
+            if active:
+                print(f"✗ --require-idle：{len(active)} 个活跃 turn 未完成，拒绝升级", file=sys.stderr)
+                for t in active[:5]:
+                    print(f"   · turn {t['id']}  {t['session_id']}", file=sys.stderr)
+                return EXIT_PRECONDITION
+
         # 2) DB 备份
         if not no_backup:
             print("[2/5] DB 备份（backup API，保留 3 份）")
@@ -535,12 +546,22 @@ def cmd_upgrade(version: str | None = None, *, wait_idle: int = 1800,
         except Exception as e:                          # noqa: BLE001
             print(f"  ⚠️ 会话 settings 重刷失败（不阻断）：{e}")
 
-        # 3) 等 idle
+        # 3) 等 idle（升级对活跃 turn 的影响分两档：直跑档收养续跑——
+        #    KillMode=process 幸存；沙箱档 die-with-parent 同死必被打断
+        #    → interrupted+半程抢救，需用户手动「继续」——故非空闲升级须可见）
         print(f"[3/5] 等 idle（超时 {wait_idle}s，--wait-idle 0 跳过）")
         if wait_idle > 0:
             ok = _wait_idle(wait_idle, yes=yes)
             if not ok:
                 return EXIT_PRECONDITION
+        elif not yes:   # 跳过等待仍有活跃 turn：非 --yes 时给强可见性（历史 18 例
+            #   server_restart 中断——多数源自 --wait-idle 0 静默强切）
+            active = _active_turns()
+            if active:
+                print(f"  ⚠ 跳过等待：{len(active)} 个活跃 turn——沙箱任务将被打断"
+                      f"（需事后手动「继续」），直跑任务收养续跑", file=sys.stderr)
+                for t in active[:5]:
+                    print(f"     · turn {t['id']}  {t['session_id']}", file=sys.stderr)
 
         # 4) 换指针 + restart
         print(f"[4/5] 切换 current: {cur} → {target}")

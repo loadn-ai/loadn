@@ -748,6 +748,8 @@ def main(argv: list[str] | None = None) -> int:
     p_up.add_argument("--health-timeout", type=int, default=90, help="healthcheck 超时秒")
     p_up.add_argument("--no-backup", action="store_true", help="跳过 DB 备份")
     p_up.add_argument("--yes", action="store_true", help="超时/门禁自动确认")
+    p_up.add_argument("--require-idle", action="store_true",
+                      help="严格模式：有活跃 turn 直接拒绝（沙箱任务会被打断，防误切）")
 
     p_rb = sub.add_parser("rollback", help="回滚到指定版本")
     p_rb.add_argument("version", nargs="?", default="", help="目标版本（缺省=previous）")
@@ -880,7 +882,7 @@ def main(argv: list[str] | None = None) -> int:
         return ops_mod.cmd_upgrade(
             args.version or None, wait_idle=args.wait_idle,
             health_timeout=args.health_timeout, no_backup=args.no_backup,
-            yes=args.yes)
+            yes=args.yes, require_idle=args.require_idle)
     if args.cmd == "rollback":
         from . import ops as ops_mod
         return ops_mod.cmd_rollback(args.version or None, yes=args.yes)
