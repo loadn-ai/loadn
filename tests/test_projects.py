@@ -210,3 +210,61 @@ async def test_promote_session_to_project(client, ws_root):
     assert kid_ws.startswith(old_ws + "/tasks/") and kid_ws != old_ws
     # 重复升级 → 400
     assert (await client.post(f"/api/sessions/{sid}/promote")).status_code == 400
+
+
+# ---------------------------------------------------------------- rev11 代码仓绑定
+async def test_project_repo_binding(client, ws_root, tmp_path):
+    """rev11 项目规则遵循端到端：绑定仓→任务目录落 <repo>/tasks/、仓内
+    CLAUDE.md 经宪法祖先链真进任务上下文、绑定=admit（gate 放行）、
+    .gitignore 缺 tasks/ 给提示；解绑回落项目工作区；非法路径 400。"""
+    repo = tmp_path / "myrepo"
+    repo.mkdir()
+    (repo / ".git").mkdir()
+    (repo / "CLAUDE.md").write_text("# 仓规则：commit 用 feat/fix(模块) 前缀")
+    (repo / ".claude").mkdir()
+    (repo / ".claude" / "settings.json").write_text("{}")   # 资源标记→admit 才放行
+
+    pid, pws = await _mk_project(client)
+    r = await client.patch(f"/api/projects/{pid}", json={"repo": str(repo)})
+    assert r.status_code == 200, r.text
+    assert r.json()["project"]["repo"] == str(repo.resolve())
+    assert "tasks/" in (r.json().get("repo_hint") or "")   # gitignore 建议
+
+    from loadn.truststore import gate
+    ok, _why = gate(repo)
+    assert ok, _why                                           # 绑定即 admit
+
+    sid = await _mk_subtask(client, pid, "改登录")
+    assert ws_of(sid).parent == repo / "tasks"                # 任务目录在仓内
+    assert (ws_root / pid / "CLAUDE.md").exists()             # 项目宪法仍住自建区
+    assert not (repo / "PROGRESS.md").exists()                # scaffold 不污染仓根
+    # 宪法祖先链端到端：仓规则真进任务上下文（引擎同一装配器）
+    from loadn.core.context import ContextAssembler
+    assert "feat/fix(模块)" in ContextAssembler(ws_of(sid)).build()
+
+    # 解绑：新任务回落项目工作区；守卫：非法路径 400
+    r2 = await client.patch(f"/api/projects/{pid}", json={"repo": ""})
+    assert r2.status_code == 200 and r2.json()["project"]["repo"] is None
+    sid2 = await _mk_subtask(client, pid, "解绑后任务")
+    assert ws_of(sid2).parent == ws_root / pid / "tasks"
+    assert (await client.patch(
+        f"/api/projects/{pid}", json={"repo": "relative/x"})).status_code == 400
+    assert (await client.patch(
+        f"/api/projects/{pid}",
+        json={"repo": str(tmp_path / "nope")})).status_code == 400
+
+
+async def test_project_create_with_repo(client, ws_root, tmp_path):
+    """POST 建项目直带仓：repo 落列、提示回传、admit 生效。"""
+    repo = tmp_path / "repo2"
+    repo.mkdir()
+    (repo / ".git").mkdir()
+    (repo / ".gitignore").write_text("tasks/\n")              # 已配置→无提示
+    r = await client.post("/api/projects",
+                          json={"title": "带仓项目", "repo": str(repo)})
+    assert r.status_code == 200, r.text
+    proj = r.json()["project"]
+    assert proj["repo"] == str(repo.resolve())
+    assert not r.json().get("repo_hint")
+    from loadn.truststore import gate
+    assert gate(repo)[0]

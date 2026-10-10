@@ -938,6 +938,10 @@ button.attach-chip:hover { border-color: color-mix(in srgb, var(--accent) 40%, v
   cursor: pointer; transition: color .15s, border-color .15s; }
 .proj-empty-add:hover { color: var(--accent2); border-color: color-mix(in srgb, var(--accent) 45%, var(--border)); }
 
+/* 代码仓绑定行（rev11 项目规则遵循）：项目头下的内联输入 */
+.proj-repo-row { display: flex; align-items: center; gap: 6px; margin: 3px 0 4px 26px;
+  color: var(--text-dim); font-size: 12px; }
+
 /* 停止/发送恒贴底栏右侧：弹性余量挂在这组按钮上（不再依赖 hint 占位；
    两个都设 auto 时余量由先出现的 stop 吃掉，send 仍紧邻） */
 .cbar .stop-btn, .cbar .send { margin-left: auto; }

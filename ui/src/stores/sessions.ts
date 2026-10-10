@@ -67,6 +67,8 @@ export interface ProjectInfo {
   id: string; title: string; status: string; workspace: string;
   profile?: string | null; updated_at?: string; n_sessions?: number;
   starred?: number; pinned?: number; category_id?: number | null;
+  /** 绑定的代码仓根（rev11 项目规则遵循：任务目录落 <repo>/tasks/，宪法链带仓规则） */
+  repo?: string | null;
 }
 
 /** 侧栏自定义分区（任务/项目通用，与置顶/收藏/归档并列） */
@@ -199,7 +201,9 @@ interface Store {
   /** 侧边栏「属性」入口：当前会话直接切 tab+开面板，否则先打开会话 */
   openProps: (sid: string) => Promise<void>;
   loadProjects: () => Promise<void>;
-  createProject: (title: string, categoryId?: number) => Promise<ProjectInfo>;
+  createProject: (title: string, categoryId?: number, repo?: string) => Promise<ProjectInfo>;
+  /** 绑定/解绑代码仓（rev11 项目规则遵循）；返回服务端提示（gitignore 建议/非 git 仓警告等） */
+  setProjectRepo: (pid: string, repo: string) => Promise<string>;
   createSubtask: (pid: string) => Promise<SessionInfo>;
   renameProject: (pid: string, title: string) => Promise<void>;
   /** 现有任务升级为项目容器（原任务成为首个子任务，workspace 零迁移） */
@@ -494,13 +498,21 @@ export const useStore = create<Store>((set, get) => ({
     } catch { /* 项目列表失败不阻塞会话面 */ }
   },
 
-  async createProject(title, categoryId) {
+  async createProject(title, categoryId, repo) {
+    const body: Record<string, unknown> = { title };
+    if (categoryId != null) body.category_id = categoryId;
+    if (repo) body.repo = repo;
     const d = await api<{ project: ProjectInfo }>('/api/projects', {
-      method: 'POST',
-      body: JSON.stringify(categoryId != null
-        ? { title, category_id: categoryId } : { title }) });
+      method: 'POST', body: JSON.stringify(body) });
     await get().loadProjects();
     return d.project;
+  },
+
+  async setProjectRepo(pid, repo) {
+    const d = await api<{ repo_hint?: string }>(`/api/projects/${encodeURIComponent(pid)}`, {
+      method: 'PATCH', body: JSON.stringify({ repo }) });
+    await get().loadProjects();
+    return d.repo_hint ?? '';
   },
 
   async createSubtask(pid) {

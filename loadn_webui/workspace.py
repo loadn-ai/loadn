@@ -594,8 +594,18 @@ def create_session(title: str, prof: profile_mod.Profile, skills: list[str] | No
                      json.loads(proj["skills_json"] or "[]"),
                      json.loads(proj["mcp_json"] or "{}"), project=True)
         (pws / "inputs").mkdir(parents=True, exist_ok=True)   # 共享输入目录
+        # rev11 项目规则遵循：绑定代码仓的项目，任务目录落 <repo>/tasks/——
+        # 引擎宪法祖先链（git 根→cwd）自动带上仓内 CLAUDE.md/AGENTS.md，
+        # 项目自己的规矩随任务生效；项目宪法/inputs 等共享物仍住自建工作区
+        # （不污染仓根）。仓路径失效（被移/手删）回落项目工作区，不炸建链。
+        slot_root = pws
+        repo = (proj["repo"] or "").strip() if "repo" in proj.keys() else ""
+        if repo:
+            rp = Path(repo)
+            if rp.is_dir():
+                slot_root = rp
         sid = _new_unique_id(title)
-        ws = _next_task_slot(pws, title)
+        ws = _next_task_slot(slot_root, title)
         scaffold_task_dir(ws, sid, title, prof,
                           skills if skills is not None
                           else json.loads(proj["skills_json"] or "[]"),

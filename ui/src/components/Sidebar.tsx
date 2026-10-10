@@ -302,7 +302,9 @@ function ProjectGroup({ project, kids, collapsed: collapsedProp, onToggle, onOpe
   const createSubtask = useStore(s => s.createSubtask);
   const moveProject = useStore(s => s.moveProject);
   const createCategory = useStore(s => s.createCategory);
+  const setProjectRepo = useStore(s => s.setProjectRepo);
   const [editing, setEditing] = useState(false);
+  const [repoEdit, setRepoEdit] = useState(false);
   const [busy, setBusy] = useState(false);
   const [menuEl, setMenuEl] = useState<HTMLElement | null>(null);
   const [collapsedLocal, setCollapsedLocal] = useState(false);
@@ -315,6 +317,17 @@ function ProjectGroup({ project, kids, collapsed: collapsedProp, onToggle, onOpe
     const t = v.trim();
     if (t && t !== project.title) void renameProject(project.id, t.slice(0, 80));
     setEditing(false);
+  };
+  // rev11 项目规则遵循：绑定代码仓——任务目录落 <repo>/tasks/，仓内
+  // CLAUDE.md/AGENTS.md 经宪法祖先链自动并入任务上下文（绑定即信任）
+  const commitRepo = async (v: string) => {
+    const r = v.trim();
+    setRepoEdit(false);
+    if (r === (project.repo ?? '')) return;
+    try {
+      const hint = await setProjectRepo(project.id, r);
+      if (hint) alert(`代码仓绑定提示：${hint}`);
+    } catch (e) { alert(`绑定失败：${e instanceof Error ? e.message : e}`); }
   };
   const addSub = async () => {
     if (busy) return;
@@ -343,6 +356,8 @@ function ProjectGroup({ project, kids, collapsed: collapsedProp, onToggle, onOpe
                        categories, createCategory) },
     { key: 'sub', label: '新建任务（共享工作区）', icon: Plus, onClick: () => void addSub() },
     { key: 'rename', label: '改名', icon: Pencil, onClick: () => setEditing(true) },
+    { key: 'repo', label: project.repo ? '改绑/解绑代码仓…' : '绑定代码仓（遵循仓内规则）…',
+      icon: Code, onClick: () => setRepoEdit(true) },
     { kind: 'divider', key: 'sep-arch' } as MenuEntry,
     { key: 'archive', label: '归档项目（子任务一并归档）', icon: Archive,
       onClick: () => void archiveProject(project.id) },
@@ -367,6 +382,10 @@ function ProjectGroup({ project, kids, collapsed: collapsedProp, onToggle, onOpe
           : <span className="row-title">{project.title}</span>}
         {!editing && !archived && project.pinned ? <Pin size={11} className="row-flag pin" /> : null}
         {!editing && !archived && project.starred ? <Star size={11} filled className="row-flag star" /> : null}
+        {!editing && project.repo
+          ? <span className="row-flag" title={`已绑代码仓：${project.repo}（任务目录落仓内 tasks/，仓规则自动并入宪法）`}>
+              <Code size={11} />
+            </span> : null}
         {!editing && <span className="proj-count">{kids.length}</span>}
         {!editing && (
           <span className="row-ops">
@@ -377,6 +396,19 @@ function ProjectGroup({ project, kids, collapsed: collapsedProp, onToggle, onOpe
           </span>
         )}
       </div>
+      {repoEdit && !archived && (
+        <div className="proj-repo-row">
+          <Code size={12} />
+          <input className="row-edit" defaultValue={project.repo ?? ''} autoFocus
+                 placeholder="代码仓绝对路径（如 /data/code/foo；清空=解绑）回车确认"
+                 onClick={e => e.stopPropagation()}
+                 onKeyDown={e => {
+                   if (e.key === 'Enter') void commitRepo((e.target as HTMLInputElement).value);
+                   else if (e.key === 'Escape') setRepoEdit(false);
+                 }}
+                 onBlur={e => void commitRepo(e.target.value)} />
+        </div>
+      )}
       {!collapsed && kids.map(k => (
         <div className="proj-kid" key={k.id}>
           <SessionRow sid={k.id} onClick={() => onOpen(k.id)} current={k.id === currentSid && !overlay} />

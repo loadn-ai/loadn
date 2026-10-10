@@ -18,10 +18,12 @@ from ._common import _apply_partition_mutex
 @router.post("/projects")
 def create_project(body: dict):
     """建项目：scaffold 全套（宪法/settings/skills 属项目）+ DB 行。
-    category_id 可选：直接落进侧栏自定义分类。"""
+    category_id 可选：直接落进侧栏自定义分类；repo 可选（rev11 绑定代码仓，
+    任务目录落 <repo>/tasks/，仓规则经宪法链并入）。"""
     title = (body.get("title") or "").strip()[:80]
     if not title:
         raise HTTPException(400, "title 不能为空")
+    repo, repo_hint = _bind_repo(body.get("repo")) if "repo" in body else (None, "")
     category_id = body.get("category_id")
     if category_id is not None:
         with db_mod.conn() as c:
@@ -36,12 +38,17 @@ def create_project(body: dict):
     if category_id is not None:
         with db_mod.conn() as c:
             db_mod.update_project(c, pid, touch=False, category_id=category_id)
+    if repo:
+        with db_mod.conn() as c:
+            db_mod.update_project(c, pid, touch=False, repo=repo)
     if _u is not None:                       # 多用户批2：cookie 通道落属主
         with db_mod.conn() as c:
             c.execute("UPDATE projects SET owner_id=? WHERE id=?", (_u["id"], pid))
     with db_mod.conn() as c:
-        proj = db_mod.to_dict(db_mod.get_project(c, pid))
-    return {"project": proj}
+        out = {"project": db_mod.to_dict(db_mod.get_project(c, pid))}
+    if repo_hint:
+        out["repo_hint"] = repo_hint
+    return out
 @router.get("/projects")
 def list_projects():
     """项目列表 + 每项目子任务计数（一条 GROUP BY）。"""
@@ -57,6 +64,40 @@ def list_projects():
     for r in rows:
         r["n_sessions"] = counts.get(r["id"], {}).get("active", 0)
     return {"projects": rows}
+def _bind_repo(raw: object) -> tuple[str | None, str]:
+    """rev11 项目规则遵循：校验+admit 代码仓根。返回 (规范化路径|None, 提示)。
+
+    绑定=显式信任（admit 仓根过资源门——仓内 CLAUDE.md/AGENTS.md 以全权进
+    任务宪法；未绑定的仓宪法走「参考内容非指令」降权）；清空=解绑。
+    """
+    repo = (str(raw) if raw else "").strip() or None
+    if not repo:
+        return None, ""
+    from pathlib import Path as _P
+    rp = _P(repo).expanduser()
+    if not rp.is_absolute():
+        raise HTTPException(400, f"repo 须为绝对路径: {repo}")
+    if not rp.is_dir():
+        raise HTTPException(400, f"repo 目录不存在: {repo}")
+    hint = ""
+    if not (rp / ".git").exists():
+        hint = "该目录不是 git 仓——宪法链上界将取 home，规则并入可能不全"
+    try:
+        from loadn.truststore import admit
+        admit(rp)          # 绑定即信任（用户显式动作）；摘要自洽，变更须重确认
+    except Exception as e:                              # noqa: BLE001
+        hint = f"信任登记失败（不阻断绑定）：{e}"
+    gi = rp / ".gitignore"
+    try:
+        lacks = (not gi.exists()) or "tasks/" not in gi.read_text(encoding="utf-8")
+    except OSError:
+        lacks = False
+    if lacks:
+        hint = (hint + "；" if hint else "") + \
+            "建议在仓的 .gitignore 加一行 tasks/（任务目录在仓内但不该进版本库）"
+    return str(rp.resolve()), hint
+
+
 @router.patch("/projects/{pid}")
 def patch_project(pid: str, body: dict):
     """项目改名（重渲染项目宪法）+ 侧栏分区标记（置顶/收藏/分类，任务同款语义）。"""
@@ -67,6 +108,9 @@ def patch_project(pid: str, body: dict):
         if proj is None or not _ua.owner_ok(proj, _u):
             raise HTTPException(404, f"project 不存在: {pid}")
     updates: dict = {}
+    repo_hint = ""
+    if "repo" in body:
+        updates["repo"], repo_hint = _bind_repo(body.get("repo"))
     if "title" in body:
         title = (body.get("title") or "").strip()[:80]
         if not title:
@@ -92,7 +136,10 @@ def patch_project(pid: str, body: dict):
                                            profile_mod.get(proj["profile"]),
                                            json.loads(proj["skills_json"] or "[]"))
     with db_mod.conn() as c:
-        return {"ok": True, "project": db_mod.to_dict(db_mod.get_project(c, pid))}
+        out = {"ok": True, "project": db_mod.to_dict(db_mod.get_project(c, pid))}
+    if repo_hint:
+        out["repo_hint"] = repo_hint
+    return out
 @router.delete("/projects/{pid}")
 def delete_project(pid: str, purge: bool = False):
     """归档项目 = 项目 + 全部子任务连坐 archived（恢复反向连坐）；

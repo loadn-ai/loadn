@@ -27,7 +27,7 @@ def test_rev10_migration_and_crud(conn):
     assert "subtasks" in tables
     tcols = {r["name"] for r in conn.execute("PRAGMA table_info(turns)")}
     assert "subtask_id" in tcols
-    assert db_mod.SCHEMA_REV == 10
+    assert db_mod.SCHEMA_REV == 11               # rev10 建 subtasks；rev11 加 projects.repo
     # 旧库路径：ALTER 幂等可验——重跑 _migrate 不炸
     db_mod._migrate(conn)  # noqa: SLF001
 

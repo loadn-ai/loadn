@@ -26,7 +26,8 @@ from .config import PATHS
 # additive-only 契约：只加列/加表（旧代码可跑新 schema，多余列无害）。
 # rev9：categories.icon（侧栏空间图标）+ artifacts 归属三列 + agent_files 表
 # rev10：会话内子任务（subtasks 表 + turns.subtask_id 打标列）
-SCHEMA_REV = 10
+# rev11：projects.repo（项目绑定代码仓——任务目录落 <repo>/tasks/，宪法链带仓规则）
+SCHEMA_REV = 11
 from .util import iso
 
 SCHEMA = """
@@ -118,6 +119,7 @@ CREATE TABLE IF NOT EXISTS projects (
   pinned INTEGER DEFAULT 0,         -- 1=置顶
   category_id INTEGER,              -- 自定义分类（categories.id；NULL=默认「最近」）
   workspace TEXT,                   -- 项目工作区绝对路径（共享目录属主真源）
+  repo TEXT,                        -- 绑定代码仓根（rev11：任务目录落 <repo>/tasks/，宪法链带仓规则；NULL=自建工作区）
   profile TEXT,                     -- 项目宪法渲染 profile + 子任务默认角色
   skills_json TEXT,                 -- 子任务默认 skills
   mcp_json TEXT,                    -- 子任务默认 MCP 覆盖
@@ -332,9 +334,11 @@ def _migrate(c: sqlite3.Connection) -> None:
         c.execute("ALTER TABLE sessions ADD COLUMN category_id INTEGER")
     pcols = {r["name"] for r in c.execute("PRAGMA table_info(projects)")}
     for col, ddl in (("starred", "INTEGER DEFAULT 0"), ("pinned", "INTEGER DEFAULT 0"),
-                     ("category_id", "INTEGER")):
+                     ("category_id", "INTEGER"), ("repo", "TEXT")):
         if col not in pcols:
-            # 任务/项目统一的侧栏分区位（置顶/收藏/自定义分类）
+            # 任务/项目统一的侧栏分区位（置顶/收藏/自定义分类）；
+            # repo=绑定代码仓根（rev11 项目规则遵循：任务目录落 <repo>/tasks/，
+            # 宪法祖先链自动带上仓内 CLAUDE.md/AGENTS.md，绑定即 admit）
             c.execute(f"ALTER TABLE projects ADD COLUMN {col} {ddl}")
     # 八轮（多用户）：属主列——cookie 会话通道的隔离判定（NULL=legacy
     # token 时代，setup 首个 admin 建立时归并）
