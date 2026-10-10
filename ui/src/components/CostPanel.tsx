@@ -51,16 +51,18 @@ const BUILTIN_TOOLS = new Set(['Bash', 'Read', 'Write', 'Edit', 'WebSearch', 'We
 export default function CostTab() {
   const [data, setData] = useState<CostStats | null>(null);
   const [err, setErr] = useState('');
+  const [days, setDays] = useState(30);   // AC-4.3a：时间窗口可选（原硬编码 30 天）
   const openSession = useStore(s => s.openSession);
 
-  const reload = async () => {
+  const reload = async (d = days) => {
     try {
-      setData(await api<CostStats>('/api/stats/cost?days=30'));
+      setData(await api<CostStats>(`/api/stats/cost?days=${d}`));
+      setErr('');
     } catch (e) {
       setErr(String(e instanceof Error ? e.message : e));
     }
   };
-  useEffect(() => { void reload(); }, []);
+  useEffect(() => { void reload(); }, []);   // eslint-disable-line
 
   const openAndLeave = (sid: string) => {
     location.hash = '';
@@ -71,6 +73,10 @@ export default function CostTab() {
     <div className="admin-body cost-tab">
       <div className="admin-toolbar">
         <span className="muted">三口径成本核算：CLI 假价（虚高）/ z.ai API 按量真价 / Coding Plan 积分</span>
+        {[7, 30, 90].map(d => (
+          <button key={d} className={`chip${days === d ? ' on' : ''}`}
+            onClick={() => { setDays(d); void reload(d); }}>{d} 天</button>
+        ))}
         <button className="btn ghost sm" onClick={() => void reload()}>
           <RotateCw size={13} /> 刷新
         </button>
@@ -161,6 +167,17 @@ ${fmtTokens(d.tokens)} tokens · ${d.turns} turns`}>
                     <td className="mono-cell">{Math.round(m.plan_credits).toLocaleString('en-US')}</td>
                   </tr>
                 ))}
+                {/* AC-4.3a：合计行（UX C8）——总量一眼可得 */}
+                <tr style={{ borderTop: '2px solid var(--border)', fontWeight: 600 }}>
+                  <td>合计</td>
+                  <td className="mono-cell">{data.by_model.reduce((s, m) => s + m.turns, 0)}</td>
+                  <td className="mono-cell">{fmtTokens(data.by_model.reduce((s, m) => s + m.input, 0))}</td>
+                  <td className="mono-cell">{fmtTokens(data.by_model.reduce((s, m) => s + m.cache_read, 0))}</td>
+                  <td className="mono-cell">{fmtTokens(data.by_model.reduce((s, m) => s + m.output, 0))}</td>
+                  <td className="mono-cell">{data.by_model.reduce((s, m) => s + (m.web_search_requests || 0), 0)}</td>
+                  <td className="mono-cell">{fmtUsd(data.by_model.reduce((s, m) => s + m.cost_api_usd, 0))}</td>
+                  <td className="mono-cell">{Math.round(data.by_model.reduce((s, m) => s + m.plan_credits, 0)).toLocaleString('en-US')}</td>
+                </tr>
               </tbody>
             </table>
           </div>
