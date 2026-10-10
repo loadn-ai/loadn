@@ -19,7 +19,8 @@ def decide_approval(aid: int, body: dict):
     # 多用户批2：裁决权=会话属主（越权=404 不暴露存在性；token/宽限通道
     # user=None 放行——CLI 与渠道线程兼容）
     _u = _ua.current_user()
-    _is_admin = _u is not None and _u.get("role") == "admin"
+    # 注意 _u 是 sqlite3.Row（session_user fetchone），无 .get——下标访问
+    _is_admin = _u is not None and _u["role"] == "admin"
     if _u is not None and not _is_admin:
         try:
             _sid = approve_mod.status(aid)["sid"]
