@@ -1,0 +1,4 @@
+# CODEOWNERS：PR 自动请求 review。
+# 当前为维护 org 整体负责；引入分工后可按路径细分
+# （如 /loadn/ @engine-owners、/ui/ @frontend-owners）。
+* @loadn-ai

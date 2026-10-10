@@ -1,0 +1,26 @@
+# https://editorconfig.org——跨编辑器一致性（对齐仓库 ruff/pyproject 约定）
+root = true
+
+[*]
+charset = utf-8
+end_of_line = lf
+insert_final_newline = true
+trim_trailing_whitespace = true
+
+[*.py]
+indent_style = space
+indent_size = 4
+max_line_length = 100   # 对齐 pyproject [tool.ruff] line-length
+
+[*.{js,jsx,ts,tsx,json,yaml,yml,css,html}]
+indent_style = space
+indent_size = 2
+
+[*.md]
+indent_style = space
+indent_size = 2
+# 行尾双空格是 md 换行语法，不裁剪
+trim_trailing_whitespace = false
+
+[Makefile]
+indent_style = tab
