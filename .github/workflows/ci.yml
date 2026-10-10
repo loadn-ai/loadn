@@ -8,9 +8,19 @@ on:
   schedule:
     - cron: '23 4 * * 1'   # 周一 04:23 UTC（audit job）
 
+# 最小权限：全部 job 只读（无发布需求；publish.yml 自带 id-token: write）
+permissions:
+  contents: read
+
+# 同分支/同 PR 新 push 取消旧 run（省额度；schedule 周一单次触发不互踩）
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
 jobs:
   lint:
     runs-on: ubuntu-latest
+    timeout-minutes: 5
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
@@ -21,6 +31,7 @@ jobs:
 
   models-catalog:
     runs-on: ubuntu-latest
+    timeout-minutes: 5
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
@@ -30,6 +41,7 @@ jobs:
 
   evals:
     runs-on: ubuntu-latest
+    timeout-minutes: 20
     if: github.event_name == 'schedule'   # nightly 发布门（P3-2；红=阻断）
     steps:
       - uses: actions/checkout@v4
@@ -46,6 +58,7 @@ jobs:
 
   test:
     runs-on: ubuntu-latest
+    timeout-minutes: 20
     strategy:
       fail-fast: false
       matrix:
@@ -64,6 +77,7 @@ jobs:
     # T1（tests/TEST-PLAN.md）：双包行覆盖率 + 门禁（基线 78.8%；
     # 每张 T 卡收口时收紧 fail-under——TEST-PLAN §六目标 85%）
     runs-on: ubuntu-latest
+    timeout-minutes: 20
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
@@ -78,6 +92,7 @@ jobs:
   ui:
     # 前端可构建（tsc + vite build），dist 不入库但随 release 发布
     runs-on: ubuntu-latest
+    timeout-minutes: 15
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
@@ -92,6 +107,7 @@ jobs:
 
   secrets:
     runs-on: ubuntu-latest
+    timeout-minutes: 5
     steps:
       - uses: actions/checkout@v4
         with:
@@ -104,6 +120,7 @@ jobs:
     # 平台全量（loadn_webui）：webui extras + 同 venv 引擎（契约对赌需要
     # loadn console_script）。legacy 资产依赖的测试自带 skipif。
     runs-on: ubuntu-latest
+    timeout-minutes: 25   # 含 playwright 浏览器安装
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
@@ -119,6 +136,7 @@ jobs:
     # 供应链：依赖漏洞周扫（pip-audit 对 extras 全量解析）
     if: github.event_name == 'schedule'
     runs-on: ubuntu-latest
+    timeout-minutes: 10
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
