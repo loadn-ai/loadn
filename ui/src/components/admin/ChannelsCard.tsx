@@ -4,6 +4,7 @@ import { useEffect, useState } from 'react';
 import { api } from '../../api/client';
 import { toast } from '../../stores/toasts';
 import { useStore } from '../../stores/sessions';
+import { User } from '../icons';
 
 interface ChanCfg { telegram_enabled: boolean; telegram_allow: string[]; token_set: boolean }
 interface ChanStat { running: boolean; last_ok: string; last_error: string; processed: number; backoff_s: number }
@@ -117,7 +118,7 @@ export default function ChannelsCard() {
                      } catch (e) {
                        alert(`设置失败：${e instanceof Error ? e.message : e}`);
                      }
-                   }}>{b.owner_name ? `👤 ${b.owner_name}` : '👤 认领'}</a>
+                   }}><User size={12} style={{ verticalAlign: -2 }} /> {b.owner_name || '认领'}</a>
               </span>
             </div>
           ))}

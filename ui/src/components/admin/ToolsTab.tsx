@@ -73,17 +73,18 @@ export default function ToolsTab() {
           </table>
           </div>
           <h4 className="admin-h4">内建工具开关 <span className="muted">（按角色禁用，写 registry.yaml，新会话生效）</span></h4>
+          {/* AC-5.10b D10：转置为「工具为行、角色为列」——工具 20+ 时不再横向膨胀，角色列固定可对照 */}
           <div className="tbl-wrap">
           <table className="mcp-table">
-            <thead><tr><th>角色</th>{builtin.map(t => <th key={t}>{t}</th>)}</tr></thead>
+            <thead><tr><th>内建工具 ＼ 角色</th>{profiles.map(p => <th key={p.name}>{p.name}</th>)}</tr></thead>
             <tbody>
-              {profiles.map(p => (
-                <tr key={p.name}>
-                  <td>{p.name}</td>
-                  {builtin.map(t => {
+              {builtin.map(t => (
+                <tr key={t}>
+                  <td className="mono-cell">{t}</td>
+                  {profiles.map(p => {
                     const off = p.disallowed_tools.includes(t);
                     return (
-                      <td key={t}>
+                      <td key={p.name}>
                         <button className={`chip ${off ? '' : 'on'}`}
                           onClick={() => void toggleTool(p, t)}>{off ? '已禁用' : '启用'}</button>
                       </td>
@@ -91,6 +92,7 @@ export default function ToolsTab() {
                   })}
                 </tr>
               ))}
+              {builtin.length === 0 && <tr><td colSpan={Math.max(profiles.length + 1, 2)} className="muted">无内建工具</td></tr>}
             </tbody>
           </table>
           </div>

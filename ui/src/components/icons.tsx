@@ -1,16 +1,16 @@
 /** 轻量线性图标集（feather 风格，24 viewBox / currentColor）——替代按钮里的 emoji，
  *  保证明暗主题、各平台渲染一致。size 走 props，默认 16。 */
-import type { ReactNode } from 'react';
+import type { CSSProperties, ReactNode } from 'react';
 
-type IconProps = { size?: number; className?: string };
+type IconProps = { size?: number; className?: string; style?: CSSProperties };
 
-function Svg({ size = 16, className, strokeWidth = 1.9, children }: IconProps & {
+function Svg({ size = 16, className, style, strokeWidth = 1.9, children }: IconProps & {
   children: ReactNode; strokeWidth?: number;
 }) {
   return (
     <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor"
          strokeWidth={strokeWidth} strokeLinecap="round" strokeLinejoin="round"
-         aria-hidden="true" className={className}>{children}</svg>
+         aria-hidden="true" className={className} style={style}>{children}</svg>
   );
 }
 
@@ -263,4 +263,25 @@ export const Layers = (p: IconProps) => (
 
 export const Users = (p: IconProps) => (
   <Svg {...p}><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2" /><circle cx="9" cy="7" r="4" /><path d="M23 21v-2a4 4 0 0 0-3-3.87" /><path d="M16 3.13a4 4 0 0 1 0 7.75" /></Svg>
+);
+
+/* AC-5.10b：emoji→线性图标补充件（feather 同源路径）——姿态卡/资源卡/渠道卡 */
+export const Lock = (p: IconProps) => (
+  <Svg {...p}><rect x="3" y="11" width="18" height="11" rx="2" /><path d="M7 11V7a5 5 0 0 1 10 0v4" /></Svg>
+);
+
+export const Key = (p: IconProps) => (
+  <Svg {...p}><path d="M21 2l-2 2m-7.61 7.61a5.5 5.5 0 1 1-7.778 7.778 5.5 5.5 0 0 1 7.777-7.777zm0 0L15.5 7.5m0 0l3 3L22 7l-3-3-3.5 3.5z" /></Svg>
+);
+
+export const Shield = (p: IconProps) => (
+  <Svg {...p}><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z" /></Svg>
+);
+
+export const User = (p: IconProps) => (
+  <Svg {...p}><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2" /><circle cx="12" cy="7" r="4" /></Svg>
+);
+
+export const Crosshair = (p: IconProps) => (
+  <Svg {...p}><circle cx="12" cy="12" r="10" /><path d="M22 12h-4M6 12H2M12 6V2M12 22v-4" /></Svg>
 );

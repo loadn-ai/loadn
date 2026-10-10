@@ -6,6 +6,7 @@ import { useEffect, useState } from 'react';
 import { api } from '../api/client';
 import { toast } from '../stores/toasts';
 import ChannelsCard from './admin/ChannelsCard';
+import { Lock, Zap, Key, Shield } from './icons';
 
 interface ServiceItem { key: string; label: string; note: string; value: string; kind: string }
 interface SecretItem { key: string; set: boolean }
@@ -214,8 +215,8 @@ export default function ResourcesPanel() {
           <button key={k} className={`tab ${sec === k ? 'on' : ''}`} onClick={() => setSec(k)}>{lb}</button>
         ))}
         <span className="spacer" />
-        <span className="muted" style={{ fontSize: 12 }}>
-          🔒 密钥 AES-GCM 加密存储 · 明文不落配置、不回显
+        <span className="muted" style={{ fontSize: 12, display: 'inline-flex', alignItems: 'center', gap: 4 }}>
+          <Lock size={13} /> 密钥 AES-GCM 加密存储 · 明文不落配置、不回显
         </span>
       </div>
 
@@ -225,7 +226,7 @@ export default function ResourcesPanel() {
           <div className="res-toolbar" style={{ marginBottom: 0 }}>
             <button className="res-btn" style={{ fontSize: 12, padding: '5px 12px' }}
               disabled={!!pinging} onClick={() => void pingAll()}>
-              {pinging === '__all__' ? '探测中…' : '⚡ 全部探测'}
+              {pinging === '__all__' ? '探测中…' : <><Zap size={13} style={{ verticalAlign: -2 }} /> 全部探测</>}
             </button>
             <button className="res-btn" style={{ fontSize: 12, padding: '5px 12px' }}
               onClick={() => setSvcAdd({ name: '', url: '', note: '' })}>＋ 新增服务</button>
@@ -307,7 +308,7 @@ export default function ResourcesPanel() {
                           <span key={sk} className={`res-secret-chip ${secretSet(sk) ? '' : 'unset'}`}
                             title={`${SECRET_ZH[sk]}：点击设置（只写不读，${secretSet(sk) ? '已加密保存' : '未设置'}）`}
                             onClick={() => { setSecretInput(sk); setSecretVal(''); }}>
-                            🔑 {SECRET_ZH[sk]} {secretSet(sk) ? '已加密' : '未设'}
+                            <><Key size={12} style={{ verticalAlign: -2 }} /> {SECRET_ZH[sk]} {secretSet(sk) ? '已加密' : '未设'}</>
                           </span>
                         ))}
                       </div>
@@ -384,7 +385,7 @@ export default function ResourcesPanel() {
                       <span className={`res-secret-chip ${c.key_set ? '' : 'unset'}`}
                         title={`密钥 AES-GCM 加密保管（不注入任务环境）；${c.key_set ? '已加密保存' : '未设置'}`}
                         onClick={() => { setSecretInput(`svc:${c.name}`); setSecretVal(''); }}>
-                        🔑 密钥 {c.key_set ? '已加密' : '未设'}
+                        <><Key size={12} style={{ verticalAlign: -2 }} /> 密钥 {c.key_set ? '已加密' : '未设'}</>
                       </span>
                     )}
                     <button className="res-btn" disabled={pinging === `svc:${c.name}`}
@@ -433,16 +434,16 @@ export default function ResourcesPanel() {
       {sec === 'vault' && (
         <>
           <div className="res-addbar focused" style={{ marginBottom: 10, cursor: 'pointer' }} onClick={gotoVaultHome}>
-            <span>🔐 凭证库的增删改已收敛到「安全」tab（八字段编辑器，同源审计）</span>
+            <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}><Lock size={14} /> 凭证库的增删改已收敛到「安全」tab（八字段编辑器，同源审计）</span>
             <button className="res-btn" style={{ marginLeft: 'auto' }}>前往安全 tab 管理 →</button>
           </div>
           <div className="res-toolbar" style={{ marginBottom: 0 }}>
             <input className="res-search" placeholder="搜索平台 / 账号…" value={vSearch}
               onChange={e => setVSearch(e.target.value)} />
             <span className="spacer" />
-            <span className="muted" style={{ fontSize: 12 }}>
+            <span className="muted" style={{ fontSize: 12, display: 'inline-flex', alignItems: 'center', gap: 4 }}>
               {data.vault.verify.ok
-                ? `🛡 加密库健康 · ${data.vault.verify.entries} 条 · AES-GCM`
+                ? <><Shield size={13} /> 加密库健康 · {data.vault.verify.entries} 条 · AES-GCM</>
                 : `⚠ 校验失败：${data.vault.verify.error ?? '未知'}`}
             </span>
           </div>

@@ -2,9 +2,10 @@
 // 交互模型：每张姿态卡是入口（master）——点开下方详情面板（detail），
 // 详情按卡各自取数：沙箱=近期任务隔离记录 / 审批=待审清单 / 出口=域聚合 /
 // vault=条目+完整性 / 账本=跳到事件流 / 蜜罐=锁定会话可解锁。
-import { Fragment, useEffect, useRef, useState } from 'react';
+import { Fragment, useEffect, useRef, useState, type ReactNode } from 'react';
 import { api } from '../api/client';
 import { useStore } from '../stores/sessions';
+import { Box, Lock, Crosshair, Globe, Key, FileDoc, Flask } from './icons';
 
 interface Posture {
   sandbox: { mode: string; requested?: string; effective?: string; reason?: string;
@@ -262,16 +263,17 @@ export default function SecurityPanel() {
     : egressWarn
       ? '白名单外的域放行但逐条告警。可在下方「出口策略」切回强制。'
       : '所有外联直通（审计仍逐条记录）。可在下方「出口策略」切回强制/告警。';
-  const cards: { key: CardKey; name: string; ok: boolean; warn?: boolean; icon: string;
+  // AC-5.10b：emoji→feather 线性图标（路亮/暗主题与各平台渲染一致）
+  const cards: { key: CardKey; name: string; ok: boolean; warn?: boolean; icon: ReactNode;
     top: string; sub: string; hint?: string; danger?: boolean }[] = [
     {
-      key: 'sandbox', name: '沙箱隔离', ok: sandboxOk, warn: sandboxWarn, icon: '📦',
+      key: 'sandbox', name: '沙箱隔离', ok: sandboxOk, warn: sandboxWarn, icon: <Box size={14} />,
       top: sandboxTop,
       sub: 'AI 执行的命令被关在隔离环境里，碰不到系统其它文件与真实网络。档位在明细里可切（下一任务起生效）。',
       hint: sandboxHint,
     },
     {
-      key: 'approvals', name: '敏感操作审批', ok: policyOk, warn: policyWarn, icon: '🔐',
+      key: 'approvals', name: '敏感操作审批', ok: policyOk, warn: policyWarn, icon: <Lock size={14} />,
       top: policyOk ? '强制（高危操作须输确认码）' : policyWarn ? '仅告警（不拦截）' : posture.policy.approval_enforce,
       sub: '发邮件、动账号、付款类操作执行前需要你输确认码放行，AI 无法自行通过。TTL 可在明细里调。',
       hint: policyOk ? undefined : '当前不拦截：在下方明细把 approval_enforce 切为 enforce。',
@@ -279,29 +281,29 @@ export default function SecurityPanel() {
     {
       // 七轮补 UI（设定审计#1）：P10 per-target 三档策略的管理面——此前
       // 全链零 UI（只能直接调 API），「始终允许」建了策略也没处看/删
-      key: 'target', name: '目标放行策略', ok: true, icon: '🎯',
+      key: 'target', name: '目标放行策略', ok: true, icon: <Crosshair size={14} />,
       top: '常设放行/拒绝清单',
       sub: '审批卡的「始终允许」落在这里：按目标域名/动作类/确切参数三档窄化，可改档可删。',
     },
     {
-      key: 'egress', name: '网络出口管控', ok: egressOk, warn: egressWarn, icon: '🌐',
+      key: 'egress', name: '网络出口管控', ok: egressOk, warn: egressWarn, icon: <Globe size={14} />,
       top: egressTop,
       sub: 'AI 的所有对外请求经过代理；模型调用走内部网关，凭证不进沙箱。策略在下方「出口策略」即时可调。',
       hint: egressHint,
     },
     {
-      key: 'vault', name: '凭证保险库', ok: posture.vault.platforms > 0, icon: '🗝️',
+      key: 'vault', name: '凭证保险库', ok: posture.vault.platforms > 0, icon: <Key size={14} />,
       top: `${posture.vault.platforms} 组账号 · AES-GCM 加密`,
       sub: '各类账号密码加密落盘，明文不出现在代码、配置和日志里。',
       hint: posture.vault.platforms > 0 ? undefined : '尚无凭证入库：用 loadn-web r account --set 添加。',
     },
     {
-      key: 'audit', name: '审计账本', ok: true, icon: '🧾',
+      key: 'audit', name: '审计账本', ok: true, icon: <FileDoc size={14} />,
       top: `防篡改 · 已记 ${posture.audit.last_id} 条 · ${posture.audit.anchors} 个锚点`,
       sub: '敏感操作全部入链式账本，任何人（包括管理员）改一行都会被校验发现。点卡跳到事件流。',
     },
     {
-      key: 'canary', name: '蜜罐诱饵', ok: !posture.canary.kill_all, icon: '🪤',
+      key: 'canary', name: '蜜罐诱饵', ok: !posture.canary.kill_all, icon: <Flask size={14} />,
       top: posture.canary.kill_all ? '全局熔断激活中！'
         : posture.canary.locked_sessions.length
           ? `${posture.canary.locked_sessions.length} 个会话触发警报`
@@ -340,7 +342,7 @@ export default function SecurityPanel() {
             onMouseEnter={e => { if (!c.danger && open !== c.key) e.currentTarget.style.borderColor = 'var(--accent)'; }}
             onMouseLeave={e => { if (!c.danger && open !== c.key) e.currentTarget.style.borderColor = 'var(--border)'; }}>
             <div style={{ display: 'flex', alignItems: 'center', fontWeight: 600 }}>
-              <Dot ok={c.ok} warn={c.warn} /><span style={{ marginRight: 6 }}>{c.icon}</span>{c.name}
+              <Dot ok={c.ok} warn={c.warn} /><span style={{ marginRight: 6, display: 'inline-flex', verticalAlign: '-2px' }}>{c.icon}</span>{c.name}
               <span className="muted" style={{ marginLeft: 'auto', fontSize: 11 }}>
                 {c.key === 'audit' ? '事件流 ›' : open === c.key ? '收起 ⌃' : '明细 ›'}
               </span>
