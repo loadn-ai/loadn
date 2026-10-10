@@ -606,7 +606,7 @@ button:focus-visible, .tab:focus-visible, .chip:focus-visible {
   margin-right: 5px; vertical-align: -1px; }
 .cost-legend .dot.api { background: var(--accent); }
 .cost-legend .dot.cli { background: var(--text-dim); opacity: .3; }
-.mcp-table .chip { cursor: default; padding: 2px 9px; font-size: 10.5px; margin-left: 6px; }
+.mcp-table .chip { padding: 2px 9px; font-size: 10.5px; margin-left: 6px; }   /* cursor 见下方 AC-5.7 收窄规则 */
 .mcp-table .chip.mcp { color: var(--accent2); }
 .mcp-table .chip.warn { color: var(--yellow); }
 .mcp-table tr.clickable { cursor: pointer; }
@@ -745,7 +745,7 @@ button:focus-visible, .tab:focus-visible, .chip:focus-visible {
   border-color: color-mix(in srgb, var(--danger, #e5484d) 45%, transparent); }
 @keyframes toast-in { from { opacity: 0; transform: translateX(10px); }
   to { opacity: 1; transform: none; } }
-.hub-card { background: var(--bg3); border: 1px solid var(--border); border-radius: 10px;
+.hub-card { background: var(--bg3); border: 1px solid var(--border); border-radius: 12px;   /* AC-5.7：与其余卡片圆角对齐 */
   padding: 11px 13px; display: flex; flex-direction: column; gap: 5px; }
 .hub-card.slim { flex-direction: row; align-items: center; justify-content: space-between; }
 .hub-card.on { border-color: color-mix(in srgb, var(--accent) 45%, var(--border));
@@ -757,7 +757,23 @@ button:focus-visible, .tab:focus-visible, .chip:focus-visible {
   outline: none; align-self: stretch; }
 .install-warn { margin-top: 14px; font-size: 12px; color: var(--red); opacity: .85; }
 
+/* AC-5.7：工具栏/表格/表单内裸 select/input 统一面（此前仅 font:inherit——
+   暗色下浏览器默认白底或透明无边框不可辨） */
+.admin-toolbar select, .admin-toolbar input:not([type='checkbox']):not([type='radio']),
+.mcp-table select, .mcp-table input:not([type='checkbox']):not([type='radio']),
+.new-skill-form select, .sched-grid-2 select, .sched-grid-2 input,
+.mem-cols select, .mem-cols input {
+  background: var(--bg3); color: var(--text);
+  border: 1px solid var(--border); border-radius: 8px;
+  padding: 5px 8px; font-size: 13px;
+}
+.admin-toolbar select:focus, .admin-toolbar input:focus,
+.mcp-table select:focus, .mcp-table input:focus {
+  outline: none; border-color: color-mix(in srgb, var(--accent) 45%, transparent);
+}
+button.chip { cursor: pointer; }   /* AC-5.7：可点 chip 光标兜底 */
 .mcp-table { width: 100%; border-collapse: collapse; font-size: 13px; }
+.mcp-table .chip:not(button) { cursor: default; }   /* AC-5.7：收窄到非按钮 chip（原全量 default 误伤表内开关） */
 .mcp-table th { text-align: left; color: var(--text-dim); font-weight: 500; font-size: 12px;
   padding: 8px 10px; border-bottom: 1px solid var(--border); }
 .mcp-table td { padding: 9px 10px; border-bottom: 1px solid var(--border); }
@@ -1094,7 +1110,7 @@ button.attach-chip:hover { border-color: color-mix(in srgb, var(--accent) 40%, v
   vertical-align: middle; overflow: hidden; text-overflow: ellipsis;
 }
 .kv-table tbody tr { transition: background .12s; }
-.kv-table tbody tr:hover { background: var(--accent-soft); }
+.kv-table tbody tr:hover { background: var(--bg3); }   /* AC-5.7：与 mcp-table/tasks-table 同色（原 accent-soft 与选中态混淆） */
 .kv-table td code, .kv-table td.mono { font-family: ui-monospace, 'SF Mono', Menlo, Consolas, monospace; font-size: 12px; }
 
 /* ================ 资源中心 ================ */
