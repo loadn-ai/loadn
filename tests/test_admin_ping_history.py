@@ -18,18 +18,22 @@ from loadn_webui.util import iso
 
 async def test_ping_test_writes_history(client):
     """>>> 探测即落库：未知目标（无网络请求路径）ok=0 也入历史。"""
-    r = await client.post("/api/admin/resources/test",
-                          json={"only": ["__no_such_target__"]})
-    assert r.status_code == 200
-    body = r.json()
-    assert body["results"]["__no_such_target__"]["ok"] is False
-    with db_mod.conn() as c:
-        rows = c.execute(
-            "SELECT target, ok, msg FROM ping_history "
-            "WHERE target = '__no_such_target__'").fetchall()
-    assert len(rows) == 1, "探测结果必须落 ping_history"
-    assert rows[0]["ok"] == 0
-    assert "未知资源" in rows[0]["msg"]
+    try:
+        r = await client.post("/api/admin/resources/test",
+                              json={"only": ["__no_such_target__"]})
+        assert r.status_code == 200
+        body = r.json()
+        assert body["results"]["__no_such_target__"]["ok"] is False
+        with db_mod.conn() as c:
+            rows = c.execute(
+                "SELECT target, ok, msg FROM ping_history "
+                "WHERE target = '__no_such_target__'").fetchall()
+        assert len(rows) == 1, "探测结果必须落 ping_history"
+        assert rows[0]["ok"] == 0
+        assert "未知资源" in rows[0]["msg"]
+    finally:   # 测试卫生：不留探测行给后续合跑
+        with db_mod.conn() as c:
+            c.execute("DELETE FROM ping_history WHERE target='__no_such_target__'")
 
 
 def _seed(rows: list[tuple[str, int, int | None, str]]) -> None:

@@ -35,28 +35,37 @@ async def test_by_owner_buckets_and_full_cover(client, ws_root):
 
 
 async def test_by_owner_named_user_bucket(client, ws_root, monkeypatch):
-    """>>> cookie 用户会话归 username 桶（owner_id→users.username join 正确）。"""
+    """>>> cookie 用户会话归 username 桶（owner_id→users.username join 正确）。
+
+    测试卫生：结束时清掉自造的 users/sessions/turns 行——users 残留会破坏
+    e2e_ui conftest 的「首跑 /api/auth/setup」前提（已有账号体系→403）。
+    """
     from loadn_webui import db as db_mod
+    sid = "sess-byowner-test-1"
+    try:
+        # 直接在库内造一个有主会话 + turn（绕开完整登录流——归属是本测焦点）
+        with db_mod.conn() as c:
+            c.execute("INSERT OR IGNORE INTO users(username, password_hash, role, created_at)"
+                      " VALUES('byowner-alice', 'x', 'user', '2026-01-01T00:00:00')")
+            uid = c.execute("SELECT id FROM users WHERE username='byowner-alice'"
+                            ).fetchone()["id"]
+            c.execute(
+                "INSERT INTO sessions(id, title, profile, created_at, updated_at, owner_id)"
+                " VALUES(?, 'by_owner 归属测', 'default', '2026-01-01T00:00:00',"
+                " '2026-01-01T00:00:00', ?)", (sid, uid))
+            c.execute(
+                "INSERT INTO turns(session_id, status, started_at, finished_at, cost_usd)"
+                " VALUES(?, 'done', '2026-01-01T00:00:00', '2026-01-01T00:00:01', 0.01)",
+                (sid,))
 
-    # 直接在库内造一个有主会话 + turn（绕开完整登录流——owner 归属是本测焦点）
-    with db_mod.conn() as c:
-        c.execute("INSERT OR IGNORE INTO users(username, password_hash, role, created_at)"
-                  " VALUES('byowner-alice', 'x', 'user', '2026-01-01T00:00:00')")
-        uid = c.execute("SELECT id FROM users WHERE username='byowner-alice'"
-                        ).fetchone()["id"]
-        sid = "sess-byowner-test-1"
-        c.execute(
-            "INSERT INTO sessions(id, title, profile, created_at, updated_at, owner_id)"
-            " VALUES(?, 'by_owner 归属测', 'default', '2026-01-01T00:00:00',"
-            " '2026-01-01T00:00:00', ?)", (sid, uid))
-        c.execute(
-            "INSERT INTO turns(session_id, status, started_at, finished_at, cost_usd)"
-            " VALUES(?, 'done', '2026-01-01T00:00:00', '2026-01-01T00:00:01', 0.01)",
-            (sid,))
-
-    d = (await client.get("/api/stats/cost")).json()
-    owners = {o["owner"]: o for o in d["by_owner"]}
-    assert "byowner-alice" in owners, "有主会话须归 username 桶"
-    assert owners["byowner-alice"]["turns"] >= 1
-    # 覆盖对赌仍成立（无主桶 + 具名桶 == 总量）
-    assert sum(o["turns"] for o in d["by_owner"]) == d["totals"]["turns"]
+        d = (await client.get("/api/stats/cost")).json()
+        owners = {o["owner"]: o for o in d["by_owner"]}
+        assert "byowner-alice" in owners, "有主会话须归 username 桶"
+        assert owners["byowner-alice"]["turns"] >= 1
+        # 覆盖对赌仍成立（无主桶 + 具名桶 == 总量）
+        assert sum(o["turns"] for o in d["by_owner"]) == d["totals"]["turns"]
+    finally:
+        with db_mod.conn() as c:
+            c.execute("DELETE FROM turns WHERE session_id=?", (sid,))
+            c.execute("DELETE FROM sessions WHERE id=?", (sid,))
+            c.execute("DELETE FROM users WHERE username='byowner-alice'")
