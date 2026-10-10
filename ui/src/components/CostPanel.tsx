@@ -13,6 +13,7 @@ interface ModelRow {
 }
 interface DayRow { day: string; turns: number; tokens: number; cost_cli_usd: number; cost_api_usd: number }
 interface ProfileRow { profile: string; turns: number; tokens: number; cost_cli_usd: number; cost_api_usd: number }
+interface OwnerRow { owner: string; turns: number; tokens: number; cost_cli_usd: number; cost_api_usd: number }
 interface SessionRow { sid: string; title: string; profile: string; turns: number; tokens: number; cost_cli_usd: number; cost_api_usd: number }
 interface ToolRow { name: string; calls: number; errors: number }
 interface PriceTier { input: number; cache_read?: number; output: number; cache_input?: number }
@@ -25,6 +26,7 @@ interface CostStats {
   by_model: ModelRow[];
   daily: DayRow[];
   by_profile: ProfileRow[];
+  by_owner: OwnerRow[];   // BC-2（AC-4.3c）：按属主聚合（多用户计费归因）
   top_sessions: SessionRow[];
   tools: ToolRow[];
   pricing: {
@@ -200,6 +202,44 @@ ${fmtTokens(d.tokens)} tokens · ${d.turns} turns`}>
                 ))}
               </tbody>
             </table>
+          </div>
+
+          {/* ---- 按用户 / 按角色（BC-2：多用户计费归因；by_profile 此前拉而不用一并补上） ---- */}
+          <div className="kpi-row">
+            <div className="cost-chart-card setting-card">
+              <h4 className="admin-h4">按用户</h4>
+              <table className="mcp-table">
+                <thead><tr><th>属主</th><th>turns</th><th>tokens</th><th>真实成本</th><th>CLI 口径</th></tr></thead>
+                <tbody>
+                  {data.by_owner.map(o => (
+                    <tr key={o.owner}>
+                      <td>{o.owner === '(无主)' ? <span className="muted">(无主——token/legacy)</span> : o.owner}</td>
+                      <td className="mono-cell">{o.turns}</td>
+                      <td className="mono-cell">{fmtTokens(o.tokens)}</td>
+                      <td className="mono-cell">{fmtUsd(o.cost_api_usd)}</td>
+                      <td className="mono-cell dim">{fmtUsd(o.cost_cli_usd)}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+            <div className="cost-chart-card setting-card">
+              <h4 className="admin-h4">按角色</h4>
+              <table className="mcp-table">
+                <thead><tr><th>角色</th><th>turns</th><th>tokens</th><th>真实成本</th><th>CLI 口径</th></tr></thead>
+                <tbody>
+                  {data.by_profile.map(p => (
+                    <tr key={p.profile}>
+                      <td>{p.profile}</td>
+                      <td className="mono-cell">{p.turns}</td>
+                      <td className="mono-cell">{fmtTokens(p.tokens)}</td>
+                      <td className="mono-cell">{fmtUsd(p.cost_api_usd)}</td>
+                      <td className="mono-cell dim">{fmtUsd(p.cost_cli_usd)}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
           </div>
 
           {/* ---- Top 会话 ---- */}

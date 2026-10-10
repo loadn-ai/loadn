@@ -43,6 +43,7 @@ def stats_cost(days: int = 14):
     models: dict[str, dict] = {}          # 展示名（原始模型名 or "(未记录)"）→ 聚合
     daily: dict[str, dict] = {}
     profiles: dict[str, dict] = {}
+    owners: dict[str, dict] = {}        # BC-2（AC-4.3c）：按属主聚合（多用户计费归因；无主=token/legacy 会话）
     sess_agg: dict[str, dict] = {}
 
     def _m_row(name: str, assumed: bool) -> dict:
@@ -55,8 +56,9 @@ def stats_cost(days: int = 14):
     with db_mod.conn() as c:
         rows = c.execute(
             """SELECT t.id, t.session_id, t.cost_usd, t.usage_json, t.models_json,
-                      t.started_at, s.profile, s.title
-               FROM turns t LEFT JOIN sessions s ON s.id=t.session_id""").fetchall()
+                      t.started_at, s.profile, s.title, u.username AS owner
+               FROM turns t LEFT JOIN sessions s ON s.id=t.session_id
+               LEFT JOIN users u ON u.id=s.owner_id""").fetchall()
         for r in rows:
             turns_n += 1
             sids.add(r["session_id"])
@@ -116,6 +118,10 @@ def stats_cost(days: int = 14):
                                                           "cost_api_usd": 0.0, "tokens": 0})
             p["turns"] += 1; p["cost_cli_usd"] += turn_cli
             p["cost_api_usd"] += turn_api; p["tokens"] += tu
+            ow = owners.setdefault(r["owner"] or "(无主)", {"turns": 0, "cost_cli_usd": 0.0,
+                                                            "cost_api_usd": 0.0, "tokens": 0})
+            ow["turns"] += 1; ow["cost_cli_usd"] += turn_cli
+            ow["cost_api_usd"] += turn_api; ow["tokens"] += tu
             sa = sess_agg.setdefault(r["session_id"], {
                 "sid": r["session_id"], "title": r["title"] or r["session_id"],
                 "profile": r["profile"] or "?", "turns": 0,
@@ -155,6 +161,11 @@ def stats_cost(days: int = 14):
                         "cost_api_usd": _r2(v["cost_api_usd"])}
                        for k, v in sorted(profiles.items(),
                                           key=lambda kv: -kv[1]["cost_api_usd"])],
+        "by_owner": [{"owner": k, "turns": v["turns"], "tokens": v["tokens"],
+                      "cost_cli_usd": _r2(v["cost_cli_usd"]),
+                      "cost_api_usd": _r2(v["cost_api_usd"])}
+                     for k, v in sorted(owners.items(),
+                                        key=lambda kv: -kv[1]["cost_api_usd"])],
         "top_sessions": sorted(sess_agg.values(), key=lambda s: -s["cost_api_usd"])[:10],
         "tools": tools,
         "pricing": pricing_mod.pricing_overview(),
