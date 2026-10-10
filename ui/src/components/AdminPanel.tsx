@@ -19,6 +19,7 @@ import ToolsTab from './admin/ToolsTab';
 import TasksTab from './admin/TasksTab';
 import SystemTab from './admin/SystemTab';
 import { api } from '../api/client';
+import { anyAdminDirty, useAdminDirty } from '../stores/adminDirty';
 import type { AdminTab } from './admin/shared';
 
 export type { AdminTab };
@@ -63,6 +64,11 @@ export default function AdminPanel({ onClose, initialTab, filterSid, onClearFilt
   // AC-3.1：tab↔hash 双向同步——切 tab 写地址栏（可收藏/分享/回退），
   // 浏览器回退/前进或站内 hash 跳转驱动 tab（替代 App.tsx 的 key remount）
   const setTab = (t: AdminTab) => {
+    // AC-5.2 脏状态拦截：子面板（设置/skill 编辑器等）上报未保存改动时，
+    // 切 tab 前确认；确认切走后整体 reset（旧面板已 unmount，登记失效）
+    if (t !== tab && anyAdminDirty()
+      && !confirm('当前页有未保存的改动，切换将丢弃——确认离开？')) return;
+    useAdminDirty.getState().reset();
     setTabRaw(t);
     const q = location.hash.split('?')[1];   // 保留 schedules?sid= 类查询参数
     history.replaceState(null, '', `#/admin/${t}${q ? '?' + q : ''}`);

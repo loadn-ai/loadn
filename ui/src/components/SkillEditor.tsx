@@ -2,6 +2,7 @@
 import { useEffect, useState } from 'react';
 import Markdown from 'react-markdown';
 import { api } from '../api/client';
+import { useAdminDirty } from '../stores/adminDirty';
 
 interface FileEntry { path: string; size: number }
 
@@ -26,6 +27,11 @@ export default function SkillEditor({ name, onBack }: { name: string; onBack: ()
     setReady(true);
   }
   useEffect(() => { void loadMeta(); void openFile('SKILL.md'); }, [name]);
+  // AC-5.2：dirty 上报管理页脏登记（AdminPanel 切 tab 拦截）+卸载清位
+  useEffect(() => {
+    useAdminDirty.getState().setDirty('skill-editor', dirty);
+    return () => useAdminDirty.getState().setDirty('skill-editor', false);
+  }, [dirty, name]);
 
   async function save() {
     try {
@@ -66,7 +72,11 @@ export default function SkillEditor({ name, onBack }: { name: string; onBack: ()
     <div className="skill-editor">
       <div className="se-side">
         <div className="se-files-head">
-          <button className="link" onClick={onBack}>← 返回</button>
+          <button className="link" onClick={() => {
+            // AC-5.2：返回列表前检查未保存改动（文件切换处已有同款确认）
+            if (dirty && !confirm('未保存的修改将丢失，返回？')) return;
+            onBack();
+          }}>← 返回</button>
           <span className="se-name">{name}</span>
           <button className="link" onClick={() => void newFile()}>＋文件</button>
         </div>

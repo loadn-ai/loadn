@@ -1,7 +1,8 @@
 // 平台设置页（引擎/通知/分享/价目/外观主题）——从 AdminPanel 拆出（v0.6.12）
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { api } from '../../api/client';
 import { useStore } from '../../stores/sessions';
+import { useAdminDirty } from '../../stores/adminDirty';
 import { Sun, Moon } from '../icons';
 import UsersCard from './UsersCard';
 
@@ -91,6 +92,26 @@ export default function SettingsTab() {
   const [loadErr, setLoadErr] = useState('');
   const [testing, setTesting] = useState(false);
 
+  // AC-5.2 脏状态保护：任意输入事件（容器 capture，覆盖全部子卡控件）记
+  // lastEdit，任一保存成功 bump lastSaved——dirty = lastEdit > lastSaved。
+  // 派生上报 adminDirty store，AdminPanel 切 tab 前统一拦截确认。
+  const rootRef = useRef<HTMLDivElement>(null);
+  const [lastEdit, setLastEdit] = useState(0);
+  const [lastSaved, setLastSaved] = useState(0);
+  const dirty = lastEdit > lastSaved;
+  useEffect(() => {
+    const el = rootRef.current;
+    if (!el) return;
+    const onInput = () => setLastEdit(Date.now());
+    el.addEventListener('input', onInput, true);
+    return () => el.removeEventListener('input', onInput, true);
+  }, []);
+  useEffect(() => {
+    useAdminDirty.getState().setDirty('settings', dirty);
+    return () => useAdminDirty.getState().setDirty('settings', false);
+  }, [dirty]);
+  const bumpSaved = () => setLastSaved(Date.now());
+
   useEffect(() => { void reload(); }, []);
   async function reload() {
     try {
@@ -121,6 +142,7 @@ export default function SettingsTab() {
         method: 'PUT', body: JSON.stringify(body) });
       setTg(d.titlegen); setKeyInput('');
       setMsg({ t: '自动标题设置已保存（即时生效）' });
+      bumpSaved();
     } catch (e) { setMsg({ t: `保存失败：${String(e)}`, err: true }); }
   }
 
@@ -149,6 +171,7 @@ export default function SettingsTab() {
     try {
       await api('/api/settings/run', { method: 'PUT', body: JSON.stringify(run) });
       setMsg({ t: '运行参数已保存（并发数重启服务后生效）' });
+      bumpSaved();
     } catch (e) { setMsg({ t: `保存失败：${String(e)}`, err: true }); }
   }
 
@@ -168,6 +191,7 @@ export default function SettingsTab() {
         method: 'PUT', body: JSON.stringify({ effort: cl.effort, model: cl.model, claude_bin: cl.claude_bin }) });
       setCl(d2.claude);
       setEngMsg({ t: '✓ 已保存（新会话生效，在跑会话不受影响）' });
+      bumpSaved();
     } catch (e) { setEngMsg({ t: `保存失败：${String(e)}`, err: true }); }
   }
 
@@ -203,6 +227,7 @@ export default function SettingsTab() {
         method: 'PUT', body: JSON.stringify(body) });
       setNf(d.notify); setNfKeys({});
       if (quiet) setNfMsg({ t: '✓ 已保存（即时生效）' });
+      bumpSaved();
     } catch (e) { setNfMsg({ t: `保存失败：${String(e)}`, err: true }); throw e; }
   }
 
@@ -223,6 +248,7 @@ export default function SettingsTab() {
         method: 'PUT', body: JSON.stringify({ base_url: share.base_url }) });
       setShare(d.share);
       setShareMsg({ t: '✓ 已保存（即时生效）' });
+      bumpSaved();
     } catch (e) { setShareMsg({ t: `保存失败：${String(e)}`, err: true }); }
   }
 
@@ -264,6 +290,7 @@ export default function SettingsTab() {
       setApiRows(rowsFromTable(d.pricing.api, 'cache_read'));
       setPlanRows(rowsFromTable(d.pricing.plan_credits, 'cache_input'));
       setPriceMsg({ t: '✓ 已保存（即时生效）' });
+      bumpSaved();
     } catch (e) { setPriceMsg({ t: `保存失败：${String(e)}`, err: true }); }
   }
 
@@ -317,6 +344,7 @@ export default function SettingsTab() {
       });
       setConv(d.profiles);
       setConvMsg({ t: '✓ 已保存（下一 turn 生效）' });
+      bumpSaved();
     } catch (e) { setConvMsg({ t: `保存失败：${String(e)}`, err: true }); }
   }
 
@@ -344,11 +372,12 @@ export default function SettingsTab() {
     </div>
   );
   return (
-    <div className="admin-body" id="settings-top">
+    <div className="admin-body" id="settings-top" ref={rootRef}>
       <div className="settings-nav">
         {groupNav.map(g =>
           <a key={g.id} className="chip" onClick={() => document.getElementById(g.id)
             ?.scrollIntoView({ behavior: 'smooth', block: 'start' })}>{g.label}</a>)}
+        {dirty && <span className="chip warn" title="有未保存的改动，切页前先保存">● 未保存</span>}
       </div>
       <AppearanceCard />
       <G id="g-basic" title="基础 / 会话与外观" />
