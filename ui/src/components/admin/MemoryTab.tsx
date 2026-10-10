@@ -1,9 +1,10 @@
 // 记忆管理页（P6）：域 tab + 左条目列表 + 右编辑器（源码/预览双模式）+
 // 历史侧栏（版本查看/恢复）。存储经 /api/memory（后端过 memorystore：
 // 护栏重跑 + 保存即 commit + 删除留史可恢复）。
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import ReactMarkdown from 'react-markdown';
 import { api } from '../../api/client';
+import { useAdminDirty } from '../../stores/adminDirty';
 import { Plus } from '../icons';
 
 interface Entry { id: string; summary: string; content?: string; origin_session: string; created_at: string; draft?: boolean }
@@ -20,7 +21,20 @@ export default function MemoryTab() {
   const [hist, setHist] = useState<Ver[]>([]);
   const [verText, setVerText] = useState('');
   const [creating, setCreating] = useState(false);
+  const [busy, setBusy] = useState(false);
   const [msg, setMsg] = useState<{ t: string; err?: boolean } | null>(null);
+  // AC-5.3 竞态守卫：快速切条目/切域/点版本时旧响应后到覆盖新状态——
+  // 各异步面独立递增序号，响应回程序号不匹配即丢弃
+  const pickSeq = useRef(0);
+  const entriesSeq = useRef(0);
+  const verSeq = useRef(0);
+  // AC-5.3 dirty：编辑器态 vs 加载快照（切条目/切域 confirm + 上报管理页登记）
+  const [orig, setOrig] = useState({ text: '', summary: '' });
+  const dirty = !!sel && (text !== orig.text || summary !== orig.summary);
+  useEffect(() => {
+    useAdminDirty.getState().setDirty('memory', dirty);
+    return () => useAdminDirty.getState().setDirty('memory', false);
+  }, [dirty]);
 
   async function reloadDomains() {
     try {
@@ -29,37 +43,53 @@ export default function MemoryTab() {
     } catch (e) { setMsg({ t: `域列表加载失败：${String(e)}`, err: true }); }
   }
   async function reloadEntries(dom = domain) {
+    const seq = ++entriesSeq.current;
     try {
       const d = await api<{ entries: Entry[] }>(`/api/memory/entries?domain=${dom}`);
+      if (seq !== entriesSeq.current) return;   // 已切到别的域——丢弃旧响应
       setEntries(d.entries.reverse());   // 新在前
-    } catch (e) { setEntries([]); setMsg({ t: `记忆列表加载失败：${String(e)}`, err: true }); }
+    } catch (e) {
+      if (seq !== entriesSeq.current) return;
+      setEntries([]); setMsg({ t: `记忆列表加载失败：${String(e)}`, err: true });
+    }
   }
   useEffect(() => { void reloadDomains(); }, []);
   useEffect(() => { setSel(null); void reloadEntries(domain); }, [domain]);
 
   function pick(e: Entry) {
+    if (dirty && e.id !== sel?.id
+      && !confirm('当前条目有未保存修改，切换将丢弃——确认？')) return;
     setSel(e); setSummary(e.summary); setPreview(false); setVerText('');
+    const seq = ++pickSeq.current;
     void (async () => {
       try {
         const d = await api<{ text: string }>(
           `/api/memory/file?domain=${domain}&id=${e.id}`);
+        if (seq !== pickSeq.current) return;   // 已选中别的条目
         const body = d.text.replace(/^---\n[\s\S]*?\n---\n/, '').trim();
         setText(body);
+        setOrig({ text: body, summary: e.summary });   // dirty 基线
         const h = await api<{ history: Ver[] }>(
           `/api/memory/history?domain=${domain}&id=${e.id}`);
+        if (seq !== pickSeq.current) return;
         setHist(h.history);
-      } catch (er) { setMsg({ t: `条目加载失败：${String(er)}`, err: true }); }
+      } catch (er) {
+        if (seq === pickSeq.current)
+          setMsg({ t: `条目加载失败：${String(er)}`, err: true });
+      }
     })();
   }
 
   async function save() {
     if (!sel) return;
+    setBusy(true);
     try {
       await api('/api/memory/file', { method: 'PUT', body: JSON.stringify({
         domain, id: sel.id, content: text, summary }) });
       setMsg({ t: '已保存（一次 commit，历史可回溯）' });
       pick(sel); void reloadEntries();
     } catch (e) { setMsg({ t: `保存被拒：${String(e)}`, err: true }); }   // 护栏拒绝原因直显
+    finally { setBusy(false); }
   }
 
   async function del(e: Entry) {
@@ -82,11 +112,16 @@ export default function MemoryTab() {
   }
 
   async function showVer(v: Ver) {
+    const seq = ++verSeq.current;
     try {
       const d = await api<{ text: string }>(
         `/api/memory/version?domain=${domain}&id=${sel?.id}&ref=${v.hash}`);
+      if (seq !== verSeq.current) return;   // 已点看别的版本
       setVerText(d.text.replace(/^---\n[\s\S]*?\n---\n/, '').trim());
-    } catch (e) { setMsg({ t: `历史版本加载失败：${String(e)}`, err: true }); }
+    } catch (e) {
+      if (seq === verSeq.current)
+        setMsg({ t: `历史版本加载失败：${String(e)}`, err: true });
+    }
   }
 
   return (
@@ -94,7 +129,11 @@ export default function MemoryTab() {
       <div className="admin-toolbar">
         {domains.map(d => (
           <button key={d} className={`btn sm ${d === domain ? 'primary' : 'ghost'}`}
-            onClick={() => setDomain(d)}>{d === 'user' ? '用户级（跨项目）' : d}</button>
+            onClick={() => {
+              if (d !== domain && dirty
+                && !confirm('当前条目有未保存修改，切域将丢弃——确认？')) return;
+              setDomain(d);
+            }}>{d === 'user' ? '用户级（跨项目）' : d}</button>
         ))}
         <button className="btn sm" onClick={() => setCreating(v => !v)}>
           <Plus size={13} /> 新建
@@ -104,7 +143,7 @@ export default function MemoryTab() {
       {creating && <NewEntryForm domain={domain} onDone={() => {
         setCreating(false); void reloadEntries();
       }} />}
-      <div style={{ display: 'flex', gap: 12, alignItems: 'flex-start' }}>
+      <div className="mem-cols">
         <div className="hub-results" style={{ flex: 1 }}>
           {entries.map(e => (
             <div key={e.id} className={`hub-card slim${sel?.id === e.id ? ' on' : ''}`}
@@ -134,7 +173,9 @@ export default function MemoryTab() {
                   onClick={() => setPreview(false)}>源码</button>
                 <button className={`btn sm ${preview ? 'primary' : 'ghost'}`}
                   onClick={() => setPreview(true)}>预览</button>
-                <button className="btn sm primary" onClick={() => void save()}>保存</button>
+                <button className="btn sm primary" disabled={!dirty || busy}
+                  onClick={() => void save()}>{busy ? '保存中…' : '保存'}</button>
+                {dirty && <span className="chip warn" title="有未保存的改动">● 未保存</span>}
               </div>
               {preview
                 ? <div className="md-preview"><ReactMarkdown>{text}</ReactMarkdown></div>
@@ -177,7 +218,11 @@ function NewEntryForm({ domain, onDone }: { domain: string; onDone: () => void }
       <textarea className="mono" rows={4} placeholder="记忆正文（蜜罐/凭证护栏同守）"
         value={content} onChange={e => setContent(e.target.value)} />
       <div className="modal-foot">
-        <button className="btn ghost sm" onClick={onDone}>取消</button>
+        <button className="btn ghost sm" onClick={() => {
+          if ((summary.trim() || content.trim())
+            && !confirm('已填内容将丢弃，确认取消？')) return;
+          onDone();
+        }}>取消</button>
         <button className="btn primary sm" disabled={!summary.trim() || !content.trim()}
           onClick={() => void (async () => {
             try {

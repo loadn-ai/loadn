@@ -724,6 +724,13 @@ button:focus-visible, .tab:focus-visible, .chip:focus-visible {
 .search-row input { flex: 1; }
 .hub-results { margin-top: 10px; max-height: 46vh; overflow-y: auto; display: flex;
   flex-direction: column; gap: 8px; }
+/* AC-5.3：记忆页三栏（列表 1/编辑 2/历史 1）——窄屏（≤900px）竖排，子栏
+   占满行宽；内联 flex:N 仅在宽屏行内生效 */
+.mem-cols { display: flex; gap: 12px; align-items: flex-start; }
+@media (max-width: 900px) {
+  .mem-cols { flex-direction: column; }
+  .mem-cols > * { flex: none !important; width: 100%; }
+}
 .hub-card { background: var(--bg3); border: 1px solid var(--border); border-radius: 10px;
   padding: 11px 13px; display: flex; flex-direction: column; gap: 5px; }
 .hub-card.slim { flex-direction: row; align-items: center; justify-content: space-between; }
