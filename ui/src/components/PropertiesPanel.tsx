@@ -1,11 +1,13 @@
 // 属性面板（右面板第一 tab）：会话级配置与安全中心前移。
 // 基本信息+行内改名 / 模型参数（会话级覆盖，下一轮生效）/ 安全与外联
-// （临时授权·拒绝历史·一键放行）/ Skills 挂接 / 资源与 MCP 三态 / 历史详情折叠。
+// （临时授权·拒绝历史·一键放行）/ Skills 挂接 / 资源与 MCP 三态 / 历史详情。
+// PP-11：全部分区可折叠（低频默认收起），开合态持久化 localStorage。
 import { useCallback, useEffect, useState } from 'react';
+import type { ReactNode } from 'react';
 import { useStore } from '../stores/sessions';
 import type { ParamsMap } from '../stores/sessions';
 import { api, fmtTokens, fmtTime } from '../api/client';
-import { Pencil } from './icons';
+import { ChevronDown, ChevronRight, Pencil } from './icons';
 import { toast } from '../stores/toasts';
 
 /** 模型参数六键（与后端 params.ALLOWED 对齐；kind 只影响输入控件） */
@@ -38,6 +40,60 @@ function copyText(text: string) {
     () => toast('复制失败（剪贴板不可用）', false));
 }
 
+/** ---------------------------------------------------------------- 分区折叠
+ *  PP-11：属性分区可折叠（功能堆积后 320px 窄栏全是长页）——低频分区默认
+ *  收起；用户点过的开合态写 localStorage（刷新/重开保持），未动过的分区
+ *  跟随默认值（升级换默认不被旧值钉死，因为只存用户显式 toggle 过的键）。 */
+const SEC_DEFAULT_COLLAPSED: Record<string, boolean> = {
+  basic: false, params: false,          // 高频：身份 / 调参
+  sandbox: true, egress: true,          // 低频：运维档位 / 安全事件流
+  skills: true, mcp: true,              // 低频：挂载好后很少动
+  legacy: true,                         // 历史明细（原 details 即默认收起）
+};
+const SECS_KEY = 'wd_props_collapsed';
+
+function loadSecStates(): Record<string, boolean> {
+  try {
+    const raw = localStorage.getItem(SECS_KEY);
+    if (raw) {
+      const v = JSON.parse(raw);
+      if (v && typeof v === 'object') return v as Record<string, boolean>;
+    }
+  } catch { /* 损坏值当未存过 */ }
+  return {};
+}
+
+function PropSection({ secKey, title, sub, extra, children }: {
+  secKey: keyof typeof SEC_DEFAULT_COLLAPSED | string;
+  title: ReactNode; sub?: ReactNode; extra?: ReactNode; children: ReactNode;
+}) {
+  const [collapsed, setCollapsed] = useState(
+    () => loadSecStates()[secKey] ?? SEC_DEFAULT_COLLAPSED[secKey] ?? false);
+  const toggle = () => setCollapsed(c => {
+    const next = !c;
+    try {   // 只记用户显式 toggle 过的键——默认值变更不被旧存值钉死
+      localStorage.setItem(SECS_KEY, JSON.stringify({ ...loadSecStates(), [secKey]: next }));
+    } catch { /* 隐私模式写不进就算了，本会话内仍生效 */ }
+    return next;
+  });
+  return (
+    <section className={`props-section collapsible ${collapsed ? 'collapsed' : ''}`}>
+      <h4 className="props-sec-head" onClick={toggle}
+          title={collapsed ? '展开该分区' : '折叠该分区'}>
+        <span className="props-sec-chev">
+          {collapsed ? <ChevronRight size={12} /> : <ChevronDown size={12} />}
+        </span>
+        {title}
+        {sub}
+        {extra && (
+          <span className="props-sec-extra" onClick={e => e.stopPropagation()}>{extra}</span>
+        )}
+      </h4>
+      {!collapsed && children}
+    </section>
+  );
+}
+
 export default function PropertiesPanel() {
   const sid = useStore(s => s.currentSid);
   const s = useStore(st => st.sessions.find(x => x.id === st.currentSid));
@@ -66,8 +122,7 @@ function BasicSection() {
   const engine = s.engine_override
     ? `${s.engine_override}（会话覆盖）` : (s.engine ?? defaultEngine);
   return (
-    <section className="props-section">
-      <h4>基本信息</h4>
+    <PropSection secKey="basic" title="基本信息">
       {editing ? (
         <input className="row-edit" defaultValue={s.title} autoFocus maxLength={80}
           onKeyDown={e => {
@@ -104,7 +159,7 @@ function BasicSection() {
       <div className="kv"><span>tokens</span>
         <code>in {fmtTokens(s.usage?.in)} / out {fmtTokens(s.usage?.out)}</code></div>
       <div className="kv"><span>创建</span><code>{fmtTime(s.created_at)}</code></div>
-    </section>
+    </PropSection>
   );
 }
 
@@ -154,10 +209,8 @@ function ParamsSection() {
   const prof = extras?.params_profile ?? {};
   const eng = s.engine_override || s.engine || '';
   return (
-    <section className="props-section">
-      <h4>模型参数
-        <span className="muted" style={{ fontWeight: 400 }}>（覆盖本会话，其余跟随 profile）</span>
-      </h4>
+    <PropSection secKey="params" title="模型参数"
+      sub={<span className="muted" style={{ fontWeight: 400 }}>（覆盖本会话，其余跟随 profile）</span>}>
       {PARAM_ROWS.map(r => {
         const has = (draft[r.key] ?? '').trim().length > 0;   // PP-1：恢复键仅在有覆盖值时渲染（无值=本就跟随，无恢复语义）
         return (
@@ -205,7 +258,7 @@ function ParamsSection() {
           opencode 引擎不支持轮次上限（max_turns 将被忽略）
         </div>
       )}
-    </section>
+    </PropSection>
   );
 }
 
@@ -246,8 +299,8 @@ function SandboxSection() {
   };
 
   return (
-    <section className="props-section">
-      <h4>沙箱档位 <span className="muted" style={{ fontWeight: 400 }}>（下一 turn 生效）</span></h4>
+    <PropSection secKey="sandbox" title="沙箱档位"
+      sub={<span className="muted" style={{ fontWeight: 400 }}>（下一 turn 生效）</span>}>
       <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
         {SANDBOX_TIERS_UI.map(t =>
           <button key={t.label} className={`chip ${cur === t.v ? 'on' : ''}`}
@@ -256,7 +309,7 @@ function SandboxSection() {
       <div className="muted" style={{ fontSize: 'var(--fs-md)', marginTop: 6 }}>
         直跑=本任务可访问宿主全机（仍过权限引擎/审计）；配合资源桥接用。
       </div>
-    </section>
+    </PropSection>
   );
 }
 
@@ -336,11 +389,8 @@ function EgressSection() {
   const mode = data?.mode ?? '-';
   const allow = data?.allow ?? [];
   return (
-    <section className="props-section">
-      <h4>安全与外联
-        <button className="mini-btn" style={{ marginLeft: 'auto' }}
-          onClick={load}>刷新</button>
-      </h4>
+    <PropSection secKey="egress" title="安全与外联"
+      extra={<button className="mini-btn" onClick={load}>刷新</button>}>
       <div className="setting-row" style={{ marginBottom: 8 }}>
         <span style={{ minWidth: 92 }}>任务外联档位</span>
         {EGRESS_TIERS.map(t => {
@@ -404,7 +454,7 @@ function EgressSection() {
         拒绝历史自本版本起记录会话归属（更早的事件无归属，不在此列）·
         <a className="link" onClick={() => { location.hash = '#/admin/security'; }}>安全中心看全部</a>
       </div>
-    </section>
+    </PropSection>
   );
 }
 
@@ -424,10 +474,8 @@ function SkillsSection() {
       toast(`skills 更新失败：${e instanceof Error ? e.message : e}`, false));
   };
   return (
-    <section className="props-section">
-      <h4>Skills
-        <span className="muted" style={{ fontWeight: 400 }}>（点击挂载/卸载，下一轮生效）</span>
-      </h4>
+    <PropSection secKey="skills" title="Skills"
+      sub={<span className="muted" style={{ fontWeight: 400 }}>（点击挂载/卸载，下一轮生效）</span>}>
       {all.length === 0 && <div className="muted" style={{ fontSize: 'var(--fs-md)' }}>（无可用 skill）</div>}
       <div className="chips">
         {all.map(n => (
@@ -435,7 +483,7 @@ function SkillsSection() {
             title={desc(n) ?? n} onClick={() => toggle(n)}>{n}</button>
         ))}
       </div>
-    </section>
+    </PropSection>
   );
 }
 
@@ -463,10 +511,8 @@ function McpSection() {
   const globals = servers.filter(x => !x.session_only);
   const extrasOnly = Object.keys(sessMcp).filter(k => !servers.some(x => x.name === k));
   return (
-    <section className="props-section">
-      <h4>资源与 MCP
-        <span className="muted" style={{ fontWeight: 400 }}>（三态：全局启用 / 本会话禁用）</span>
-      </h4>
+    <PropSection secKey="mcp" title="资源与 MCP"
+      sub={<span className="muted" style={{ fontWeight: 400 }}>（三态：全局启用 / 本会话禁用）</span>}>
       {globals.length === 0 && extrasOnly.length === 0 && (
         <div className="muted" style={{ fontSize: 'var(--fs-md)' }}>（未配置全局 MCP server）</div>
       )}
@@ -511,7 +557,7 @@ function McpSection() {
         {' · '}
         <a className="link" onClick={() => { location.hash = '#/admin/resources'; }}>资源中心</a>
       </div>
-    </section>
+    </PropSection>
   );
 }
 
@@ -520,8 +566,7 @@ function McpSection() {
 function LegacyDetails() {
   const turns = useStore(s => s.turns);
   return (
-    <details className="props-section">
-      <summary>历史详情（turns 明细）</summary>
+    <PropSection secKey="legacy" title="历史详情（turns 明细）">
       <table className="turns-table">
         <thead><tr><th>#</th><th>状态</th><th>时长</th><th>费用</th><th>开始</th></tr></thead>
         <tbody>
@@ -536,6 +581,6 @@ function LegacyDetails() {
           ))}
         </tbody>
       </table>
-    </details>
+    </PropSection>
   );
 }

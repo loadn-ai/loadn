@@ -1,11 +1,27 @@
 import { useEffect, useState } from 'react';
 import { useStore } from '../stores/sessions';
+import type { ArtifactInfo, TurnInfo } from '../stores/sessions';
 import { api, withToken } from '../api/client';
 import PropertiesPanel from './PropertiesPanel';
 import { Folder, FileDoc, ChevronDown, ChevronRight, Download } from './icons';
 import { toast } from '../stores/toasts';
 
 type Tab = 'properties' | 'artifacts' | 'files';
+
+/** 交付物/产出物联动筛选条件（store.artifactScope） */
+type ArtScope = number | 'global' | null;
+
+/** 联动筛选共用过滤：交付物（产物清单）与产出物（工作区树）按同一条件
+ *  派生。null=全部；'global'=无 agent 归属（主控问答/用户导出）；number=
+ *  子任务 id——归属经 turn→subtask join（与产物 tab 分组同源，口径一致） */
+function scopeArtifacts(
+  artifacts: ArtifactInfo[], turns: TurnInfo[], scope: ArtScope,
+): ArtifactInfo[] {
+  if (scope == null) return artifacts;
+  if (scope === 'global') return artifacts.filter(a => !a.agent_id);
+  const subOf = new Map(turns.map(t => [t.id, t.subtask_id ?? null]));
+  return artifacts.filter(a => a.turn_id != null && subOf.get(a.turn_id) === scope);
+}
 
 export default function RightPanel({ onOpenFile }: { onOpenFile: (path: string) => void }) {
   // tab 状态在 store：侧边栏「属性」入口要能从外部切过来
@@ -27,6 +43,8 @@ export default function RightPanel({ onOpenFile }: { onOpenFile: (path: string) 
   // 550 张产物卡每 token 重渲染一遍，面板直接卡死（"产物打不开"的根因）
   const artifacts = useStore(s => s.artifacts);
   const currentSid = useStore(s => s.currentSid);
+  const turns = useStore(s => s.turns);
+  const scope = useStore(s => s.artifactScope);
   const [tree, setTree] = useState<{ path: string; dir: boolean; size: number | null }[]>([]);
 
   useEffect(() => {
@@ -48,12 +66,17 @@ export default function RightPanel({ onOpenFile }: { onOpenFile: (path: string) 
       <div className="panel-tabs">
         {(['properties', 'artifacts', 'files'] as Tab[]).map(t => (
           <button key={t} className={`tab ${tab === t ? 'on' : ''}`} onClick={() => setTab(t)}>
-            {t === 'properties' ? '属性' : t === 'artifacts' ? `产物 (${artifacts.length})` : '工作区'}
+            {t === 'properties' ? '属性'
+              : t === 'artifacts'
+                ? scope == null ? `产物 (${artifacts.length})`
+                  : `产物 (${scopeArtifacts(artifacts, turns, scope).length}/${artifacts.length})`
+                : '工作区'}
           </button>
         ))}
       </div>
       <div className="panel-body">
         {tab === 'properties' && <PropertiesPanel />}
+        {tab !== 'properties' && <ScopeFilterRow />}
         {tab === 'artifacts' && <ArtifactsTab onOpenFile={onOpenFile} />}
         {tab === 'files' && <FilesTab tree={tree} onOpenFile={onOpenFile} />}
       </div>
@@ -71,13 +94,73 @@ function fileUrl(sid: string, path: string): string {
   return withToken(`/api/sessions/${encodeURIComponent(sid)}/file?path=${encodeURIComponent(path)}&raw=1`);
 }
 
-function ArtifactsTab({ onOpenFile }: { onOpenFile: (path: string) => void }) {
+/** 联动筛选行：交付物（产物 tab）与产出物（工作区 tab）共用同一条件同步
+ *  过滤。条件维度=产物归属：主控（无 agent 归属）/ 各子任务（turn→subtask
+ *  join）；chips 带计数，再点当前条件=回「全部」。单归属会话（无可筛条件
+ *  且未挂筛选）不渲染。 */
+function ScopeFilterRow() {
+  const subtasks = useStore(s => s.subtasks);
+  const turns = useStore(s => s.turns);
   const artifacts = useStore(s => s.artifacts);
+  const scope = useStore(s => s.artifactScope);
+  const setScope = useStore(s => s.setArtifactScope);
+  const subOf = new Map(turns.map(t => [t.id, t.subtask_id ?? null]));
+  const counts = new Map<number, number>();
+  let globalN = 0;
+  for (const a of artifacts) {
+    if (!a.agent_id) { globalN++; continue; }
+    if (a.turn_id == null) continue;
+    const sid = subOf.get(a.turn_id);
+    if (sid != null) counts.set(sid, (counts.get(sid) ?? 0) + 1);
+  }
+  const opts: { v: ArtScope; label: string; n: number; tip: string }[] = [
+    ...(globalN ? [{
+      v: 'global' as const, label: '主控', n: globalN,
+      tip: '主控问答/用户导出的产物（无 agent 归属）——产物与工作区同步过滤',
+    }] : []),
+    ...subtasks
+      .filter(st => counts.get(st.id))
+      .map(st => ({
+        v: st.id as number, label: st.title, n: counts.get(st.id)!,
+        tip: `子任务「${st.title}」：产物清单与工作区文件同步过滤`,
+      })),
+  ];
+  if (!opts.length && scope == null) return null;
+  return (
+    <div className="scope-filter">
+      <span className="scope-filter-label">联动筛选</span>
+      <button className={`chip ${scope == null ? 'on' : 'off'}`}
+        title="不过滤：全部产物与全部工作区文件"
+        onClick={() => setScope(null)}>全部 {artifacts.length}</button>
+      {opts.map(o => (
+        <button key={String(o.v)} className={`chip ${scope === o.v ? 'on' : 'off'}`}
+          title={o.tip}
+          onClick={() => setScope(scope === o.v ? null : o.v)}>
+          {o.label} {o.n}
+        </button>
+      ))}
+    </div>
+  );
+}
+
+function ArtifactsTab({ onOpenFile }: { onOpenFile: (path: string) => void }) {
+  const all = useStore(s => s.artifacts);
+  const scope = useStore(s => s.artifactScope);
   const currentSid = useStore(s => s.currentSid);
   const live = useStore(s => s.live);
   const subtasks = useStore(s => s.subtasks);
   const turns = useStore(s => s.turns);
-  if (artifacts.length === 0) return <div className="panel-empty">还没有产物<br />agent 的交付物会出现在 workspace/artifacts/</div>;
+  // 联动筛选：交付物清单先过 scope 再进原分组派生（分组逻辑零改动）
+  const artifacts = scopeArtifacts(all, turns, scope);
+  if (all.length === 0) return <div className="panel-empty">还没有产物<br />agent 的交付物会出现在 workspace/artifacts/</div>;
+  if (artifacts.length === 0) return (
+    <div className="panel-empty">该筛选条件下暂无产物<br />
+      <button className="link"
+        onClick={() => useStore.getState().setArtifactScope(null)}>
+        查看全部（{all.length}）
+      </button>
+    </div>
+  );
   // 分组（rev10）：产物按「子任务 > agent」两级（turn→subtask join 派生）；
   // 落不进子任务的（旧数据未 backfill / 主控问答产物）按既有「agent 分组 +
   // 全局」呈现。运行中子任务组挂「写入中」徽标（mtime ≥ turn 开始）
@@ -263,12 +346,34 @@ function buildTree(items: { path: string; dir: boolean; size: number | null }[])
   return root.children!;
 }
 
+/** 联动筛选树剪枝：仅保留可见文件节点及其祖先目录（scope 挂上时，
+ *  产出物视图=该条件产物在工作区里的落点，其余文件让路） */
+function pruneToPaths(nodes: TreeNode[], visible: Set<string>): TreeNode[] {
+  const out: TreeNode[] = [];
+  for (const n of nodes) {
+    if (n.dir) {
+      const kids = pruneToPaths(n.children ?? [], visible);
+      if (kids.length) out.push({ ...n, children: kids });
+    } else if (visible.has(n.path)) {
+      out.push(n);
+    }
+  }
+  return out;
+}
+
 function FilesTab({ tree, onOpenFile }: {
   tree: { path: string; dir: boolean; size: number | null }[];
   onOpenFile: (path: string) => void;
 }) {
-  const nodes = buildTree(tree);
   const sid = useStore(s2 => s2.currentSid);
+  // 联动筛选：产出物（工作区树）与交付物（产物清单）同条件同步过滤——
+  // scope 挂上时树剪枝到该条件产物的路径（含祖先目录）
+  const turns = useStore(s => s.turns);
+  const artifacts = useStore(s => s.artifacts);
+  const scope = useStore(s => s.artifactScope);
+  const full = buildTree(tree);
+  const nodes = scope == null ? full
+    : pruneToPaths(full, new Set(scopeArtifacts(artifacts, turns, scope).map(a => a.path)));
   return (
     <div className="files-tab">
       {sid && (
@@ -281,6 +386,9 @@ function FilesTab({ tree, onOpenFile }: {
       <div className="file-tree">
         {nodes.map(n => <FileNode key={n.path} node={n} depth={0} onOpen={onOpenFile} />)}
       </div>
+      {nodes.length === 0 && scope != null && (
+        <div className="panel-empty">该筛选条件下工作区暂无文件</div>
+      )}
       <div className="files-hint muted">点击文件在主区新 tab 预览（md / html）</div>
     </div>
   );

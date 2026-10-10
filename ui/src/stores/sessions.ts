@@ -160,6 +160,11 @@ interface Store {
   /** 当前会话的子任务清单（rev10 分类器打标；tab=子任务，agent 走 chips） */
   subtasks: SubtaskInfo[];
   live: LiveTurn | null;
+  /** 停止请求在途的 turn（tid → 受理时刻 ms）：停止按钮据此禁用防重复触发
+   *  （stop 是异步收尾：active turn 引擎侧置 stop 事件后由循环结账，期间
+   *  重复 POST 只会吃 404）。终态确认（SSE turn_stopped/done/error 或
+   *  pollStopConfirmed 轮询兜底）后清除；POST 失败立即清除允许重试。 */
+  stoppingTids: Record<number, number>;
   approvals: ApprovalInfo[];
   timeline: TimelineMarker[];
   es: EventSource | null;
@@ -176,6 +181,11 @@ interface Store {
    *  chips/子任务内点击挂上；清除回原 tab。顶部 tab 恒为子任务 */
   agentFilter: string | null;
   setAgentFilter: (name: string | null) => void;
+  /** 交付物/产出物联动筛选（右面板 产物+工作区 两 tab 共用同一条件同步
+   *  过滤）：null=全部；'global'=主控/导出产物（无 agent 归属）；number=
+   *  子任务 id（turn→subtask join 派生，与产物分组同源）。切会话即重置 */
+  artifactScope: number | 'global' | null;
+  setArtifactScope: (v: number | 'global' | null) => void;
   /** 侧栏当前空间：'recent' | 'starred' | 'archive' | 'cat:<id>' */
   activeSpace: string;
   /** Composer 注入请求（「新建子任务/招募」模板）：seq 递增防同文本去重失效 */
@@ -258,6 +268,7 @@ export const useStore = create<Store>((set, get) => ({
   currentSid: null, messages: [], turns: [], artifacts: [],
   agents: [], subtasks: [],
   live: null,
+  stoppingTids: {},
   approvals: [], timeline: [], es: null, connected: false,
   theme: initialTheme(),
   sessionExtras: null,
@@ -267,6 +278,7 @@ export const useStore = create<Store>((set, get) => ({
   egressTick: 0,
   mainTab: 'chat',
   agentFilter: null,
+  artifactScope: null,
   activeSpace: initialSpace(),
   composeReq: null,
 
@@ -274,6 +286,7 @@ export const useStore = create<Store>((set, get) => ({
   setPanelOpen(v) { set({ panelOpen: v }); },
   setMainTab(t) { set({ mainTab: t }); },
   setAgentFilter(key) { set({ agentFilter: key }); },
+  setArtifactScope(v) { set({ artifactScope: v }); },
   setActiveSpace(s) {
     localStorage.setItem('wd_space', s);
     set({ activeSpace: s });
@@ -347,7 +360,7 @@ export const useStore = create<Store>((set, get) => ({
     get().closeSession();
     set({ currentSid: sid, messages: [], turns: [], artifacts: [], live: null,
           sessionExtras: null, timeline: [], agents: [], subtasks: [],
-          mainTab: 'chat', agentFilter: null });
+          mainTab: 'chat', agentFilter: null, artifactScope: null });
     localStorage.setItem('loadn_sid', sid);   // 刷新/重开恢复
     localStorage.removeItem('wd_sid');        // 旧键清理（迁移遗留）
     const d = await api<{ messages: MessageInfo[]; turns: TurnInfo[];
@@ -406,7 +419,7 @@ export const useStore = create<Store>((set, get) => ({
     localStorage.removeItem('loadn_sid'); localStorage.removeItem('wd_sid');
     set({ es: null, connected: false, currentSid: null, sessionExtras: null,
           timeline: [], agents: [], subtasks: [], live: null, mainTab: 'chat',
-          agentFilter: null });
+          agentFilter: null, artifactScope: null });
   },
 
   /** 前台恢复拉新（visibilitychange/focus 调用）。iOS PWA 后台冻结定时器与
@@ -431,6 +444,12 @@ export const useStore = create<Store>((set, get) => ({
         set({ messages: d.messages, turns: d.turns, artifacts: d.artifacts,
               agents: deriveAgents(d.messages, d.turns),
               subtasks: d.subtasks ?? [] });
+        // 停止在途标志对账：重拉后已终态的 turn 清标志（SSE 掉线时回前台的
+        // resync 就是「引擎已停止」确认通道，不用等 pollStopConfirmed 超时）
+        for (const st of Object.keys(get().stoppingTids).map(Number)) {
+          const t = d.turns.find(x => x.id === st);
+          if (!t || (t.status !== 'running' && t.status !== 'queued')) clearStopping(set, st);
+        }
         const wasConnected = get().connected;
         const act = d.turns.find(t => t.status === 'running')
                  ?? d.turns.find(t => t.status === 'queued');
@@ -679,12 +698,25 @@ export const useStore = create<Store>((set, get) => ({
   },
 
   async stopTurn(tid) {
+    // 防重复触发：同 turn 停止请求在途（引擎尚未确认停止）时吞掉后续点击。
+    // zustand set 同步生效——双击的第二次点击也读得到标志，store 层守卫
+    // 先于按钮 disabled 生效，双保险
+    if (get().stoppingTids[tid] != null) return;
+    const sid = get().currentSid;
+    set(s => ({ stoppingTids: { ...s.stoppingTids, [tid]: Date.now() } }));
     try {
       await api(`/api/turns/${tid}/stop`, { method: 'POST' });
     } catch (e) {
+      // 请求未送达/被拒：立即解除禁用（引擎侧多半没收到），允许重试
+      clearStopping(set, tid);
       alert(`停止失败：${e instanceof Error ? e.message : e}`);
       throw e;
     }
+    // POST ok 只代表引擎已受理。真正的「已停止」确认走两条路：
+    // ① SSE 终态事件（turn_stopped/done/error → handleEvent 清 live 与本
+    //    标志，按钮随 live 消失）；② SSE 掉线时 pollStopConfirmed 轮询
+    // 兜底，查到 turn 终态即确认。确认前按钮保持禁用（loading 态）。
+    void pollStopConfirmed(get, set, sid, tid);
   },
 
   async retractTurn(tid) {
@@ -816,6 +848,55 @@ function appendText(items: StreamItem[], kind: 'text' | 'thinking',
 /** resync 冷却（module 级）：focus 与 visibilitychange 常成对触发，5s 内去重 */
 let _lastResyncAt = 0;
 
+/** 清除 turn 的在途停止标志（SSE 终态确认 / 轮询兜底 / 失败重试共用；幂等） */
+function clearStopping(set: (fn: (s: Store) => Partial<Store>) => void, tid: number) {
+  set(s => {
+    if (s.stoppingTids[tid] == null) return {};
+    const next = { ...s.stoppingTids };
+    delete next[tid];
+    return { stoppingTids: next };
+  });
+}
+
+/** 停止受理后的「已停止」确认兜底。正常路径 SSE turn_stopped 先到（handleEvent
+ *  已清标志），轮询开头即检测退出；SSE 断线时它是唯一确认通道——每 2s 查
+ *  会话详情，turn 不再 running/queued 即引擎已收尾：清标志（按钮解除禁用，
+ *  通常随 live 清空直接消失），SSE 没来导致 live 仍挂在已停 turn 上的一并清。
+ *  30s 仍非终态（引擎卡在长工具调用里收不了尾）也解除禁用——用户可再点
+ *  停止（重发 stop 对引擎幂等），不能把按钮永久锁死。 */
+async function pollStopConfirmed(
+  get: () => Store,
+  set: (fn: (s: Store) => Partial<Store>) => void,
+  sid: string | null, tid: number,
+) {
+  const deadline = Date.now() + 30_000;
+  while (Date.now() < deadline) {
+    await new Promise(r => setTimeout(r, 2000));
+    if (get().stoppingTids[tid] == null) return;   // SSE 终态事件已确认
+    if (!sid) continue;
+    let terminal = false;
+    try {
+      const d = await api<{ turns: TurnInfo[] }>(`/api/sessions/${encodeURIComponent(sid)}`);
+      const t = d.turns.find(x => x.id === tid);
+      terminal = !!t && t.status !== 'running' && t.status !== 'queued';
+    } catch { /* 网络抖动：等下一轮 */ }
+    if (terminal) {
+      set(s => {
+        const patch: Partial<Store> = {};
+        if (s.stoppingTids[tid] != null) {
+          const next = { ...s.stoppingTids };
+          delete next[tid];
+          patch.stoppingTids = next;
+        }
+        if (s.live && s.live.turnId === tid) patch.live = null;
+        return patch;
+      });
+      return;
+    }
+  }
+  clearStopping(set, tid);   // 超时兜底：恢复可点击（允许再次停止）
+}
+
 function handleEvent(
   set: (fn: (s: Store) => Partial<Store>) => void,
   get: () => Store, sid: string, type: string, data: any,
@@ -909,6 +990,9 @@ function handleEvent(
     case 'turn_done':
     case 'turn_error':
     case 'turn_stopped':
+      // 引擎终态确认（停止请求的权威回执）：清该 turn 在途停止标志——
+      // pollStopConfirmed 据此退出，按钮若仍在也解除禁用
+      clearStopping(set, data.turn_id);
       // 终态后拉全量（messages 落库 + turns + artifacts）。注意：重进会话时 SSE 会
       // 回放历史事件——旧 turn 的终态事件不许清掉当前活跃 turn 的 live（实测：
       // 上一轮 turn_done 把新一轮刚重建的运行条/停止按钮一起抹掉）

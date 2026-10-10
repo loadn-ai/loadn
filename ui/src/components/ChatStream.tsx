@@ -7,7 +7,7 @@ import { api, fmtTime } from '../api/client';
 import {
   FileImage, Cloud, Tool, CheckSquare, Check, ChevronDown, ChevronRight,
   Terminal, Search, Globe, BookOpen, Pencil, PenLine, Plus, RotateCw, Star,
-  Trash, Copy, Users,
+  Trash, Copy, Users, Spinner,
 } from './icons';
 import type { ComponentType } from 'react';
 import { useAutoScroll } from './SessionView';
@@ -294,15 +294,25 @@ const LIVE_TAIL = 60;
 
 function LiveTurn({ live }: { live: NonNullable<ReturnType<typeof useStore.getState>['live']> }) {
   const { stopTurn } = useStore();
+  // 停止在途（防重复触发）：POST 受理后引擎收尾前禁用按钮转圈——期间重复
+  // POST 只会吃 404「turn 不存在或已结束」。终态确认（SSE turn_stopped →
+  // 清 live）/ 失败 / 30s 轮询超时后恢复，见 stores/sessions.stopTurn
+  const stopping = useStore(s => s.stoppingTids[live.turnId] != null);
   const elapsed = Math.round((Date.now() - live.startedAt) / 1000);
   const hidden = Math.max(0, live.items.length - LIVE_TAIL);
   const shown = hidden ? live.items.slice(-LIVE_TAIL) : live.items;
   return (
     <div className="msg assistant live">
       <div className={`turn-bar ${live.status}`}>
-        {live.status === 'queued' ? '排队中…' : `运行中 ${elapsed}s`}
+        {live.status === 'queued' ? '排队中…'
+          : stopping ? `停止中… ${elapsed}s`
+          : `运行中 ${elapsed}s`}
         {live.status === 'running' && (
-          <button className="btn danger sm" onClick={() => void stopTurn(live.turnId)}>停止</button>
+          <button className="btn danger sm" disabled={stopping}
+                  title={stopping ? '停止请求已发出，等待引擎确认…' : '停止当前任务'}
+                  onClick={() => { if (!stopping) void stopTurn(live.turnId); }}>
+            {stopping ? <><Spinner size={11} /> 停止中…</> : '停止'}
+          </button>
         )}
       </div>
       {live.todos.length > 0 && <TodoList todos={live.todos} />}

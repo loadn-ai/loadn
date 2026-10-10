@@ -29,6 +29,15 @@ interface Pending {
 
 let keySeq = 0;
 
+/** 停止按钮目标 turn：live 优先（真在跑的），否则 sessions 行的 active_turn
+ *  （running/queued——刷新后 live 重建前的空窗）。selector 返回原始值，
+ *  delta 风暴下引用稳定不引发重渲染 */
+function stopTargetTid(s: ReturnType<typeof useStore.getState>): number | null {
+  if (s.live?.turnId != null) return s.live.turnId;
+  const at = s.sessions.find(x => x.id === s.currentSid)?.active_turn;
+  return at && (at.status === 'running' || at.status === 'queued') ? at.id : null;
+}
+
 /** claude CLI 风格输入框：一个圆角容器，chips 框内顶部、无边框输入区、
  *  底栏 [📎][模式] … [提示][发送] —— 附件与模式都是输入框的一部分，不突兀。 */
 export default function Composer() {
@@ -42,7 +51,6 @@ export default function Composer() {
   const engines = useStore(s => s.engines);
   const defaultEngine = useStore(s => s.defaultEngine);
   const busy = useStore(s => !!s.live);
-  const liveTid = useStore(s => s.live?.turnId ?? null);
   const [text, setText] = useState(() => (currentSid ? getDraft(currentSid) : ''));
   // 切会话换出各自的草稿（切文件 tab 是卸载重挂载，走上面 useState 初值，同源）
   useEffect(() => { setText(currentSid ? getDraft(currentSid) : ''); }, [currentSid]);
@@ -182,9 +190,13 @@ export default function Composer() {
   const uploading = pending.some(p => p.status === 'uploading');
   const canSend = !!currentSid && (text.trim().length > 0 || pending.some(p => p.status === 'done')) && !uploading;
   // 停止按钮贴着发送：composer 永远在屏内（移动端头部按钮会被挤没、运行条会滚出视口）
-  const at = sess?.active_turn;
-  const stopTid = liveTid
-    ?? (at && (at.status === 'running' || at.status === 'queued') ? at.id : undefined);
+  const stopTid = useStore(stopTargetTid);
+  // 停止在途：POST 已受理但引擎未确认终态——按钮禁用转圈（防重复触发，
+  // 终态确认/失败/30s 超时后恢复，见 stores/sessions.stopTurn）
+  const stopBusy = useStore(s => {
+    const t = stopTargetTid(s);
+    return t != null && s.stoppingTids[t] != null;
+  });
 
   return (
     <div className="composer-wrap">
@@ -237,9 +249,11 @@ export default function Composer() {
           )}
           {uploading && <span className="cbar-hint">附件上传中…</span>}
           {stopTid != null && (
-            <button className="stop-btn" title="停止当前任务"
-                    onClick={() => { void useStore.getState().stopTurn(stopTid); }}>
-              <StopSquare size={12} />
+            <button className="stop-btn"
+                    title={stopBusy ? '停止请求已发出，等待引擎确认…' : '停止当前任务'}
+                    disabled={stopBusy}
+                    onClick={() => { if (!stopBusy) void useStore.getState().stopTurn(stopTid); }}>
+              {stopBusy ? <Spinner size={12} /> : <StopSquare size={12} />}
             </button>
           )}
           <button className="send" disabled={!canSend}
