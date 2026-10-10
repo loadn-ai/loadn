@@ -49,6 +49,29 @@ function triggerText(j: ScheduleInfo): string {
   return `单次 ${fmtDue(j.due_at)}`;
 }
 
+/** 编辑回填（AC-5.1）：cron → 表单四态。预设形态（daily/weekly/hours）
+ *  精确匹配才回落对应预设；其余（含 dow=7、区间、逗号）一律 custom 原文
+ *  ——保真优先，不让预设 UI 打开即悄悄改写触发表达式。 */
+function parseCronForForm(cron: string): {
+  mode: 'daily' | 'weekly' | 'hours' | 'custom';
+  hhmm: string; dow: string; everyH: string; text: string;
+} {
+  const two = (s: string) => s.padStart(2, '0');
+  const m = cron.trim().split(/\s+/);
+  if (m.length === 5 && /^\d+$/.test(m[0]) && /^\d+$/.test(m[1])
+    && m[2] === '*' && m[3] === '*') {
+    const hhmm = `${two(m[1])}:${two(m[0])}`;
+    if (m[4] === '*')
+      return { mode: 'daily', hhmm, dow: '1', everyH: '6', text: cron };
+    if (/^[0-6]$/.test(m[4]))
+      return { mode: 'weekly', hhmm, dow: m[4], everyH: '6', text: cron };
+  }
+  if (m.length === 5 && m[0] === '0' && m[1].startsWith('*/')
+    && /^\d+$/.test(m[1].slice(2)) && m[2] === '*' && m[3] === '*' && m[4] === '*')
+    return { mode: 'hours', hhmm: '20:00', dow: '1', everyH: m[1].slice(2), text: cron };
+  return { mode: 'custom', hhmm: '20:00', dow: '1', everyH: '6', text: cron };
+}
+
 /** UTC iso → datetime-local 值（本地墙钟 YYYY-MM-DDTHH:MM） */
 function toLocalInput(iso: string): string {
   const d = new Date(iso);
@@ -318,13 +341,16 @@ function JobForm({ job, presetSid, onDone }: {
     }
     return 'h';
   });
-  const [cronMode, setCronMode] = useState<'daily' | 'weekly' | 'hours' | 'custom'>(
-    'daily');
-  const [hhmm, setHhmm] = useState('20:00');
-  const [dow, setDow] = useState('1');
-  const [everyH, setEveryH] = useState('6');
-  const [cronText, setCronText] = useState(
-    job?.cron && !/^\d+ \d+ \* \* ?(\*|\d)$/.test(job.cron) ? job.cron : '0 20 * * 1-5');
+  // AC-5.1 编辑回填：原 cron 解析回预设态（daily/weekly/hours）或锁 custom——
+  // 修「打开表单即默认值，只改 label 保存也会把 9:30 改写成 20:00」的误改触发
+  const pc = job?.cron
+    ? parseCronForForm(job.cron)
+    : { mode: 'daily' as const, hhmm: '20:00', dow: '1', everyH: '6', text: '0 20 * * 1-5' };
+  const [cronMode, setCronMode] = useState<'daily' | 'weekly' | 'hours' | 'custom'>(pc.mode);
+  const [hhmm, setHhmm] = useState(pc.hhmm);
+  const [dow, setDow] = useState(pc.dow);
+  const [everyH, setEveryH] = useState(pc.everyH);
+  const [cronText, setCronText] = useState(pc.text);
   const [label, setLabel] = useState(job?.label || '');
   const [prompt, setPrompt] = useState(job?.prompt || '');
   const [maxFires, setMaxFires] = useState(String(job?.max_fires ?? 20));
@@ -345,6 +371,20 @@ function JobForm({ job, presetSid, onDone }: {
   const recurring = trig !== 'once';
 
   async function submit() {
+    // AC-5.1 后半：编辑态触发字段变更须显式确认——回填已保真，但用户仍可能
+    // 切错预设/误碰时刻；diff 原值与将提交值，不同才弹（非触发改动静默通过）
+    if (editing && job) {
+      const next = trig === 'cron' ? `cron ${cron}`
+        : trig === 'every' ? fmtEvery(Number(everyN)
+          * ({ m: 60, h: 3600, d: 86400 } as const)[everyU as 'm' | 'h' | 'd'])
+        : `单次 ${at}`;
+      const orig = job.cron ? `cron ${job.cron}`
+        : job.every_s ? fmtEvery(job.every_s)
+        : `单次 ${toLocalInput(job.due_at)}`;   // 同口径（本地墙钟），未改不误弹
+      if (orig !== next
+        && !confirm(`触发条件将改变：\n${orig}\n→ ${next}\n\n确认保存？`))
+        return;
+    }
     setBusy(true);
     setMsg(null);
     try {
