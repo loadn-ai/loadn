@@ -5,11 +5,15 @@ import { useStore } from '../stores/sessions';
 /** 七轮补 UI（设定审计#2）：P12 技能建议卡——引擎检测到用户教学/纠错后
  *  写 .loadn/skill-suggest.json（单槽 pending），此前前端零引用=用户永远
  *  看不到、无法确认/拒绝，「经验→技能固化」闭环断在决策端。
- *  确认 → 写 .agents/skills/（过供应链八类扫描）；拒绝 → 同类 7 天抑制。 */
+ *  确认 → 写 .agents/skills/（过供应链八类扫描）；拒绝 → 同类 7 天抑制；
+ *  误判 → 仅清槽不记负样本（2026-10-10 交互优化：补生效说明/长文折叠/
+ *  误判通道——用户反馈"不知道固化成什么、什么场景用，只能拒绝"）。 */
 interface SuggestCard {
   kind: string; name: string; description: string; body: string;
   fingerprint?: string;
 }
+
+const QUOTE_LIMIT = 500;
 
 export default function SkillSuggestCard() {
   const currentSid = useStore(s => s.currentSid);
@@ -17,6 +21,7 @@ export default function SkillSuggestCard() {
   const [editing, setEditing] = useState(false);
   const [draft, setDraft] = useState<SuggestCard | null>(null);
   const [msg, setMsg] = useState('');
+  const [expanded, setExpanded] = useState(false);
 
   const load = async (sid: string) => {
     try {
@@ -39,19 +44,22 @@ export default function SkillSuggestCard() {
 
   if (!card) return null;
   const kindZh: Record<string, string> = { teach: '教导', correct: '纠错' };
-  const decide = async (accept: boolean) => {
-    const payload = accept && draft ? draft : {};
+  const decide = async (accept: boolean, misjudge = false) => {
+    const payload = accept && draft ? draft : (misjudge ? { misjudge: true } : {});
     try {
       await api(
         `/api/sessions/${encodeURIComponent(currentSid!)}/skill-suggest/decide`,
         { method: 'POST', body: JSON.stringify({ accept, ...payload }) });
-      setMsg(accept ? '已固化为技能（下轮可用）' : '已拒绝（同类 7 天内不再提示）');
+      setMsg(accept ? '已固化为技能（下轮可用）'
+        : misjudge ? '已标记为误判，本次建议清除（不记录抑制）'
+        : '已拒绝（同类 7 天内不再提示）');
       setCard(null);
     } catch (e) {
       setMsg(`决策失败：${e instanceof Error ? e.message : e}`);
     }
   };
   const d = editing && draft ? draft : card;
+  const clipped = d.body.length > QUOTE_LIMIT && !expanded;
   return (
     <div className="approval-banner">
       <div className="approval-card">
@@ -60,6 +68,11 @@ export default function SkillSuggestCard() {
           <span className="approval-summary">
             检测到{kindZh[card.kind] === '纠错' ? '纠正' : '教学'}信号——把这次经验固化为技能？
           </span>
+        </div>
+        <div className="approval-note" style={{ marginBottom: 6 }}>
+          确认后写入本工作区 <code>.agents/skills/{card.name}/SKILL.md</code>，
+          此后每个新会话自动加载该技能；拒绝=同类 7 天不再提示；
+          若这并不是你在教我（如系统拼接文本被误识别），选「这不是教导」。
         </div>
         <div className="approval-why" style={{ flexDirection: 'column' }}>
           {editing ? (
@@ -80,15 +93,23 @@ export default function SkillSuggestCard() {
           ) : (
             <>
               <div><b>{card.name}</b>——{card.description}</div>
-              <pre style={{ whiteSpace: 'pre-wrap', maxHeight: 160, overflow: 'auto' }}>
-                {card.body}
+              <pre style={{ whiteSpace: 'pre-wrap', maxHeight: expanded ? 480 : 160,
+                            overflow: 'auto' }}>
+                {clipped ? d.body.slice(0, QUOTE_LIMIT) + '…' : d.body}
               </pre>
+              {d.body.length > QUOTE_LIMIT ? (
+                <button className="btn ghost sm" style={{ alignSelf: 'flex-start' }}
+                        onClick={() => setExpanded(v => !v)}>
+                  {expanded ? '收起' : `展开全文（${d.body.length} 字）`}
+                </button>
+              ) : null}
             </>
           )}
         </div>
         <div className="approval-actions">
           <button className="btn primary sm" onClick={() => void decide(true)}>固化为技能</button>
           <button className="btn sm" onClick={() => void decide(false)}>拒绝</button>
+          <button className="btn ghost sm" onClick={() => void decide(false, true)}>这不是教导</button>
           {!editing
             ? <button className="btn ghost sm" onClick={() => setEditing(true)}>编辑</button>
             : <button className="btn ghost sm" onClick={() => setEditing(false)}>预览</button>}

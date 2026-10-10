@@ -348,3 +348,54 @@ async def test_r2_reflect_at_regular_compact(tmp_path, monkeypatch):
     row = next(x for x in ms.load_entries(tmp_path, "project")
                if x["summary"] == "改用C")
     assert "换 C" in row["content"]
+
+
+# ------------------------------------------------- 2026-10-10 交互优化对赌
+_HANDOVER = ("（上一 loadn 会话已轮换（context_inflation）。\n"
+             "旧会话收尾时的状态：【用户最后指令】不要重做已完成步骤。）\n")
+
+
+async def test_handover_protocol_alone_not_detected(tmp_path):
+    """轮换恢复协议（含「不要重做」）+短指令——不是用户纠错，不触发。"""
+    session = SessionManager.create(tmp_path, home=tmp_path / "eng_home")
+    session.append_user(_HANDOVER + "升级")
+    assert cs.maybe_suggest(tmp_path, session) is None
+    assert not (tmp_path / ".loadn" / "skill-suggest.json").exists()
+    # 剥离函数：协议段整段消失，真实指令保留
+    assert cs.strip_handover(_HANDOVER + "升级") == "升级"
+
+
+async def test_handover_with_real_correction_triggers_clean(tmp_path):
+    """协议段+真纠错：仍触发，且卡片内容不含协议文本、不复读原话。"""
+    session = SessionManager.create(tmp_path, home=tmp_path / "eng_home")
+    session.append_user(_HANDOVER + "不对，这个方案要重来，用新架构")
+    assert cs.maybe_suggest(tmp_path, session) is not None
+    card = json.loads(
+        (tmp_path / ".loadn" / "skill-suggest.json").read_text(encoding="utf-8"))
+    assert card["kind"] == "correct"
+    assert "上一 loadn 会话已轮换" not in card["body"]      # 协议不进卡片
+    assert card["body"].count("用新架构") == 1               # 原话只出现一次
+    assert "## 上一轮行为" not in card["body"]              # 空上下文不放小节
+    assert card["description"] and "重来" in card["description"]  # 提炼句
+    # 技能名合法化：无连续 --、不以 - 结尾
+    assert "--" not in card["name"] and not card["name"].endswith("-")
+
+
+async def test_misjudge_clears_without_negative(client):
+    """「这不是教导」：清槽+审计，不写负样本。"""
+    from loadn_webui.config import PATHS
+    r = await client.post("/api/sessions", json={"title": "P12 误判"})
+    sid = r.json()["session"]["id"]
+    ws = PATHS["workspace"] / sid
+    fp = cs.fingerprint("以后都写日志")
+    card = {"kind": "teach", "fingerprint": fp, "name": "keep-log",
+            "description": "d", "body": "b",
+            "origin_session": sid, "created_at": "now"}
+    (ws / ".loadn").mkdir(parents=True, exist_ok=True)
+    (ws / ".loadn" / "skill-suggest.json").write_text(json.dumps(card))
+    r = await client.post(f"/api/sessions/{sid}/skill-suggest/decide",
+                          json={"accept": False, "misjudge": True})
+    assert r.status_code == 200 and r.json()["misjudged"]
+    assert not (ws / ".loadn" / "skill-suggest.json").exists()
+    assert not cs.is_rejected(fp)                            # 未记负样本
+    assert "misjudged" in _audit_actions()

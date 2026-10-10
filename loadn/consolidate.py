@@ -52,6 +52,34 @@ def detect_correction(text: str) -> str | None:
     return None
 
 
+# 会话轮换恢复协议段（平台在 context_inflation 轮换时拼进用户消息的
+# 交接文本）：固定头尾锚点。协议里的「不要重做」等词不是用户教导
+# ——2026-10-10 实证：恢复协议+「升级」被误判为纠错建议卡。
+_HANDOVER_HEAD = "（上一 loadn 会话已轮换"
+_HANDOVER_RE = re.compile(
+    re.escape(_HANDOVER_HEAD) + r".*?不要重做已完成步骤。）", re.S)
+
+
+def strip_handover(text: str) -> str:
+    """剥离会话轮换恢复协议段（检测/指纹/正文都用剥离后的真实话语）。"""
+    t = text or ""
+    if _HANDOVER_HEAD not in t:
+        return t
+    return _HANDOVER_RE.sub("", t).strip()
+
+
+def first_clause(text: str, limit: int = 40) -> str:
+    """首个非空句（换行→句读切分），供 description/规则行提炼。"""
+    for line in (text or "").splitlines():
+        s = line.strip().lstrip("#>·- \u3000")
+        if not s:
+            continue
+        first = re.split(r"[。！？；!?;]", s, maxsplit=1)[0].strip()
+        if first:
+            return first[:limit]
+    return ""
+
+
 def fingerprint(text: str) -> str:
     """同类指纹（归一化：去空白/标点后 sha1 前 12 位——拒绝抑制的匹配键）。"""
     norm = re.sub(r"[\s，。,\.!！?？;；:：'\"]+", "", (text or "").lower())
@@ -115,7 +143,8 @@ def _slug(kind: str, text: str) -> str:
     """预填技能名：教学类取关键词，纠错类取「avoid-…」；合法化到 skill 名。"""
     words = re.findall(r"[\w一-鿿]{2,8}", text)[:3]
     base = ("-".join(w.lower() for w in words) if words else "lesson")[:40]
-    name = re.sub(r"[^a-z0-9._-]", "", base) or "lesson"
+    name = re.sub(r"[^a-z0-9._-]", "", base)
+    name = re.sub(r"-{2,}", "-", name).strip("-._") or "lesson"
     return f"{name}" if kind == "teach" else f"avoid-{name}"
 
 
@@ -153,7 +182,7 @@ def maybe_suggest(cwd: Path, session) -> dict | None:
                 assistants.append(str(c or ""))
         if not users:
             return None
-        last_user = users[-1]
+        last_user = strip_handover(users[-1])   # 剥离轮换恢复协议再检测
         kind = detect_correction(last_user)
         if kind is None:
             return None
@@ -162,13 +191,20 @@ def maybe_suggest(cwd: Path, session) -> dict | None:
             return None
         if suggest_count(session) >= MAX_PER_SESSION:
             return None
-        prev_tail = (assistants[-1] or "")[-200:] if assistants else ""
-        body = (f"# 用户教导（{kind}）\n\n> {last_user}\n\n"
-                f"## 上一轮行为（被纠正的上下文）\n\n{prev_tail}\n\n"
-                f"## 应遵循的规则\n\n（按用户原话执行）{last_user}")
+        prev_tail = (assistants[-1] or "").strip()[-200:] if assistants else ""
+        # 正文（2026-10-10 重构：原话只引一次 ≤600 字；上轮行为空则不放
+        # 小节；规则行=首句提炼，提炼句无信息增量（=原话）时省略规则节）
+        quote = last_user[:600] + ("…" if len(last_user) > 600 else "")
+        rule = first_clause(last_user, limit=120)
+        body = f"# 用户教导（{kind}）\n\n> {quote}\n\n"
+        if prev_tail:
+            body += f"## 上一轮行为（被纠正的上下文）\n\n{prev_tail}\n\n"
+        if rule and rule != last_user.strip():
+            body += f"## 应遵循的规则\n\n{rule}"
         card = {"kind": kind, "fingerprint": fp,
                 "name": _slug(kind, last_user),
-                "description": f"用户{ '教导' if kind == 'teach' else '纠正'}的规则",
+                "description": first_clause(last_user)
+                or f"用户{'教导' if kind == 'teach' else '纠正'}的规则",
                 "body": body,
                 "origin_session": getattr(session, "session_id", ""),
                 "created_at": time.strftime("%Y-%m-%dT%H:%M:%S")}

@@ -107,6 +107,14 @@ def decide_suggest(sid: str, body: dict):
                               "fingerprint": card.get("fingerprint")})
         return {"ok": True, "skill": name, "scanned": report["level"],
                 "library": lib_dir.name}
+    # 误判（「这不是教导」）：只清槽+审计，不记负样本（误判指纹无抑制
+    # 语义——2026-10-10 用户反馈：误判走「拒绝」会留下无效 7 天抑制）
+    if body.get("misjudge"):
+        consolidate.clear_pending(ws)
+        audit("consolidate", {"action": "misjudged", "sid": sid,
+                              "kind": card.get("kind"),
+                              "fingerprint": card.get("fingerprint")})
+        return {"ok": True, "misjudged": True}
     # 拒绝 → 负样本
     consolidate.reject(str(card.get("fingerprint") or ""))
     consolidate.clear_pending(ws)
