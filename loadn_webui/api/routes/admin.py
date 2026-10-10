@@ -395,23 +395,64 @@ def _workspace_size(sid: str) -> int:
 @router.get("/admin/tasks")
 def tasks_overview(q: str = "", status: str = "all", project_id: str = "",
                    category_id: int = 0, engine: str = "", pinned: str = "all",
-                   starred: str = "all", sort: str = "updated", dir: str = "desc"):
+                   starred: str = "all", sort: str = "updated", dir: str = "desc",
+                   limit: int = 0, offset: int = 0):
     """任务管理页数据面：全量任务（会话）+ 聚合指标 + 筛选排序。
 
     行：基础列 + n_turns/n_messages/n_artifacts/tokens/cost/size_bytes/
     project_title/running。属主过滤同 categories（非 admin 只看自己的+
     legacy 无主行）。批量操作不走本面——前端复用既有单任务端点逐个执行。
+
+    AC-4.3b 性能改造：过滤/属主下推 SQL WHERE，created/updated/title/cost
+    排序下推 ORDER BY；limit>0 时服务端分页（offset 配套，total 恒为过滤
+    后全量计数），size_bytes 目录统计只算返回页（原实现全量行×目录遍历，
+    千会话级即风暴）。limit=0（默认）行为不变（全量，兼容旧前端）。
     """
     import json as _json
 
     from ... import db as db_mod
     from ...security import userauth as _ua
 
+    where, params = [], []
+    if status != "all":
+        where.append("s.status = ?"); params.append(status)
+    if project_id:
+        where.append("s.project_id = ?"); params.append(project_id)
+    if category_id:
+        where.append("s.category_id = ?"); params.append(category_id)
+    if engine:
+        where.append("s.engine = ?"); params.append(engine)
+    if pinned != "all":
+        where.append("s.pinned = ?"); params.append(1 if pinned == "yes" else 0)
+    if starred != "all":
+        where.append("s.starred = ?"); params.append(1 if starred == "yes" else 0)
+    q_ = (q or "").strip().lower()
+    if q_:
+        where.append("(LOWER(s.title) LIKE ? OR LOWER(p.title) LIKE ?)")
+        params += [f"%{q_}%", f"%{q_}%"]
+    u = _ua.current_user()
+    if u is not None and u["role"] != "admin":
+        where.append("(s.owner_id IS NULL OR s.owner_id = ?)")
+        params.append(u["id"])
+    wsql = (" WHERE " + " AND ".join(where)) if where else ""
+
+    # SQL 可下推的排序列（turns/tokens/size 无列，Python 兜底）
+    order_col = {"created": "s.created_at", "updated": "s.updated_at",
+                 "title": "s.title", "cost": "s.cost_usd"}.get(sort)
+    order_sql = (f" ORDER BY {order_col} {'ASC' if dir == 'asc' else 'DESC'}"
+                 if order_col else "")
 
     with db_mod.conn() as c:
-        rows = [db_mod.to_dict(r) for r in c.execute(
-            "SELECT s.*, p.title AS project_title FROM sessions s"
-            " LEFT JOIN projects p ON p.id=s.project_id").fetchall()]
+        total = c.execute(
+            "SELECT COUNT(*) FROM sessions s LEFT JOIN projects p"
+            f" ON p.id=s.project_id{wsql}", params).fetchone()[0]
+        page_sql = ("SELECT s.*, p.title AS project_title FROM sessions s"
+                    f" LEFT JOIN projects p ON p.id=s.project_id{wsql}{order_sql}")
+        page_params = list(params)
+        if limit > 0:
+            page_sql += " LIMIT ? OFFSET ?"
+            page_params += [max(1, min(limit, 500)), max(0, offset)]
+        rows = [db_mod.to_dict(r) for r in c.execute(page_sql, page_params)]
         n_turns = {r["session_id"]: r["n"] for r in c.execute(
             "SELECT session_id, COUNT(*) AS n FROM turns GROUP BY session_id")}
         n_msgs = {r["session_id"]: r["n"] for r in c.execute(
@@ -422,29 +463,8 @@ def tasks_overview(q: str = "", status: str = "all", project_id: str = "",
             "SELECT DISTINCT session_id FROM turns"
             " WHERE status IN ('running','queued')")}
 
-    u = _ua.current_user()
-    if u is not None and u["role"] != "admin":
-        rows = [r for r in rows if r.get("owner_id") in (None, u["id"])]
-
-    q_ = (q or "").strip().lower()
-    cat_id = category_id or 0
     out = []
     for r in rows:
-        if status != "all" and r["status"] != status:
-            continue
-        if project_id and r.get("project_id") != project_id:
-            continue
-        if cat_id and (r.get("category_id") or 0) != cat_id:
-            continue
-        if engine and (r.get("engine") or "") != engine:
-            continue
-        if pinned != "all" and bool(r.get("pinned")) != (pinned == "yes"):
-            continue
-        if starred != "all" and bool(r.get("starred")) != (starred == "yes"):
-            continue
-        if q_ and q_ not in (r.get("title") or "").lower() \
-                and q_ not in (r.get("project_title") or "").lower():
-            continue
         try:
             usage = _json.loads(r.get("usage_json") or "{}")
         except (ValueError, TypeError):
@@ -462,19 +482,18 @@ def tasks_overview(q: str = "", status: str = "all", project_id: str = "",
             "n_artifacts": n_arts.get(r["id"], 0),
             "tokens": usage.get("total_all") or usage.get("total") or 0,
             "cost_usd": r.get("cost_usd") or 0,
-            "size_bytes": _workspace_size(r["id"]),
+            "size_bytes": _workspace_size(r["id"]),   # 只算返回页（AC-4.3b）
             "running": r["id"] in running,
             "created_at": r.get("created_at"),
             "updated_at": r.get("updated_at"),
         })
 
-    key = {"created": lambda x: x["created_at"] or "",
-           "updated": lambda x: x["updated_at"] or "",
-           "title": lambda x: x["title"],
-           "turns": lambda x: x["n_turns"],
+    # 无 SQL 列的排序键（turns/tokens/size）在页内/全量结果上 Python 兜底
+    key = {"turns": lambda x: x["n_turns"],
            "tokens": lambda x: x["tokens"],
-           "cost": lambda x: x["cost_usd"],
            "size": lambda x: x["size_bytes"]}.get(sort)
     if key:
         out.sort(key=key, reverse=(dir != "asc"))
-    return {"tasks": out, "total": len(out)}
+        if limit > 0:
+            out = out[offset:offset + limit] if offset else out[:limit]
+    return {"tasks": out, "total": total}

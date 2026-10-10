@@ -93,3 +93,30 @@ async def test_owner_scope_for_non_admin(client, monkeypatch):
     d = (await client.get("/api/admin/tasks")).json()
     ids = {t["id"] for t in d["tasks"]}
     assert s_mine in ids and s_other not in ids
+
+
+async def test_server_side_pagination(client):
+    """>>> AC-4.3b 分页对赌：limit 截页 + offset 翻页拼接=全量、total 恒为
+    全量计数；SQL 过滤（q）语义与全量过滤一致。"""
+    sa, sb, sc = await _mk(client, "页任务A"), await _mk(client, "页任务B"), \
+        await _mk(client, "页任务C")
+    d_all = (await client.get("/api/admin/tasks?sort=created&dir=asc")).json()
+    all_ids = [t["id"] for t in d_all["tasks"]]
+    assert sa in all_ids and sb in all_ids and sc in all_ids
+    d1 = (await client.get("/api/admin/tasks?limit=2&sort=created&dir=asc")).json()
+    assert len(d1["tasks"]) == 2 and d1["total"] == len(all_ids)   # 截页但 total=全量
+    paged: list[str] = []
+    off = 0
+    while True:
+        dp = (await client.get(
+            f"/api/admin/tasks?limit=2&offset={off}&sort=created&dir=asc")).json()
+        if not dp["tasks"]:
+            break
+        paged += [t["id"] for t in dp["tasks"]]
+        if len(dp["tasks"]) < 2:
+            break
+        off += 2
+    assert paged == all_ids                            # 翻页拼接 == 全量（不重不漏）
+    # SQL 过滤与旧全量语义等价（q 命中，共享测试库下无其他「页任务」干扰）
+    dq = (await client.get("/api/admin/tasks?q=页任务b")).json()
+    assert [t["id"] for t in dq["tasks"]] == [sb]
