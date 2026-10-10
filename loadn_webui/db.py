@@ -27,7 +27,8 @@ from .config import PATHS
 # rev9：categories.icon（侧栏空间图标）+ artifacts 归属三列 + agent_files 表
 # rev10：会话内子任务（subtasks 表 + turns.subtask_id 打标列）
 # rev11：projects.repo（项目绑定代码仓——任务目录落 <repo>/tasks/，宪法链带仓规则）
-SCHEMA_REV = 11
+# rev12：ping_history（AC-5.10f——资源探测历史入库，可回看趋势）
+SCHEMA_REV = 12
 from .util import iso
 
 SCHEMA = """
@@ -246,6 +247,16 @@ CREATE TABLE IF NOT EXISTS channel_bindings (    -- P9 渠道 chat↔会话绑�
   last_turn_id INTEGER DEFAULT 0,    -- 回信增量游标（已推送的 turn id）
   created_at TEXT
 );
+
+CREATE TABLE IF NOT EXISTS ping_history (      -- AC-5.10f（P2-6）：资源探测历史
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  target TEXT NOT NULL,            -- PING_SERVICES 名或 svc:<自定义服务>
+  ok INTEGER NOT NULL,             -- 1/0
+  ms INTEGER,                      -- 耗时（失败可空）
+  msg TEXT,                        -- 结果摘要（失败原因，截断 200）
+  ts TEXT                          -- iso()，字典序即时序
+);
+CREATE INDEX IF NOT EXISTS idx_ping_target_ts ON ping_history(target, ts);
 """
 
 ACTIVE_TURN_STATUSES = ("queued", "running")

@@ -92,12 +92,49 @@ def resources_set_secret(body: dict):
     return {"ok": True, "key": key, "set": True}
 @router.post("/admin/resources/test")
 async def resources_test(body: dict):
-    """探测服务连通（ping 子集）。"""
+    """探测服务连通（ping 子集）。AC-5.10f（P2-6）：结果落 ping_history——
+    「昨晚短信服务通不通」可回查，故障排查有据（此前仅内存态，刷新即失）。"""
     from ...integrations import resources
+    from ...util import iso
     only = body.get("only") or None
     if isinstance(only, list):
         only = [t for t in only if isinstance(t, str)][:20]
-    return {"results": await resources.ping_all(only)}
+    results = await resources.ping_all(only)
+    try:   # 历史落库失败不阻断探测响应（历史是增强，不是主路径）
+        with db_mod.conn() as c:
+            for target, r in results.items():
+                c.execute(
+                    "INSERT INTO ping_history(target, ok, ms, msg, ts) "
+                    "VALUES (?,?,?,?,?)",
+                    (target, 1 if r.get("ok") else 0,
+                     r.get("ms"), (str(r.get("msg") or ""))[:200], iso()))
+    except Exception:   # noqa: BLE001 —— 探测为主，历史尽力而为
+        pass
+    return {"results": results}
+
+@router.get("/admin/resources/history")
+def resources_history():
+    """探测历史聚合（每目标最近一次 + 24h 失败次数）——卡上常驻最近结果。
+
+    在 _ADMIN_READ_PREFIXES /api/admin/resources 覆盖内：普通 cookie 用户 403。
+    """
+    from datetime import datetime, timedelta, timezone
+    cutoff = (datetime.now(timezone.utc) - timedelta(hours=24)).isoformat()
+    with db_mod.conn() as c:
+        last = {r["target"]: r for r in c.execute(
+            "SELECT h.* FROM ping_history h JOIN ("
+            "  SELECT target, MAX(id) mid FROM ping_history GROUP BY target"
+            ") m ON h.id = m.mid")}
+        fails = {r["target"]: r["n"] for r in c.execute(
+            "SELECT target, COUNT(*) AS n FROM ping_history "
+            "WHERE ts >= ? AND ok = 0 GROUP BY target", (cutoff,))}
+    return {"items": [
+        {"target": t,
+         "last": {"ok": bool(r["ok"]), "ms": r["ms"],
+                  "msg": r["msg"], "ts": r["ts"]},
+         "fails_24h": fails.get(t, 0)}
+        for t, r in sorted(last.items())]}
+
 @router.post("/admin/vault/entry")
 def vault_put_entry(body: dict):
     """凭证库写条目（新增/更新）。密码/恢复码只写不回。

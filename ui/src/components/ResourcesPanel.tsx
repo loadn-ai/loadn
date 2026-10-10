@@ -104,13 +104,27 @@ export default function ResourcesPanel() {
   const [secretVal, setSecretVal] = useState('');
   const [pinging, setPinging] = useState<string | null>(null);
   const [pingRes, setPingRes] = useState<Record<string, { ok: boolean; msg: string; ms?: number }>>({});
+  // AC-5.10f（P2-6）：探测历史（后端 ping_history 聚合）——未点探测也能看到
+  // 每目标最近一次结果与 24h 失败次数，「昨晚某服务通不通」可回查
+  const [hist, setHist] = useState<Record<string, {
+    last: { ok: boolean; ms?: number | null; msg?: string | null; ts: string };
+    fails_24h: number;
+  }>>({});
   const [vSearch, setVSearch] = useState('');
   const [svcAdd, setSvcAdd] = useState<{ name: string; url: string; note: string } | null>(null);
 
   const [loadErr, setLoadErr] = useState('');
+  const loadHist = async () => {
+    try {
+      const d = await api<{ items: { target: string; last: { ok: boolean; ms?: number | null; msg?: string | null; ts: string }; fails_24h: number }[] }>(
+        '/api/admin/resources/history');
+      setHist(Object.fromEntries(d.items.map(it => [it.target, it])));
+    } catch { /* 历史是增强面：失败不阻断概览 */ }
+  };
   const load = async () => {
     try { setData(await api<Overview>('/api/admin/resources')); setLoadErr(''); }
     catch (e) { setLoadErr(`资源概览加载失败：${String(e)}`); }  // 早退分支前必须落独立错误态
+    void loadHist();
   };
   useEffect(() => { void load(); }, []);
 
@@ -140,6 +154,7 @@ export default function ResourcesPanel() {
       const d = await api<{ results: Record<string, { ok: boolean; msg: string; ms?: number }> }>(
         '/api/admin/resources/test', { method: 'POST', body: JSON.stringify({ only: card.ping }) });
       setPingRes(r => ({ ...r, ...d.results }));
+      void loadHist();   // 本次结果已落库，重拉聚合
     } catch (e) { flash(`探测失败：${String(e)}`, false); }
     finally { setPinging(null); }
   };
@@ -149,6 +164,7 @@ export default function ResourcesPanel() {
       const d = await api<{ results: Record<string, { ok: boolean; msg: string; ms?: number }> }>(
         '/api/admin/resources/test', { method: 'POST', body: JSON.stringify({ only: [`svc:${name}`] }) });
       setPingRes(r => ({ ...r, ...d.results }));
+      void loadHist();
     } catch (e) { flash(`探测失败：${String(e)}`, false); }
     finally { setPinging(null); }
   };
@@ -173,6 +189,7 @@ export default function ResourcesPanel() {
       const d = await api<{ results: Record<string, { ok: boolean; msg: string; ms?: number }> }>(
         '/api/admin/resources/test', { method: 'POST', body: JSON.stringify({ only: all }) });
       setPingRes(d.results);
+      void loadHist();
     } catch (e) { flash(`探测失败：${String(e)}`, false); }
     finally { setPinging(null); }
   };
@@ -190,14 +207,23 @@ export default function ResourcesPanel() {
   ) : <div className="admin-body muted">加载中…</div>;
   const valOf = (k: string) => data.services.find(s => s.key === k)?.value ?? '';
   const secretSet = (k: string) => data.secrets.find(s => s.key === k)?.set ?? false;
+  // 本次探测结果优先，无则回退历史最近一次（卡上常驻）
+  const stOf = (p: string): { ok: boolean; msg?: string; ms?: number } | undefined =>
+    pingRes[p] ?? (hist[p]
+      ? { ok: hist[p].last.ok, msg: hist[p].last.msg ?? undefined, ms: hist[p].last.ms ?? undefined }
+      : undefined);
   const cardStatus = (c: CardDef) => {
     if (!c.ping?.length) return null;
-    const rs = c.ping.map(p => pingRes[p]).filter(Boolean);
+    const rs = c.ping.map(p => stOf(p)).filter(Boolean) as { ok: boolean; msg?: string; ms?: number }[];
     if (!rs.length) return <span className="res-status">未测</span>;
     const ok = rs.every(r => r.ok);
     const ms = Math.max(...rs.map(r => r.ms ?? 0));
+    const fails = c.ping.reduce((s, p) => s + (hist[p]?.fails_24h ?? 0), 0);
+    const lastTs = c.ping.map(p => hist[p]?.last.ts).filter(Boolean).sort().pop();
     return <span className={`res-status ${ok ? 'ok' : 'fail'}`}>
       {ok ? `✓ ${ms ? `${ms}ms` : '正常'}` : `✗ ${rs.find(r => !r.ok)?.msg?.slice(0, 24) ?? '失败'}`}
+      {lastTs ? ` · ${lastTs.slice(5, 16).replace('T', ' ')}` : ''}
+      {fails > 0 ? ` · 24h败${fails}` : ''}
     </span>;
   };
 
@@ -232,7 +258,9 @@ export default function ResourcesPanel() {
             <span className="muted" style={{ fontSize: 12 }}>
               {Object.keys(pingRes).length
                 ? `${Object.values(pingRes).filter(r => r.ok).length}/${Object.keys(pingRes).length} 项在线`
-                : '点卡片上的「测试」逐项探测'}
+                : Object.keys(hist).length
+                  ? `最近：${Object.values(hist).filter(h => h.last.ok).length}/${Object.keys(hist).length} 项在线（历史）`
+                  : '点卡片上的「测试」逐项探测'}
             </span>
           </div>
           {svcAdd && (
@@ -339,9 +367,11 @@ export default function ResourcesPanel() {
                   <div className="res-head">
                     <span style={{ fontSize: 16 }}>🧩</span>
                     <span className="res-name">{c.name}</span>
-                    {pingRes[`svc:${c.name}`]
-                      ? <span className={`res-status ${pingRes[`svc:${c.name}`].ok ? 'ok' : 'fail'}`}>
-                          {pingRes[`svc:${c.name}`].ok ? '✓ 正常' : `✗ ${pingRes[`svc:${c.name}`].msg?.slice(0, 24)}`}
+                    {stOf(`svc:${c.name}`)
+                      ? <span className={`res-status ${stOf(`svc:${c.name}`)!.ok ? 'ok' : 'fail'}`}>
+                          {stOf(`svc:${c.name}`)!.ok ? '✓ 正常' : `✗ ${stOf(`svc:${c.name}`)!.msg?.slice(0, 24)}`}
+                          {hist[`svc:${c.name}`]?.last.ts ? ` · ${hist[`svc:${c.name}`].last.ts.slice(5, 16).replace('T', ' ')}` : ''}
+                          {(hist[`svc:${c.name}`]?.fails_24h ?? 0) > 0 ? ` · 24h败${hist[`svc:${c.name}`].fails_24h}` : ''}
                         </span>
                       : <span className="res-status">未测</span>}
                     <button className="res-btn" style={{ marginLeft: 'auto' }}
