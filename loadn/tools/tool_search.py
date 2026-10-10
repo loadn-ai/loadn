@@ -16,7 +16,7 @@ from __future__ import annotations
 
 import json
 
-from loadn.tools.base import Tool, ToolContext, ToolError, mcp_redirect_note
+from loadn.tools.base import Tool, ToolContext, ToolError, disallow_matches, mcp_redirect_note
 
 AUTO_REGISTER = False
 
@@ -44,7 +44,9 @@ class ToolSearchTool(Tool):
         "加载一个 MCP 工具的完整参数定义。参数 enum 列出当前未注入工具面的"
         "全部 MCP 工具（名称形如 mcp__<server>__<tool>）。要用其中某个：先调"
         "本工具拿它的完整 inputSchema（一次往返），再按 schema 构造参数直接"
-        "调用该工具——无需试错猜参数。"
+        "调用该工具——无需试错猜参数。注意：这些工具运行在各自 MCP server 的"
+        "独立环境里（文件系统/网络可能与本会话不同）；本会话的文件与命令操作"
+        "请直接用内建工具（Bash/Read/Write 等已在工具面）。"
     )
     read_only = True
 
@@ -76,11 +78,11 @@ class ToolSearchTool(Tool):
         name = args.get("tool")
         if not name or not isinstance(name, str):
             raise ToolError("缺少必填参数 tool（延迟索引中的工具全名，见 enum）")
-        if name in self.disallow:
-            # off 档执行域门（--disallowedTools）：build 预过滤后该名不在
-            # 索引（盲猜），或直构索引在场——一律在物化点拦截并给改道路标
-            # （第 4 起实证 2026-10-10：deny 后模型原地重试 3 次放弃，
-            # 从未试内建 Bash——裸拦截必须自带「该用什么」）。
+        if disallow_matches(name, self.disallow):
+            # off 档执行域门（--disallowedTools，含通配类级）：build 预过滤
+            # 后该名不在索引（盲猜），或直构索引在场——一律在物化点拦截并
+            # 给改道路标（第 4 起实证 2026-10-10：deny 后模型原地重试 3 次
+            # 放弃，从未试内建 Bash——裸拦截必须自带「该用什么」）。
             raise ToolError(f"工具 {name} 被会话策略禁用（disallow），"
                             "不可物化。" + mcp_redirect_note(self.tools_dict))
         t = self.index.get(name)

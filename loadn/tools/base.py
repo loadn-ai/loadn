@@ -7,6 +7,7 @@
 from __future__ import annotations
 
 import asyncio
+import fnmatch
 from collections.abc import Awaitable, Callable
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -38,6 +39,22 @@ def mcp_redirect_note(tools_dict: dict | None = None) -> str:
             return ("本机命令/文件操作请改用内建 " + "/".join(have[:3])
                     + " 等——已在工具面，不受此限。")
     return "请改用工具面中已有的内建工具完成同类操作。"
+
+
+def disallow_matches(name: str, pats) -> bool:
+    """disallow 命中判定：精确名 or fnmatch 通配（类级门禁）。
+
+    第 5 起实证（2026-10-10 会话 099f）：逐名禁 execute_bash 后模型改走
+    未禁的 execute_code——名字级清单对新同族工具天然过时，门禁按类
+    （mcp__sandbox__sandbox_execute_*）声明。通配符字符在场才走 fnmatch
+    （纯精确名保持旧语义，含特殊字符的字面名不误伤）。
+    """
+    for p in pats:
+        if name == p:
+            return True
+        if ("*" in p or "?" in p or "[" in p) and fnmatch.fnmatch(name, p):
+            return True
+    return False
 
 
 # ---------------------------------------------------------------- 同文件写互斥

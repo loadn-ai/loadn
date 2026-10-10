@@ -29,9 +29,10 @@ loadn -p --verbose --output-format stream-json \
   覆盖两头。**loadn 特有**，claude CLI 无此旗标。
 - `--disallowedTools <name>`（可重复，claude CLI 同名同义）：工具黑名单
   四层同拒——内建/MCP 工具面不注入、ToolSearch 延迟索引不广告、物化即拒
-  （带改道路标）、调用时权限 deny 兜底（bypass 不豁免）。webui 侧真源
-  `TurnCall.disallowed_tools`（profile 禁用 + off 档执行域门合流）；缺省
-  不传（argv 面零噪声）。
+  （带改道路标）、调用时权限 deny 兜底（bypass 不豁免）。条目支持 fnmatch
+  通配（DG-2 类级门禁：如 `mcp__sandbox__sandbox_execute_*` 整族——名字级
+  清单对新同族工具天然过时）。webui 侧真源 `TurnCall.disallowed_tools`
+  （profile 禁用 + off 档执行域门合流）；缺省不传（argv 面零噪声）。
 
 ## 2. 事件流（stdout，NDJSON 每行一 JSON）
 

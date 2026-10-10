@@ -217,8 +217,17 @@ class SecurityConfig:
     # ——宪法与轮换 anchor 的文字路标拦不住（第三起 thinking 引用了路标原文
     # 仍进容器）。off 档的 sanctioned 用途是浏览器/OCR 资源桥接，容器 bash
     # 不在其列，fail-closed 默认拦。隔离档不受影响（内建 Bash 本就在沙箱内）
+    # 【DG-2 类级化（2026-10-10 第 4/5 起实证）】：第 4 起（6f12）deny
+    # execute_bash 后模型原地重试放弃；第 5 起（099f）argv 门撤了 execute_bash
+    # 诱饵后模型改走未禁的 execute_code（12 次全成，畅通的错误通道根本不撞
+    # 墙）。名字级清单对新同族工具天然过时——改通配整族：容器执行
+    # （execute_*）与容器文件写（file_operations/str_replace_editor）在 off
+    # 档全无 sanctioned 用途（宿主有内建 Bash/Read/Write 且受权限引擎管辖，
+    # 文档解析走 convert_to_markdown，浏览器走 browser_*）。
     off_tier_mcp_disallow: list = field(default_factory=lambda: [
-        "mcp__sandbox__sandbox_execute_bash"])
+        "mcp__sandbox__sandbox_execute_*",
+        "mcp__sandbox__sandbox_file_operations",
+        "mcp__sandbox__sandbox_str_replace_editor"])
 
 
 @dataclass

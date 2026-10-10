@@ -37,8 +37,12 @@ def _gate_via_tier(monkeypatch, eff: str):
 
 
 def test_gate_off_tier_returns_configured_list():
-    """off 档（默认部署形态）：返回默认清单（fail-closed 出厂即拦）。"""
-    assert _off_tier_mcp_gate() == ["mcp__sandbox__sandbox_execute_bash"]
+    """off 档（默认部署形态）：返回类级默认清单（DG-2：通配整族，
+    fail-closed 出厂即拦——名字级清单第 5 起被 execute_code 绕过）。"""
+    assert _off_tier_mcp_gate() == [
+        "mcp__sandbox__sandbox_execute_*",
+        "mcp__sandbox__sandbox_file_operations",
+        "mcp__sandbox__sandbox_str_replace_editor"]
 
 
 def test_gate_bwrap_tier_empty(monkeypatch):
@@ -66,16 +70,17 @@ def test_gate_config_empty_disables(monkeypatch):
 
 def test_write_settings_gate_both_channels(tmp_path: Path, monkeypatch):
     """write_settings 双落点对赌：.claude disallow 与 .loadn/.agent deny
-    三处都带门（引擎侧 PermissionEngine 读 deny，claude 侧读 disallow）。"""
+    三处都带门（引擎侧 PermissionEngine 读 deny，claude 侧读 disallow）。
+    DG-2 起为类级模式串。"""
     _gate_via_tier(monkeypatch, "off")
     from loadn_webui import profile as profile_mod
     prof = profile_mod.get("assistant")
     ws_mod.write_settings(tmp_path, "sid-gate", prof)
     st = json.loads((tmp_path / ".claude" / "settings.json").read_text())
-    assert "mcp__sandbox__sandbox_execute_bash" in st["permissions"]["disallow"]
+    assert "mcp__sandbox__sandbox_execute_*" in st["permissions"]["disallow"]
     for rel in (".loadn", ".agent"):
         ag = json.loads((tmp_path / rel / "settings.json").read_text())
-        assert "mcp__sandbox__sandbox_execute_bash" in ag["permissions"]["deny"]
+        assert "mcp__sandbox__sandbox_execute_*" in ag["permissions"]["deny"]
 
 
 def test_write_settings_bwrap_no_gate(tmp_path: Path, monkeypatch):
@@ -85,9 +90,9 @@ def test_write_settings_bwrap_no_gate(tmp_path: Path, monkeypatch):
     prof = profile_mod.get("assistant")
     ws_mod.write_settings(tmp_path, "sid-bwrap", prof)
     st = json.loads((tmp_path / ".claude" / "settings.json").read_text())
-    assert "mcp__sandbox__sandbox_execute_bash" not in st["permissions"]["disallow"]
+    assert "mcp__sandbox__sandbox_execute_*" not in st["permissions"]["disallow"]
     ag = json.loads((tmp_path / ".loadn" / "settings.json").read_text())
-    assert "mcp__sandbox__sandbox_execute_bash" not in ag["permissions"]["deny"]
+    assert "mcp__sandbox__sandbox_execute_*" not in ag["permissions"]["deny"]
 
 
 def test_engine_permissions_deny_gates_call(tmp_path: Path):
@@ -116,15 +121,20 @@ def test_turn_disallow_merges_profile_and_gate(monkeypatch):
 
     class _Prof:
         disallowed_tools = ["WebSearch", "WebFetch"]
-    assert ws_mod.turn_disallow(_Prof()) == \
-        ["WebSearch", "WebFetch", "mcp__sandbox__sandbox_execute_bash"]
+    assert ws_mod.turn_disallow(_Prof()) == [
+        "WebSearch", "WebFetch",
+        "mcp__sandbox__sandbox_execute_*",
+        "mcp__sandbox__sandbox_file_operations",
+        "mcp__sandbox__sandbox_str_replace_editor"]
     # 否定路径：隔离档门空——只剩 profile 面（档位反转不得串台）
     _gate_via_tier(monkeypatch, "bwrap")
     assert ws_mod.turn_disallow(_Prof()) == ["WebSearch", "WebFetch"]
     # 无 disallowed_tools 属性的 profile 形态：不炸、只出门清单
     _gate_via_tier(monkeypatch, "off")
-    assert ws_mod.turn_disallow(type("P", (), {"disallowed_tools": []})()) == \
-        ["mcp__sandbox__sandbox_execute_bash"]
+    assert ws_mod.turn_disallow(type("P", (), {"disallowed_tools": []})()) == [
+        "mcp__sandbox__sandbox_execute_*",
+        "mcp__sandbox__sandbox_file_operations",
+        "mcp__sandbox__sandbox_str_replace_editor"]
 
 
 def _argv_call(**kw):

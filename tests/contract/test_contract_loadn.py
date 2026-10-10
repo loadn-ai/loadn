@@ -80,18 +80,19 @@ def test_protocol_argv_contract():
 
 
 def test_protocol_disallowed_tools_contract():
-    """§1：--disallowedTools 方言（claude CLI 同名同义，可重复）——off 档
-    执行域门直通引擎四层拒（面/索引/物化/调用）；PROMPT 恒 argv[-1] 不破。"""
+    """§1：--disallowedTools 方言（claude CLI 同名同义，可重复，条目支持
+    fnmatch 通配=类级门禁）——off 档执行域门直通引擎四层拒（面/索引/物化/
+    调用）；PROMPT 恒 argv[-1] 不破。"""
     from loadn_webui.claude_runner import TurnCall
     from loadn_webui.engines.loadn import LoadnSpec
 
     call = TurnCall(session_id="11111111-2222-3333-4444-555555555555",
                     prompt="P", cwd=Path("/tmp/ws"), sid="s1", engine="loadn",
-                    disallowed_tools=["mcp__sandbox__sandbox_execute_bash",
+                    disallowed_tools=["mcp__sandbox__sandbox_execute_*",
                                       "WebSearch"])
     cmd, _ = LoadnSpec().build_argv(call)
     flags = [v for k, v in zip(cmd, cmd[1:]) if k == "--disallowedTools"]
-    assert flags == ["mcp__sandbox__sandbox_execute_bash", "WebSearch"]
+    assert flags == ["mcp__sandbox__sandbox_execute_*", "WebSearch"]
     assert cmd[-1] == "P" and cmd.index("--disallowedTools") < cmd.index("--")
 
 

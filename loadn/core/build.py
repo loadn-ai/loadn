@@ -98,14 +98,16 @@ async def build_agent(cwd: Path, *, session_id: str | None = None,
     if enable_mcp:
         try:
             from loadn.mcp.client import discover
+            from loadn.tools.base import disallow_matches
             mcp_tools, mcp_raw_deferred, mcp_conns = await discover(cwd)
             for name, t in mcp_tools.items():
-                if name not in disallow:
+                if not disallow_matches(name, disallow):
                     tools[name] = t
-            # disallow 预过滤：被禁工具不进延迟索引——enum 不可见、直接
-            # 调用当场物化路径（loop）也到不了它，fail-closed 而非调用时报错
+            # disallow 预过滤（含通配——类级门禁）：被禁工具不进延迟索引
+            # ——enum 不可见、直接调用当场物化路径（loop）也到不了它，
+            # fail-closed 而非调用时报错
             mcp_deferred = {n: t for n, t in mcp_raw_deferred.items()
-                            if n not in disallow}
+                            if not disallow_matches(n, disallow)}
         except Exception as e:  # noqa: BLE001
             log.warning("MCP 发现失败（跳过）：%s", e)
             mcp_deferred = {}

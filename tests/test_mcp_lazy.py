@@ -200,6 +200,14 @@ async def test_toolsearch_execute_guards(monkeypatch, tmp_path):
     with pytest.raises(ToolError, match="策略禁用") as ei4:
         await ts2.execute({"tool": "mcp__big__t01"}, None)
     assert "未知或已全量注入" not in str(ei4.value)
+    # DG-2 类级通配：disallow 模式串按 fnmatch 拦同族（在索引/不在索引都拦）
+    ts3 = ToolSearchTool(index, tools, disallow={"mcp__big__t0*"})
+    with pytest.raises(ToolError, match="策略禁用") as ei5:
+        await ts3.execute({"tool": "mcp__big__t05"}, None)
+    assert "内建 Bash" in str(ei5.value)          # 路标照发（面里有 Bash）
+    assert "mcp__big__t05" not in tools
+    # 描述带域事实路标（注意力桥：模型第一站就在这看索引）
+    assert "独立环境" in ts3.description and "内建工具" in ts3.description
 
 
 # ---------------------------------------------------------------- 验收②（loop 级）
@@ -300,6 +308,20 @@ async def test_build_wires_toolsearch_and_disallow_prefilter(tmp_path, monkeypat
                                 disallow=["ToolSearch"])
     assert "ToolSearch" not in bundle3.core.tools
     for c in bundle3.mcp_conns:
+        await c.stop()
+    # DG-2 类级通配：disallow 条目按 fnmatch 整族预过滤——延迟索引
+    # （t1* 吃掉 t10-t19 十个）与非延迟注入面（s* 吃掉 small 全家）同受约束
+    bundle5 = await build_agent(
+        tmp_path, cfg={"provider": "fake"},
+        disallow=["mcp__big__t1*", "mcp__small__s*"])
+    idx5 = bundle5.core.mcp_deferred
+    assert len(idx5) == 10 and "mcp__big__t10" not in idx5
+    assert all(not n.startswith("mcp__big__t1") for n in idx5)
+    assert "mcp__small__s0" not in bundle5.core.tools
+    assert "mcp__small__s1" not in bundle5.core.tools
+    enum5 = bundle5.core.tools["ToolSearch"].input_schema["properties"]["tool"]["enum"]
+    assert all(not n.startswith("mcp__big__t1") for n in enum5)
+    for c in bundle5.mcp_conns:
         await c.stop()
     # 无 MCP server 的 workspace：空索引不注册（空 enum 工具不进装配）
     bare = tmp_path / "bare"

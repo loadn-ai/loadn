@@ -35,6 +35,28 @@ def test_allow_rule_then_ask_denies_headless():
     assert not d.allowed and "已阻止" in d.reason
 
 
+def test_deny_bare_name_glob_class_gate():
+    """DG-2 类级门禁：裸工具名含通配符按 fnmatch 整族拒（第 5 起实证
+    execute_bash 被禁后模型改走 execute_code——名字级清单天然过时）。
+    回填文案点名命中模式（模型可见「整族被禁」而非单名）。"""
+    pe = PermissionEngine(mode="bypassPermissions",
+                          deny=["mcp__sandbox__sandbox_execute_*"])
+    for name in ("mcp__sandbox__sandbox_execute_bash",
+                 "mcp__sandbox__sandbox_execute_code",
+                 "mcp__sandbox__sandbox_execute_sql"):
+        d = pe.check(name, {})
+        assert not d.allowed, name
+        assert d.reason == "权限规则拒绝：mcp__sandbox__sandbox_execute_*"
+    # 否定路径：非同族资源桥工具不受牵连（通配不吃无关名）
+    assert pe.check("mcp__sandbox__sandbox_get_context", {}).allowed
+    assert pe.check("mcp__sandbox__browser_navigate", {}).allowed
+    # 精确名条目保持旧语义（无通配字符不进 fnmatch 分支）
+    pe2 = PermissionEngine(mode="bypassPermissions",
+                           deny=["WebSearch"])
+    assert not pe2.check("WebSearch", {}).allowed
+    assert pe2.check("WebSearchPro", {}).allowed
+
+
 def test_accept_edits_allows_write():
     pe = PermissionEngine(mode="acceptEdits")
     assert pe.check("Write", {"file_path": "/x", "content": "y"}).allowed

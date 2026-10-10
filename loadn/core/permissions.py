@@ -188,6 +188,10 @@ def _is_read_only(tool: str, args: dict) -> bool:
 def _match_rules(rules: list[str], tool: str, args: dict) -> str | None:
     """返回命中的规则原文（未命中 None）。支持裸工具名与 "Tool:pattern"。
 
+    裸工具名含通配符时按 fnmatch 类级匹配（DG-2：如
+    mcp__sandbox__sandbox_execute_* 整族拒——名字级清单对新同族工具天然
+    过时，第 5 起实证 execute_bash 被禁后模型改走 execute_code）。
+
     P0-4：Bash 的 pattern 匹配改走覆盖语义（_bash_covered）——每个子命令
     都须被**某条**规则覆盖（`git status && curl evil` 不再命中 "Bash:git *"；
     `git status && cargo build` 可由 git/cargo 两条规则分别覆盖）。
@@ -207,6 +211,11 @@ def _match_rules(rules: list[str], tool: str, args: dict) -> str | None:
             if probe and fnmatch.fnmatch(probe, pat.strip()):
                 return r
         elif r == tool:
+            return r
+        # 裸名通配（类级门禁，DG-2）：如 mcp__sandbox__sandbox_execute_* 整族
+        # 拒——精确名条目保持旧语义；含通配符才走 fnmatch，字面名不误伤
+        elif ("*" in r or "?" in r or "[" in r) and ":" not in r \
+                and fnmatch.fnmatch(tool, r):
             return r
     return None
 
