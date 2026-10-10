@@ -110,9 +110,10 @@ export default function ResourcesPanel() {
   const [mcpEdit, setMcpEdit] = useState<{ name: string; command: string; args: string } | null>(null);
   const [svcAdd, setSvcAdd] = useState<{ name: string; url: string; note: string } | null>(null);
 
+  const [loadErr, setLoadErr] = useState('');
   const load = async () => {
-    try { setData(await api<Overview>('/api/admin/resources')); }
-    catch (e) { setMsg({ text: `读取失败：${String(e)}` }); }
+    try { setData(await api<Overview>('/api/admin/resources')); setLoadErr(''); }
+    catch (e) { setLoadErr(`资源概览加载失败：${String(e)}`); }  // 早退分支前必须落独立错误态
   };
   useEffect(() => { void load(); }, []);
 
@@ -207,7 +208,13 @@ export default function ResourcesPanel() {
     } catch (e) { flash(`保存失败：${String(e)}`, false); }
   };
 
-  if (!data) return <div className="admin-body muted">加载中…</div>;
+  if (!data) return loadErr ? (
+    <div className="admin-body">
+      <div className="admin-msg err">{loadErr}
+        <button className="link" style={{ marginLeft: 8 }} onClick={() => void load()}>重试</button>
+      </div>
+    </div>
+  ) : <div className="admin-body muted">加载中…</div>;
   const valOf = (k: string) => data.services.find(s => s.key === k)?.value ?? '';
   const secretSet = (k: string) => data.secrets.find(s => s.key === k)?.set ?? false;
   const cardStatus = (c: CardDef) => {

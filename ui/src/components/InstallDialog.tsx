@@ -32,12 +32,14 @@ export default function InstallDialog({ onClose }: { onClose: () => void }) {
 
   async function search() {
     setResults(null); setHubErr(''); setZh({});
-    const d = await api<{ skills?: HubSkill[]; error?: string }>(
-      `/api/skillhub/search?q=${encodeURIComponent(q)}`);
-    const skills = d.skills ?? [];
-    setResults(skills);
-    setHubErr(d.error ?? '');
-    void fetchZhDesc(skills).then(setZh);   // 英文描述 → 中文简介（kv 缓存）
+    try {
+      const d = await api<{ skills?: HubSkill[]; error?: string }>(
+        `/api/skillhub/search?q=${encodeURIComponent(q)}`);
+      const skills = d.skills ?? [];
+      setResults(skills);
+      setHubErr(d.error ?? '');
+      void fetchZhDesc(skills).then(setZh);   // 英文描述 → 中文简介（kv 缓存）
+    } catch (e) { setHubErr(`搜索请求失败：${String(e)}——可重试，或用「链接安装」直装`); }
   }
 
   async function install(body: Record<string, unknown>, label: string) {

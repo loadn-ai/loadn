@@ -20,17 +20,19 @@ export default function MemoryTab() {
   const [hist, setHist] = useState<Ver[]>([]);
   const [verText, setVerText] = useState('');
   const [creating, setCreating] = useState(false);
-  const [msg, setMsg] = useState('');
+  const [msg, setMsg] = useState<{ t: string; err?: boolean } | null>(null);
 
   async function reloadDomains() {
-    const d = await api<{ domains: string[] }>('/api/memory/domains');
-    setDomains(d.domains);
+    try {
+      const d = await api<{ domains: string[] }>('/api/memory/domains');
+      setDomains(d.domains);
+    } catch (e) { setMsg({ t: `域列表加载失败：${String(e)}`, err: true }); }
   }
   async function reloadEntries(dom = domain) {
     try {
       const d = await api<{ entries: Entry[] }>(`/api/memory/entries?domain=${dom}`);
       setEntries(d.entries.reverse());   // 新在前
-    } catch { setEntries([]); }
+    } catch (e) { setEntries([]); setMsg({ t: `记忆列表加载失败：${String(e)}`, err: true }); }
   }
   useEffect(() => { void reloadDomains(); }, []);
   useEffect(() => { setSel(null); void reloadEntries(domain); }, [domain]);
@@ -38,13 +40,15 @@ export default function MemoryTab() {
   function pick(e: Entry) {
     setSel(e); setSummary(e.summary); setPreview(false); setVerText('');
     void (async () => {
-      const d = await api<{ text: string }>(
-        `/api/memory/file?domain=${domain}&id=${e.id}`);
-      const body = d.text.replace(/^---\n[\s\S]*?\n---\n/, '').trim();
-      setText(body);
-      const h = await api<{ history: Ver[] }>(
-        `/api/memory/history?domain=${domain}&id=${e.id}`);
-      setHist(h.history);
+      try {
+        const d = await api<{ text: string }>(
+          `/api/memory/file?domain=${domain}&id=${e.id}`);
+        const body = d.text.replace(/^---\n[\s\S]*?\n---\n/, '').trim();
+        setText(body);
+        const h = await api<{ history: Ver[] }>(
+          `/api/memory/history?domain=${domain}&id=${e.id}`);
+        setHist(h.history);
+      } catch (er) { setMsg({ t: `条目加载失败：${String(er)}`, err: true }); }
     })();
   }
 
@@ -53,18 +57,18 @@ export default function MemoryTab() {
     try {
       await api('/api/memory/file', { method: 'PUT', body: JSON.stringify({
         domain, id: sel.id, content: text, summary }) });
-      setMsg('已保存（一次 commit，历史可回溯）');
+      setMsg({ t: '已保存（一次 commit，历史可回溯）' });
       pick(sel); void reloadEntries();
-    } catch (e) { setMsg(`保存被拒：${String(e)}`); }   // 护栏拒绝原因直显
+    } catch (e) { setMsg({ t: `保存被拒：${String(e)}`, err: true }); }   // 护栏拒绝原因直显
   }
 
   async function del(e: Entry) {
     if (!confirm(`删除记忆「${e.summary}」？git 历史保留（可经历史恢复）。`)) return;
     try {
       await api(`/api/memory/entry?domain=${domain}&id=${e.id}`, { method: 'DELETE' });
-      setSel(null); setMsg(`已删除 ${e.summary}（历史在，可恢复）`);
+      setSel(null); setMsg({ t: `已删除 ${e.summary}（历史在，可恢复）` });
       void reloadEntries();
-    } catch (err) { setMsg(`删除失败：${String(err)}`); }
+    } catch (err) { setMsg({ t: `删除失败：${String(err)}`, err: true }); }
   }
 
   async function restore(v: Ver) {
@@ -72,15 +76,17 @@ export default function MemoryTab() {
     try {
       await api('/api/memory/restore', { method: 'POST', body: JSON.stringify({
         domain, id: sel.id, ref: v.hash }) });
-      setMsg(`已恢复到 ${v.hash}（${v.subject}）`);
+      setMsg({ t: `已恢复到 ${v.hash}（${v.subject}）` });
       pick(sel);
-    } catch (e) { setMsg(`恢复失败：${String(e)}`); }
+    } catch (e) { setMsg({ t: `恢复失败：${String(e)}`, err: true }); }
   }
 
   async function showVer(v: Ver) {
-    const d = await api<{ text: string }>(
-      `/api/memory/version?domain=${domain}&id=${sel?.id}&ref=${v.hash}`);
-    setVerText(d.text.replace(/^---\n[\s\S]*?\n---\n/, '').trim());
+    try {
+      const d = await api<{ text: string }>(
+        `/api/memory/version?domain=${domain}&id=${sel?.id}&ref=${v.hash}`);
+      setVerText(d.text.replace(/^---\n[\s\S]*?\n---\n/, '').trim());
+    } catch (e) { setMsg({ t: `历史版本加载失败：${String(e)}`, err: true }); }
   }
 
   return (
@@ -93,7 +99,7 @@ export default function MemoryTab() {
         <button className="btn sm" onClick={() => setCreating(v => !v)}>
           <Plus size={13} /> 新建
         </button>
-        {msg && <span className="admin-msg">{msg}</span>}
+        {msg && <span className={msg.err ? 'admin-msg err' : 'admin-msg'}>{msg.t}</span>}
       </div>
       {creating && <NewEntryForm domain={domain} onDone={() => {
         setCreating(false); void reloadEntries();

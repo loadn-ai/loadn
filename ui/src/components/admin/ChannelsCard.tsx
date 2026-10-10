@@ -13,7 +13,8 @@ export default function ChannelsCard() {
   const [stat, setStat] = useState<ChanStat | null>(null);
   const [allow, setAllow] = useState('');
   const [token, setToken] = useState('');
-  const [msg, setMsg] = useState('');
+  const [msg, setMsg] = useState<{ t: string; err?: boolean } | null>(null);
+  const [cfgErr, setCfgErr] = useState('');
   const [binds, setBinds] = useState<ChanBind[]>([]);
   const openSession = useStore(s => s.openSession);
 
@@ -23,7 +24,8 @@ export default function ChannelsCard() {
         '/api/admin/channels');
       setCfg(d.config); setStat(d.status); setBinds(d.bindings || []);
       setAllow((d.config.telegram_allow || []).join(', '));
-    } catch { /* 面板不可达静默 */ }
+      setCfgErr('');
+    } catch (e) { setCfgErr(`渠道面板加载失败：${String(e)}`); }  // 不可达≠无配置，卡壳显示错误
   }
   useEffect(() => { void reload(); }, []);
 
@@ -38,19 +40,26 @@ export default function ChannelsCard() {
           body: JSON.stringify({ token: token.trim() }) });
         setToken('');
       }
-      setMsg('已保存（启停即时生效；白名单即时生效）');
+      setMsg({ t: '已保存（启停即时生效；白名单即时生效）' });
       void reload();
-    } catch (e) { setMsg(`保存失败：${String(e)}`); }
+    } catch (e) { setMsg({ t: `保存失败：${String(e)}`, err: true }); }
   }
 
   async function probe() {
-    setMsg('探测中…');
-    const d = await api<{ ok: boolean; bot?: string; error?: string }>(
-      '/api/admin/channels/probe');
-    setMsg(d.ok ? `✅ @${d.bot} 连通` : `❌ ${d.error}`);
+    setMsg({ t: '探测中…' });
+    try {
+      const d = await api<{ ok: boolean; bot?: string; error?: string }>(
+        '/api/admin/channels/probe');
+      setMsg(d.ok ? { t: `✅ @${d.bot} 连通` } : { t: `❌ ${d.error}`, err: true });
+    } catch (e) { setMsg({ t: `探测失败：${String(e)}`, err: true }); }
   }
 
-  if (!cfg) return null;
+  if (!cfg) return cfgErr ? (
+    <div className="setting-card">
+      <h4>渠道（Telegram 双向对话）</h4>
+      <div className="form-msg err">{cfgErr}</div>
+    </div>
+  ) : null;
   return (
     <div className="setting-card">
       <h4>渠道（Telegram 双向对话）</h4>
@@ -73,7 +82,7 @@ export default function ChannelsCard() {
       </div>
       <div className="setting-row">
         <button className="btn sm primary" onClick={() => void save()}>保存</button>
-        <span className="admin-msg">{msg}</span>
+        {msg && <span className={msg.err ? 'admin-msg err' : 'admin-msg'}>{msg.t}</span>}
       </div>
       {stat && (
         <div className="muted" style={{ fontSize: 12 }}>

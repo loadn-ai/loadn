@@ -82,43 +82,47 @@ export default function SettingsTab() {
   const [conv, setConv] = useState<ConvRow[] | null>(null);
   const [convDef, setConvDef] = useState<ConvDefaults>(
     { timeout_s: 3600, stall_timeout_s: 1800, max_turns: null });
-  const [convMsg, setConvMsg] = useState('');
+  const [convMsg, setConvMsg] = useState<{ t: string; err?: boolean } | null>(null);
   const [eng, setEng] = useState<EnginesCfg | null>(null);
   const [cl, setCl] = useState<ClaudeCfg | null>(null);
-  const [engMsg, setEngMsg] = useState('');
+  const [engMsg, setEngMsg] = useState<{ t: string; err?: boolean } | null>(null);
   const [nf, setNf] = useState<NotifyCfg | null>(null);
   const [nfKeys, setNfKeys] = useState<Record<string, string>>({});
-  const [nfMsg, setNfMsg] = useState('');
+  const [nfMsg, setNfMsg] = useState<{ t: string; err?: boolean } | null>(null);
   const [nfTesting, setNfTesting] = useState(false);
   const [share, setShare] = useState<ShareCfg | null>(null);
-  const [shareMsg, setShareMsg] = useState('');
+  const [shareMsg, setShareMsg] = useState<{ t: string; err?: boolean } | null>(null);
   const [pricing, setPricing] = useState<PricingCfg | null>(null);
   const [apiRows, setApiRows] = useState<PriceRow[]>([]);
   const [planRows, setPlanRows] = useState<PriceRow[]>([]);
-  const [priceMsg, setPriceMsg] = useState('');
+  const [priceMsg, setPriceMsg] = useState<{ t: string; err?: boolean } | null>(null);
   const [srv, setSrv] = useState<ServerCfg | null>(null);
   const [res, setRes] = useState<ResCfg | null>(null);
   const [resKeys, setResKeys] = useState<Record<string, string>>({});
-  const [resMsg, setResMsg] = useState('');
+  const [resMsg, setResMsg] = useState<{ t: string; err?: boolean } | null>(null);
   const [pingRows, setPingRows] = useState<[string, { ok: boolean; msg: string; ms?: number }][] | null>(null);
   const [pinging, setPinging] = useState(false);
-  const [msg, setMsg] = useState('');
+  const [msg, setMsg] = useState<{ t: string; err?: boolean } | null>(null);
+  const [loadErr, setLoadErr] = useState('');
   const [testing, setTesting] = useState(false);
 
   useEffect(() => { void reload(); }, []);
   async function reload() {
-    const d = await api<{ titlegen: TitleGenCfg; run: NonNullable<typeof run>;
-                          convergence: ConvRow[]; convergence_defaults: ConvDefaults;
-                          resources: ResCfg;
-                          engines: EnginesCfg; claude: ClaudeCfg; notify: NotifyCfg;
-                          share: ShareCfg; pricing: PricingCfg; server: ServerCfg }>('/api/settings');
-    setTg(d.titlegen); setRun(d.run); setConv(d.convergence); setRes(d.resources); setKeyInput(''); setResKeys({});
-    setConvDef(d.convergence_defaults ?? { timeout_s: 3600, stall_timeout_s: 1800, max_turns: null });
-    setEng(d.engines); setCl(d.claude); setNf(d.notify); setNfKeys({});
-    setShare(d.share); setPricing(d.pricing);
-    setApiRows(rowsFromTable(d.pricing.api, 'cache_read'));
-    setPlanRows(rowsFromTable(d.pricing.plan_credits, 'cache_input'));
-    setSrv(d.server);
+    try {
+      const d = await api<{ titlegen: TitleGenCfg; run: NonNullable<typeof run>;
+                            convergence: ConvRow[]; convergence_defaults: ConvDefaults;
+                            resources: ResCfg;
+                            engines: EnginesCfg; claude: ClaudeCfg; notify: NotifyCfg;
+                            share: ShareCfg; pricing: PricingCfg; server: ServerCfg }>('/api/settings');
+      setTg(d.titlegen); setRun(d.run); setConv(d.convergence); setRes(d.resources); setKeyInput(''); setResKeys({});
+      setConvDef(d.convergence_defaults ?? { timeout_s: 3600, stall_timeout_s: 1800, max_turns: null });
+      setEng(d.engines); setCl(d.claude); setNf(d.notify); setNfKeys({});
+      setShare(d.share); setPricing(d.pricing);
+      setApiRows(rowsFromTable(d.pricing.api, 'cache_read'));
+      setPlanRows(rowsFromTable(d.pricing.plan_credits, 'cache_input'));
+      setSrv(d.server);
+      setLoadErr('');
+    } catch (e) { setLoadErr(`设置加载失败：${e instanceof Error ? e.message : e}`); }  // 早退分支必须区分错误态
   }
 
   async function saveTitlegen() {
@@ -131,18 +135,18 @@ export default function SettingsTab() {
       const d = await api<{ titlegen: TitleGenCfg }>('/api/settings/titlegen', {
         method: 'PUT', body: JSON.stringify(body) });
       setTg(d.titlegen); setKeyInput('');
-      setMsg('自动标题设置已保存（即时生效）');
-    } catch (e) { setMsg(`保存失败：${String(e)}`); }
+      setMsg({ t: '自动标题设置已保存（即时生效）' });
+    } catch (e) { setMsg({ t: `保存失败：${String(e)}`, err: true }); }
   }
 
   async function testConn() {
-    setTesting(true); setMsg('测试中…');
+    setTesting(true); setMsg({ t: '测试中…' });
     try {
       // 先保存当前编辑值再测（key 留空时沿用已存 key）
       await saveTitlegenQuiet();
       const d = await api<{ reply: string }>('/api/settings/titlegen/test', { method: 'POST' });
-      setMsg(`✓ 连通正常，模型回复：「${d.reply}」`);
-    } catch (e) { setMsg(`✗ 测试失败：${String(e)}`); }
+      setMsg({ t: `✓ 连通正常，模型回复：「${d.reply}」` });
+    } catch (e) { setMsg({ t: `✗ 测试失败：${String(e)}`, err: true }); }
     finally { setTesting(false); }
   }
 
@@ -159,8 +163,8 @@ export default function SettingsTab() {
     if (!run) return;
     try {
       await api('/api/settings/run', { method: 'PUT', body: JSON.stringify(run) });
-      setMsg('运行参数已保存（并发数重启服务后生效）');
-    } catch (e) { setMsg(`保存失败：${String(e)}`); }
+      setMsg({ t: '运行参数已保存（并发数重启服务后生效）' });
+    } catch (e) { setMsg({ t: `保存失败：${String(e)}`, err: true }); }
   }
 
   async function saveEngines() {
@@ -178,8 +182,8 @@ export default function SettingsTab() {
       const d2 = await api<{ claude: ClaudeCfg }>('/api/settings/claude', {
         method: 'PUT', body: JSON.stringify({ effort: cl.effort, model: cl.model, claude_bin: cl.claude_bin }) });
       setCl(d2.claude);
-      setEngMsg('✓ 已保存（新会话生效，在跑会话不受影响）');
-    } catch (e) { setEngMsg(`保存失败：${String(e)}`); }
+      setEngMsg({ t: '✓ 已保存（新会话生效，在跑会话不受影响）' });
+    } catch (e) { setEngMsg({ t: `保存失败：${String(e)}`, err: true }); }
   }
 
   function updEngine(name: string, patch: Partial<PerEngineCfg>) {
@@ -193,8 +197,8 @@ export default function SettingsTab() {
       const d = await api<{ engines: EnginesCfg }>('/api/settings/engines', {
         method: 'PUT', body: JSON.stringify({ engines: { [name]: null } }) });
       setEng(d.engines);
-      setEngMsg(`✓ 已清除 ${name} 覆盖（下一 turn 起按自动探测）`);
-    } catch (e) { setEngMsg(`清除失败：${String(e)}`); }
+      setEngMsg({ t: `✓ 已清除 ${name} 覆盖（下一 turn 起按自动探测）` });
+    } catch (e) { setEngMsg({ t: `清除失败：${String(e)}`, err: true }); }
   }
 
   async function saveNotify() {
@@ -213,17 +217,17 @@ export default function SettingsTab() {
       const d = await api<{ notify: NotifyCfg }>('/api/settings/notify', {
         method: 'PUT', body: JSON.stringify(body) });
       setNf(d.notify); setNfKeys({});
-      if (quiet) setNfMsg('✓ 已保存（即时生效）');
-    } catch (e) { setNfMsg(`保存失败：${String(e)}`); throw e; }
+      if (quiet) setNfMsg({ t: '✓ 已保存（即时生效）' });
+    } catch (e) { setNfMsg({ t: `保存失败：${String(e)}`, err: true }); throw e; }
   }
 
   async function testNotify() {
-    setNfTesting(true); setNfMsg('发送中…（先保存当前编辑值）');
+    setNfTesting(true); setNfMsg({ t: '发送中…（先保存当前编辑值）' });
     try {
       await saveNotifyQuiet();
       const d = await api<{ ok: boolean; msg?: string }>('/api/settings/notify/test', { method: 'POST' });
-      setNfMsg(d.ok ? '✓ 测试通知已发出（查收手机）' : `未发送：${d.msg || 'provider 未配置或通道参数不全'}`);
-    } catch (e) { if (!String(e).includes('保存失败')) setNfMsg(`✗ 失败：${String(e)}`); }
+      setNfMsg(d.ok ? { t: '✓ 测试通知已发出（查收手机）' } : { t: `未发送：${d.msg || 'provider 未配置或通道参数不全'}`, err: true });
+    } catch (e) { if (!String(e).includes('保存失败')) setNfMsg({ t: `✗ 失败：${String(e)}`, err: true }); }
     finally { setNfTesting(false); }
   }
 
@@ -233,8 +237,8 @@ export default function SettingsTab() {
       const d = await api<{ share: ShareCfg }>('/api/settings/share', {
         method: 'PUT', body: JSON.stringify({ base_url: share.base_url }) });
       setShare(d.share);
-      setShareMsg('✓ 已保存（即时生效）');
-    } catch (e) { setShareMsg(`保存失败：${String(e)}`); }
+      setShareMsg({ t: '✓ 已保存（即时生效）' });
+    } catch (e) { setShareMsg({ t: `保存失败：${String(e)}`, err: true }); }
   }
 
   /** 行校验（红框标记+行级文案，就地写回 rows）；全过才允许发请求 */
@@ -264,7 +268,7 @@ export default function SettingsTab() {
     const p = collectTable(planRows, 'cache_input');
     setApiRows(a.rows); setPlanRows(p.rows);
     if (a.table === null || p.table === null) {
-      setPriceMsg('有校验未过的行（红底行）——修正后再保存');
+      setPriceMsg({ t: '有校验未过的行（红底行）——修正后再保存', err: true });
       return;
     }
     try {
@@ -274,8 +278,8 @@ export default function SettingsTab() {
       setPricing(d.pricing);
       setApiRows(rowsFromTable(d.pricing.api, 'cache_read'));
       setPlanRows(rowsFromTable(d.pricing.plan_credits, 'cache_input'));
-      setPriceMsg('✓ 已保存（即时生效）');
-    } catch (e) { setPriceMsg(`保存失败：${String(e)}`); }
+      setPriceMsg({ t: '✓ 已保存（即时生效）' });
+    } catch (e) { setPriceMsg({ t: `保存失败：${String(e)}`, err: true }); }
   }
 
   async function restoreBuiltinPricing() {
@@ -287,8 +291,8 @@ export default function SettingsTab() {
         method: 'PUT', body: JSON.stringify({ usd_cny: pricing.usd_cny, api: {}, plan_credits: {} }) });
       setPricing(d.pricing);
       setApiRows([]); setPlanRows([]);
-      setPriceMsg('✓ 已恢复内置价目');
-    } catch (e) { setPriceMsg(`恢复失败：${String(e)}`); }
+      setPriceMsg({ t: '✓ 已恢复内置价目' });
+    } catch (e) { setPriceMsg({ t: `恢复失败：${String(e)}`, err: true }); }
   }
 
   async function copyPricingJson() {
@@ -297,8 +301,8 @@ export default function SettingsTab() {
     const text = JSON.stringify({ api: a.table ?? {}, plan_credits: p.table ?? {} }, null, 2);
     try {
       await navigator.clipboard.writeText(text);
-      setPriceMsg('✓ 当前覆盖表 JSON 已复制到剪贴板');
-    } catch { setPriceMsg(text); }                       // 剪贴板不可用时直接展示
+      setPriceMsg({ t: '✓ 当前覆盖表 JSON 已复制到剪贴板' });
+    } catch { setPriceMsg({ t: text }); }                       // 剪贴板不可用时直接展示
   }
 
   function updConv(name: string, patch: Partial<ConvRow>) {
@@ -314,8 +318,8 @@ export default function SettingsTab() {
       const d = await api<{ profiles: ConvRow[] }>('/api/settings/convergence', {
         method: 'PUT', body: JSON.stringify({ reset: [name] }) });
       setConv(d.profiles);
-      setConvMsg(`✓ ${name} 已恢复默认（下一 turn 生效）`);
-    } catch (e) { setConvMsg(`恢复失败：${String(e)}`); }
+      setConvMsg({ t: `✓ ${name} 已恢复默认（下一 turn 生效）` });
+    } catch (e) { setConvMsg({ t: `恢复失败：${String(e)}`, err: true }); }
   }
 
   async function saveConv() {    if (!conv) return;
@@ -327,8 +331,8 @@ export default function SettingsTab() {
         }])) }),
       });
       setConv(d.profiles);
-      setConvMsg('✓ 已保存（下一 turn 生效）');
-    } catch (e) { setConvMsg(`保存失败：${String(e)}`); }
+      setConvMsg({ t: '✓ 已保存（下一 turn 生效）' });
+    } catch (e) { setConvMsg({ t: `保存失败：${String(e)}`, err: true }); }
   }
 
   async function saveResources() {
@@ -346,23 +350,29 @@ export default function SettingsTab() {
       const d = await api<{ resources: ResCfg }>('/api/settings/resources', {
         method: 'PUT', body: JSON.stringify(body) });
       setRes(d.resources); setResKeys({});
-      setResMsg('✓ 已保存（即时生效）');
-    } catch (e) { setResMsg(`保存失败：${String(e)}`); }
+      setResMsg({ t: '✓ 已保存（即时生效）' });
+    } catch (e) { setResMsg({ t: `保存失败：${String(e)}`, err: true }); }
   }
 
   async function testResources() {
-    setPinging(true); setResMsg('探测中…（先保存当前编辑值）');
+    setPinging(true); setResMsg({ t: '探测中…（先保存当前编辑值）' });
     try {
       await saveResources();
       const d = await api<Record<string, { ok: boolean; msg: string; ms?: number }>>(
         '/api/settings/resources/test', { method: 'POST' });
       setPingRows(Object.entries(d));
-      setResMsg('');
-    } catch (e) { setResMsg(`探测失败：${String(e)}`); }
+      setResMsg(null);
+    } catch (e) { setResMsg({ t: `探测失败：${String(e)}`, err: true }); }
     finally { setPinging(false); }
   }
 
-  if (!tg || !run) return <div className="admin-body muted">加载中…</div>;
+  if (!tg || !run) return loadErr ? (
+    <div className="admin-body">
+      <div className="admin-msg err">{loadErr}
+        <button className="link" style={{ marginLeft: 8 }} onClick={() => void reload()}>重试</button>
+      </div>
+    </div>
+  ) : <div className="admin-body muted">加载中…</div>;
   const groupNav = [
     { id: 'g-basic', label: '基础' }, { id: 'g-engine', label: '引擎与模型' },
     { id: 'g-notify', label: '通知与分享' }, { id: 'g-users', label: '用户与账号' },
@@ -410,7 +420,7 @@ export default function SettingsTab() {
         <div className="setting-row">
           <button className="btn primary sm" onClick={() => void saveTitlegen()}>保存</button>
           <button className="btn sm" disabled={testing} onClick={() => void testConn()}>{testing ? '测试中…' : '测试连通'}</button>
-          {msg && <span className="admin-msg">{msg}</span>}
+          {msg && <span className={msg.err ? 'admin-msg err' : 'admin-msg'}>{msg.t}</span>}
         </div>
         <div className="setting-note muted">规则：未显式命名的任务，在首条消息发出后自动起名；手动改名或显式标题永远优先，只生成一次。</div>
       </div>
@@ -502,7 +512,7 @@ export default function SettingsTab() {
         </table></div>
         <div className="setting-row">
           <button className="btn primary sm" onClick={() => void saveEngines()}>保存</button>
-          {engMsg && <span className="admin-msg">{engMsg}</span>}
+          {engMsg && <span className={engMsg.err ? 'admin-msg err' : 'admin-msg'}>{engMsg.t}</span>}
         </div>
         <div className="setting-note muted">改动不影响在跑会话——下一个 turn / 新会话按新值组装 argv；bin 留空走自动探测，模型留空走继承链（会话覆盖 &gt; claude 节 &gt; 引擎节 &gt; CLI 默认）。</div>
       </div>}
@@ -551,7 +561,7 @@ export default function SettingsTab() {
           <button className="btn sm" disabled={nfTesting} onClick={() => void testNotify()}>
             {nfTesting ? '发送中…' : '发测试通知'}
           </button>
-          {nfMsg && <span className="admin-msg">{nfMsg}</span>}
+          {nfMsg && <span className={nfMsg.err ? 'admin-msg err' : 'admin-msg'}>{nfMsg.t}</span>}
         </div>
         <div className="setting-note muted">与会话内 wechat-send（发给联系人）语义不同——这是运维告警通道。telegram 自动走「外部资源」里的代理（墙内必需）。</div>
       </div>}
@@ -563,7 +573,7 @@ export default function SettingsTab() {
           <input value={share.base_url} onChange={e => setShare({ ...share, base_url: e.target.value })}
             placeholder="https://your-domain.com/share（空 = 未启用）" style={{ maxWidth: 340 }} />
           <button className="btn primary sm" onClick={() => void saveShare()}>保存</button>
-          {shareMsg && <span className="admin-msg">{shareMsg}</span>}
+          {shareMsg && <span className={shareMsg.err ? 'admin-msg err' : 'admin-msg'}>{shareMsg.t}</span>}
         </div>
         <div className="setting-note muted">VPS 反代 your-domain.com/share → 本机 8792；只影响生成的外链前缀，分享路由本身一直在线。</div>
       </div>}
@@ -594,7 +604,7 @@ export default function SettingsTab() {
         </table></div>
         <div className="setting-row">
           <button className="btn primary sm" onClick={() => void saveConv()}>保存</button>
-          {convMsg && <span className="admin-msg">{convMsg}</span>}
+          {convMsg && <span className={convMsg.err ? 'admin-msg err' : 'admin-msg'}>{convMsg.t}</span>}
         </div>
         <div className="setting-note muted">硬超时 = turn 最长运行；静默判死 = 事件流 + transcript 双静默超阈值才杀
           （不误杀长 bash）；轮次上限 = agent 工具调用循环轮数（触顶报 error_max_turns，留空不限）。
@@ -700,7 +710,7 @@ export default function SettingsTab() {
           <button className="btn sm" disabled={pinging} onClick={() => void testResources()}>
             {pinging ? '探测中…' : '测试全部'}
           </button>
-          {resMsg && <span className="admin-msg">{resMsg}</span>}
+          {resMsg && <span className={resMsg.err ? 'admin-msg err' : 'admin-msg'}>{resMsg.t}</span>}
         </div>
         {pingRows && (
           <div className="tbl-wrap">
@@ -747,7 +757,7 @@ export default function SettingsTab() {
             onClick={() => void restoreBuiltinPricing()}>恢复内置</button>
           <button className="mini-btn" title="当前覆盖表 JSON 复制到剪贴板（备份/手改）"
             onClick={() => void copyPricingJson()}>复制 JSON</button>
-          {priceMsg && <span className="admin-msg">{priceMsg}</span>}
+          {priceMsg && <span className={priceMsg.err ? 'admin-msg err' : 'admin-msg'} style={{ maxWidth: 420, whiteSpace: 'pre-wrap' }}>{priceMsg.t}</span>}
         </div>
         <div className="setting-note muted">覆盖即整表替换：两张表都留空=内置官方价目兜底。
           只调一两个模型的推荐路径是「从内置复制」后在行内改；删行=该模型回兜底表价。</div>

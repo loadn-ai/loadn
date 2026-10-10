@@ -12,15 +12,16 @@ interface UserRow {
 export default function UsersCard() {
   const [users, setUsers] = useState<UserRow[]>([]);
   const [me, setMe] = useState<{ id: number; username: string; role: string } | null>(null);
-  const [msg, setMsg] = useState('');
+  const [msg, setMsg] = useState<{ t: string; err?: boolean } | null>(null);
   const [adding, setAdding] = useState({ username: '', password: '', role: 'user' });
+  const [resetPw, setResetPw] = useState<{ uid: number; pw: string } | null>(null);
 
   const load = async () => {
     try {
       const d = await api<{ users: UserRow[] }>('/api/auth/users');
       setUsers(d.users);
     } catch (e) {
-      setMsg(`加载失败：${e instanceof Error ? e.message : e}`);
+      setMsg({ t: `加载失败：${e instanceof Error ? e.message : e}`, err: true });
     }
   };
   useEffect(() => {
@@ -33,10 +34,10 @@ export default function UsersCard() {
     try {
       await api(`/api/auth/users/${uid}`, { method: 'PATCH',
         body: JSON.stringify(body) });
-      setMsg(what + ' ✓');
+      setMsg({ t: what + ' ✓' });
       await load();
     } catch (e) {
-      setMsg(`${what} 失败：${e instanceof Error ? e.message : e}`);
+      setMsg({ t: `${what} 失败：${e instanceof Error ? e.message : e}`, err: true });
     }
   };
 
@@ -80,12 +81,21 @@ export default function UsersCard() {
                           if (!confirm(`禁用 ${u.username}？其全部登录会话立即失效。`)) return;
                           void patch(u.id, { disabled: true }, '禁用');
                         }}>禁用</button>}
-            <button className="btn ghost sm"
-                    onClick={() => {
-                      const pw = prompt(`为 ${u.username} 设置新密码（≥8 位，重置后其会话全部失效）：`);
-                      if (pw && pw.length >= 8) void patch(u.id, { password: pw }, '重置密码');
-                      else if (pw) setMsg('密码至少 8 位');
-                    }}>重置密码</button>
+            <button className="btn ghost sm" onClick={() =>
+              setResetPw(resetPw?.uid === u.id ? null : { uid: u.id, pw: '' })}>重置密码</button>
+            {resetPw?.uid === u.id && (
+              <span style={{ display: 'inline-flex', gap: 6, alignItems: 'center' }}>
+                <input type="password" placeholder="新密码（≥8 位）" value={resetPw.pw}
+                  onChange={e => setResetPw({ uid: u.id, pw: e.target.value })} />
+                <button className="btn sm primary" disabled={resetPw.pw.length < 8}
+                  title="重置后其会话全部失效"
+                  onClick={() => {
+                    void patch(u.id, { password: resetPw.pw }, '重置密码');
+                    setResetPw(null);
+                  }}>确认</button>
+                <button className="btn sm" onClick={() => setResetPw(null)}>取消</button>
+              </span>
+            )}
           </span>
         </div>
       ))}
@@ -106,14 +116,14 @@ export default function UsersCard() {
               await api('/api/auth/users', { method: 'POST',
                 body: JSON.stringify(adding) });
               setAdding(a => ({ ...a, username: '', password: '' }));
-              setMsg('建号 ✓');
+              setMsg({ t: '建号 ✓' });
               await load();
             } catch (e) {
-              setMsg(`建号失败：${e instanceof Error ? e.message : e}`);
+              setMsg({ t: `建号失败：${e instanceof Error ? e.message : e}`, err: true });
             }
           }}>建号</button>
       </div>
-      {msg ? <div className="form-msg">{msg}</div> : null}
+      {msg ? <div className={msg.err ? 'form-msg err' : 'form-msg'}>{msg.t}</div> : null}
     </div>
   );
 }

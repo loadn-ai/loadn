@@ -61,14 +61,14 @@ export default function SchedulesTab({ filterSid, onClearFilter }: {
   filterSid?: string; onClearFilter?: () => void }) {
   const [jobs, setJobs] = useState<ScheduleInfo[]>([]);
   const [creating, setCreating] = useState(false);
-  const [msg, setMsg] = useState('');
+  const [msg, setMsg] = useState<{ t: string; err?: boolean } | null>(null);
   const [, setTick] = useState(0);       // 倒计时重渲染节拍
 
   async function reload() {
     try {
       const d = await api<{ schedules: ScheduleInfo[] }>('/api/schedules');
       setJobs(d.schedules);
-    } catch (e) { setMsg(`加载失败：${e instanceof Error ? e.message : e}`); }
+    } catch (e) { setMsg({ t: `加载失败：${e instanceof Error ? e.message : e}`, err: true }); }
   }
 
   useEffect(() => { void reload(); }, []);
@@ -86,7 +86,7 @@ export default function SchedulesTab({ filterSid, onClearFilter }: {
       await api(`/api/schedules/${j.id}`, { method: 'PATCH', body: JSON.stringify({ status }) });
       await reload();
       void useStore.getState().loadSessions();   // 会话头徽章 next_wake 同步
-    } catch (e) { setMsg(`操作失败：${e instanceof Error ? e.message : e}`); }
+    } catch (e) { setMsg({ t: `操作失败：${e instanceof Error ? e.message : e}`, err: true }); }
   }
 
   async function del(j: ScheduleInfo) {
@@ -98,7 +98,7 @@ export default function SchedulesTab({ filterSid, onClearFilter }: {
       await api(`/api/schedules/${j.id}`, { method: 'DELETE' });
       await reload();
       void useStore.getState().loadSessions();
-    } catch (e) { setMsg(`删除失败：${e instanceof Error ? e.message : e}`); }
+    } catch (e) { setMsg({ t: `删除失败：${e instanceof Error ? e.message : e}`, err: true }); }
   }
 
   return (
@@ -112,7 +112,7 @@ export default function SchedulesTab({ filterSid, onClearFilter }: {
             <X size={13} /> 只看本会话，点此看全部
           </button>
         )}
-        <span className="admin-msg">{msg}</span>
+        {msg && <span className={msg.err ? 'admin-msg err' : 'admin-msg'}>{msg.t}</span>}
       </div>
       {creating && (
         <JobForm presetSid={filterSid} onDone={async () => {
@@ -328,7 +328,7 @@ function JobForm({ job, presetSid, onDone }: {
   const [label, setLabel] = useState(job?.label || '');
   const [prompt, setPrompt] = useState(job?.prompt || '');
   const [maxFires, setMaxFires] = useState(String(job?.max_fires ?? 20));
-  const [msg, setMsg] = useState('');
+  const [msg, setMsg] = useState<{ t: string; err?: boolean } | null>(null);
   const [busy, setBusy] = useState(false);
 
   const cron = useMemo(() => {
@@ -346,7 +346,7 @@ function JobForm({ job, presetSid, onDone }: {
 
   async function submit() {
     setBusy(true);
-    setMsg('');
+    setMsg(null);
     try {
       const body: Record<string, unknown> = { label: label || null, prompt };
       if (kind === 'message') {
@@ -381,7 +381,7 @@ function JobForm({ job, presetSid, onDone }: {
       }
       await onDone();
     } catch (e) {
-      setMsg(`${editing ? '保存' : '创建'}失败：${e instanceof Error ? e.message : e}`);
+      setMsg({ t: `${editing ? '保存' : '创建'}失败：${e instanceof Error ? e.message : e}`, err: true });
     } finally { setBusy(false); }
   }
 
@@ -532,7 +532,7 @@ function JobForm({ job, presetSid, onDone }: {
       </div>
 
       <div className="sched-form-foot">
-        {msg && <span className="admin-err">{msg}</span>}
+        {msg && <span className="admin-err">{msg.t}</span>}
         <button className="btn primary" disabled={!canSubmit} onClick={() => void submit()}>
           {editing ? '保存修改' : '创建'}
         </button>
@@ -545,7 +545,7 @@ function JobForm({ job, presetSid, onDone }: {
 /** P11 模板库：例程模板卡片（安装=复制为用户 schedule，与平台升级解耦） */
 export function RoutinesLib() {
   const [items, setItems] = useState<RoutineInfo[]>([]);
-  const [msg, setMsg] = useState('');
+  const [msg, setMsg] = useState<{ t: string; err?: boolean } | null>(null);
   useEffect(() => {
     void (async () => {
       try {
@@ -559,9 +559,9 @@ export function RoutinesLib() {
       const d = await api<{ job: { id: number; label: string }; existing?: boolean }>(
         `/api/routines/${key}/install`, { method: 'POST' });
       setMsg(d.existing
-        ? `「${d.job.label}」此前已安装——已定位既有任务（未重复创建）`
-        : `已安装「${d.job.label}」为你的定时任务（可在上方列表编辑）`);
-    } catch (e) { setMsg(`安装失败：${String(e)}`); }
+        ? { t: `「${d.job.label}」此前已安装——已定位既有任务（未重复创建）` }
+        : { t: `已安装「${d.job.label}」为你的定时任务（可在上方列表编辑）` });
+    } catch (e) { setMsg({ t: `安装失败：${String(e)}`, err: true }); }
   }
   if (!items.length) return null;
   return (
@@ -594,7 +594,7 @@ export function RoutinesLib() {
           </div>
         ))}
       </div>
-      {msg && <div className="admin-msg">{msg}</div>}
+      {msg && <div className={msg.err ? 'admin-msg err' : 'admin-msg'}>{msg.t}</div>}
     </div>
   );
 }
