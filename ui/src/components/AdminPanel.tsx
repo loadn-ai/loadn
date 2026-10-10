@@ -4,7 +4,7 @@
 // AC-1.2 角色裁剪：cookie 普通用户只见有属主隔离的面（任务/定时/Webhooks）；
 // 其余 tab 平台级（凭证/设置/审计/成本无 owner 维度）——隐藏 + 深链兜底占位卡。
 // token 单用户模式（未 cookie 登录）无角色概念，全量开放不变。
-import { useEffect, useState } from 'react';
+import { Fragment, useEffect, useState } from 'react';
 
 import CostTab from './CostPanel';
 import SchedulesTab from './SchedulePanel';
@@ -23,19 +23,21 @@ import type { AdminTab } from './admin/shared';
 export type { AdminTab };
 
 /** adminOnly = 平台级数据面（无属主隔离，普通用户不可见）。
- *  tasks/schedules/webhooks 后端均有 owner 过滤（多用户批2），普通用户保留。 */
-const TABS: { id: AdminTab; label: string; adminOnly?: boolean }[] = [
-  { id: 'skills', label: 'Skills', adminOnly: true },
-  { id: 'tools', label: '工具', adminOnly: true },
-  { id: 'settings', label: '设置', adminOnly: true },
-  { id: 'tasks', label: '任务' },
-  { id: 'schedules', label: '定时' },
-  { id: 'webhooks', label: 'Webhooks' },
-  { id: 'memory', label: '记忆', adminOnly: true },
-  { id: 'activity', label: '台账', adminOnly: true },
-  { id: 'cost', label: '成本', adminOnly: true },
-  { id: 'security', label: '安全', adminOnly: true },
-  { id: 'resources', label: '资源', adminOnly: true },
+ *  tasks/schedules/webhooks 后端均有 owner 过滤（多用户批2），普通用户保留。
+ *  AC-3.3：按使用域分组（能力/自动化/观测/治理/平台）重排 + 命名统一中文——
+ *  11 个平级 tab 的扫读成本从「逐个排除」降为「选组再选」。 */
+const TABS: { id: AdminTab; label: string; group: string; adminOnly?: boolean }[] = [
+  { id: 'skills', label: '技能', group: '能力', adminOnly: true },
+  { id: 'tools', label: '工具', group: '能力', adminOnly: true },
+  { id: 'memory', label: '记忆', group: '能力', adminOnly: true },
+  { id: 'tasks', label: '任务', group: '自动化' },
+  { id: 'schedules', label: '定时', group: '自动化' },
+  { id: 'webhooks', label: 'Webhook', group: '自动化' },
+  { id: 'activity', label: '台账', group: '观测', adminOnly: true },
+  { id: 'cost', label: '成本', group: '观测', adminOnly: true },
+  { id: 'security', label: '安全', group: '治理', adminOnly: true },
+  { id: 'settings', label: '设置', group: '平台', adminOnly: true },
+  { id: 'resources', label: '资源', group: '平台', adminOnly: true },
 ];
 
 function AdminDenied() {
@@ -92,9 +94,14 @@ export default function AdminPanel({ onClose, initialTab, filterSid, onClearFilt
         <button className="btn ghost" onClick={onClose}>← 返回</button>
       </div>
       <div className="admin-tabs">
-        {visibleTabs.map(t => (
-          <button key={t.id} className={`tab ${tab === t.id ? 'on' : ''}`}
-            onClick={() => setTab(t.id)}>{t.label}</button>
+        {visibleTabs.map((t, i) => (
+          <Fragment key={t.id}>
+            {i > 0 && visibleTabs[i - 1].group !== t.group && (
+              <span className="tab-group-sep" title={t.group}>{t.group}</span>
+            )}
+            <button className={`tab ${tab === t.id ? 'on' : ''}`}
+              onClick={() => setTab(t.id)}>{t.label}</button>
+          </Fragment>
         ))}
       </div>
       {denied ? <AdminDenied /> : tab === 'skills' ? <SkillsTab /> : tab === 'tasks' ? <TasksTab />
