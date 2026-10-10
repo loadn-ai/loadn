@@ -27,6 +27,32 @@ const STATUS_CLASS: Record<string, string> = {
 };
 const SRC_LABEL = { ops: '台账', audit: '审计' } as const;
 
+// BC-1（AC-2.4 backlog）：当前过滤+已加载窗口导出 CSV（前端 blob，带 BOM 兼容
+// Excel 中文）；审计/台账双源同格式，列：时间/来源/类型状态/内容/会话或ID
+function exportCsv(rows: Row[]) {
+  const esc = (v: unknown) => {
+    const s = String(v ?? '').replace(/"/g, '""');
+    return /[",\n]/.test(s) ? `"${s}"` : s;
+  };
+  const lines = ['时间,来源,类型/状态,内容,会话/ID'];
+  for (const r of rows) {
+    if (r.src === 'ops') {
+      lines.push([r.act.ts, '台账',
+        `${KIND_LABEL[r.act.kind] ?? r.act.kind}/${STATUS_LABEL[r.act.status] ?? r.act.status}`,
+        r.act.title, r.act.sid].map(esc).join(','));
+    } else {
+      lines.push([r.ev.ts, '审计', r.ev.type, auditTitle(r.ev), `#${r.ev.id}`].map(esc).join(','));
+    }
+  }
+  const blob = new Blob(['\ufeff' + lines.join('\n')], { type: 'text/csv;charset=utf-8' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = `activity-${new Date().toISOString().slice(0, 10)}.csv`;
+  a.click();
+  URL.revokeObjectURL(url);
+}
+
 function auditTitle(ev: AuditEvent): string {
   try {
     const d = JSON.parse(ev.detail_json || '{}');
@@ -100,6 +126,8 @@ export default function ActivityTab() {
         <span className="muted">
           台账=运营视图（工具动作/审批/拦截）· 审计=防篡改哈希链账本（AC-2.4 合并）
         </span>
+        <button className="btn sm" title="导出当前过滤+已加载窗口为 CSV（含双源合并）"
+                onClick={() => exportCsv(rows)}>导出 CSV</button>
       </div>
       {err && <div className="admin-msg err" style={{ marginBottom: 10 }}>{err}
         <button className="link" style={{ marginLeft: 8 }} onClick={() => void reload(0)}>重试</button>
