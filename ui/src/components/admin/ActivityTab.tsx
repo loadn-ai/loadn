@@ -104,7 +104,7 @@ export default function ActivityTab() {
       {err && <div className="admin-msg err" style={{ marginBottom: 10 }}>{err}
         <button className="link" style={{ marginLeft: 8 }} onClick={() => void reload(0)}>重试</button>
       </div>}
-      <div className="hub-results">
+      <div className="admin-list">
         {rows.map((r, i) => r.src === 'ops' ? (
           <div key={i} className="hub-card slim">
             <div className="sk-head">

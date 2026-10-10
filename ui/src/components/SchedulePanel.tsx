@@ -607,7 +607,7 @@ export function RoutinesLib() {
   return (
     <div style={{ marginTop: 12 }}>
       <b style={{ fontSize: 13 }}>模板库</b>
-      <div className="hub-results">
+      <div className="admin-list">
         {items.map(t => (
           <div key={t.key} className="hub-card slim">
             <div className="sk-head">

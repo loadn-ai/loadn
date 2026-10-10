@@ -571,7 +571,7 @@ button:focus-visible, .tab:focus-visible, .chip:focus-visible {
 .admin-head { display: flex; justify-content: space-between; align-items: center; flex-shrink: 0; }
 .admin-head h2 { font-size: 18px; font-weight: 600; letter-spacing: -.01em; }
 .admin-tabs { display: flex; border-bottom: 1px solid var(--border); margin-top: 12px; flex-shrink: 0;
-  padding: 0 8px; overflow-x: auto; scrollbar-width: none; }
+  overflow-x: auto; scrollbar-width: none; }  /* AC-5.10a：去 padding:0 8px——tab 文字与 admin-body 内容左缘对齐 */
 .admin-tabs::-webkit-scrollbar { display: none; }
 .admin-tabs .tab { flex: none; padding: 12px 14px; white-space: nowrap; }
 .tab-group-sep { flex: none; align-self: center; font-size: 10px; letter-spacing: .06em;
@@ -685,8 +685,9 @@ button:focus-visible, .tab:focus-visible, .chip:focus-visible {
   text-decoration-color: var(--text-dim); }
 .sk-src.off-tag { color: var(--danger, #e5484d); background: transparent;
   border: 1px solid currentColor; }
-.sk-desc { font-size: 12px; color: var(--text-dim); line-height: 1.55; height: 37px;
+.sk-desc { font-size: 12px; color: var(--text-dim); line-height: 1.55; min-height: 37px;
   display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
+  /* AC-5.10a：height→min-height——根字号放大时描述不再被裁；同排等高由 grid 拉伸保证 */
 .zh-tag { display: inline-block; font-size: 10px; line-height: 1; color: var(--text-dim);
   border: 1px solid var(--border); border-radius: var(--radius-xs); padding: 2px 5px; margin-right: 6px;
   vertical-align: 1px; flex-shrink: 0; }
@@ -729,7 +730,9 @@ button:focus-visible, .tab:focus-visible, .chip:focus-visible {
 .search-row { display: flex; gap: 8px; }
 .search-row input { flex: 1; }
 .hub-results { margin-top: 10px; max-height: 46vh; overflow-y: auto; display: flex;
-  flex-direction: column; gap: 8px; }
+  flex-direction: column; gap: 8px; }   /* 仅限安装弹窗等内嵌滚动场景 */
+.admin-list { display: flex; flex-direction: column; gap: 8px; margin-top: 10px; }
+  /* AC-5.10a：tab 主列表容器——不限高单滚轴，.hub-results 不再挪用 */
 /* AC-5.3：记忆页三栏（列表 1/编辑 2/历史 1）——窄屏（≤900px）竖排，子栏
    占满行宽；内联 flex:N 仅在宽屏行内生效 */
 .mem-cols { display: flex; gap: 12px; align-items: flex-start; }
@@ -910,6 +913,8 @@ button.attach-chip:hover { border-color: color-mix(in srgb, var(--accent) 40%, v
 @media (hover: none) {
   .row-ops { display: flex; }               /* 触屏无 hover，操作常显 */
   .row-op { width: 28px; height: 28px; }   /* 触屏热区放大 */
+  .link { padding: 4px 6px; }              /* AC-5.10a：文本按钮热区加大 */
+  .mini-btn { padding: 5px 12px; }         /* AC-5.10a：mini 按钮热区加大 */
 }
 
 /* ---- 定时任务 tab（SchedulePanel）---- */

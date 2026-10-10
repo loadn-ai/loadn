@@ -150,7 +150,7 @@ export default function MemoryTab() {
         setCreating(false); void reloadEntries();
       }} />}
       <div className="mem-cols">
-        <div className="hub-results" style={{ flex: 1 }}>
+        <div className="admin-list" style={{ flex: 1 }}>
           {entries.map(e => (
             <div key={e.id} className={`hub-card slim${sel?.id === e.id ? ' on' : ''}`}
               onClick={() => pick(e)} role="button">
@@ -190,7 +190,7 @@ export default function MemoryTab() {
             </>
           ) : <div className="panel-empty">左侧选择一条记忆查看/编辑</div>}
         </div>
-        <div className="hub-results" style={{ flex: 1 }}>
+        <div className="admin-list" style={{ flex: 1 }}>
           <b>历史</b>
           {hist.map(v => (
             <div key={v.hash} className="hub-card slim">
@@ -205,7 +205,7 @@ export default function MemoryTab() {
           ))}
           {sel && !hist.length && <div className="panel-empty">（无 git 历史——旧条目或 git 降级）</div>}
           {verText && <pre className="mono" style={{
-            fontSize: 11, whiteSpace: 'pre-wrap', background: 'var(--bg2, #f6f6f6)',
+            fontSize: 11, whiteSpace: 'pre-wrap', background: 'var(--bg2)',
             padding: 8, borderRadius: 6 }}>{verText}</pre>}
         </div>
       </div>

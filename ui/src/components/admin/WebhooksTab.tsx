@@ -81,7 +81,7 @@ export default function WebhooksTab() {
       {editing && <HookForm profiles={profiles} hook={editing} onDone={() => {
         setEditing(null); void reload();
       }} />}
-      <div className="hub-results">
+      <div className="admin-list">
         {hooks.map(h => (
           <div key={h.id} className={`hub-card${h.enabled ? '' : ' off'}`}>
             <div className="sk-head">
