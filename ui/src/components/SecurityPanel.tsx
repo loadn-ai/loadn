@@ -704,33 +704,40 @@ function EgressDetail() {
       .catch(() => { });
   };
   useEffect(load, []);
+  // 安全面策略反馈（AC-1.4）：写失败必须可见——此前静默吞错，用户以为改成功了
+  const [polMsg, setPolMsg] = useState<{ t: string; err?: boolean } | null>(null);
   const allowHost = (host: string) => {
-    setBusy(host);
+    if (!confirm(`将 ${host} 加入出口白名单？热生效（免重启），所有会话对该域的外发即放行。`)) return;
+    setBusy(host); setPolMsg(null);
     void api<{ allow: string[] }>('/api/admin/egress/allow', {
       method: 'POST', body: JSON.stringify({ host }),
-    }).then(d => { setAllow(d.allow ?? []); setBusy(''); })
-      .catch(() => setBusy(''));
+    }).then(d => { setAllow(d.allow ?? []); setBusy('');
+      setPolMsg({ t: `✓ ${host} 已入白名单（热生效）` }); })
+      .catch(e => { setBusy(''); setPolMsg({ t: `放行失败：${String(e)}`, err: true }); });
   };
   const removeHost = (host: string) => {
-    setBusy(host);
+    setBusy(host); setPolMsg(null);
     void api<{ allow: string[] }>(`/api/admin/egress/allow?host=${encodeURIComponent(host)}`, {
       method: 'DELETE',
-    }).then(d => { setAllow(d.allow ?? []); setBusy(''); })
-      .catch(() => setBusy(''));
+    }).then(d => { setAllow(d.allow ?? []); setBusy('');
+      setPolMsg({ t: `✓ ${host} 已移出白名单（热生效）` }); })
+      .catch(e => { setBusy(''); setPolMsg({ t: `移除失败：${String(e)}`, err: true }); });
   };
   const revokeGrant = (sid: string, host: string) => {
     setBusy(host);
     void api('/api/admin/egress/grant/revoke', {
       method: 'POST', body: JSON.stringify({ sid, host }),
-    }).then(() => setBusy('')).catch(() => setBusy(''));
-    load();
+    }).then(() => { setBusy(''); load(); })   // C7：先等 revoke 落库再刷新
+      .catch(e => { setBusy(''); setPolMsg({ t: `撤销授权失败：${String(e)}`, err: true }); });
   };
   /** 出口策略写（持久化+热生效）：mode 三态 / 拦截时两态 / 弹卡等待秒 */
   const putPolicy = (patch: Record<string, unknown>) => {
-    setBusy('policy');
+    setBusy('policy'); setPolMsg(null);
     void api('/api/admin/egress/policy', {
       method: 'PUT', body: JSON.stringify(patch),
-    }).then(load).catch(() => setBusy(''));
+    }).then(load).catch(e => {
+      setBusy(''); setPolMsg({ t: `策略保存失败：${String(e)}`, err: true });
+    });
   };
   const MODE_OPTS: { v: string; label: string; tip: string }[] = [
     { v: 'enforce', label: '强制', tip: '白名单外按下方「拦截时」策略处理' },
@@ -777,6 +784,7 @@ function EgressDetail() {
         <div className="muted" style={{ fontSize: 11 }}>
           任务级放开在会话「属性」面板（任务外联档位）；这里改的是全局基线。
         </div>
+        {polMsg && <div className={polMsg.err ? 'admin-msg err' : 'admin-msg'} style={{ marginTop: 6 }}>{polMsg.t}</div>}
       </div>
       <table className="kv-table" style={{ width: '100%' }}>
         <thead><tr><th>域名</th><th style={{ width: 70 }}>次数</th><th style={{ width: 120 }}>判定</th><th style={{ width: 90 }}>最近</th><th style={{ width: 80 }}>操作</th></tr></thead>

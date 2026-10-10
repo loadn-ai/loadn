@@ -69,9 +69,15 @@ export default function UsersCard() {
           <span>
             {u.role === 'admin'
               ? <button className="btn ghost sm" title="降为普通用户"
-                        onClick={() => void patch(u.id, { role: 'user' }, '降级')}>降为用户</button>
+                        onClick={() => {
+                          if (!confirm(`将 ${u.username} 降为普通用户？其管理面权限立即收回（当前打开的管理页下次进入按普通用户裁剪）。`)) return;
+                          void patch(u.id, { role: 'user' }, '降级');
+                        }}>降为用户</button>
               : <button className="btn ghost sm" title="升为管理员"
-                        onClick={() => void patch(u.id, { role: 'admin' }, '升级')}>升为管理员</button>}
+                        onClick={() => {
+                          if (!confirm(`将 ${u.username} 升为管理员？其可管理全部用户/凭证/平台配置。`)) return;
+                          void patch(u.id, { role: 'admin' }, '升级');
+                        }}>升为管理员</button>}
             {u.disabled
               ? <button className="btn ghost sm"
                         onClick={() => void patch(u.id, { disabled: false }, '启用')}>启用</button>
