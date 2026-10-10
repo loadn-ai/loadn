@@ -65,12 +65,10 @@ export async function api<T = any>(path: string, init?: RequestInit): Promise<T>
   });
   if (resp.status === 401) {
     notifyUnauthorized();
-  } else if (resp.status === 403) {
-    // 仅 admin-required 的 403 是认证问题（token 缺失/轮换）；其余 403
-    // （熔断/kill switch/canary）是业务拒绝，各有场景内文案
-    const body = await resp.clone().text().catch(() => '');
-    if (body.includes('admin required')) notifyUnauthorized();
   }
+  // 403 'admin required'（cookie 普通用户碰管理面/token 无 admin 头）不再弹
+  // 登录框：重新登录解决不了权限问题，只会造成「重登仍 403」死循环感——
+  // 错误消息照常 throw 到组件层红字显示（AC-1.2）。
   if (!resp.ok) {
     let msg = `${resp.status}`;
     try {
