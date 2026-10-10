@@ -731,6 +731,20 @@ button:focus-visible, .tab:focus-visible, .chip:focus-visible {
   .mem-cols { flex-direction: column; }
   .mem-cols > * { flex: none !important; width: 100%; }
 }
+/* AC-5.5：全局 Toast 浮层（右上角堆叠，成功绿/失败红） */
+.toast-stack { position: fixed; top: 14px; right: 14px; z-index: 300;
+  display: flex; flex-direction: column; gap: 8px; pointer-events: none; }
+.toast { pointer-events: auto; cursor: pointer; max-width: 340px;
+  padding: 9px 14px; border-radius: 9px; font-size: 13px;
+  background: color-mix(in srgb, var(--green, #16a34a) 14%, var(--bg3, #fff));
+  border: 1px solid color-mix(in srgb, var(--green, #16a34a) 45%, transparent);
+  color: var(--text); box-shadow: 0 4px 18px rgba(0, 0, 0, .18);
+  animation: toast-in .18s ease-out; }
+.toast.err {
+  background: color-mix(in srgb, var(--danger, #e5484d) 12%, var(--bg3, #fff));
+  border-color: color-mix(in srgb, var(--danger, #e5484d) 45%, transparent); }
+@keyframes toast-in { from { opacity: 0; transform: translateX(10px); }
+  to { opacity: 1; transform: none; } }
 .hub-card { background: var(--bg3); border: 1px solid var(--border); border-radius: 10px;
   padding: 11px 13px; display: flex; flex-direction: column; gap: 5px; }
 .hub-card.slim { flex-direction: row; align-items: center; justify-content: space-between; }

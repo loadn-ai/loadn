@@ -5,6 +5,7 @@ import Sidebar from './components/Sidebar';
 import SessionView from './components/SessionView';
 import AdminPanel from './components/AdminPanel';
 import type { AdminTab } from './components/AdminPanel';
+import Toasts from './components/Toasts';
 import TokenGate from './components/TokenGate';
 import { Menu, Plus, Flask, Code, FileDoc, RotateCw } from './components/icons';
 
@@ -125,6 +126,7 @@ export default function App() {
   return (
     <div className={`app ${navOpen ? 'nav-open' : ''}`}>
       <TokenGate />
+      <Toasts />
       {stale && (
         <button className="stale-pill" title="平台已更新，当前页面还在跑旧版本"
           onClick={() => location.reload()}>

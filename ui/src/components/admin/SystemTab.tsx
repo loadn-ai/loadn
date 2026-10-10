@@ -4,6 +4,7 @@
 // 备份 running 时 3s 轮询收敛，不进全局 5s 轮询。
 import { useEffect, useRef, useState } from 'react';
 import { api } from '../../api/client';
+import { toast } from '../../stores/toasts';
 import { RotateCw, Spinner } from '../icons';
 
 interface ReleaseRow {
@@ -44,8 +45,8 @@ export default function SystemTab() {
   const [data, setData] = useState<SystemInfo | null>(null);
   const [engines, setEngines] = useState<Record<string, EngineState> | null>(null);
   const [err, setErr] = useState('');
-  const [msg, setMsg] = useState<{ t: string; err?: boolean } | null>(null);
   const [busy, setBusy] = useState('');
+  // AC-5.5：操作反馈走全局 toast（加载错误仍常驻 admin-err）
   const timer = useRef<number | null>(null);
 
   const reload = async () => {
@@ -76,14 +77,14 @@ export default function SystemTab() {
   }, []);
 
   const trigger = async (kind: 'backup' | 'verify', fullWorkspace = false) => {
-    setBusy(kind); setMsg(null);
+    setBusy(kind);
     try {
       const url = kind === 'verify' ? '/api/admin/system/backup/verify' : '/api/admin/system/backup';
       await api(url, { method: 'POST', body: JSON.stringify({ full_workspace: fullWorkspace }) });
-      setMsg({ t: kind === 'verify' ? '验证已启动（后台进行，稍后刷新查看结果）' : '备份已启动（后台进行）' });
+      toast(kind === 'verify' ? '验证已启动（后台进行，稍后刷新查看结果）' : '备份已启动（后台进行）');
       await reload();
     } catch (e) {
-      setMsg({ t: String(e instanceof Error ? e.message : e), err: true });
+      toast(String(e instanceof Error ? e.message : e), false);
     } finally { setBusy(''); }
   };
 
@@ -97,7 +98,6 @@ export default function SystemTab() {
         </button>
       </div>
       {err && <div className="admin-err">{err}</div>}
-      {msg && <div className={`admin-msg ${msg.err ? 'err' : 'ok'}`}>{msg.t}</div>}
       {!data && !err && <div className="admin-msg"><Spinner /> 加载中…</div>}
       {data && <>
         {/* ---- KPI 行 ---- */}

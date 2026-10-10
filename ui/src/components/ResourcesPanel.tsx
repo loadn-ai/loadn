@@ -4,6 +4,7 @@
 // 样式类在 index.css「资源中心」段；安全语义不变：密钥值永不出后端。
 import { useEffect, useState } from 'react';
 import { api } from '../api/client';
+import { toast } from '../stores/toasts';
 import ChannelsCard from './admin/ChannelsCard';
 
 interface ServiceItem { key: string; label: string; note: string; value: string; kind: string }
@@ -97,7 +98,6 @@ type Section = 'service' | 'mcp' | 'vault';
 export default function ResourcesPanel() {
   const [data, setData] = useState<Overview | null>(null);
   const [sec, setSec] = useState<Section>('service');
-  const [msg, setMsg] = useState<{ text: string; ok?: boolean } | null>(null);
   const [editKey, setEditKey] = useState<string | null>(null);
   const [editVal, setEditVal] = useState('');
   const [secretInput, setSecretInput] = useState<string | null>(null);
@@ -114,9 +114,9 @@ export default function ResourcesPanel() {
   };
   useEffect(() => { void load(); }, []);
 
+  // AC-5.5：操作反馈改全局 toast（右上浮层 2.6s 自清，不再挤占面板常驻 banner）
   const flash = (text: string, ok = true) => {
-    setMsg({ text, ok });
-    setTimeout(() => setMsg(null), 2600);
+    toast(text, ok);
   };
 
   const saveService = async (key: string, value: string) => {
@@ -218,7 +218,6 @@ export default function ResourcesPanel() {
           🔒 密钥 AES-GCM 加密存储 · 明文不落配置、不回显
         </span>
       </div>
-      {msg && <div className={`res-banner ${msg.ok === false ? 'err' : 'ok'}`}>{msg.text}</div>}
 
       {/* ============ 服务（分组卡片墙） ============ */}
       {sec === 'service' && (
