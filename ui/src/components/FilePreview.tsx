@@ -4,6 +4,7 @@ import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import { api, withToken } from '../api/client';
 import { Globe, FileDoc, RotateCw, Link, ExternalLink, Download } from './icons';
+import { toast } from '../stores/toasts';
 
 const MD_EXTS = ['.md', '.markdown'];
 const HTML_EXTS = ['.html', '.htm'];
@@ -65,7 +66,7 @@ export default function FilePreview({ sid, path }: { sid: string; path: string }
       setShareState('done');
       setTimeout(() => setShareState('idle'), 2000);
     } catch (e) {
-      alert(String(e));
+      toast(String(e), false);
       setShareState('idle');
     }
   };

@@ -6,8 +6,10 @@ import SessionView from './components/SessionView';
 import AdminPanel from './components/AdminPanel';
 import type { AdminTab } from './components/AdminPanel';
 import Toasts from './components/Toasts';
+import ConfirmDialog from './components/ConfirmDialog';   // BD-2：全局确认框（askConfirm 驱动）
 import TokenGate from './components/TokenGate';
 import { Menu, Plus, Flask, Code, FileDoc, RotateCw } from './components/icons';
+import { toast } from './stores/toasts';
 
 /** 极简 hash 路由：#/admin（#/admin/<tab> 指定标签，#/cost 为旧链兼容）→
  *  管理页；其余 → 会话/欢迎页（可刷新可收藏） */
@@ -119,7 +121,7 @@ export default function App() {
       const s = await createSession({});
       await openSession(s.id);
     } catch (e) {
-      alert(String(e));
+      toast(String(e), false);
     }
   };
 
@@ -127,6 +129,7 @@ export default function App() {
     <div className={`app ${navOpen ? 'nav-open' : ''}`}>
       <TokenGate />
       <Toasts />
+      <ConfirmDialog />
       {stale && (
         <button className="stale-pill" title="平台已更新，当前页面还在跑旧版本"
           onClick={() => location.reload()}>

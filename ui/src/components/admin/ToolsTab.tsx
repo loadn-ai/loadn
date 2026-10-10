@@ -4,6 +4,7 @@ import { api } from '../../api/client';
 import { toast } from '../../stores/toasts';
 import { Plus } from '../icons';
 import type { McpServer, ProfileTools } from './shared';
+import { askConfirm } from '../../stores/confirm';
 
 export default function ToolsTab() {
   const [servers, setServers] = useState<McpServer[]>([]);
@@ -21,7 +22,7 @@ export default function ToolsTab() {
   useEffect(() => { void reload(); }, []);
 
   async function del(s: McpServer) {
-    if (!confirm(`删除全局 MCP server「${s.name}」？（会话级覆盖不受影响）`)) return;
+    if (!await askConfirm({ title: `删除全局 MCP server「${s.name}」？（会话级覆盖不受影响）`, danger: true })) return;
     try {
       await api(`/api/tools/mcp/${encodeURIComponent(s.name)}`, { method: 'DELETE' });
       toast(`已删除 ${s.name}`);

@@ -6,6 +6,8 @@ import { Fragment, useEffect, useRef, useState, type ReactNode } from 'react';
 import { api } from '../api/client';
 import { useStore } from '../stores/sessions';
 import { Box, Lock, Crosshair, Globe, Key, FileDoc, Flask } from './icons';
+import { askConfirm } from '../stores/confirm';
+import { toast } from '../stores/toasts';
 
 interface Posture {
   sandbox: { mode: string; requested?: string; effective?: string; reason?: string;
@@ -194,8 +196,8 @@ export default function SecurityPanel() {
     try {
       const d = await api<{ stopped_turns: number }>('/api/admin/kill-all', { method: 'POST' });
       setVerify(null);
-      alert(`已熔断：停止 ${d.stopped_turns} 个任务，调度暂停，新任务被拒。\n排查完成后点「解除熔断」恢复。`);
-    } catch (e) { alert(`熔断失败: ${e}`); }
+      toast(`已熔断：停止 ${d.stopped_turns} 个任务，调度暂停，新任务被拒。\n排查完成后点「解除熔断」恢复。`);
+    } catch (e) { toast(`熔断失败: ${e}`, false); }
     finally { setBusy(''); void load(); }
   };
 
@@ -205,8 +207,8 @@ export default function SecurityPanel() {
       const d = await api<{ unlocked: string[]; kept_locked: { sid: string }[] }>('/api/admin/kill-all/clear', { method: 'POST' });
       const kept = d.kept_locked?.length
         ? `\n注意：${d.kept_locked.length} 个会话因蜜罐命中保持锁定（真实警报，需人工核后解锁）` : '';
-      alert(`已恢复：调度继续，解锁 ${d.unlocked?.length ?? 0} 个会话。${kept}`);
-    } catch (e) { alert(`恢复失败: ${e}`); }
+      toast(`已恢复：调度继续，解锁 ${d.unlocked?.length ?? 0} 个会话。${kept}`);
+    } catch (e) { toast(`恢复失败: ${e}`, false); }
     finally { setBusy(''); void load(); }
   };
 
@@ -651,8 +653,8 @@ function ApprovalsDetail({ events, jump }: { events: AuditEvent[]; jump: (s: str
   }, []);
   // AC-4.2：管理面驳回（decide approve=false，admin 角色后端放行）——
   // 批准语义不变（会话内确认码输入，防伪造）；高危堆积时止损有门
-  const deny = (aid: number) => {
-    if (!confirm(`驳回审批 #${aid}？agent 侧立即收到否决（可重新规划替代方案）。`)) return;
+  const deny = async (aid: number) => {
+    if (!await askConfirm({ title: `驳回审批 #${aid}？agent 侧立即收到否决（可重新规划替代方案）。`, danger: true })) return;
     setBusy(aid); setErr('');
     void api(`/api/approvals/${aid}/decide`, {
       method: 'POST', body: JSON.stringify({ approve: false }),
@@ -735,8 +737,8 @@ function EgressDetail() {
   useEffect(load, []);
   // 安全面策略反馈（AC-1.4）：写失败必须可见——此前静默吞错，用户以为改成功了
   const [polMsg, setPolMsg] = useState<{ t: string; err?: boolean } | null>(null);
-  const allowHost = (host: string) => {
-    if (!confirm(`将 ${host} 加入出口白名单？热生效（免重启），所有会话对该域的外发即放行。`)) return;
+  const allowHost = async (host: string) => {
+    if (!await askConfirm({ title: `将 ${host} 加入出口白名单？热生效（免重启），所有会话对该域的外发即放行。`, danger: false })) return;
     setBusy(host); setPolMsg(null);
     void api<{ allow: string[] }>('/api/admin/egress/allow', {
       method: 'POST', body: JSON.stringify({ host }),
@@ -955,14 +957,14 @@ function VaultEditor({ platform, onDone }: { platform: string; onDone: () => voi
     setBusy(true);
     void api(`/api/admin/vault/${encodeURIComponent(platform)}`, {
       method: 'PUT', body: JSON.stringify({ fields }),
-    }).then(onDone).catch(e => alert(`保存失败：${e instanceof Error ? e.message : e}`))
+    }).then(onDone).catch(e => toast(`保存失败：${e instanceof Error ? e.message : e}`, false))
       .finally(() => setBusy(false));
   };
-  const del = () => {
-    if (!confirm(`删除 ${platform} 条目？不可恢复（AES 密文一并删除）。`)) return;
+  const del = async () => {
+    if (!await askConfirm({ title: `删除 ${platform} 条目？不可恢复（AES 密文一并删除）。`, danger: true })) return;
     setBusy(true);
     void api(`/api/admin/vault/${encodeURIComponent(platform)}`, { method: 'DELETE' })
-      .then(onDone).catch(e => alert(`删除失败：${e instanceof Error ? e.message : e}`))
+      .then(onDone).catch(e => toast(`删除失败：${e instanceof Error ? e.message : e}`, false))
       .finally(() => setBusy(false));
   };
   return (
@@ -997,10 +999,10 @@ function CanaryDetail({ locked, reload, jump }: {
 }) {
   const [busy, setBusy] = useState('');
   const unlock = async (sid: string) => {
-    if (!confirm(`解锁会话 ${sid}？只有确认过警报原因后才应解锁（蜜罐命中=有人/有注入在用诱饵凭证）。`)) return;
+    if (!await askConfirm({ title: `解锁会话 ${sid}？只有确认过警报原因后才应解锁（蜜罐命中=有人/有注入在用诱饵凭证）。`, danger: false })) return;
     setBusy(sid);
     try { await api(`/api/sessions/${sid}/unlock`, { method: 'POST' }); await reload(); }
-    catch (e) { alert(`解锁失败: ${e}`); }
+    catch (e) { toast(`解锁失败: ${e}`, false); }
     finally { setBusy(''); }
   };
   return (
@@ -1082,7 +1084,7 @@ function TargetPolicyDetail() {
             ))}
             <button className="btn ghost sm danger-link"
                     onClick={async () => {
-                      if (!confirm(`删除策略「${p.match}」？`)) return;
+                      if (!await askConfirm({ title: `删除策略「${p.match}」？`, danger: true })) return;
                       await api(`/api/admin/target-policy/${p.id}`, { method: 'DELETE' });
                       await load();
                     }}>删</button>

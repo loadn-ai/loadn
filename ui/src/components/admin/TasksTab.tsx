@@ -5,6 +5,8 @@
 import { useEffect, useMemo, useState } from 'react';
 import { api } from '../../api/client';
 import { useStore } from '../../stores/sessions';
+import { toast } from '../../stores/toasts';
+import { askConfirm } from '../../stores/confirm';
 import { Archive, Undo, Trash, Pin, Star } from '../icons';
 
 interface TaskRow {
@@ -71,7 +73,7 @@ export default function TasksTab() {
       const d = await api<{ tasks: TaskRow[] }>(`/api/admin/tasks?${p}`);
       setRows(d.tasks);
     } catch (e) {
-      alert(`加载失败：${e instanceof Error ? e.message : e}`);
+      toast(`加载失败：${e instanceof Error ? e.message : e}`, false);
     } finally { setLoading(false); }
   }
   useEffect(() => { void reload(); }, []);   // eslint-disable-line
@@ -106,7 +108,9 @@ export default function TasksTab() {
   async function bulk(label: string, fn: (id: string) => Promise<unknown>,
                       confirmText?: string) {
     if (!selRows.length) return;
-    if (confirmText && !confirm(confirmText.replace('{n}', String(selRows.length)))) return;
+    if (confirmText && !await askConfirm({
+      title: confirmText.replace('{n}', String(selRows.length)), danger: true,
+    })) return;
     setBusy(`${label} 0/${selRows.length}`);
     let done = 0, failed = 0;
     for (const r of selRows) {
@@ -116,7 +120,7 @@ export default function TasksTab() {
     }
     setBusy('');
     setSel(new Set());
-    if (failed) alert(`${label}：${done} 成功，${failed} 失败`);
+    if (failed) toast(`${label}：${done} 成功，${failed} 失败`, false);
     await reload();
     void useStore.getState().loadSessions();
   }

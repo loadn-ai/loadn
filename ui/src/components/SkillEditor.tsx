@@ -3,6 +3,7 @@ import { useEffect, useState } from 'react';
 import Markdown from 'react-markdown';
 import { api } from '../api/client';
 import { useAdminDirty } from '../stores/adminDirty';
+import { askConfirm } from '../stores/confirm';
 
 interface FileEntry { path: string; size: number }
 
@@ -20,7 +21,7 @@ export default function SkillEditor({ name, onBack }: { name: string; onBack: ()
     setFiles(d.files);
   }
   async function openFile(p: string) {
-    if (dirty && !confirm('未保存的修改将丢失，继续？')) return;
+    if (dirty && !await askConfirm({ title: '未保存的修改将丢失，继续？', danger: false })) return;
     const d = await api<{ content: string }>(
       `/api/skills/${encodeURIComponent(name)}/file?path=${encodeURIComponent(p)}`);
     setCur(p); setContent(d.content); setDirty(false); setPreview(false); setMsg('');
@@ -59,7 +60,7 @@ export default function SkillEditor({ name, onBack }: { name: string; onBack: ()
 
   async function delFile() {
     if (cur === 'SKILL.md') { setMsg('SKILL.md 不能删'); return; }
-    if (!confirm(`删除 ${cur}？`)) return;
+    if (!await askConfirm({ title: `删除 ${cur}？`, danger: true })) return;
     try {
       await api(`/api/skills/${encodeURIComponent(name)}/file?path=${encodeURIComponent(cur)}`,
         { method: 'DELETE' });
@@ -72,9 +73,9 @@ export default function SkillEditor({ name, onBack }: { name: string; onBack: ()
     <div className="skill-editor">
       <div className="se-side">
         <div className="se-files-head">
-          <button className="link" onClick={() => {
+          <button className="link" onClick={async () => {
             // AC-5.2：返回列表前检查未保存改动（文件切换处已有同款确认）
-            if (dirty && !confirm('未保存的修改将丢失，返回？')) return;
+            if (dirty && !await askConfirm({ title: '未保存的修改将丢失，返回？', danger: false })) return;
             onBack();
           }}>← 返回</button>
           <span className="se-name">{name}</span>

@@ -6,6 +6,7 @@ import { useEffect, useState } from 'react';
 import { api } from '../api/client';
 import { toast } from '../stores/toasts';
 import { Lock, Zap, Key, Shield } from './icons';
+import { askConfirm } from '../stores/confirm';
 
 interface ServiceItem { key: string; label: string; note: string; value: string; kind: string }
 interface SecretItem { key: string; set: boolean }
@@ -175,7 +176,7 @@ export default function ResourcesPanel() {
     } catch (e) { flash(`保存失败：${String(e)}`, false); }
   };
   const delCustom = async (name: string) => {
-    if (!confirm(`删除自定义服务「${name}」？（vault 中的密钥一并清除）`)) return;
+    if (!await askConfirm({ title: `删除自定义服务「${name}」？（vault 中的密钥一并清除）`, danger: true })) return;
     try {
       await api(`/api/admin/resources/custom?name=${encodeURIComponent(name)}`, { method: 'DELETE' });
       flash('✓ 已删除'); await load();

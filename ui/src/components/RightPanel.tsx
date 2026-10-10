@@ -3,6 +3,7 @@ import { useStore } from '../stores/sessions';
 import { api, withToken } from '../api/client';
 import PropertiesPanel from './PropertiesPanel';
 import { Folder, FileDoc, ChevronDown, ChevronRight, Download } from './icons';
+import { toast } from '../stores/toasts';
 
 type Tab = 'properties' | 'artifacts' | 'files';
 
@@ -208,7 +209,7 @@ function ExportBtn({ sid, path }: { sid: string; path: string }) {
           { method: 'POST', body: JSON.stringify({ source_path: path, format: 'docx' }) });
         await useStore.getState().openSession(sid);
       } catch (e) {
-        alert(String(e));
+        toast(String(e), false);
       } finally { setBusy(false); }
     }}>{busy ? '导出中…' : '导出 html/docx'}</button>
   );
@@ -226,7 +227,7 @@ function ShareBtn({ sid, path }: { sid: string; path: string }) {
         setState('done');
         setTimeout(() => setState('idle'), 2000);
       } catch (e) {
-        alert(String(e));
+        toast(String(e), false);
         setState('idle');
       }
     }}>{state === 'busy' ? '生成中…' : state === 'done' ? '已复制链接' : '分享'}</button>

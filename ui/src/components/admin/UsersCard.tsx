@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import { api } from '../../api/client';
 import { toast } from '../../stores/toasts';
+import { askConfirm } from '../../stores/confirm';
 
 /** 多用户批2：用户管理卡（admin）——列表/建号/角色/启停/重置密码。
  *  禁用即时踢下线（服务端删会话）；不能禁用/降级自己（防锁死管理面）。
@@ -91,13 +92,13 @@ export default function UsersCard() {
           <span>
             {u.role === 'admin'
               ? <button className="btn ghost sm" title="降为普通用户"
-                        onClick={() => {
-                          if (!confirm(`将 ${u.username} 降为普通用户？其管理面权限立即收回（当前打开的管理页下次进入按普通用户裁剪）。`)) return;
+                        onClick={async () => {
+                          if (!await askConfirm({ title: `将 ${u.username} 降为普通用户？其管理面权限立即收回（当前打开的管理页下次进入按普通用户裁剪）。`, danger: false })) return;
                           void patch(u.id, { role: 'user' }, '降级');
                         }}>降为用户</button>
               : <button className="btn ghost sm" title="升为管理员"
-                        onClick={() => {
-                          if (!confirm(`将 ${u.username} 升为管理员？其可管理全部用户/凭证/平台配置。`)) return;
+                        onClick={async () => {
+                          if (!await askConfirm({ title: `将 ${u.username} 升为管理员？其可管理全部用户/凭证/平台配置。`, danger: false })) return;
                           void patch(u.id, { role: 'admin' }, '升级');
                         }}>升为管理员</button>}
             {u.disabled
@@ -105,8 +106,8 @@ export default function UsersCard() {
                         onClick={() => void patch(u.id, { disabled: false }, '启用')}>启用</button>
               : <button className="btn ghost sm danger-link"
                         title="禁用并踢下线全部会话"
-                        onClick={() => {
-                          if (!confirm(`禁用 ${u.username}？其全部登录会话立即失效。`)) return;
+                        onClick={async () => {
+                          if (!await askConfirm({ title: `禁用 ${u.username}？其全部登录会话立即失效。`, danger: true })) return;
                           void patch(u.id, { disabled: true }, '禁用');
                         }}>禁用</button>}
             <button className="btn ghost sm" onClick={() =>

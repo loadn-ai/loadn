@@ -12,6 +12,8 @@ import {
 import type { ComponentType } from 'react';
 import { useAutoScroll } from './SessionView';
 import { DispatchCard } from './SubtaskTab';
+import { askConfirm } from '../stores/confirm';
+import { toast } from '../stores/toasts';
 
 /** 历史消息尾窗：大会话百余条带完整过程块的消息全量渲染，打开要卡好几秒
  *  （2.7MB DOM 一次进页面）；默认只铺尾部，更早的按需「加载更早」展开 */
@@ -128,9 +130,9 @@ function BubbleActions({ text, mid, editing, onEdit, className }:
       )}
       {mid != null && (
         <button title="删除" className="danger"
-                onClick={() => {
-                  if (confirm('删除这条气泡？（只删展示，不影响任务记录）')) {
-                    void deleteMessage(mid).catch(e => alert(`删除失败：${e instanceof Error ? e.message : e}`));
+                onClick={async () => {
+                  if (await askConfirm({ title: '删除这条气泡？（只删展示，不影响任务记录）', danger: true })) {
+                    void deleteMessage(mid).catch(e => toast(`删除失败：${e instanceof Error ? e.message : e}`, false));
                   }
                 }}>
           <Trash size={13} />
@@ -166,14 +168,14 @@ function UserMsg({ text, ts, blocks, onOpenFile, retractable, onRetract, mid }:
     setEditing(false);
     if (t === text) return;
     try { await editMessage(mid!, t); }
-    catch (e) { alert(`保存失败：${e instanceof Error ? e.message : e}`); }
+    catch (e) { toast(`保存失败：${e instanceof Error ? e.message : e}`, false); }
   };
   return (
     <div className="msg user">
       <div className="msg-user-row">
         {retractable && (
           <button className="retract-btn" title="撤回（还在排队，尚未执行）"
-                  onClick={() => { if (confirm('撤回这条排队中的消息？')) onRetract?.(); }}>×</button>
+                  onClick={async () => { if (await askConfirm({ title: '撤回这条排队中的消息？', danger: false })) onRetract?.(); }}>×</button>
         )}
         {editing
           ? <EditBox initial={text} onSave={v => void save(v)} onCancel={() => setEditing(false)} />
@@ -236,7 +238,7 @@ function AssistantMsg({ text, blocks, ts, mid, hits, turnId }:
     setEditing(false);
     if (t === shown) return;
     try { await editMessage(mid!, t); }
-    catch (e) { alert(`保存失败：${e instanceof Error ? e.message : e}`); }
+    catch (e) { toast(`保存失败：${e instanceof Error ? e.message : e}`, false); }
   };
   const parsedHits: { id: string; domain: string }[] = (() => {
     try { const h = JSON.parse(hits || '[]'); return Array.isArray(h) ? h : []; }

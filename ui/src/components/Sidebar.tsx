@@ -11,6 +11,8 @@ import {
   ArrowRight, Settings,
 } from './icons';
 import CategoryIcon from './CategoryIcon';
+import { askConfirm } from '../stores/confirm';
+import { toast } from '../stores/toasts';
 
 const PROFILE_ICON: Record<string, ComponentType<{ size?: number }>> = {
   researcher: Flask, coder: Code, assistant: Chat,
@@ -183,14 +185,14 @@ export default function Sidebar({ onNew, onAdmin, onNav, adminActive }: {
       if (overlay) location.hash = '';
       void useStore.getState().openSession(s.id);
     } catch (e) {
-      alert(`新建任务失败：${e instanceof Error ? e.message : e}`);
+      toast(`新建任务失败：${e instanceof Error ? e.message : e}`, false);
     }
   };
   const addProjectInSpace = async (title: string) => {
     try {
       await useStore.getState().createProject(title.slice(0, 80), cat?.id);
     } catch (e) {
-      alert(`新建项目失败：${e instanceof Error ? e.message : e}`);
+      toast(`新建项目失败：${e instanceof Error ? e.message : e}`, false);
     }
   };
 
@@ -326,8 +328,8 @@ function ProjectGroup({ project, kids, collapsed: collapsedProp, onToggle, onOpe
     if (r === (project.repo ?? '')) return;
     try {
       const hint = await setProjectRepo(project.id, r);
-      if (hint) alert(`代码仓绑定提示：${hint}`);
-    } catch (e) { alert(`绑定失败：${e instanceof Error ? e.message : e}`); }
+      if (hint) toast(`代码仓绑定提示：${hint}`, false);
+    } catch (e) { toast(`绑定失败：${e instanceof Error ? e.message : e}`, false); }
   };
   const addSub = async () => {
     if (busy) return;
@@ -337,13 +339,13 @@ function ProjectGroup({ project, kids, collapsed: collapsedProp, onToggle, onOpe
       if (overlay) location.hash = '';
       void useStore.getState().openSession(s.id);
     } catch (e) {
-      alert(`新建任务失败：${e instanceof Error ? e.message : e}`);
+      toast(`新建任务失败：${e instanceof Error ? e.message : e}`, false);
     } finally { setBusy(false); }
   };
   const purge = async () => {
-    if (!confirm(`彻底删除项目「${project.title}」？\n全部子任务与工作区文件一并删除，不可恢复。`)) return;
+    if (!await askConfirm({ title: `彻底删除项目「${project.title}」？\n全部子任务与工作区文件一并删除，不可恢复。`, danger: true })) return;
     try { await purgeProject(project.id); }
-    catch (e) { alert(`删除失败：${e instanceof Error ? e.message : e}`); }
+    catch (e) { toast(`删除失败：${e instanceof Error ? e.message : e}`, false); }
   };
   const items: MenuEntry[] = archived ? [
     { key: 'restore', label: '恢复项目（子任务一并恢复）', icon: Undo,
@@ -448,11 +450,11 @@ function SessionRow({ sid, onClick, current, archived = false }: {
   };
 
   const purge = async () => {
-    if (!confirm(`彻底删除「${s.title}」？\n工作区文件将一并删除，不可恢复。`)) return;
+    if (!await askConfirm({ title: `彻底删除「${s.title}」？\n工作区文件将一并删除，不可恢复。`, danger: true })) return;
     try {
       await purgeSession(sid);
     } catch (e) {
-      alert(`删除失败：${e instanceof Error ? e.message : e}`);
+      toast(`删除失败：${e instanceof Error ? e.message : e}`, false);
     }
   };
 

@@ -5,6 +5,7 @@ import { useStore } from '../../stores/sessions';
 import { useAdminDirty } from '../../stores/adminDirty';
 import { Sun, Moon } from '../icons';
 import UsersCard from './UsersCard';
+import { askConfirm } from '../../stores/confirm';
 
 /* ================= 平台设置 ================= */
 interface TitleGenCfg {
@@ -201,7 +202,7 @@ export default function SettingsTab() {
 
   /** 清除覆盖=整段删（yaml 段+内存回自动探测/继承），区别于逐字段清空 */
   async function clearEngineOverride(name: string) {
-    if (!confirm(`清除 ${name} 的引擎覆盖？（yaml 段整删，bin/模型/参数回自动探测与继承链）`)) return;
+    if (!await askConfirm({ title: `清除 ${name} 的引擎覆盖？（yaml 段整删，bin/模型/参数回自动探测与继承链）`, danger: true })) return;
     try {
       const d = await api<{ engines: EnginesCfg }>('/api/settings/engines', {
         method: 'PUT', body: JSON.stringify({ engines: { [name]: null } }) });
@@ -297,7 +298,7 @@ export default function SettingsTab() {
   async function restoreBuiltinPricing() {
     if (!pricing) return;
     const n = Object.keys(pricing.builtin?.api ?? {}).length;
-    if (!confirm(`恢复内置官方价目？当前覆盖表（api ${apiRows.length} 行 / plan ${planRows.length} 行）将清空，回到 ${n} 个内置模型。`)) return;
+    if (!await askConfirm({ title: `恢复内置官方价目？当前覆盖表（api ${apiRows.length} 行 / plan ${planRows.length} 行）将清空，回到 ${n} 个内置模型。`, danger: false })) return;
     try {
       const d = await api<{ pricing: PricingCfg }>('/api/settings/pricing', {
         method: 'PUT', body: JSON.stringify({ usd_cny: pricing.usd_cny, api: {}, plan_credits: {} }) });
@@ -325,7 +326,7 @@ export default function SettingsTab() {
   async function resetConv(name: string) {
     const { timeout_s, stall_timeout_s, max_turns } = convDef;
     const t = `${Math.round(timeout_s / 60)} 分 / ${Math.round(stall_timeout_s / 60)} 分 / ${max_turns ?? '不限'}`;
-    if (!confirm(`恢复 ${name} 的收敛度默认？（硬超时/静默判死/轮次上限 → ${t}）`)) return;
+    if (!await askConfirm({ title: `恢复 ${name} 的收敛度默认？（硬超时/静默判死/轮次上限 → ${t}）`, danger: false })) return;
     try {
       const d = await api<{ profiles: ConvRow[] }>('/api/settings/convergence', {
         method: 'PUT', body: JSON.stringify({ reset: [name] }) });
@@ -679,9 +680,9 @@ function PriceTable({ label, unit, cacheKey, rows, setRows, builtin }: {
 }) {
   const upd = (i: number, patch: Partial<PriceRow>) =>
     setRows(rows.map((r, j) => j === i ? { ...r, ...patch, err: undefined } : r));
-  const fromBuiltin = () => {
+  const fromBuiltin = async () => {
     if (rows.length > 0
-        && !confirm(`用内置价目覆盖当前 ${label} 编辑区（现有 ${rows.length} 行未保存改动将丢弃）？`)) return;
+        && !await askConfirm({ title: `用内置价目覆盖当前 ${label} 编辑区（现有 ${rows.length} 行未保存改动将丢弃）？`, danger: true })) return;
     setRows(rowsFromTable(builtin, cacheKey));
   };
   return (

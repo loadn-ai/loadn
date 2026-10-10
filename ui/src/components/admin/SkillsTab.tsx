@@ -8,6 +8,7 @@ import InstallDialog from '../InstallDialog';
 import { Plus, Upload, Globe } from '../icons';
 import { withQ } from './shared';
 import type { SkillItem } from './shared';
+import { askConfirm } from '../../stores/confirm';
 
 export default function SkillsTab() {
   const [skills, setSkills] = useState<SkillItem[]>([]);
@@ -32,7 +33,7 @@ export default function SkillsTab() {
   useEffect(() => { void reload(); }, []);
 
   async function del(s: SkillItem) {
-    if (!confirm(`删除 skill「${s.name}」？整目录移除，不可恢复。`)) return;
+    if (!await askConfirm({ title: `删除 skill「${s.name}」？整目录移除，不可恢复。`, danger: true })) return;
     try {
       await api(`/api/skills/${encodeURIComponent(s.name)}?force=true`, { method: 'DELETE' });
       toast(`已删除 ${s.name}`);

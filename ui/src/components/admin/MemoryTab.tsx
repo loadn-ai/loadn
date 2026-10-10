@@ -7,6 +7,7 @@ import { api } from '../../api/client';
 import { toast } from '../../stores/toasts';
 import { useAdminDirty } from '../../stores/adminDirty';
 import { Plus } from '../icons';
+import { askConfirm } from '../../stores/confirm';
 
 interface Entry { id: string; summary: string; content?: string; origin_session: string; created_at: string; draft?: boolean }
 interface Ver { hash: string; date: string; subject: string }
@@ -58,9 +59,9 @@ export default function MemoryTab() {
   useEffect(() => { void reloadDomains(); }, []);
   useEffect(() => { setSel(null); void reloadEntries(domain); }, [domain]);
 
-  function pick(e: Entry) {
+  async function pick(e: Entry) {
     if (dirty && e.id !== sel?.id
-      && !confirm('当前条目有未保存修改，切换将丢弃——确认？')) return;
+      && !await askConfirm({ title: '当前条目有未保存修改，切换将丢弃——确认？', danger: true })) return;
     setSel(e); setSummary(e.summary); setPreview(false); setVerText('');
     const seq = ++pickSeq.current;
     void (async () => {
@@ -95,7 +96,7 @@ export default function MemoryTab() {
   }
 
   async function del(e: Entry) {
-    if (!confirm(`删除记忆「${e.summary}」？git 历史保留（可经历史恢复）。`)) return;
+    if (!await askConfirm({ title: `删除记忆「${e.summary}」？git 历史保留（可经历史恢复）。`, danger: true })) return;
     setOpBusy(`del:${e.id}`);
     try {
       await api(`/api/memory/entry?domain=${domain}&id=${e.id}`, { method: 'DELETE' });
@@ -135,9 +136,9 @@ export default function MemoryTab() {
       <div className="admin-toolbar">
         {domains.map(d => (
           <button key={d} className={`btn sm ${d === domain ? 'primary' : 'ghost'}`}
-            onClick={() => {
+            onClick={async () => {
               if (d !== domain && dirty
-                && !confirm('当前条目有未保存修改，切域将丢弃——确认？')) return;
+                && !await askConfirm({ title: '当前条目有未保存修改，切域将丢弃——确认？', danger: true })) return;
               setDomain(d);
             }}>{d === 'user' ? '用户级（跨项目）' : d}</button>
         ))}
@@ -225,9 +226,9 @@ function NewEntryForm({ domain, onDone }: { domain: string; onDone: () => void }
       <textarea className="mono" rows={4} placeholder="记忆正文（蜜罐/凭证护栏同守）"
         value={content} onChange={e => setContent(e.target.value)} />
       <div className="modal-foot">
-        <button className="btn ghost sm" onClick={() => {
+        <button className="btn ghost sm" onClick={async () => {
           if ((summary.trim() || content.trim())
-            && !confirm('已填内容将丢弃，确认取消？')) return;
+            && !await askConfirm({ title: '已填内容将丢弃，确认取消？', danger: true })) return;
           onDone();
         }}>取消</button>
         <button className="btn primary sm" disabled={!summary.trim() || !content.trim()}

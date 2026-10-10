@@ -6,6 +6,7 @@ import { api } from '../api/client';
 import { toast } from '../stores/toasts';
 import { useStore } from '../stores/sessions';
 import { Clock, Pause, Pencil, Play, Plus, Trash, X } from './icons';
+import { askConfirm } from '../stores/confirm';
 
 export interface ScheduleInfo {
   id: number; session_id: string | null; session_title?: string | null;
@@ -117,7 +118,7 @@ export default function SchedulesTab({ filterSid, onClearFilter }: {
     const tip = j.is_system
       ? '（内置心跳：删除=永久关闭，重启后不再重建；临时停用请用暂停）'
       : '';
-    if (!confirm(`删除定时任务「${j.label || j.prompt.slice(0, 30)}」？${tip}`)) return;
+    if (!await askConfirm({ title: `删除定时任务「${j.label || j.prompt.slice(0, 30)}」？${tip}`, danger: true })) return;
     try {
       await api(`/api/schedules/${j.id}`, { method: 'DELETE' });
       await reload();
@@ -383,7 +384,7 @@ function JobForm({ job, presetSid, onDone }: {
         : job.every_s ? fmtEvery(job.every_s)
         : `单次 ${toLocalInput(job.due_at)}`;   // 同口径（本地墙钟），未改不误弹
       if (orig !== next
-        && !confirm(`触发条件将改变：\n${orig}\n→ ${next}\n\n确认保存？`))
+        && !await askConfirm({ title: `触发条件将改变：\n${orig}\n→ ${next}\n\n确认保存？`, danger: false }))
         return;
     }
     setBusy(true);

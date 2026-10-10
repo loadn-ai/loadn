@@ -6,6 +6,7 @@ import { useEffect, useRef, useState } from 'react';
 import { api } from '../../api/client';
 import { toast } from '../../stores/toasts';
 import { RotateCw, Spinner } from '../icons';
+import { askConfirm } from '../../stores/confirm';
 
 interface ReleaseRow {
   version: string; git_sha: string; built_at: string;
@@ -205,7 +206,7 @@ export default function SystemTab() {
               {busy === 'backup' ? <Spinner size={11} /> : null} 立即备份
             </button>
             <button className="btn sm" disabled={!!busy || !!b?.running}
-              onClick={() => { if (confirm('全量备份含完整 workspace（含 .git 等可重建内容，耗时长）——确认？')) void trigger('backup', true); }}>
+              onClick={async () => { if (await askConfirm({ title: '全量备份含完整 workspace（含 .git 等可重建内容，耗时长）——确认？', danger: false })) void trigger('backup', true); }}>
               全量备份
             </button>
             <button className="btn sm ghost" disabled={!!busy || !!b?.running}

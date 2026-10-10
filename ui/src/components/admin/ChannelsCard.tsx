@@ -127,7 +127,7 @@ export default function ChannelsCard() {
                          { method: 'PUT', body: JSON.stringify({ owner: name }) });
                        await reload();
                      } catch (e) {
-                       alert(`设置失败：${e instanceof Error ? e.message : e}`);
+                       toast(`设置失败：${e instanceof Error ? e.message : e}`, false);
                      }
                    }}><User size={12} style={{ verticalAlign: -2 }} /> {b.owner_name || '认领'}</a>
               </span>

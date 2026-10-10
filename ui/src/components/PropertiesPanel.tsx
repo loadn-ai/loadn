@@ -6,6 +6,7 @@ import { useStore } from '../stores/sessions';
 import type { ParamsMap } from '../stores/sessions';
 import { api, fmtTokens, fmtTime } from '../api/client';
 import { Pencil } from './icons';
+import { toast } from '../stores/toasts';
 
 /** 模型参数六键（与后端 params.ALLOWED 对齐；kind 只影响输入控件） */
 const PARAM_ROWS: { key: keyof ParamsMap | string; label: string;
@@ -128,7 +129,7 @@ function ParamsSection() {
   const commit = async (skipKey?: string) => {
     setBusy(true);
     try { await patchParams(sid, build(skipKey)); }
-    catch (e) { alert(`参数保存失败：${e instanceof Error ? e.message : e}`); }
+    catch (e) { toast(`参数保存失败：${e instanceof Error ? e.message : e}`, false); }
     finally { setBusy(false); }
   };
 
@@ -387,7 +388,7 @@ function SkillsSection() {
   const toggle = (n: string) => {
     const next = on.includes(n) ? on.filter(x => x !== n) : [...on, n];
     void patchSkills(sid, next).catch(e =>
-      alert(`skills 更新失败：${e instanceof Error ? e.message : e}`));
+      toast(`skills 更新失败：${e instanceof Error ? e.message : e}`, false));
   };
   return (
     <section className="props-section">
@@ -424,7 +425,7 @@ function McpSection() {
   const sessMcp: Record<string, unknown> = s.mcp_json ? JSON.parse(s.mcp_json) : {};
   const put = (next: Record<string, unknown>) =>
     void patchMcp(sid, next).catch(e =>
-      alert(`MCP 更新失败：${e instanceof Error ? e.message : e}`));
+      toast(`MCP 更新失败：${e instanceof Error ? e.message : e}`, false));
 
   const globals = servers.filter(x => !x.session_only);
   const extrasOnly = Object.keys(sessMcp).filter(k => !servers.some(x => x.name === k));

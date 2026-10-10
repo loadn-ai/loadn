@@ -6,6 +6,7 @@ import { api } from '../../api/client';
 import { toast } from '../../stores/toasts';
 import { Plus } from '../icons';
 import ChannelsCard from './ChannelsCard';   // AC-5.10e（P2-3）：对话入口与事件入口同域，从资源页归位至此
+import { askConfirm } from '../../stores/confirm';
 
 interface Hook {
   id: number; token: string; name: string; profile: string | null;
@@ -53,7 +54,7 @@ export default function WebhooksTab() {
   }
 
   async function del(h: Hook) {
-    if (!confirm(`删除 webhook「${h.name}」？token 立即吊销，外部调用将 401。`)) return;
+    if (!await askConfirm({ title: `删除 webhook「${h.name}」？token 立即吊销，外部调用将 401。`, danger: true })) return;
     setBusyId(h.id);
     try {
       await api(`/api/hooks/${h.id}`, { method: 'DELETE' });
@@ -143,10 +144,10 @@ function HookForm({ profiles, hook, onDone }: {
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState('');
   const initial = { name, tpl, profile, ips, rate };
-  const cancel = () => {
+  const cancel = async () => {
     const changed = name !== initial.name || tpl !== initial.tpl
       || profile !== initial.profile || ips !== initial.ips || rate !== initial.rate;
-    if (editing && changed && !confirm('未保存的修改将丢弃，确认取消？')) return;
+    if (editing && changed && !await askConfirm({ title: '未保存的修改将丢弃，确认取消？', danger: true })) return;
     onDone();
   };
   return (

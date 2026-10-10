@@ -11,6 +11,7 @@ import PopupMenu from './Menu';
 import type { MenuEntry } from './Menu';
 import { Settings, Plus, Pencil, Trash, Archive, Star, Clock, Pin } from './icons';
 import { api } from '../api/client';
+import { askConfirm } from '../stores/confirm';
 
 export default function IconRail({ onAdmin, adminActive }: {
   onAdmin: (tab?: 'cost') => void; adminActive?: boolean;
@@ -46,9 +47,9 @@ export default function IconRail({ onAdmin, adminActive }: {
     { key: 'edit', label: '编辑（改名/图标）', icon: Pencil,
       onClick: () => setEditor({ mode: 'edit', cat }) },
     { key: 'del', label: '删除空间（成员回「最近」）', icon: Trash, danger: true,
-      onClick: () => {
+      onClick: async () => {
         if (activeSpace === `cat:${cat.id}`) setActiveSpace('recent');
-        if (confirm(`删除分类「${cat.name}」？分类内的任务/项目回到「最近」，本身不受影响。`))
+        if (await askConfirm({ title: `删除分类「${cat.name}」？分类内的任务/项目回到「最近」，本身不受影响。`, danger: true }))
           void useStore.getState().deleteCategory(cat.id);
       } },
   ];
@@ -148,7 +149,7 @@ function UserBadge() {
   return (
     <button className="rail-user" title={`${me.username}${me.role === 'admin' ? ' · 管理员' : ''}（点击登出）`}
             onClick={async () => {
-              if (!confirm(`退出登录 ${me.username}？`)) return;
+              if (!await askConfirm({ title: `退出登录 ${me.username}？`, danger: false })) return;
               await api('/api/auth/logout', { method: 'POST' });
               location.reload();
             }}>
