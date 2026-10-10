@@ -11,7 +11,6 @@ interface SecretItem { key: string; set: boolean }
 interface CustomSvc { name: string; url: string; note: string; key_set: boolean }
 interface McpServer { name: string; spec: Record<string, any>; sessions_overriding: number; session_only?: boolean }
 interface VaultPlatform { platform: string; user?: string; email?: string; has_password: boolean; updated_at: string }
-interface VaultEdit { platform: string; username?: string; email?: string; notes?: string; password?: string }
 interface Overview {
   services: ServiceItem[];
   secrets: SecretItem[];
@@ -106,7 +105,6 @@ export default function ResourcesPanel() {
   const [pinging, setPinging] = useState<string | null>(null);
   const [pingRes, setPingRes] = useState<Record<string, { ok: boolean; msg: string; ms?: number }>>({});
   const [vSearch, setVSearch] = useState('');
-  const [vEdit, setVEdit] = useState<VaultEdit | null>(null);
   const [mcpEdit, setMcpEdit] = useState<{ name: string; command: string; args: string } | null>(null);
   const [svcAdd, setSvcAdd] = useState<{ name: string; url: string; note: string } | null>(null);
 
@@ -180,23 +178,8 @@ export default function ResourcesPanel() {
     finally { setPinging(null); }
   };
 
-  const saveVaultEntry = async () => {
-    if (!vEdit?.platform?.trim()) return;
-    const body: Record<string, string> = { platform: vEdit.platform.trim() };
-    for (const f of ['username', 'email', 'notes', 'password'] as const) {
-      const v = vEdit[f];
-      if (v && v.trim()) body[f] = v.trim();
-    }
-    try {
-      await api('/api/admin/vault/entry', { method: 'POST', body: JSON.stringify(body) });
-      flash('✓ 已入加密库'); setVEdit(null); await load();
-    } catch (e) { flash(`保存失败：${String(e)}`, false); }
-  };
-  const delVaultEntry = async (platform: string) => {
-    if (!confirm(`删除凭证「${platform}」？此操作不可撤销。`)) return;
-    try { await api(`/api/admin/vault/entry/${encodeURIComponent(platform)}`, { method: 'DELETE' }); await load(); }
-    catch (e) { flash(`删除失败：${String(e)}`, false); }
-  };
+  // AC-1.3：凭证库唯一编辑面收敛到安全 tab（八字段 merge 编辑器）；本页只读概览。
+  const gotoVaultHome = () => { location.hash = '#/admin/security'; };
   const saveMcp = async () => {
     if (!mcpEdit?.name?.trim() || !mcpEdit.command?.trim()) return;
     let args: string[] = [];
@@ -477,12 +460,14 @@ export default function ResourcesPanel() {
         </>
       )}
 
-      {/* ============ 凭证库 ============ */}
+      {/* ============ 凭证库（AC-1.3：只读概览，编辑唯一面=安全 tab） ============ */}
       {sec === 'vault' && (
         <>
+          <div className="res-addbar focused" style={{ marginBottom: 10, cursor: 'pointer' }} onClick={gotoVaultHome}>
+            <span>🔐 凭证库的增删改已收敛到「安全」tab（八字段编辑器，同源审计）</span>
+            <button className="res-btn" style={{ marginLeft: 'auto' }}>前往安全 tab 管理 →</button>
+          </div>
           <div className="res-toolbar" style={{ marginBottom: 0 }}>
-            <button className="res-btn" style={{ fontSize: 12, padding: '5px 12px' }}
-              onClick={() => setVEdit({ platform: '' })}>＋ 添加凭证</button>
             <input className="res-search" placeholder="搜索平台 / 账号…" value={vSearch}
               onChange={e => setVSearch(e.target.value)} />
             <span className="spacer" />
@@ -492,42 +477,20 @@ export default function ResourcesPanel() {
                 : `⚠ 校验失败：${data.vault.verify.error ?? '未知'}`}
             </span>
           </div>
-          {vEdit && (
-            <div className="res-addbar focused">
-              <input placeholder="平台（如 GitHub）" style={{ width: 140 }} value={vEdit.platform ?? ''}
-                onChange={e => setVEdit({ ...vEdit, platform: e.target.value })} />
-              <input placeholder="用户名" style={{ width: 120 }} value={vEdit.username ?? ''}
-                onChange={e => setVEdit({ ...vEdit, username: e.target.value })} />
-              <input placeholder="邮箱" style={{ width: 150 }} value={vEdit.email ?? ''}
-                onChange={e => setVEdit({ ...vEdit, email: e.target.value })} />
-              <input type="password" placeholder="密码（只写）" style={{ width: 120 }} value={vEdit.password ?? ''}
-                onChange={e => setVEdit({ ...vEdit, password: e.target.value })} />
-              <input placeholder="备注" style={{ flex: 1, minWidth: 120 }} value={vEdit.notes ?? ''}
-                onChange={e => setVEdit({ ...vEdit, notes: e.target.value })} />
-              <button className="res-btn" onClick={() => void saveVaultEntry()}>保存（加密）</button>
-              <button className="res-btn" onClick={() => setVEdit(null)}>取消</button>
-            </div>
-          )}
           <table className="kv-table" style={{ width: '100%' }}>
-            <thead><tr><th>平台</th><th>账号</th><th style={{ width: 70 }}>密码</th><th style={{ width: 100 }}>更新</th><th style={{ width: 50 }}></th></tr></thead>
+            <thead><tr><th>平台</th><th>账号</th><th style={{ width: 70 }}>密码</th><th style={{ width: 110 }}>更新</th></tr></thead>
             <tbody>
               {vFiltered.length === 0 && (
-                <tr><td colSpan={5} className="muted" style={{ textAlign: 'center', padding: 20 }}>（无匹配条目）</td></tr>
+                <tr><td colSpan={4} className="muted" style={{ textAlign: 'center', padding: 20 }}>（无匹配条目）</td></tr>
               )}
               {vFiltered.map(p => (
                 <tr key={p.platform}>
-                  <td>
-                    <a style={{ cursor: 'pointer' }} title="点击编辑（密码留空=不改）"
-                      onClick={() => setVEdit({ platform: p.platform, username: p.user, email: p.email })}>
-                      {p.platform}
-                    </a>
-                  </td>
+                  <td>{p.platform}</td>
                   <td className="muted">{p.user || p.email || '—'}</td>
                   <td style={{ color: p.has_password ? 'var(--green)' : 'var(--red)' }}>
                     {p.has_password ? '● 已存' : '○ 缺'}
                   </td>
                   <td className="mono" style={{ fontSize: 11.5 }}>{(p.updated_at || '').slice(0, 10)}</td>
-                  <td><button className="res-btn" onClick={() => void delVaultEntry(p.platform)}>删</button></td>
                 </tr>
               ))}
             </tbody>

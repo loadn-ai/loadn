@@ -92,8 +92,14 @@ async def resources_test(body: dict):
     return {"results": await resources.ping_all(only)}
 @router.post("/admin/vault/entry")
 def vault_put_entry(body: dict):
-    """凭证库写条目（新增/更新）。密码/恢复码只写不回。"""
+    """凭证库写条目（新增/更新）。密码/恢复码只写不回。
+
+    deprecated（AC-1.3）：凭证库唯一编辑面收敛到 PUT /admin/vault/{platform}
+    （安全 tab 八字段 merge 编辑器）；本端保留兼容旧客户端，行为不变，
+    但补审计（此前写库无留痕）。
+    """
     from ...security import vault as vault_mod
+    from ...security.audit import audit
     platform = str(body.get("platform") or "").strip()
     if not platform or platform == vault_mod.RES_ENTRY:
         raise HTTPException(400, "platform 非法")
@@ -106,13 +112,20 @@ def vault_put_entry(body: dict):
     if not fields:
         raise HTTPException(400, "没有可写字段")
     vault_mod.put(platform, **fields)
+    audit("vault", {"action": "entry_write", "platform": platform,
+                    "fields": sorted(fields)})
     return {"ok": True, "platform": platform}
 @router.delete("/admin/vault/entry/{platform}")
 def vault_delete_entry(platform: str):
+    """删除条目（deprecated 同上；对齐 vault_delete 补 404 与审计）。"""
     from ...security import vault as vault_mod
+    from ...security.audit import audit
     if platform == vault_mod.RES_ENTRY:
         raise HTTPException(400, "保留条目不可删")
-    return {"ok": vault_mod.delete(platform)}
+    if not vault_mod.delete(platform):
+        raise HTTPException(404, f"无 {platform} 条目")
+    audit("vault", {"action": "admin_delete", "platform": platform})
+    return {"ok": True}
 @router.get("/admin/security")
 def security_posture():
     """六机制姿态+沙箱覆盖率+熔断状态+vault 计数+账本尾（管理面读）。
