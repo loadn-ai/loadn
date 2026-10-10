@@ -47,17 +47,6 @@ interface ResCfg {
   textr_password_set: boolean; textr_password_hint: string;
 }
 
-const RES_SECRET_FIELDS: [key: string, label: string][] = [
-  ['sandbox_api_key', '沙箱 API Key'],
-  ['sms_token', '短信 Token'],
-  ['mail_auth_code', '126 授权码'],
-  ['vlm_api_key', 'VLM API Key'],
-  ['twocaptcha_key', '2captcha Key'],
-  ['bocha_key', '博查 Key'],
-  ['zhipu_key', '智谱 Key'],
-  ['textr_password', 'Textr 密码'],
-];
-
 interface ConvRow {
   name: string; timeout_s: number; stall_timeout_s: number; max_turns: number | null;
 }
@@ -98,10 +87,6 @@ export default function SettingsTab() {
   const [priceMsg, setPriceMsg] = useState<{ t: string; err?: boolean } | null>(null);
   const [srv, setSrv] = useState<ServerCfg | null>(null);
   const [res, setRes] = useState<ResCfg | null>(null);
-  const [resKeys, setResKeys] = useState<Record<string, string>>({});
-  const [resMsg, setResMsg] = useState<{ t: string; err?: boolean } | null>(null);
-  const [pingRows, setPingRows] = useState<[string, { ok: boolean; msg: string; ms?: number }][] | null>(null);
-  const [pinging, setPinging] = useState(false);
   const [msg, setMsg] = useState<{ t: string; err?: boolean } | null>(null);
   const [loadErr, setLoadErr] = useState('');
   const [testing, setTesting] = useState(false);
@@ -114,7 +99,7 @@ export default function SettingsTab() {
                             resources: ResCfg;
                             engines: EnginesCfg; claude: ClaudeCfg; notify: NotifyCfg;
                             share: ShareCfg; pricing: PricingCfg; server: ServerCfg }>('/api/settings');
-      setTg(d.titlegen); setRun(d.run); setConv(d.convergence); setRes(d.resources); setKeyInput(''); setResKeys({});
+      setTg(d.titlegen); setRun(d.run); setConv(d.convergence); setRes(d.resources); setKeyInput('');
       setConvDef(d.convergence_defaults ?? { timeout_s: 3600, stall_timeout_s: 1800, max_turns: null });
       setEng(d.engines); setCl(d.claude); setNf(d.notify); setNfKeys({});
       setShare(d.share); setPricing(d.pricing);
@@ -335,36 +320,9 @@ export default function SettingsTab() {
     } catch (e) { setConvMsg({ t: `保存失败：${String(e)}`, err: true }); }
   }
 
-  async function saveResources() {
-    if (!res) return;
-    try {
-      const body: Record<string, unknown> = {};
-      for (const k of ['ocr_url', 'sandbox_url', 'cdp_url', 'proxy', 'sms_url',
-                       'sms_phone', 'mail_imap', 'mail_smtp', 'mail_user',
-                       'vlm_api_base', 'vlm_model', 'adb_addr',
-                       'zhipu_engine', 'textr_email']) body[k] = (res as any)[k];
-      for (const [k] of RES_SECRET_FIELDS) {
-        const v = (resKeys[k] ?? '').trim();
-        if (v) body[k] = v;      // 留空 = 保持不变
-      }
-      const d = await api<{ resources: ResCfg }>('/api/settings/resources', {
-        method: 'PUT', body: JSON.stringify(body) });
-      setRes(d.resources); setResKeys({});
-      setResMsg({ t: '✓ 已保存（即时生效）' });
-    } catch (e) { setResMsg({ t: `保存失败：${String(e)}`, err: true }); }
-  }
-
-  async function testResources() {
-    setPinging(true); setResMsg({ t: '探测中…（先保存当前编辑值）' });
-    try {
-      await saveResources();
-      const d = await api<Record<string, { ok: boolean; msg: string; ms?: number }>>(
-        '/api/settings/resources/test', { method: 'POST' });
-      setPingRows(Object.entries(d));
-      setResMsg(null);
-    } catch (e) { setResMsg({ t: `探测失败：${String(e)}`, err: true }); }
-    finally { setPinging(false); }
-  }
+  // AC-2.1：资源读写面收敛到资源 tab（/api/admin/resources/* 卡墙），
+  // saveResources/testResources 与密钥表单已删——/api/settings/resources
+  // 后端保留（资源卡墙同源落 vault），前端不再双编辑。
 
   if (!tg || !run) return loadErr ? (
     <div className="admin-body">
@@ -616,122 +574,24 @@ export default function SettingsTab() {
       <G id="g-res" title="外部资源与服务器" />
       {res &&
       <div className="setting-card">
-        <h4>外部资源 <span className="muted">（agent 动手能力：OCR/沙箱/短信/VLM/打码/搜索/真机；密钥只存不回显）</span></h4>
-        <div className="setting-row">
-          <span className="setting-k">OCR 服务</span>
-          <input value={res.ocr_url} onChange={e => setRes({ ...res, ocr_url: e.target.value })}
-            placeholder="http://127.0.0.1:8686" />
+        <h4>外部资源 <span className="muted">（agent 动手能力：OCR/沙箱/短信/VLM/打码/搜索/真机）</span></h4>
+        {/* AC-2.1：唯一编辑面收敛到资源 tab 卡墙（逐项独立测试+状态灯体验更好）；
+            本卡改只读摘要+入口——同一配置双编辑器、字段三份拷贝的漂移风险到此为止 */}
+        <div className="setting-row" style={{ cursor: 'pointer' }}
+          onClick={() => { location.hash = '#/admin/resources'; }}>
+          <span className="muted" style={{ fontSize: 12.5 }}>
+            已配置端点 {[res.ocr_url, res.sandbox_url, res.cdp_url, res.proxy,
+              res.sms_url, res.mail_user, res.adb_addr, res.textr_email]
+              .filter(Boolean).length} 项 · 密钥 {[res.sandbox_api_key_set, res.sms_token_set,
+              res.mail_auth_code_set, res.vlm_api_key_set, res.twocaptcha_key_set,
+              res.bocha_key_set, res.zhipu_key_set, res.textr_password_set]
+              .filter(Boolean).length} 项（AES-GCM，只写不回显）
+          </span>
+          <button className="btn sm primary" style={{ marginLeft: 'auto' }}>前往资源中心配置 →</button>
         </div>
-        <div className="setting-row">
-          <span className="setting-k">AIO 沙箱</span>
-          <input value={res.sandbox_url} onChange={e => setRes({ ...res, sandbox_url: e.target.value })}
-            placeholder="http://127.0.0.1:21111" />
-          <input type="password" value={resKeys.sandbox_api_key ?? ''}
-            onChange={e => setResKeys({ ...resKeys, sandbox_api_key: e.target.value })}
-            placeholder={res.sandbox_api_key_set ? `已保存（${res.sandbox_api_key_hint}），留空不改` : 'your-key'} />
-        </div>
-        <div className="setting-row">
-          <span className="setting-k">沙箱 CDP</span>
-          <input value={res.cdp_url} onChange={e => setRes({ ...res, cdp_url: e.target.value })}
-            placeholder="http://127.0.0.1:21111/cdp" />
-          <span className="muted">fetch_page / playwright 直连用</span>
-        </div>
-        <div className="setting-row">
-          <span className="setting-k">代理</span>
-          <input value={res.proxy} onChange={e => setRes({ ...res, proxy: e.target.value })}
-            placeholder="http://127.0.0.1:7890（空=不可用）" />
-        </div>
-        <div className="setting-row">
-          <span className="setting-k">短信服务</span>
-          <input value={res.sms_url} onChange={e => setRes({ ...res, sms_url: e.target.value })}
-            placeholder="https://sms.example.test:30443" />
-          <input type="password" value={resKeys.sms_token ?? ''}
-            onChange={e => setResKeys({ ...resKeys, sms_token: e.target.value })}
-            placeholder={res.sms_token_set ? `已保存（${res.sms_token_hint}），留空不改` : 'token'} />
-          <input value={res.sms_phone} onChange={e => setRes({ ...res, sms_phone: e.target.value })}
-            placeholder="+86 1…" title="手机号" style={{ maxWidth: 130 }} />
-        </div>
-        <div className="setting-row">
-          <span className="setting-k">平台邮箱</span>
-          <input value={res.mail_user} onChange={e => setRes({ ...res, mail_user: e.target.value })}
-            placeholder="user@example.com" title="邮箱地址（注册/登录收验证码用）" />
-          <input type="password" value={resKeys.mail_auth_code ?? ''}
-            onChange={e => setResKeys({ ...resKeys, mail_auth_code: e.target.value })}
-            placeholder={res.mail_auth_code_set ? `已保存（${res.mail_auth_code_hint}），留空不改` : '126 授权码（非登录密码）'} />
-          <input value={res.mail_imap} onChange={e => setRes({ ...res, mail_imap: e.target.value })}
-            placeholder="imap.126.com:993" title="IMAP" style={{ maxWidth: 160 }} />
-          <input value={res.mail_smtp} onChange={e => setRes({ ...res, mail_smtp: e.target.value })}
-            placeholder="smtp.126.com:465" title="SMTP" style={{ maxWidth: 160 }} />
-        </div>
-        <div className="setting-row">
-          <span className="setting-k">VLM 模型</span>
-          <input value={res.vlm_model} onChange={e => setRes({ ...res, vlm_model: e.target.value })}
-            placeholder="doubao-seed-2-1-turbo-260628" />
-          <input value={res.vlm_api_base} onChange={e => setRes({ ...res, vlm_api_base: e.target.value })}
-            placeholder="API Base（空=继承自动标题）" />
-          <input type="password" value={resKeys.vlm_api_key ?? ''}
-            onChange={e => setResKeys({ ...resKeys, vlm_api_key: e.target.value })}
-            placeholder={res.vlm_api_key_set ? `已保存（${res.vlm_api_key_hint}），留空不改`
-              : (res.vlm_api_key_hint || '留空继承自动标题 key')} />
-        </div>
-        <div className="setting-row">
-          <span className="setting-k">2captcha</span>
-          <input type="password" value={resKeys.twocaptcha_key ?? ''}
-            onChange={e => setResKeys({ ...resKeys, twocaptcha_key: e.target.value })}
-            placeholder={res.twocaptcha_key_set ? `已保存（${res.twocaptcha_key_hint}），留空不改` : 'key'} />
-          <span className="setting-k" style={{ paddingLeft: 12 }}>博查</span>
-          <input type="password" value={resKeys.bocha_key ?? ''}
-            onChange={e => setResKeys({ ...resKeys, bocha_key: e.target.value })}
-            placeholder={res.bocha_key_set ? `已保存（${res.bocha_key_hint}），留空不改` : 'key'} />
-        </div>
-        <div className="setting-row">
-          <span className="setting-k">adb 真机</span>
-          <input value={res.adb_addr} onChange={e => setRes({ ...res, adb_addr: e.target.value })}
-            placeholder="127.0.0.1:5555" />
-        </div>
-        <div className="setting-row">
-          <span className="setting-k">智谱搜索</span>
-          <input type="password" value={resKeys.zhipu_key ?? ''}
-            onChange={e => setResKeys({ ...resKeys, zhipu_key: e.target.value })}
-            placeholder={res.zhipu_key_set ? `已保存（${res.zhipu_key_hint}），留空不改` : 'key'} />
-          <input value={res.zhipu_engine} onChange={e => setRes({ ...res, zhipu_engine: e.target.value })}
-            placeholder="search_pro" title="engine（std 0.01 / pro 0.03 / pro_sogou|quark 0.05 元/次）" style={{ maxWidth: 150 }} />
-        </div>
-        <div className="setting-row">
-          <span className="setting-k">Textr 号码</span>
-          <input value={res.textr_email} onChange={e => setRes({ ...res, textr_email: e.target.value })}
-            placeholder="u@example.com（Textr Go 美国虚拟号，收验证码）" />
-          <input type="password" value={resKeys.textr_password ?? ''}
-            onChange={e => setResKeys({ ...resKeys, textr_password: e.target.value })}
-            placeholder={res.textr_password_set ? `已保存（${res.textr_password_hint}），留空不改` : '密码'} />
-        </div>
-        <div className="setting-row">
-          <button className="btn primary sm" onClick={() => void saveResources()}>保存</button>
-          <button className="btn sm" disabled={pinging} onClick={() => void testResources()}>
-            {pinging ? '探测中…' : '测试全部'}
-          </button>
-          {resMsg && <span className={resMsg.err ? 'admin-msg err' : 'admin-msg'}>{resMsg.t}</span>}
-        </div>
-        {pingRows && (
-          <div className="tbl-wrap">
-            <table className="mcp-table res-test-table">
-              <thead><tr><th>资源</th><th>状态</th><th>耗时</th><th>说明</th></tr></thead>
-              <tbody>
-                {pingRows.map(([name, r]) => (
-                  <tr key={name}>
-                    <td>{name}</td>
-                    <td>{r.ok ? '✓ OK' : '✗ FAIL'}</td>
-                    <td>{r.ms != null ? `${r.ms}ms` : '—'}</td>
-                    <td className="mono-cell">{r.msg}</td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-        )}
         <div className="setting-note muted">
-          沙箱同时是全局 MCP server（工具 tab 里「sandbox」），agent 原生获得浏览器/命令行工具；
-          密钥存 config.yaml，agent 经 <code>python3 "$WORKDADDY_CLI" r …</code> 调用，不进环境变量。
+          卡片墙支持逐项独立测试（状态灯/耗时/最近失败原因）；密钥存 config.yaml 与 vault，
+          agent 经 <code>python3 "$WORKDADDY_CLI" r …</code> 调用，不进环境变量。
         </div>
       </div>}
 

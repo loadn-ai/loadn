@@ -105,7 +105,6 @@ export default function ResourcesPanel() {
   const [pinging, setPinging] = useState<string | null>(null);
   const [pingRes, setPingRes] = useState<Record<string, { ok: boolean; msg: string; ms?: number }>>({});
   const [vSearch, setVSearch] = useState('');
-  const [mcpEdit, setMcpEdit] = useState<{ name: string; command: string; args: string } | null>(null);
   const [svcAdd, setSvcAdd] = useState<{ name: string; url: string; note: string } | null>(null);
 
   const [loadErr, setLoadErr] = useState('');
@@ -180,16 +179,7 @@ export default function ResourcesPanel() {
 
   // AC-1.3：凭证库唯一编辑面收敛到安全 tab（八字段 merge 编辑器）；本页只读概览。
   const gotoVaultHome = () => { location.hash = '#/admin/security'; };
-  const saveMcp = async () => {
-    if (!mcpEdit?.name?.trim() || !mcpEdit.command?.trim()) return;
-    let args: string[] = [];
-    try { args = mcpEdit.args ? JSON.parse(mcpEdit.args) : []; } catch { flash('args 需为 JSON 数组', false); return; }
-    try {
-      await api(`/api/tools/mcp/${encodeURIComponent(mcpEdit.name.trim())}`, {
-        method: 'PUT', body: JSON.stringify({ command: mcpEdit.command, args }) });
-      flash('✓ 已保存（新会话生效）'); setMcpEdit(null); await load();
-    } catch (e) { flash(`保存失败：${String(e)}`, false); }
-  };
+  // AC-2.2：MCP 唯一管理面收敛到工具 tab（全类型编辑器）；saveMcp/表单已删。
 
   if (!data) return loadErr ? (
     <div className="admin-body">
@@ -410,34 +400,20 @@ export default function ResourcesPanel() {
         </>
       )}
 
-      {/* ============ MCP ============ */}
+      {/* ============ MCP（AC-2.2：唯一管理面=工具 tab；本页只读概览+跳转） ============ */}
       {sec === 'mcp' && (
         <>
-          <div className="res-toolbar" style={{ marginBottom: 0 }}>
-            <button className="res-btn" style={{ fontSize: 12, padding: '5px 12px' }}
-              onClick={() => setMcpEdit({ name: '', command: '', args: '' })}>＋ 添加 Server</button>
-            <span className="muted" style={{ fontSize: 12 }}>
-              stdio 服务；工具以 mcp__&lt;server&gt;__&lt;tool&gt; 出现，改动新会话生效
-            </span>
+          <div className="res-addbar focused" style={{ marginBottom: 10, cursor: 'pointer' }}
+            onClick={() => { location.hash = '#/admin/tools'; }}>
+            <span>🧩 MCP server 的增删改已收敛到「工具」tab（stdio/http/sse 全类型编辑器 + 会话覆盖计数）</span>
+            <button className="res-btn" style={{ marginLeft: 'auto' }}>前往工具 tab 管理 →</button>
           </div>
-          {mcpEdit && (
-            <div className="res-addbar focused">
-              <input placeholder="名称（如 browser）" style={{ width: 130 }} value={mcpEdit.name}
-                onChange={e => setMcpEdit({ ...mcpEdit, name: e.target.value })} />
-              <input placeholder="命令（如 npx）" style={{ width: 110 }} value={mcpEdit.command}
-                onChange={e => setMcpEdit({ ...mcpEdit, command: e.target.value })} />
-              <input placeholder='参数（JSON 数组，如 ["-y","…"]）' style={{ flex: 1, minWidth: 200 }} value={mcpEdit.args}
-                onChange={e => setMcpEdit({ ...mcpEdit, args: e.target.value })} />
-              <button className="res-btn" onClick={() => void saveMcp()}>保存</button>
-              <button className="res-btn" onClick={() => setMcpEdit(null)}>取消</button>
-            </div>
-          )}
           <table className="kv-table" style={{ width: '100%' }}>
-            <thead><tr><th style={{ width: 130 }}>名称</th><th>命令</th><th style={{ width: 90 }}>会话覆盖</th><th style={{ width: 50 }}></th></tr></thead>
+            <thead><tr><th style={{ width: 130 }}>名称</th><th>命令</th><th style={{ width: 90 }}>会话覆盖</th></tr></thead>
             <tbody>
               {data.mcp.servers.length === 0 && (
-                <tr><td colSpan={4} className="muted" style={{ textAlign: 'center', padding: 20 }}>
-                  （无全局 MCP server——上方添加）
+                <tr><td colSpan={3} className="muted" style={{ textAlign: 'center', padding: 20 }}>
+                  （无全局 MCP server——前往工具 tab 添加）
                 </td></tr>
               )}
               {data.mcp.servers.map(m => (
@@ -447,12 +423,6 @@ export default function ResourcesPanel() {
                     {[m.spec?.command, ...(m.spec?.args ?? [])].filter(Boolean).join(' ') || '-'}
                   </td>
                   <td className="muted">{m.sessions_overriding || '—'}</td>
-                  <td>{!m.session_only && (
-                    <button className="res-btn" onClick={() => {
-                      if (confirm(`删除 MCP server ${m.name}？`))
-                        void api(`/api/tools/mcp/${encodeURIComponent(m.name)}`, { method: 'DELETE' }).then(load);
-                    }}>删</button>
-                  )}</td>
                 </tr>
               ))}
             </tbody>
