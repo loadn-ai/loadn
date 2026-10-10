@@ -38,7 +38,10 @@ export default function InstallDialog({ onClose }: { onClose: () => void }) {
       const skills = d.skills ?? [];
       setResults(skills);
       setHubErr(d.error ?? '');
-      void fetchZhDesc(skills).then(setZh);   // 英文描述 → 中文简介（kv 缓存）
+      void fetchZhDesc(skills).then(r => {
+        if (r === null && skills.length) setHubErr('翻译服务不可用，简介显示原文');   // E6 降级可见（不阻断安装）
+        else if (r) setZh(r);
+      });   // 英文描述 → 中文简介（kv 缓存）
     } catch (e) { setHubErr(`搜索请求失败：${String(e)}——可重试，或用「链接安装」直装`); }
   }
 

@@ -3,7 +3,7 @@ import { api } from './client';
 
 export async function fetchZhDesc(
   items: { name: string; description: string }[],
-): Promise<Record<string, string>> {
+): Promise<Record<string, string> | null> {   // null=翻译服务不可用（AC-5.10c：调用方可降级提示）
   const need = items
     .filter(x => x.name && x.description && !/[一-鿿]/.test(x.description))
     .slice(0, 30);
@@ -14,5 +14,5 @@ export async function fetchZhDesc(
     const m: Record<string, string> = {};
     for (const it of d.items) if (it.zh) m[it.name] = it.zh;
     return m;
-  } catch { return {}; }   // 翻译不可用就显示原文
+  } catch { return null; }   // 翻译不可用——显示原文，由调用方提示
 }

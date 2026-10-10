@@ -826,7 +826,7 @@ function EgressDetail() {
               <td style={{ color: r.denied ? 'var(--danger)' : 'var(--green)' }}>
                 {r.denied ? `拒绝 ${r.denied}/${r.n}` : '放行'}
               </td>
-              <td style={{ fontVariantNumeric: 'tabular-nums' }}>{(r.last || '').slice(11, 19)}</td>
+              <td style={{ fontVariantNumeric: 'tabular-nums' }}>{(r.last || '').slice(5, 19).replace('T', ' ')}</td>
               <td style={{ width: 80 }}>
                 {r.denied > 0 && (
                   <button
@@ -861,7 +861,7 @@ function EgressDetail() {
           </div>
           {grants.map(g => (
             <span key={`${g.sid}:${g.host}`} className="chip" style={{ marginRight: 6 }}>
-              {g.host} · {g.sid.slice(-6)} · 至 {g.expires_at.slice(11, 16)}
+              {g.host} · {g.sid.slice(-6)} · 至 {g.expires_at.slice(5, 16).replace('T', ' ')}
               <a style={{ marginLeft: 4, cursor: 'pointer', opacity: 0.7 }}
                  onClick={() => revokeGrant(g.sid, g.host)}
                  title="立即收回（不等到期）">×</a>

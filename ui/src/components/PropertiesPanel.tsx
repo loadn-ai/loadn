@@ -328,7 +328,7 @@ function EgressSection() {
           </div>
           {data!.grants.map(g => (
             <span key={g.host} className="chip" style={{ marginRight: 6 }}>
-              {g.host} · 至 {g.expires_at.slice(11, 16)}
+              {g.host} · 至 {g.expires_at.slice(5, 16).replace('T', ' ')}
               <a style={{ marginLeft: 4, cursor: 'pointer', opacity: 0.7 }}
                  onClick={() => revokeGrant(g.host)} title="立即收回">×</a>
             </span>
@@ -337,10 +337,11 @@ function EgressSection() {
       )}
       <table className="kv-table" style={{ width: '100%' }}>
         <thead><tr><th>目标域</th><th style={{ width: 50 }}>次数</th>
-          <th style={{ width: 110 }}>判定</th><th style={{ width: 70 }}>最近</th></tr></thead>
+          <th style={{ width: 110 }}>判定</th><th style={{ width: 110 }}>最近</th>
+          <th style={{ width: 60 }}>操作</th></tr></thead>   {/* D5 姊妹点：操作列常驻，消游离第 5 td */}
         <tbody>
           {rows.length === 0 && (
-            <tr><td colSpan={4} className="muted"
+            <tr><td colSpan={5} className="muted"
               style={{ textAlign: 'center', padding: 10 }}>
               （暂无本会话的外联记录）</td></tr>
           )}
@@ -351,14 +352,16 @@ function EgressSection() {
               <td style={{ fontVariantNumeric: 'tabular-nums' }}>{r.n}</td>
               <td style={{ color: r.denied ? 'var(--danger)' : 'var(--green)' }}>
                 {r.denied ? `拒绝 ${r.denied}/${r.n}` : '放行'}</td>
-              <td style={{ fontVariantNumeric: 'tabular-nums' }}>{(r.last || '').slice(11, 19)}</td>
-              {r.denied > 0 && !allow.includes(r.host) && (
+              <td style={{ fontVariantNumeric: 'tabular-nums' }}>{(r.last || '').slice(5, 19).replace('T', ' ')}</td>
+              {r.denied > 0 && !allow.includes(r.host)
+                ? (
                 <td style={{ width: 60 }}>
                   <button className="mini-btn" disabled={busy === r.host}
                     title="加入出口白名单（热生效，免重启）"
                     onClick={() => allowHost(r.host)}>放行</button>
                 </td>
-              )}
+                )
+                : <td />}
             </tr>
           ))}
         </tbody>

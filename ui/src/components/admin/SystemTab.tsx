@@ -195,7 +195,7 @@ export default function SystemTab() {
         <div className="setting-card">
           <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
             {b?.running
-              ? <span className="chip warn"><Spinner size={11} /> {b.kind === 'verify' ? '验证进行中…' : '备份进行中…'}（{b.started_at.slice(11, 19)} 起）</span>
+              ? <span className="chip warn"><Spinner size={11} /> {b.kind === 'verify' ? '验证进行中…' : '备份进行中…'}（{b.started_at.slice(5, 19).replace('T', ' ')} 起）</span>
               : b?.rc != null && (b.rc === 0
                 ? <span className="chip" style={{ color: 'var(--green)' }}>上次 {b.kind} 成功 · {b.finished_at.slice(0, 19).replace('T', ' ')}</span>
                 : <span className="chip warn">上次 {b.kind} 失败（rc={b.rc}）{b.detail && `：${b.detail}`}</span>)}

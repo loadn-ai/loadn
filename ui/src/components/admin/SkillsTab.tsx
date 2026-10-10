@@ -23,7 +23,10 @@ export default function SkillsTab() {
       const d = await api<{ skills: SkillItem[] }>('/api/skills');
       setSkills(d.skills);
       // 英文描述 → 后端翻译（kv 缓存）补中文简介；失败回退原文
-      void fetchZhDesc(d.skills).then(setZh);
+      void fetchZhDesc(d.skills).then(r => {
+        if (r === null) toast('翻译服务不可用，技能简介暂显示原文', false);   // E6 降级可见
+        else setZh(r);
+      });
     } catch (e) { setMsg({ t: `加载失败：${String(e)}`, err: true }); }
   }
   useEffect(() => { void reload(); }, []);

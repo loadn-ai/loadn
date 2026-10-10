@@ -89,7 +89,7 @@ export default function ChannelsCard() {
       {stat && (
         <div className="muted" style={{ fontSize: 12 }}>
           轮询：{stat.running ? '运行中' : '停止'} · 已处理 {stat.processed} 条
-          {stat.last_ok ? ` · 最近成功 ${stat.last_ok.slice(11, 19)}` : ''}
+          {stat.last_ok ? ` · 最近成功 ${stat.last_ok.slice(5, 19).replace('T', ' ')}` : ''}
           {stat.last_error ? ` · 最近错误：${stat.last_error}` : ''}
           {stat.backoff_s ? ` · 退避 ${stat.backoff_s}s` : ''}
         </div>
