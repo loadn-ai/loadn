@@ -1,0 +1,33 @@
+# GitHub Release 自动化：推 vX.Y.Z tag → 自动建 Release（含自动生成
+# notes）→ 触发 publish.yml（Trusted Publishing/OIDC 发 PyPI）。
+# 事后补建历史 tag 的 Release：Actions → release → Run workflow 填 tag。
+name: release
+on:
+  push:
+    tags: ['v*']
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: '要建 Release 的 tag（如 v0.7.20）'
+        required: true
+permissions:
+  contents: write   # 创建 Release 需要
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
+jobs:
+  github-release:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.tag || github.ref }}   # dispatch 补建时用输入 tag
+      - uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ inputs.tag || github.ref_name }}
+          generate_release_notes: true   # 按 commit/PR 自动生成 notes
+          draft: false
+          prerelease: false
+# 说明：详细发版流程（本地 release build → upgrade → 回滚）见
+# docs/RELEASE.md；本 workflow 只负责 GitHub 侧 Release 页与 PyPI 触发。
