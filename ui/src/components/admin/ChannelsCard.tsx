@@ -1,5 +1,7 @@
-// P9 渠道卡（资源控制台）：Telegram bot token（入 vault）+ 白名单 + 启停 +
+// P9 渠道卡：Telegram bot token（入 vault）+ 白名单 + 启停 +
 // 轮询状态/最近错误 + getMe 健康探测。WhatsApp/Signal 预留位未实现。
+// AC-5.10e（P2-3）：归位 Webhooks tab（对话入口与事件入口同域）——
+// 因 Webhooks 面普通用户可见，卡内自守卫：cookie 普通用户不渲染（token 单用户模式全开）。
 import { useEffect, useState } from 'react';
 import { api } from '../../api/client';
 import { toast } from '../../stores/toasts';
@@ -19,6 +21,14 @@ export default function ChannelsCard() {
   const [cfgErr, setCfgErr] = useState('');
   const [binds, setBinds] = useState<ChanBind[]>([]);
   const openSession = useStore(s => s.openSession);
+  // AC-5.10e：随面归位加 role 守卫（null=token 单用户模式或未返回→渲染，后端 403 兑底）
+  const [role, setRole] = useState<string | null>(null);
+  useEffect(() => {
+    void api<{ logged_in: boolean; user: { role: string } | null }>('/api/auth/status')
+      .then(d => setRole(d.logged_in && d.user ? d.user.role : null))
+      .catch(() => setRole(null));
+  }, []);
+  if (role !== null && role !== 'admin') return null;   // 普通用户：渠道管理不可见
 
   async function reload() {
     try {

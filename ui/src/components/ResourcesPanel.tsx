@@ -5,7 +5,6 @@
 import { useEffect, useState } from 'react';
 import { api } from '../api/client';
 import { toast } from '../stores/toasts';
-import ChannelsCard from './admin/ChannelsCard';
 import { Lock, Zap, Key, Shield } from './icons';
 
 interface ServiceItem { key: string; label: string; note: string; value: string; kind: string }
@@ -467,7 +466,8 @@ export default function ResourcesPanel() {
           </table>
         </>
       )}
-      <ChannelsCard />
+      {/* AC-5.10e（P2-3）：渠道卡（Telegram 等对话入口）移往 Webhooks tab（事件入口同域）——
+          不再钉在资源页底部，MCP/凭证库分区切换不再出现无关卡 */}
     </div>
   );
 }

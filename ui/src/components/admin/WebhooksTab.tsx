@@ -5,6 +5,7 @@ import { useEffect, useState } from 'react';
 import { api } from '../../api/client';
 import { toast } from '../../stores/toasts';
 import { Plus } from '../icons';
+import ChannelsCard from './ChannelsCard';   // AC-5.10e（P2-3）：对话入口与事件入口同域，从资源页归位至此
 
 interface Hook {
   id: number; token: string; name: string; profile: string | null;
@@ -119,6 +120,7 @@ export default function WebhooksTab() {
           <div className="panel-empty">还没有 webhook——新建一个，把外部事件（PR/支付/表单）投给 agent。</div>
         )}
       </div>
+      <ChannelsCard />
     </div>
   );
 }
