@@ -27,7 +27,7 @@ def test_rev10_migration_and_crud(conn):
     assert "subtasks" in tables
     tcols = {r["name"] for r in conn.execute("PRAGMA table_info(turns)")}
     assert "subtask_id" in tcols
-    assert db_mod.SCHEMA_REV == 11               # rev10 建 subtasks；rev11 加 projects.repo
+    assert db_mod.SCHEMA_REV >= 11   # rev10 subtasks+rev11 projects.repo 已含；后续 rev 只增（rev12 ping_history/rev13 size 列——等值断言会在每次 bump 后碎）
     # 旧库路径：ALTER 幂等可验——重跑 _migrate 不炸
     db_mod._migrate(conn)  # noqa: SLF001
 
