@@ -34,7 +34,26 @@ git tag v1.0.2
 # 4. 升级生产
 loadn-web upgrade v1.0.2
 # 或缺省=最新：loadn-web upgrade
+
+# 5. 推送（tag 推上去后 GitHub 侧全自动，见下节）
+git push origin main && git push origin v1.0.2
 ```
+
+### GitHub 侧自动化链（push tag 后）
+
+`.github/workflows/release.yml` 监听 `v*` tag 推送：
+
+1. **建 GitHub Release**（`generate_release_notes` 按 commit/PR 自动
+   生成 notes，无需手写）；
+2. Release published 触发 **publish.yml** → 构建 sdist/wheel →
+   Trusted Publishing（OIDC）发 PyPI。
+
+前提（一次性）：pypi.org → 项目 `loadn` → Settings → Publishing →
+Add publisher：owner=`loadn-ai`, repository=`loadn`,
+workflow=`publish.yml`。未配置时 publish job 会失败——Release 页不受
+影响。
+
+补建历史 tag 的 Release：Actions → release → Run workflow，填 tag 名。
 
 ### 查看状态
 
