@@ -11,7 +11,7 @@ import FilePreview from './FilePreview';
 import SubtaskTab from './SubtaskTab';
 import AgentTab from './AgentTab';
 import { AgentAvatar } from './SubtaskTab';
-import { Menu, X } from './icons';
+import { Menu, X, Chat, FileDoc } from './icons';
 import { AgentChips } from './AgentChips';
 import SubtaskToc from './SubtaskToc';
 
@@ -122,6 +122,36 @@ export default function SessionView({ onMenu }: { onMenu: () => void }) {
       <div className="session-body">
         <div className="chat-col">
           <CompactTimeline />
+          {/* 主区选项卡（2026-10-10 恢复）：主控 + 当前子任务情境 tab + 文件
+              tabs（✕ 可关）。子任务清单仍归 SubtaskToc（当初移除本栏的动因=
+              子任务多时横向溢出——清单不进栏，只挂当前打开的那个；文件名
+              溢出由 .main-tabs overflow-x 兜底） */}
+          <div className="main-tabs">
+            <div className={`mtab ${active === 'chat' ? 'on' : ''}`}
+                 title="主控对话" onClick={() => setActive('chat')}>
+              <span className="mtab-name"><Chat size={13} /> 主控</span>
+            </div>
+            {activeSubtask && (
+              <div className="mtab subtask on"
+                   title={`${activeSubtask.title}（子任务视图：本会话内该工作线的全部对话/agent/产物）`}
+                   onClick={() => setActive(`s:${activeSubtask.id}`)}>
+                <span className="mtab-name">
+                  <span className="mtab-sub-name">{activeSubtask.title}</span>
+                </span>
+                <span className="mtab-x" title="回到主控"
+                      onClick={e => { e.stopPropagation(); setActive('chat'); }}>×</span>
+              </div>
+            )}
+            {tabs.map(t => (
+              <div key={t.key} className={`mtab ${active === t.key ? 'on' : ''}`}
+                   title={t.path ?? '对话'} onClick={() => setActive(t.key)}>
+                <span className="mtab-name">
+                  <FileDoc size={13} /> {t.path!.split('/').pop()}</span>
+                <span className="mtab-x" title="关闭预览"
+                      onClick={e => { e.stopPropagation(); closeTab(t.key); }}>×</span>
+              </div>
+            ))}
+          </div>
           <SubtaskToc fileTabs={tabs} onCloseFile={closeTab} />
           {agentFilter && filterDispatches.length > 0 && (
             <div className="agent-filter-bar">
