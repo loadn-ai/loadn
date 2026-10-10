@@ -606,7 +606,7 @@ export function RoutinesLib() {
   if (!items.length) return null;
   return (
     <div style={{ marginTop: 12 }}>
-      <b style={{ fontSize: 13 }}>模板库</b>
+      <b style={{ fontSize: 'var(--fs-lg)' }}>模板库</b>
       <div className="admin-list">
         {items.map(t => (
           <div key={t.key} className="hub-card slim">
@@ -619,7 +619,7 @@ export function RoutinesLib() {
             </div>
             <div className="sk-desc">{t.description}</div>
             {!t.ready && (
-              <div className="admin-err" style={{ fontSize: 12 }}>
+              <div className="admin-err" style={{ fontSize: 'var(--fs-md)' }}>
                 缺：{t.missing.join('、')}
                 <button className="link" onClick={() => {
                   location.hash = '#/admin/settings';

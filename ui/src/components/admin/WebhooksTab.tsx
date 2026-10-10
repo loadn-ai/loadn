@@ -111,7 +111,7 @@ export default function WebhooksTab() {
                   onClick={() => void del(h)}>删除</button>
               </span>
             </div>
-            <div className="mono sk-desc" style={{ fontSize: 11, opacity: 0.75 }}>
+            <div className="mono sk-desc" style={{ fontSize: 'var(--fs-sm)', opacity: 0.75 }}>
               POST {triggerUrl(h)}
             </div>
           </div>
@@ -152,7 +152,7 @@ function HookForm({ profiles, hook, onDone }: {
   return (
     <div className="new-skill-form">
       <div className="sk-head"><b>{editing ? `编辑 #${hook!.id} · ${hook!.name}` : '新建 webhook'}</b>
-        {editing && <span className="muted" style={{ fontSize: 12 }}>（token 不变，外部 URL 无需更换）</span>}
+        {editing && <span className="muted" style={{ fontSize: 'var(--fs-md)' }}>（token 不变，外部 URL 无需更换）</span>}
       </div>
       <input placeholder="名称（例：PR 合并处理）" value={name} onChange={e => setName(e.target.value)} />
       <textarea className="mono" rows={4} value={tpl} onChange={e => setTpl(e.target.value)}

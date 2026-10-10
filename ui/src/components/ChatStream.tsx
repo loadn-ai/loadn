@@ -441,12 +441,12 @@ function MemoryChips({ mid, hits }: { mid?: number; hits: { id: string; domain: 
       {hits.map(h => (
         <button key={h.id} className="link" onClick={() => void load()}
           title={`记忆来源 ${h.domain}/${h.id}（点击看详情）`}
-          style={{ fontSize: 11, opacity: 0.8 }}>
+          style={{ fontSize: 'var(--fs-sm)', opacity: 0.8 }}>
           {icon(h.domain)} {h.id}
         </button>
       ))}
       {open && src && (
-        <div className="hooks-aside panel" style={{ width: '100%', fontSize: 12, padding: 8 }}>
+        <div className="hooks-aside panel" style={{ width: '100%', fontSize: 'var(--fs-md)', padding: 8 }}>
           {src.hits.map((h, i) => (
             <div key={i} style={{ borderTop: i ? '1px dashed var(--border)' : undefined, padding: '4px 0' }}>
               <b>{icon(h.domain)} {h.id}</b>

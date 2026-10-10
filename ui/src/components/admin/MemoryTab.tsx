@@ -194,8 +194,8 @@ export default function MemoryTab() {
           <b>历史</b>
           {hist.map(v => (
             <div key={v.hash} className="hub-card slim">
-              <div className="mono" style={{ fontSize: 11 }}>{v.hash} · {v.date}</div>
-              <div style={{ fontSize: 12 }}>{v.subject}</div>
+              <div className="mono" style={{ fontSize: 'var(--fs-sm)' }}>{v.hash} · {v.date}</div>
+              <div style={{ fontSize: 'var(--fs-md)' }}>{v.subject}</div>
               <span className="sk-actions">
                 <button className="link" onClick={() => void showVer(v)}>查看</button>
                 <button className="link" disabled={opBusy === `restore:${v.hash}`}
@@ -205,7 +205,7 @@ export default function MemoryTab() {
           ))}
           {sel && !hist.length && <div className="panel-empty">（无 git 历史——旧条目或 git 降级）</div>}
           {verText && <pre className="mono" style={{
-            fontSize: 11, whiteSpace: 'pre-wrap', background: 'var(--bg2)',
+            fontSize: 'var(--fs-sm)', whiteSpace: 'pre-wrap', background: 'var(--bg2)',
             padding: 8, borderRadius: 6 }}>{verText}</pre>}
         </div>
       </div>

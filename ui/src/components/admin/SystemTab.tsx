@@ -142,7 +142,7 @@ export default function SystemTab() {
             </div>
           )}
           {data.version.releases.length === 0
-            ? <div className="muted" style={{ fontSize: 12 }}>
+            ? <div className="muted" style={{ fontSize: 'var(--fs-md)' }}>
                 无 release 部署结构（开发仓运行）——发布/升级走终端 loadn-ops（build / upgrade / rollback）。
               </div>
             : <div className="tbl-wrap">
@@ -213,7 +213,7 @@ export default function SystemTab() {
               {busy === 'verify' ? <Spinner size={11} /> : null} 验证最近备份
             </button>
           </div>
-          <div className="muted" style={{ fontSize: 12, margin: '8px 0' }}>
+          <div className="muted" style={{ fontSize: 'var(--fs-md)', margin: '8px 0' }}>
             备份目标 {b?.root}（异盘）· 关键文件 + 主 DB（backup API）+ workspace（排除可重建目录）
           </div>
           {b && b.recent.length > 0
@@ -238,7 +238,7 @@ export default function SystemTab() {
                   </tbody>
                 </table>
               </div>
-            : <div className="muted" style={{ fontSize: 12 }}>尚无备份记录。</div>}
+            : <div className="muted" style={{ fontSize: 'var(--fs-md)' }}>尚无备份记录。</div>}
         </div>
       </>}
     </div>

@@ -343,13 +343,13 @@ export default function SecurityPanel() {
             onMouseLeave={e => { if (!c.danger && open !== c.key) e.currentTarget.style.borderColor = 'var(--border)'; }}>
             <div style={{ display: 'flex', alignItems: 'center', fontWeight: 600 }}>
               <Dot ok={c.ok} warn={c.warn} /><span style={{ marginRight: 6, display: 'inline-flex', verticalAlign: '-2px' }}>{c.icon}</span>{c.name}
-              <span className="muted" style={{ marginLeft: 'auto', fontSize: 11 }}>
+              <span className="muted" style={{ marginLeft: 'auto', fontSize: 'var(--fs-sm)' }}>
                 {c.key === 'audit' ? '事件流 ›' : open === c.key ? '收起 ⌃' : '明细 ›'}
               </span>
             </div>
-            <div style={{ fontSize: 13, marginTop: 4, color: c.ok || c.danger ? undefined : 'var(--muted)' }}>{c.top}</div>
-            <div className="muted" style={{ fontSize: 12, marginTop: 6, lineHeight: 1.5 }}>{c.sub}</div>
-            {c.hint && <div style={{ fontSize: 12, marginTop: 6, color: 'var(--yellow)' }}>→ {c.hint}</div>}
+            <div style={{ fontSize: 'var(--fs-lg)', marginTop: 4, color: c.ok || c.danger ? undefined : 'var(--muted)' }}>{c.top}</div>
+            <div className="muted" style={{ fontSize: 'var(--fs-md)', marginTop: 6, lineHeight: 1.5 }}>{c.sub}</div>
+            {c.hint && <div style={{ fontSize: 'var(--fs-md)', marginTop: 6, color: 'var(--yellow)' }}>→ {c.hint}</div>}
           </div>
         ))}
       </div>
@@ -388,7 +388,7 @@ export default function SecurityPanel() {
         )}
         {verify && (
           <div style={{
-            flex: 1, minWidth: 260, padding: '8px 12px', borderRadius: 8, fontSize: 13,
+            flex: 1, minWidth: 260, padding: '8px 12px', borderRadius: 8, fontSize: 'var(--fs-lg)',
             whiteSpace: 'pre-wrap', lineHeight: 1.5,
             border: `1px solid ${verify.ok ? 'var(--green)' : 'var(--danger)'}`,
             color: verify.ok ? 'var(--green)' : 'var(--danger)',
@@ -396,7 +396,7 @@ export default function SecurityPanel() {
         )}
       </div>
       {posture.canary.kill_all && (
-        <div style={{ ...card, borderColor: 'var(--danger)', marginBottom: 14, fontSize: 13 } as never}>
+        <div style={{ ...card, borderColor: 'var(--danger)', marginBottom: 14, fontSize: 'var(--fs-lg)' } as never}>
           ⚠ <b>全局熔断激活中</b>：调度已暂停、新任务被拒、原有任务已停止。这是紧急刹车，
           排查完原因后点上方「解除熔断」恢复。
         </div>
@@ -404,8 +404,8 @@ export default function SecurityPanel() {
 
       {/* ---- 审计事件流 ---- */}
       <div ref={feedRef} style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 8, flexWrap: 'wrap' }}>
-        <b style={{ fontSize: 13 }}>操作记录</b>
-        <span className="muted" style={{ fontSize: 12 }}>
+        <b style={{ fontSize: 'var(--fs-lg)' }}>操作记录</b>
+        <span className="muted" style={{ fontSize: 'var(--fs-md)' }}>
           全部敏感动作的防篡改流水（{posture.audit.last_id} 条中的最近一段）
         </span>
         <a className="link" title="台账 tab 双源合并视图（运营台账 + 审计账本，AC-2.4）"
@@ -446,8 +446,8 @@ export default function SecurityPanel() {
 function DetailHead({ title, note }: { title: string; note?: string }) {
   return (
     <div style={{ display: 'flex', alignItems: 'baseline', gap: 10, marginBottom: 8 }}>
-      <b style={{ fontSize: 13 }}>{title}</b>
-      {note && <span className="muted" style={{ fontSize: 12 }}>{note}</span>}
+      <b style={{ fontSize: 'var(--fs-lg)' }}>{title}</b>
+      {note && <span className="muted" style={{ fontSize: 'var(--fs-md)' }}>{note}</span>}
     </div>
   );
 }
@@ -506,7 +506,7 @@ function OpsDetail({ ops, reload, approvalEnforce }: {
   return (
     <div className="setting-card" style={{ marginTop: 14 }}>
       <h4>安全运维面 <span className="muted">（yaml round-trip 持久化 · 全部热生效：沙箱档位自下一任务起，其余立即）</span></h4>
-      {err && <div style={{ color: 'var(--danger)', fontSize: 12, margin: '6px 0' }}>写入被拒：{err}</div>}
+      {err && <div style={{ color: 'var(--danger)', fontSize: 'var(--fs-md)', margin: '6px 0' }}>写入被拒：{err}</div>}
       <div className="setting-row">
         <span className="setting-k">沙箱档位</span>
         <select value={sandbox} onChange={e => setSandbox(e.target.value)} defaultValue=''
@@ -528,14 +528,14 @@ function OpsDetail({ ops, reload, approvalEnforce }: {
                 ? '高危操作放行但逐条告警入账本（灰度期用；确认码通道保留）'
                 : '高危操作执行前须输确认码，AI 无法自行通过'}>{label}</button>
           ))}
-        <span className="muted" style={{ fontSize: 12 }}>热生效</span>
+        <span className="muted" style={{ fontSize: 'var(--fs-md)' }}>热生效</span>
       </div>
       <div className="setting-row">
         <span className="setting-k">codemode</span>
         <label style={{ cursor: 'pointer' }}>
           <input type="checkbox" checked={ops.codemode_enabled}
             onChange={e => toggle('codemode_enabled', e.target.checked)} />
-          <span className="muted" style={{ marginLeft: 6, fontSize: 12 }}>
+          <span className="muted" style={{ marginLeft: 6, fontSize: 'var(--fs-md)' }}>
             {ops.codemode_enabled ? '已开（Python AST 白名单域）' : '关（默认）'}
           </span>
         </label>
@@ -545,7 +545,7 @@ function OpsDetail({ ops, reload, approvalEnforce }: {
         <label style={{ cursor: 'pointer' }}>
           <input type="checkbox" checked={ops.lsp_enabled}
             onChange={e => toggle('lsp_enabled', e.target.checked)} />
-          <span className="muted" style={{ marginLeft: 6, fontSize: 12 }}>
+          <span className="muted" style={{ marginLeft: 6, fontSize: 'var(--fs-md)' }}>
             {ops.lsp_enabled ? '已开（编辑后查询诊断）' : '关（默认）'}
           </span>
         </label>
@@ -555,7 +555,7 @@ function OpsDetail({ ops, reload, approvalEnforce }: {
         <input type="number" placeholder={String(ops.approval_ttl_s)}
           value={ttl} onChange={e => setTtl(e.target.value)}
           style={{ width: 100, minWidth: 100, flex: 'none' }} />
-        <span className="muted" style={{ fontSize: 12 }}>60-86400</span>
+        <span className="muted" style={{ fontSize: 'var(--fs-md)' }}>60-86400</span>
         <button className="mini-btn" disabled={!ttl || busy === 'saving'}
           onClick={saveTtl}>保存</button>
       </div>
@@ -564,7 +564,7 @@ function OpsDetail({ ops, reload, approvalEnforce }: {
         <input type="number" placeholder={String(ops.egress_grant_ttl_s)}
           value={grantTtl} onChange={e => setGrantTtl(e.target.value)}
           style={{ width: 100, minWidth: 100, flex: 'none' }} />
-        <span className="muted" style={{ fontSize: 12 }}>300-86400</span>
+        <span className="muted" style={{ fontSize: 'var(--fs-md)' }}>300-86400</span>
         <button className="mini-btn" disabled={!grantTtl || busy === 'saving'}
           onClick={saveGrantTtl}>保存</button>
       </div>
@@ -573,14 +573,14 @@ function OpsDetail({ ops, reload, approvalEnforce }: {
         <input type="number" placeholder={String(ops.egress_proxy_port)}
           value={proxyPort} onChange={e => setProxyPort(e.target.value)}
           style={{ width: 100, minWidth: 100, flex: 'none' }} />
-        <span className="muted" style={{ fontSize: 12 }}>0=随机（生产可固定）</span>
+        <span className="muted" style={{ fontSize: 'var(--fs-md)' }}>0=随机（生产可固定）</span>
         <button className="mini-btn" disabled={proxyPort === '' || busy === 'saving'}
           onClick={saveProxyPort}>保存</button>
       </div>
       <div className="setting-row" style={{ alignItems: 'flex-start', flexDirection: 'column' as const }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: 10, width: '100%' }}>
           <span className="setting-k">授权面</span>
-          <span className="muted" style={{ fontSize: 12, flex: 1 }}>
+          <span className="muted" style={{ fontSize: 'var(--fs-md)', flex: 1 }}>
             shared_readonly：每行一个绝对路径（ro）；resource_bridges：ro|rw|dev 加空格加路径
           </span>
           <button className="mini-btn" disabled={busy === 'saving'}
@@ -588,14 +588,14 @@ function OpsDetail({ ops, reload, approvalEnforce }: {
         </div>
         <textarea value={shared} onChange={e => setShared(e.target.value)}
           placeholder="跨项目只读共享根（每行一个绝对路径）"
-          style={{ width: '100%', marginTop: 6, minHeight: 44, fontSize: 12,
+          style={{ width: '100%', marginTop: 6, minHeight: 44, fontSize: 'var(--fs-md)',
                    fontVariantNumeric: 'tabular-nums' }} />
         <textarea value={bridges} onChange={e => setBridges(e.target.value)}
           placeholder={'ro /data/pub\nrw /data/scratch\ndev /dev/dri'}
-          style={{ width: '100%', marginTop: 6, minHeight: 60, fontSize: 12,
+          style={{ width: '100%', marginTop: 6, minHeight: 60, fontSize: 'var(--fs-md)',
                    fontVariantNumeric: 'tabular-nums' }} />
       </div>
-      {busy === 'saving' && <div className="muted" style={{ fontSize: 12 }}>写入中…</div>}
+      {busy === 'saving' && <div className="muted" style={{ fontSize: 'var(--fs-md)' }}>写入中…</div>}
     </div>
   );
 }
@@ -611,7 +611,7 @@ function SandboxDetail({ events, jump, tier }: {
   return (
     <div>
       <DetailHead title="近期任务的隔离记录" note="点会话名跳转；「直跑」=未进沙箱（应排查）" />
-      <div style={{ fontSize: 12, color: 'var(--text-dim)', margin: '0 0 8px', lineHeight: 1.7 }}>
+      <div style={{ fontSize: 'var(--fs-md)', color: 'var(--text-dim)', margin: '0 0 8px', lineHeight: 1.7 }}>
         当前档位：<b>{TIER_ZH[eff] ?? eff}</b>
         {req !== eff && `（请求 ${TIER_ZH[req] ?? req}${reason ? ` · ${REASON_ZH[reason] ?? reason}，已降档` : ''}）`}
         。档位在 config.yaml 的 security.sandbox 配置（枚举：off / bwrap /
@@ -681,7 +681,7 @@ function ApprovalsDetail({ events, jump }: { events: AuditEvent[]; jump: (s: str
               <td>{p.id}</td>
               <td style={{ fontVariantNumeric: 'tabular-nums' }}>{(p.created_at || '').slice(5, 19).replace('T', ' ')}</td>
               <td>{p.summary}</td>
-              <td className="muted" style={{ fontSize: 11.5 }}>{ttlLeft(p)}</td>
+              <td className="muted" style={{ fontSize: 'var(--fs-sm)' }}>{ttlLeft(p)}</td>
               <td><SessionLink sid={p.sid} jump={jump} truncate /></td>
               <td>
                 <button className="mini-btn" disabled={busy === p.id}
@@ -694,7 +694,7 @@ function ApprovalsDetail({ events, jump }: { events: AuditEvent[]; jump: (s: str
       {decisions.length > 0 && (
         <>
           <DetailHead title="最近的审批决定" />
-          <div style={{ fontSize: 12, lineHeight: 1.9 }}>
+          <div style={{ fontSize: 'var(--fs-md)', lineHeight: 1.9 }}>
             {decisions.map(d => (
               <div key={d.id}>
                 <span className="muted">{(d.ts || '').slice(5, 19).replace('T', ' ')}</span>{' '}
@@ -777,7 +777,7 @@ function EgressDetail() {
     <div>
       <DetailHead title="窗口内外发的目标域" note={`mode=${mode || '-'} · 观测与管控一体（原「流量」tab 已并入此处）`} />
       <div style={{ border: '1px solid var(--border)', borderRadius: 8, padding: '8px 10px', marginBottom: 10 }}>
-        <div className="muted" style={{ fontSize: 12, marginBottom: 6 }}>出口策略（保存即热生效，不杀在跑任务）</div>
+        <div className="muted" style={{ fontSize: 'var(--fs-md)', marginBottom: 6 }}>出口策略（保存即热生效，不杀在跑任务）</div>
         <div className="setting-row" style={{ marginBottom: 4 }}>
           <span style={{ minWidth: 64 }}>模式</span>
           {MODE_OPTS.map(o => (
@@ -797,7 +797,7 @@ function EgressDetail() {
               onClick={() => putPolicy({ on_deny: 'ask' })}>弹卡确认</button>
             {onDeny === 'ask' && (
               <>
-                <span className="muted" style={{ fontSize: 11 }}>等待</span>
+                <span className="muted" style={{ fontSize: 'var(--fs-sm)' }}>等待</span>
                 <input className="props-num" type="number" min={15} max={600}
                   style={{ width: 64 }} value={askWait}
                   onChange={e => setAskWait(e.target.value)}
@@ -805,12 +805,12 @@ function EgressDetail() {
                     if (e.key === 'Enter' && +askWait >= 15 && +askWait <= 600)
                       putPolicy({ ask_wait_s: +askWait });
                   }} />
-                <span className="muted" style={{ fontSize: 11 }}>秒（15-600，回车保存）</span>
+                <span className="muted" style={{ fontSize: 'var(--fs-sm)' }}>秒（15-600，回车保存）</span>
               </>
             )}
           </div>
         )}
-        <div className="muted" style={{ fontSize: 11 }}>
+        <div className="muted" style={{ fontSize: 'var(--fs-sm)' }}>
           任务级放开在会话「属性」面板（任务外联档位）；这里改的是全局基线。
         </div>
         {polMsg && <div className={polMsg.err ? 'admin-msg err' : 'admin-msg'} style={{ marginTop: 6 }}>{polMsg.t}</div>}
@@ -842,7 +842,7 @@ function EgressDetail() {
           ))}
         </tbody>
       </table>
-      <div style={{ marginTop: 10, fontSize: 12, lineHeight: 2 }}>
+      <div style={{ marginTop: 10, fontSize: 'var(--fs-md)', lineHeight: 2 }}>
         <span className="muted">白名单（{allow.length} 域，点 × 移除即热生效）：</span>
         {allow.map(h => (
           <span key={h} className="chip" style={{ marginRight: 6 }}>
@@ -856,7 +856,7 @@ function EgressDetail() {
       </div>
       {grants.length > 0 && (
         <div style={{ marginTop: 10 }}>
-          <div className="muted" style={{ fontSize: 12, marginBottom: 4 }}>
+          <div className="muted" style={{ fontSize: 'var(--fs-md)', marginBottom: 4 }}>
             审批式临时授权（任务级限时，到期自动收回）：
           </div>
           {grants.map(g => (
@@ -898,7 +898,7 @@ function VaultDetail() {
       <DetailHead
         title={`入库凭证（${data.platforms.length} 组）`}
         note={data.verify.ok ? '加密格式校验通过' : `⚠ 校验失败：${data.verify.error ?? '未知'}`} />
-      <div className="muted" style={{ fontSize: 12, marginBottom: 6 }}>
+      <div className="muted" style={{ fontSize: 'var(--fs-md)', marginBottom: 6 }}>
         点条目直接编辑；密钥字段留空=不改、输入即覆盖。agent 取用仍走审批门。
       </div>
       <table className="kv-table" style={{ width: '100%' }}>
@@ -970,7 +970,7 @@ function VaultEditor({ platform, onDone }: { platform: string; onDone: () => voi
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill,minmax(240px,1fr))', gap: '4px 12px' }}>
         {VAULT_ROWS.map(r => (
           <div key={r.k} className="setting-row" style={{ gap: 6 }}>
-            <span style={{ minWidth: 48, fontSize: 12 }}>{r.label}</span>
+            <span style={{ minWidth: 48, fontSize: 'var(--fs-md)' }}>{r.label}</span>
             <input className="props-num" style={{ flex: 1, width: 'auto' }}
               type={r.secret ? 'password' : 'text'} autoComplete="off"
               value={draft[r.k] ?? ''}
@@ -1019,7 +1019,7 @@ function CanaryDetail({ locked, reload, jump }: {
             <tr key={l.sid}>
               <td>
                 <SessionLink sid={l.sid} jump={jump} />
-                <span className="muted" style={{ marginLeft: 10, fontSize: 12 }}>{l.reason}</span>
+                <span className="muted" style={{ marginLeft: 10, fontSize: 'var(--fs-md)' }}>{l.reason}</span>
                 <button className="mini-btn" style={{ marginLeft: 12 }} disabled={busy === l.sid}
                   onClick={() => void unlock(l.sid)}>{busy === l.sid ? '解锁中…' : '解锁'}</button>
               </td>

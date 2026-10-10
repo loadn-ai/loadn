@@ -67,7 +67,7 @@ export default function SubtaskTab({ subtask, onOpenFile }: {
             <span className={`agent-status ${running ? 'running' : 'done'}`}>
               {running ? '运行中…' : '已收束'}
             </span>
-            <span className="muted" style={{ fontSize: 11.5 }}>
+            <span className="muted" style={{ fontSize: 'var(--fs-sm)' }}>
               {memberTurns.length} 轮对话
             </span>
           </div>

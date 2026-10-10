@@ -59,7 +59,7 @@ export default function SubtaskToc({ fileTabs, onCloseFile }: {
         <div className="toc-panel">
           <div className="toc-head">
             <span>任务目录</span>
-            <span className="muted" style={{ fontSize: 10.5 }}>
+            <span className="muted" style={{ fontSize: 'var(--fs-xs)' }}>
               {subtasks.length} 个子任务
             </span>
           </div>

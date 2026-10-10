@@ -49,7 +49,7 @@ function AdminDenied() {
     <div className="admin-body">
       <div className="setting-card">
         <h4>需要管理员权限</h4>
-        <div className="muted" style={{ fontSize: 12 }}>
+        <div className="muted" style={{ fontSize: 'var(--fs-md)' }}>
           此页管理平台级配置（凭证 / 设置 / 审计 / 全局资源），仅管理员可见。
           你当前以普通用户身份登录——可用功能见上方标签。
         </div>

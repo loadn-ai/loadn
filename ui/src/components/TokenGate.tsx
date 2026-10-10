@@ -26,12 +26,12 @@ const card: React.CSSProperties = {
   display: 'flex', flexDirection: 'column', gap: 12,
 };
 const input: React.CSSProperties = {
-  padding: '10px 12px', borderRadius: 8, fontSize: 14,
+  padding: '10px 12px', borderRadius: 8, fontSize: 'var(--fs-xl)',
   border: '1px solid rgba(127,127,127,.35)', background: 'transparent',
   color: 'inherit', outline: 'none',
 };
 const btn: React.CSSProperties = {
-  padding: '10px 0', borderRadius: 8, fontSize: 14, fontWeight: 600,
+  padding: '10px 0', borderRadius: 8, fontSize: 'var(--fs-xl)', fontWeight: 600,
   border: 'none', background: 'var(--accent)', color: '#fff',
 };
 
@@ -92,7 +92,7 @@ export default function TokenGate() {
           {mode === 'setup' ? '创建管理员账号' : '登录'}
         </div>
         {mode === 'setup' && (
-          <div style={{ fontSize: 13, opacity: 0.75, lineHeight: 1.6 }}>
+          <div style={{ fontSize: 'var(--fs-lg)', opacity: 0.75, lineHeight: 1.6 }}>
             首次使用：创建你的账号（密码至少 8 位）。已有的任务/数据会自动
             归并到这个账号下。
           </div>
@@ -107,7 +107,7 @@ export default function TokenGate() {
                  onChange={e => setPass2(e.target.value)} style={input}
                  onKeyDown={e => { if (e.key === 'Enter') void submit(); }} />
         )}
-        {err ? <div style={{ color: '#e5484d', fontSize: 13 }}>{err}</div> : null}
+        {err ? <div style={{ color: '#e5484d', fontSize: 'var(--fs-lg)' }}>{err}</div> : null}
         <button disabled={!user.trim() || !pass}
                 onClick={() => void submit()} style={{
                   ...btn, opacity: user.trim() && pass ? 1 : 0.5,
@@ -115,7 +115,7 @@ export default function TokenGate() {
                 }}>{mode === 'setup' ? '创建并登录' : '登录'}</button>
         {!st?.needs_setup && (
           <>
-            <button className="link" style={{ fontSize: 12, border: 'none', background: 'none' }}
+            <button className="link" style={{ fontSize: 'var(--fs-md)', border: 'none', background: 'none' }}
                     onClick={() => setAdvanced(a => !a)}>
               {advanced ? '收起' : '使用 API token（CLI/旧部署）'}
             </button>

@@ -272,7 +272,7 @@ export default function TasksTab() {
           更多（还有 {rows.length - limit} 个）
         </button>
       )}
-      <div className="muted" style={{ marginTop: 8, fontSize: 12 }}>
+      <div className="muted" style={{ marginTop: 8, fontSize: 'var(--fs-md)' }}>
         磁盘占用含工作区全部文件（node_modules/chrome 等重目录除外），缓存 10 分钟。
         彻底删除含工作区；归档可恢复。
       </div>

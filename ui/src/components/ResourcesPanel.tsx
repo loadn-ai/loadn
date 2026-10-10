@@ -240,7 +240,7 @@ export default function ResourcesPanel() {
           <button key={k} className={`tab ${sec === k ? 'on' : ''}`} onClick={() => setSec(k)}>{lb}</button>
         ))}
         <span className="spacer" />
-        <span className="muted" style={{ fontSize: 12, display: 'inline-flex', alignItems: 'center', gap: 4 }}>
+        <span className="muted" style={{ fontSize: 'var(--fs-md)', display: 'inline-flex', alignItems: 'center', gap: 4 }}>
           <Lock size={13} /> 密钥 AES-GCM 加密存储 · 明文不落配置、不回显
         </span>
       </div>
@@ -249,13 +249,13 @@ export default function ResourcesPanel() {
       {sec === 'service' && (
         <>
           <div className="res-toolbar" style={{ marginBottom: 0 }}>
-            <button className="res-btn" style={{ fontSize: 12, padding: '5px 12px' }}
+            <button className="res-btn" style={{ fontSize: 'var(--fs-md)', padding: '5px 12px' }}
               disabled={!!pinging} onClick={() => void pingAll()}>
               {pinging === '__all__' ? '探测中…' : <><Zap size={13} style={{ verticalAlign: -2 }} /> 全部探测</>}
             </button>
-            <button className="res-btn" style={{ fontSize: 12, padding: '5px 12px' }}
+            <button className="res-btn" style={{ fontSize: 'var(--fs-md)', padding: '5px 12px' }}
               onClick={() => setSvcAdd({ name: '', url: '', note: '' })}>＋ 新增服务</button>
-            <span className="muted" style={{ fontSize: 12 }}>
+            <span className="muted" style={{ fontSize: 'var(--fs-md)' }}>
               {Object.keys(pingRes).length
                 ? `${Object.values(pingRes).filter(r => r.ok).length}/${Object.keys(pingRes).length} 项在线`
                 : Object.keys(hist).length
@@ -321,7 +321,7 @@ export default function ResourcesPanel() {
                             <input type="password" autoFocus value={secretVal} placeholder="输入新值"
                               style={{
                                 background: 'var(--bg3)', border: '1px solid var(--accent)', borderRadius: 7,
-                                padding: '3px 8px', fontSize: 12, color: 'var(--text)', outline: 'none', width: 130,
+                                padding: '3px 8px', fontSize: 'var(--fs-md)', color: 'var(--text)', outline: 'none', width: 130,
                                 boxShadow: '0 0 0 3px var(--accent-ring)',
                               }}
                               onChange={e => setSecretVal(e.target.value)}
@@ -356,7 +356,7 @@ export default function ResourcesPanel() {
             <div className="res-grid">
               {data.custom.length === 0 && (
                 <div className="res-card" style={{ gridColumn: '1 / -1', borderStyle: 'dashed' }}>
-                  <span className="muted" style={{ fontSize: 12 }}>
+                  <span className="muted" style={{ fontSize: 'var(--fs-md)' }}>
                     （无自定义服务——上方「＋ 新增服务」添加；端点会以
                     <code> LOADN_SVC_&lt;名称&gt;_URL </code>注入任务环境）
                   </span>
@@ -447,8 +447,8 @@ export default function ResourcesPanel() {
               )}
               {data.mcp.servers.map(m => (
                 <tr key={m.name}>
-                  <td><b>{m.name}</b>{m.session_only && <span className="muted" style={{ fontSize: 10.5 }}>（仅会话级）</span>}</td>
-                  <td className="mono muted" style={{ fontSize: 11.5 }}>
+                  <td><b>{m.name}</b>{m.session_only && <span className="muted" style={{ fontSize: 'var(--fs-xs)' }}>（仅会话级）</span>}</td>
+                  <td className="mono muted" style={{ fontSize: 'var(--fs-sm)' }}>
                     {[m.spec?.command, ...(m.spec?.args ?? [])].filter(Boolean).join(' ') || '-'}
                   </td>
                   <td className="muted">{m.sessions_overriding || '—'}</td>
@@ -470,7 +470,7 @@ export default function ResourcesPanel() {
             <input className="res-search" placeholder="搜索平台 / 账号…" value={vSearch}
               onChange={e => setVSearch(e.target.value)} />
             <span className="spacer" />
-            <span className="muted" style={{ fontSize: 12, display: 'inline-flex', alignItems: 'center', gap: 4 }}>
+            <span className="muted" style={{ fontSize: 'var(--fs-md)', display: 'inline-flex', alignItems: 'center', gap: 4 }}>
               {data.vault.verify.ok
                 ? <><Shield size={13} /> 加密库健康 · {data.vault.verify.entries} 条 · AES-GCM</>
                 : `⚠ 校验失败：${data.vault.verify.error ?? '未知'}`}
@@ -489,7 +489,7 @@ export default function ResourcesPanel() {
                   <td style={{ color: p.has_password ? 'var(--green)' : 'var(--red)' }}>
                     {p.has_password ? '● 已存' : '○ 缺'}
                   </td>
-                  <td className="mono" style={{ fontSize: 11.5 }}>{(p.updated_at || '').slice(0, 10)}</td>
+                  <td className="mono" style={{ fontSize: 'var(--fs-sm)' }}>{(p.updated_at || '').slice(0, 10)}</td>
                 </tr>
               ))}
             </tbody>

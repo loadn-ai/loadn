@@ -143,7 +143,7 @@ export default function ActivityTab() {
               <span className="sk-src">{SRC_LABEL[r.src]}</span>
               <span className="sk-time">{r.act.ts?.slice(5, 19).replace('T', ' ')}</span>
             </div>
-            <div style={{ fontSize: 13 }}>{r.act.title}</div>
+            <div style={{ fontSize: 'var(--fs-lg)' }}>{r.act.title}</div>
             <div className="sk-foot">
               <span className="sk-time">{r.act.sid?.slice(0, 20)}</span>
               <span className="sk-actions">
@@ -160,11 +160,11 @@ export default function ActivityTab() {
           <div key={i} className="hub-card slim">
             <div className="sk-head">
               <span className="sk-src ext">审计</span>
-              <b className="mono" style={{ fontSize: 12 }}>{r.ev.type}</b>
+              <b className="mono" style={{ fontSize: 'var(--fs-md)' }}>{r.ev.type}</b>
               <span className="sk-src">{SRC_LABEL[r.src]}</span>
               <span className="sk-time">{r.ev.ts?.slice(5, 19).replace('T', ' ')}</span>
             </div>
-            <div style={{ fontSize: 13 }} title={r.ev.detail_json}>{auditTitle(r.ev)}</div>
+            <div style={{ fontSize: 'var(--fs-lg)' }} title={r.ev.detail_json}>{auditTitle(r.ev)}</div>
             <div className="sk-foot">
               <span className="sk-time mono">#{r.ev.id}</span>
             </div>

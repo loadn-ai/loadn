@@ -608,7 +608,7 @@ export default function SettingsTab() {
             本卡改只读摘要+入口——同一配置双编辑器、字段三份拷贝的漂移风险到此为止 */}
         <div className="setting-row" style={{ cursor: 'pointer' }}
           onClick={() => { location.hash = '#/admin/resources'; }}>
-          <span className="muted" style={{ fontSize: 12.5 }}>
+          <span className="muted" style={{ fontSize: 'var(--fs-md)' }}>
             已配置端点 {[res.ocr_url, res.sandbox_url, res.cdp_url, res.proxy,
               res.sms_url, res.mail_user, res.adb_addr, res.textr_email]
               .filter(Boolean).length} 项 · 密钥 {[res.sandbox_api_key_set, res.sms_token_set,
@@ -654,7 +654,7 @@ export default function SettingsTab() {
 
       {srv && <div className="setting-card">
         <h4>服务器 <span className="muted">（只读——host/port/令牌属启动期与部署面）</span></h4>
-        <div style={{ display: 'flex', gap: 16, marginBottom: 8, flexWrap: 'wrap', fontSize: 13 }}>
+        <div style={{ display: 'flex', gap: 16, marginBottom: 8, flexWrap: 'wrap', fontSize: 'var(--fs-lg)' }}>
           <span>监听 <b className="mono-cell">{srv.host}:{srv.port}</b></span>
           <span>API token <b style={{ color: srv.token_set ? 'var(--green)' : undefined }}>{srv.token_set ? '已配置' : '未配置'}</b></span>
           <span>管理令牌 <b>{srv.admin_token_set ? '独立配置' : '复用 API token'}</b></span>
@@ -689,10 +689,10 @@ function PriceTable({ label, unit, cacheKey, rows, setRows, builtin }: {
       <div style={{ display: 'flex', alignItems: 'center', gap: 8, width: '100%', flexWrap: 'wrap' }}>
         <span className="setting-k">{label}</span>
         {rows.length === 0
-          ? <span className="muted" style={{ fontSize: 12, flex: 1 }}>
+          ? <span className="muted" style={{ fontSize: 'var(--fs-md)', flex: 1 }}>
               未覆盖——内置官方价目兜底（{Object.keys(builtin).length} 个模型）
             </span>
-          : <span className="muted" style={{ fontSize: 12, flex: 1 }}>{unit}</span>}
+          : <span className="muted" style={{ fontSize: 'var(--fs-md)', flex: 1 }}>{unit}</span>}
         <button className="mini-btn" onClick={() => setRows(
           [...rows, { model: '', input: '', cache: '', output: '' }])}>+ 模型</button>
         <button className="mini-btn" onClick={fromBuiltin}
@@ -718,7 +718,7 @@ function PriceTable({ label, unit, cacheKey, rows, setRows, builtin }: {
                 </tr>
               ))}
               {rows.some(r => r.err) && (
-                <tr><td colSpan={5} style={{ color: 'var(--danger)', fontSize: 12 }}>
+                <tr><td colSpan={5} style={{ color: 'var(--danger)', fontSize: 'var(--fs-md)' }}>
                   {rows.filter(r => r.err).map(r => `${r.model || '(空名)'}：${r.err}`).join('；')}
                 </td></tr>
               )}

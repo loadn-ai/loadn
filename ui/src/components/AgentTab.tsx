@@ -81,7 +81,7 @@ export default function AgentTab({ name, dispatches, onOpenFile }: {
             <span className={`agent-status ${running ? 'running' : 'done'}`}>
               {running ? '运行中…' : '已完成'}
             </span>
-            <span className="muted" style={{ fontSize: 11.5 }}>
+            <span className="muted" style={{ fontSize: 'var(--fs-sm)' }}>
               {dispatches.length} 次派出
             </span>
             {subIds.length === 1

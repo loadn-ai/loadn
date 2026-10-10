@@ -62,14 +62,14 @@ export default function UsersCard() {
   return (
     <div className="setting-card">
       <h4>用户与账号</h4>
-      <div className="muted" style={{ fontSize: 12 }}>
+      <div className="muted" style={{ fontSize: 'var(--fs-md)' }}>
         账号密码登录（token 通道继续可用于 CLI/旧部署）。属主隔离：普通用户
         只见自己的任务/项目/调度/webhook；admin 全见。
       </div>
       <div className="admin-toolbar" style={{ marginBottom: 6 }}>
         <input placeholder="搜索用户名/昵称…" value={q} style={{ width: 200 }}
                onChange={e => { setQ(e.target.value); setPage(1); }} />
-        <span className="muted" style={{ fontSize: 12 }}>
+        <span className="muted" style={{ fontSize: 'var(--fs-md)' }}>
           共 {users.length} 个账号{q.trim() ? ` · 命中 ${filtered.length}` : ''}
         </span>
       </div>
@@ -130,7 +130,7 @@ export default function UsersCard() {
       {pages > 1 && (
         <div className="admin-toolbar" style={{ justifyContent: 'center' }}>
           <button className="btn sm" disabled={cur <= 1} onClick={() => setPage(cur - 1)}>‹ 上一页</button>
-          <span className="muted" style={{ fontSize: 12 }}>第 {cur} / {pages} 页</span>
+          <span className="muted" style={{ fontSize: 'var(--fs-md)' }}>第 {cur} / {pages} 页</span>
           <button className="btn sm" disabled={cur >= pages} onClick={() => setPage(cur + 1)}>下一页 ›</button>
         </div>
       )}

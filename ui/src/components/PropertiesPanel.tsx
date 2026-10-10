@@ -163,7 +163,7 @@ function ParamsSection() {
               {MODEL_HINTS.map(m => <option key={m} value={m} />)}
             </datalist>
           )}
-          {r.hint && <span className="muted" style={{ fontSize: 11 }}>{r.hint}</span>}
+          {r.hint && <span className="muted" style={{ fontSize: 'var(--fs-sm)' }}>{r.hint}</span>}
           <button className="mini-btn" disabled={busy || !(draft[r.key] ?? '').trim()}
             title="清除本项覆盖（跟随 profile）"
             onClick={() => void commit(r.key)}>恢复默认</button>
@@ -173,10 +173,10 @@ function ParamsSection() {
         <button className="btn ghost" disabled={busy} onClick={() => void commit()}>
           {busy ? '保存中…' : '保存参数'}
         </button>
-        <span className="muted" style={{ fontSize: 11 }}>下一轮生效（进行中 turn 不受影响）</span>
+        <span className="muted" style={{ fontSize: 'var(--fs-sm)' }}>下一轮生效（进行中 turn 不受影响）</span>
       </div>
       {eng === 'opencode' && (
-        <div className="muted" style={{ fontSize: 11, marginTop: 4 }}>
+        <div className="muted" style={{ fontSize: 'var(--fs-sm)', marginTop: 4 }}>
           opencode 引擎不支持轮次上限（max_turns 将被忽略）
         </div>
       )}
@@ -228,7 +228,7 @@ function SandboxSection() {
           <button key={t.label} className={`chip ${cur === t.v ? 'on' : ''}`}
             disabled={busy} title={t.tip} onClick={() => setTier(t.v)}>{t.label}</button>)}
       </div>
-      <div className="muted" style={{ fontSize: 12, marginTop: 6 }}>
+      <div className="muted" style={{ fontSize: 'var(--fs-md)', marginTop: 6 }}>
         直跑=本任务可访问宿主全机（仍过权限引擎/审计）；配合资源桥接用。
       </div>
     </section>
@@ -313,7 +313,7 @@ function EgressSection() {
           );
         })}
       </div>
-      <div className="muted" style={{ fontSize: 12, marginBottom: 6 }}>
+      <div className="muted" style={{ fontSize: 'var(--fs-md)', marginBottom: 6 }}>
         出口模式 <b style={{ color: (data?.effective ?? mode) === 'enforce' ? 'var(--danger)' : 'var(--green)' }}>
           {data?.effective ?? mode}</b>
         {data?.override ? '（本任务覆盖）' : `（全局 ${mode}）`}
@@ -323,7 +323,7 @@ function EgressSection() {
       </div>
       {(data?.grants ?? []).length > 0 && (
         <div style={{ marginBottom: 8 }}>
-          <div className="muted" style={{ fontSize: 12, marginBottom: 4 }}>
+          <div className="muted" style={{ fontSize: 'var(--fs-md)', marginBottom: 4 }}>
             本会话临时授权（到期自动收回）：
           </div>
           {data!.grants.map(g => (
@@ -348,7 +348,7 @@ function EgressSection() {
           {rows.map(r => (
             <tr key={r.host}>
               <td>{r.host}{allow.includes(r.host)
-                ? <span className="muted" style={{ fontSize: 11 }}>（已放行）</span> : null}</td>
+                ? <span className="muted" style={{ fontSize: 'var(--fs-sm)' }}>（已放行）</span> : null}</td>
               <td style={{ fontVariantNumeric: 'tabular-nums' }}>{r.n}</td>
               <td style={{ color: r.denied ? 'var(--danger)' : 'var(--green)' }}>
                 {r.denied ? `拒绝 ${r.denied}/${r.n}` : '放行'}</td>
@@ -366,7 +366,7 @@ function EgressSection() {
           ))}
         </tbody>
       </table>
-      <div className="muted" style={{ fontSize: 11, marginTop: 6 }}>
+      <div className="muted" style={{ fontSize: 'var(--fs-sm)', marginTop: 6 }}>
         拒绝历史自本版本起记录会话归属（更早的事件无归属，不在此列）·
         <a className="link" onClick={() => { location.hash = '#/admin/security'; }}>安全中心看全部</a>
       </div>
@@ -394,7 +394,7 @@ function SkillsSection() {
       <h4>Skills
         <span className="muted" style={{ fontWeight: 400 }}>（点击挂载/卸载，下一轮生效）</span>
       </h4>
-      {all.length === 0 && <div className="muted" style={{ fontSize: 12 }}>（无可用 skill）</div>}
+      {all.length === 0 && <div className="muted" style={{ fontSize: 'var(--fs-md)' }}>（无可用 skill）</div>}
       <div className="chips">
         {all.map(n => (
           <button key={n} className={`chip ${on.includes(n) ? 'on' : 'off'}`}
@@ -434,7 +434,7 @@ function McpSection() {
         <span className="muted" style={{ fontWeight: 400 }}>（三态：全局启用 / 本会话禁用）</span>
       </h4>
       {globals.length === 0 && extrasOnly.length === 0 && (
-        <div className="muted" style={{ fontSize: 12 }}>（未配置全局 MCP server）</div>
+        <div className="muted" style={{ fontSize: 'var(--fs-md)' }}>（未配置全局 MCP server）</div>
       )}
       {globals.map(srv => {
         const off = sessMcp[srv.name] === false;   // 哨兵：本会话禁用
@@ -442,7 +442,7 @@ function McpSection() {
           <div key={srv.name} className="setting-row">
             <span className={`chip ${off ? 'off' : 'on'}`}
               style={{ cursor: 'default' }}>{srv.name}</span>
-            <span className="muted" style={{ fontSize: 11 }}>
+            <span className="muted" style={{ fontSize: 'var(--fs-sm)' }}>
               {off ? '本会话已禁用' : '全局启用'}</span>
             <button className="mini-btn" style={{ marginLeft: 'auto' }}
               onClick={() => {
@@ -456,7 +456,7 @@ function McpSection() {
       })}
       {extrasOnly.length > 0 && (
         <div style={{ marginTop: 6 }}>
-          <div className="muted" style={{ fontSize: 12, marginBottom: 4 }}>
+          <div className="muted" style={{ fontSize: 'var(--fs-md)', marginBottom: 4 }}>
             本会话额外挂载（非全局）：
           </div>
           {extrasOnly.map(n => (
@@ -472,7 +472,7 @@ function McpSection() {
           ))}
         </div>
       )}
-      <div className="muted" style={{ fontSize: 11, marginTop: 6 }}>
+      <div className="muted" style={{ fontSize: 'var(--fs-sm)', marginTop: 6 }}>
         <a className="link" onClick={() => { location.hash = '#/admin/tools'; }}>管理全局 MCP</a>
         {' · '}
         <a className="link" onClick={() => { location.hash = '#/admin/resources'; }}>资源中心</a>
@@ -487,7 +487,7 @@ function LegacyDetails() {
   const turns = useStore(s => s.turns);
   return (
     <details className="props-section">
-      <summary style={{ cursor: 'pointer', fontSize: 12, color: 'var(--text-dim)' }}>
+      <summary style={{ cursor: 'pointer', fontSize: 'var(--fs-md)', color: 'var(--text-dim)' }}>
         历史详情（turns 明细）</summary>
       <table className="turns-table">
         <tbody>

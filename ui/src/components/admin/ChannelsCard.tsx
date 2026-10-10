@@ -98,7 +98,7 @@ export default function ChannelsCard() {
         {msg && <span className={msg.err ? 'admin-msg err' : 'admin-msg'}>{msg.t}</span>}
       </div>
       {stat && (
-        <div className="muted" style={{ fontSize: 12 }}>
+        <div className="muted" style={{ fontSize: 'var(--fs-md)' }}>
           轮询：{stat.running ? '运行中' : '停止'} · 已处理 {stat.processed} 条
           {stat.last_ok ? ` · 最近成功 ${stat.last_ok.slice(5, 19).replace('T', ' ')}` : ''}
           {stat.last_error ? ` · 最近错误：${stat.last_error}` : ''}
@@ -110,7 +110,7 @@ export default function ChannelsCard() {
           <label>会话绑定（{binds.length}）</label>
           {binds.map(b => (
             <div key={b.chat_id} className="row"
-                 style={{ justifyContent: 'space-between', fontSize: 12 }}>
+                 style={{ justifyContent: 'space-between', fontSize: 'var(--fs-md)' }}>
               <a className="link" onClick={() => void openSession(b.session_id)}
                  title={b.session_id}>
                 chat {b.chat_id} → {b.session_id.slice(0, 18)}
