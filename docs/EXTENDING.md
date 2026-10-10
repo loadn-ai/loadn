@@ -94,6 +94,23 @@ GitHub/URL 两类远程来源装完即 pin：`SKILL.md` 盖 `source` 戳并写�
 zip 视作用户自备，不 pin。管理中心可把任一 skill 导出为 agentskills.io
 兼容 zip（frontmatter 规范化、剥内部元数据），供其他 agent 使用。
 
+### 用户教学自动建议（P12：经验→技能固化闭环）
+
+会话中用户说出显式教学（「以后都/记住要…」）或否定纠错（「不对/重来…」）
+句式时，引擎 turn 结束后写 `.loadn/skill-suggest.json`（单槽 pending），
+前端聊天页顶部弹出建议卡。三向决策：
+
+- **固化为技能**：预填技能名/简介/正文（用户原话+上轮行为摘要，可编辑），
+  写入 `.agents/skills/<name>/SKILL.md` 并同步平台技能库——先过供应链
+  扫描，红线拒写；此后该工作区每个新会话自动加载。
+- **拒绝**：记负样本（同类指纹 7 天内不再提示）。
+- **这不是教导**：误判通道（如系统拼接文本被词表误命中）——仅清除本次
+  建议，不记抑制。
+
+防自激：每会话最多触发 2 次；会话轮换恢复协议段（context_inflation 交接
+文本）在检测前剥离；压缩后反思（`LOADN_REFLECT_AFTER_COMPACT=on`）产物
+进记忆域 draft 待人工转正，与本通道互不触发。
+
 ## 4. 接外部工具服务（MCP）
 
 项目根 `.mcp.json` 声明 stdio server，工具以 `mcp__<server>__<tool>`
