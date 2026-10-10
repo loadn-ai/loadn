@@ -236,28 +236,30 @@ button:focus-visible, .tab:focus-visible, .chip:focus-visible {
 .bubble-edit-ops { display: flex; gap: 8px; justify-content: flex-end; }
 
 .msg.assistant { display: flex; flex-direction: column; gap: 10px; }
-.md { background: var(--bg3); border: 1px solid var(--border); border-radius: 16px 16px 16px 5px;
-  padding: 14px 18px; max-width: 92%; overflow-wrap: break-word; font-size: 14.5px;
-  box-shadow: var(--shadow-sm); }
-.md > :first-child { margin-top: 0; }
-.md > :last-child { margin-bottom: 0; }
-.md h1, .md h2, .md h3 { margin: .8em 0 .4em; letter-spacing: -.01em; }
+.md, .md-preview { background: var(--bg3); border: 1px solid var(--border);
+  padding: 14px 18px; overflow-wrap: break-word; font-size: 14.5px; }
+.md { border-radius: 16px 16px 16px 5px; max-width: 92%; box-shadow: var(--shadow-sm); }
+.md-preview { border-radius: 12px; min-height: 120px; }
+.md > :first-child, .md-preview > :first-child { margin-top: 0; }
+.md > :last-child, .md-preview > :last-child { margin-bottom: 0; }
+.md h1, .md h2, .md h3, .md-preview h1, .md-preview h2, .md-preview h3 { margin: .8em 0 .4em; letter-spacing: -.01em; }
 .md h1 { font-size: 1.25em; } .md h2 { font-size: 1.15em; } .md h3 { font-size: 1.05em; }
-.md h1:first-child, .md h2:first-child, .md h3:first-child { margin-top: 0; }
-.md p { margin: .5em 0; line-height: 1.75; }
-.md ul, .md ol { padding-left: 1.5em; margin: .5em 0; }
-.md li { margin: .25em 0; line-height: 1.7; }
-.md code { background: color-mix(in srgb, var(--text) 9%, transparent); padding: .12em .45em;
+.md h1:first-child, .md h2:first-child, .md h3:first-child,
+.md-preview h1:first-child, .md-preview h2:first-child, .md-preview h3:first-child { margin-top: 0; }
+.md p, .md-preview p { margin: .5em 0; line-height: 1.75; }
+.md ul, .md ol, .md-preview ul, .md-preview ol { padding-left: 1.5em; margin: .5em 0; }
+.md li, .md-preview li { margin: .25em 0; line-height: 1.7; }
+.md code, .md-preview code { background: color-mix(in srgb, var(--text) 9%, transparent); padding: .12em .45em;
   border-radius: 5px; font-size: .87em; }
-.md pre { background: color-mix(in srgb, var(--text) 7%, transparent); padding: 12px 14px;
+.md pre, .md-preview pre { background: color-mix(in srgb, var(--text) 7%, transparent); padding: 12px 14px;
   border-radius: 10px; overflow-x: auto; margin: .6em 0; line-height: 1.6; }
-.md pre code { background: none; padding: 0; }
-.md table { border-collapse: collapse; margin: .7em 0; font-size: .92em; }
-.md th, .md td { border: 1px solid var(--border); padding: 6px 12px; }
-.md th { background: color-mix(in srgb, var(--text) 6%, transparent); font-weight: 600; }
-.md a { color: var(--accent2); text-decoration: none; }
-.md a:hover { text-decoration: underline; }
-.md blockquote { border-left: 3px solid color-mix(in srgb, var(--accent) 45%, transparent);
+.md pre code, .md-preview pre code { background: none; padding: 0; }
+.md table, .md-preview table { border-collapse: collapse; margin: .7em 0; font-size: .92em; }
+.md th, .md td, .md-preview th, .md-preview td { border: 1px solid var(--border); padding: 6px 12px; }
+.md th, .md-preview th { background: color-mix(in srgb, var(--text) 6%, transparent); font-weight: 600; }
+.md a, .md-preview a { color: var(--accent2); text-decoration: none; }
+.md a:hover, .md-preview a:hover { text-decoration: underline; }
+.md blockquote, .md-preview blockquote { border-left: 3px solid color-mix(in srgb, var(--accent) 45%, transparent);
   padding-left: 14px; color: var(--text-dim); margin: .6em 0; }
 .cursor { animation: pulse 1s infinite; color: var(--accent2); }
 
@@ -517,6 +519,8 @@ button:focus-visible, .tab:focus-visible, .chip:focus-visible {
 .btn.primary:disabled { opacity: .5; cursor: not-allowed; }
 .btn.ghost { background: none; border-color: transparent; color: var(--text-dim); }
 .btn.ghost:hover { background: var(--bg3); color: var(--text); border-color: transparent; }
+.btn.ghost.on { color: var(--accent); background: var(--accent-soft);
+  border-color: color-mix(in srgb, var(--accent) 40%, transparent); }
 .btn.danger { background: color-mix(in srgb, var(--red) 10%, transparent); color: var(--red);
   border-color: color-mix(in srgb, var(--red) 35%, transparent); }
 .btn.danger:hover { background: color-mix(in srgb, var(--red) 18%, transparent);
@@ -569,9 +573,11 @@ button:focus-visible, .tab:focus-visible, .chip:focus-visible {
 .admin-tabs .tab { flex: none; padding: 12px 14px; white-space: nowrap; }
 .admin-body { overflow-y: auto; min-height: 0; flex: 1; padding-top: 14px; }
 .admin-toolbar { display: flex; gap: 8px; align-items: center; margin-bottom: 14px; flex-wrap: wrap; }
-.admin-msg { font-size: 12px; color: var(--green); overflow: hidden; text-overflow: ellipsis;
-  white-space: nowrap; }
+.admin-msg { font-size: 12px; color: var(--green); overflow-wrap: break-word; }
+.admin-msg.err { color: var(--red); }
 .admin-err { font-size: 12px; color: var(--red); margin-top: 8px; }
+.form-msg { font-size: 12px; color: var(--text-dim); margin-top: 6px; overflow-wrap: break-word; }
+.form-msg.err { color: var(--red); }
 .admin-h4 { margin: 20px 0 8px; font-size: 13px; font-weight: 600; }
 
 /* ---------------- 成本分析页 ---------------- */
@@ -718,6 +724,9 @@ button:focus-visible, .tab:focus-visible, .chip:focus-visible {
 .hub-card { background: var(--bg3); border: 1px solid var(--border); border-radius: 10px;
   padding: 11px 13px; display: flex; flex-direction: column; gap: 5px; }
 .hub-card.slim { flex-direction: row; align-items: center; justify-content: space-between; }
+.hub-card.on { border-color: color-mix(in srgb, var(--accent) 45%, var(--border));
+  background: var(--accent-soft); }
+.hub-card.off { opacity: .55; }
 .url-install { display: flex; flex-direction: column; gap: 8px; }
 .url-install textarea { width: 100%; background: var(--bg3); color: var(--text);
   border: 1px solid var(--border); border-radius: 10px; padding: 10px 12px; font-size: 12px;

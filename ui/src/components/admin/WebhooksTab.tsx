@@ -13,18 +13,22 @@ export default function WebhooksTab() {
   const [hooks, setHooks] = useState<Hook[]>([]);
   const [profiles, setProfiles] = useState<string[]>([]);
   const [creating, setCreating] = useState(false);
-  const [msg, setMsg] = useState('');
+  const [msg, setMsg] = useState<{ t: string; err?: boolean } | null>(null);
   const [copied, setCopied] = useState<number | null>(null);
 
   async function reload() {
-    const d = await api<{ hooks: Hook[] }>('/api/hooks');
-    setHooks(d.hooks);
+    try {
+      const d = await api<{ hooks: Hook[] }>('/api/hooks');
+      setHooks(d.hooks);
+    } catch (e) { setMsg({ t: `加载失败：${String(e)}`, err: true }); }
   }
   useEffect(() => {
     void reload();
     void (async () => {
-      const d = await api<{ profiles: { name: string }[] }>('/api/profiles');
-      setProfiles(d.profiles.map(p => p.name));
+      try {
+        const d = await api<{ profiles: { name: string }[] }>('/api/profiles');
+        setProfiles(d.profiles.map(p => p.name));
+      } catch { /* 角色清单加载失败不阻断主列表 */ }
     })();
   }, []);
 
@@ -36,7 +40,7 @@ export default function WebhooksTab() {
     try {
       await api(`/api/hooks/${h.id}`, { method: 'PATCH',
         body: JSON.stringify({ enabled: !h.enabled }) });
-    } catch (e) { setMsg(`操作失败：${String(e)}`); }
+    } catch (e) { setMsg({ t: `操作失败：${String(e)}`, err: true }); }
     void reload();
   }
 
@@ -44,8 +48,8 @@ export default function WebhooksTab() {
     if (!confirm(`删除 webhook「${h.name}」？token 立即吊销，外部调用将 401。`)) return;
     try {
       await api(`/api/hooks/${h.id}`, { method: 'DELETE' });
-      setMsg(`已删除 ${h.name}（token 已吊销）`);
-    } catch (e) { setMsg(`删除失败：${String(e)}`); }
+      setMsg({ t: `已删除 ${h.name}（token 已吊销）` });
+    } catch (e) { setMsg({ t: `删除失败：${String(e)}`, err: true }); }
     void reload();
   }
 
@@ -60,7 +64,7 @@ export default function WebhooksTab() {
     <div className="admin-body">
       <div className="admin-toolbar">
         <button className="btn sm" onClick={() => setCreating(true)}><Plus size={13} /> 新建</button>
-        {msg && <span className="admin-msg">{msg}</span>}
+        {msg && <span className={msg.err ? 'admin-msg err' : 'admin-msg'}>{msg.t}</span>}
       </div>
       {creating && <NewHookForm profiles={profiles} onDone={() => {
         setCreating(false); void reload();

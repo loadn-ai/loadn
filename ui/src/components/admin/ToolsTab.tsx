@@ -9,11 +9,13 @@ export default function ToolsTab() {
   const [profiles, setProfiles] = useState<ProfileTools[]>([]);
   const [builtin, setBuiltin] = useState<string[]>([]);
   const [editing, setEditing] = useState<McpServer | 'new' | null>(null);
-  const [msg, setMsg] = useState('');
+  const [msg, setMsg] = useState<{ t: string; err?: boolean } | null>(null);
 
   async function reload() {
-    const d = await api<{ servers: McpServer[]; profiles: ProfileTools[]; builtin_tools: string[] }>('/api/tools');
-    setServers(d.servers); setProfiles(d.profiles); setBuiltin(d.builtin_tools);
+    try {
+      const d = await api<{ servers: McpServer[]; profiles: ProfileTools[]; builtin_tools: string[] }>('/api/tools');
+      setServers(d.servers); setProfiles(d.profiles); setBuiltin(d.builtin_tools);
+    } catch (e) { setMsg({ t: `加载失败：${String(e)}`, err: true }); }
   }
   useEffect(() => { void reload(); }, []);
 
@@ -21,8 +23,8 @@ export default function ToolsTab() {
     if (!confirm(`删除全局 MCP server「${s.name}」？（会话级覆盖不受影响）`)) return;
     try {
       await api(`/api/tools/mcp/${encodeURIComponent(s.name)}`, { method: 'DELETE' });
-      setMsg(`已删除 ${s.name}`);
-    } catch (e) { setMsg(String(e)); }
+      setMsg({ t: `已删除 ${s.name}` });
+    } catch (e) { setMsg({ t: String(e), err: true }); }
     void reload();
   }
 
@@ -33,7 +35,7 @@ export default function ToolsTab() {
       await api(`/api/tools/profile/${encodeURIComponent(p.name)}`, {
         method: 'PUT', body: JSON.stringify({ disallowed_tools: next }),
       });
-    } catch (e) { setMsg(String(e)); }
+    } catch (e) { setMsg({ t: String(e), err: true }); }
     void reload();
   }
 
@@ -45,7 +47,7 @@ export default function ToolsTab() {
         <>
           <div className="admin-toolbar">
             <button className="btn sm primary" onClick={() => setEditing('new')}><Plus size={13} /> 添加 MCP server</button>
-            {msg && <span className="admin-msg">{msg}</span>}
+            {msg && <span className={msg.err ? 'admin-msg err' : 'admin-msg'}>{msg.t}</span>}
           </div>
           <div className="tbl-wrap">
           <table className="mcp-table">

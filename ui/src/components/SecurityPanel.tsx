@@ -368,18 +368,17 @@ export default function SecurityPanel({ onClose }: { onClose: () => void }) {
 
       {/* ---- 操作区 ---- */}
       <div style={{ display: 'flex', gap: 10, alignItems: 'flex-start', flexWrap: 'wrap', marginBottom: 14 }}>
-        <button onClick={doVerify} disabled={verifying}>
+        <button className="btn sm" onClick={doVerify} disabled={verifying}>
           {verifying ? '校验中…' : '校验账本是否被篡改'}
         </button>
         {posture.canary.kill_all ? (
-          <button style={{ borderColor: 'var(--danger)', color: 'var(--danger)' }} onClick={doClear} disabled={!!busy}>
+          <button className="btn sm danger" onClick={doClear} disabled={!!busy}>
             {busy || '解除熔断，恢复运行'}
           </button>
         ) : (
           <button
-            style={armed
-              ? { background: 'var(--danger)', color: '#fff' }
-              : { borderColor: 'var(--danger)', color: 'var(--danger)' }}
+            className="btn sm danger"
+            style={armed ? { background: 'var(--danger)', color: '#fff', borderColor: 'var(--danger)' } : undefined}
             onClick={doKillAll} disabled={!!busy}>
             {busy || (armed ? '⚠ 再点一次确认熔断（5 秒内）' : '全局紧急停止')}
           </button>
@@ -780,9 +779,9 @@ function EgressDetail() {
         </div>
       </div>
       <table className="kv-table" style={{ width: '100%' }}>
-        <thead><tr><th>域名</th><th style={{ width: 70 }}>次数</th><th style={{ width: 120 }}>判定</th><th style={{ width: 90 }}>最近</th></tr></thead>
+        <thead><tr><th>域名</th><th style={{ width: 70 }}>次数</th><th style={{ width: 120 }}>判定</th><th style={{ width: 90 }}>最近</th><th style={{ width: 80 }}>操作</th></tr></thead>
         <tbody>
-          {rows.length === 0 && <tr><td colSpan={4} className="muted" style={{ textAlign: 'center', padding: 12 }}>（窗口内没有对外请求）</td></tr>}
+          {rows.length === 0 && <tr><td colSpan={5} className="muted" style={{ textAlign: 'center', padding: 12 }}>（窗口内没有对外请求）</td></tr>}
           {rows.map(r => (
             <tr key={r.host}>
               <td>{r.host}</td>
@@ -791,8 +790,8 @@ function EgressDetail() {
                 {r.denied ? `拒绝 ${r.denied}/${r.n}` : '放行'}
               </td>
               <td style={{ fontVariantNumeric: 'tabular-nums' }}>{(r.last || '').slice(11, 19)}</td>
-              {r.denied > 0 && (
-                <td style={{ width: 80 }}>
+              <td style={{ width: 80 }}>
+                {r.denied > 0 && (
                   <button
                     className="mini-btn"
                     disabled={busy === r.host || allow.includes(r.host)}
@@ -800,8 +799,8 @@ function EgressDetail() {
                     title="加入出口白名单（热生效，免重启）">
                     {allow.includes(r.host) ? '已放行' : '放行'}
                   </button>
-                </td>
-              )}
+                )}
+              </td>
             </tr>
           ))}
         </tbody>
@@ -984,7 +983,7 @@ function CanaryDetail({ locked, reload, jump }: {
               <td>
                 <SessionLink sid={l.sid} jump={jump} />
                 <span className="muted" style={{ marginLeft: 10, fontSize: 12 }}>{l.reason}</span>
-                <button style={{ marginLeft: 12 }} disabled={busy === l.sid}
+                <button className="mini-btn" style={{ marginLeft: 12 }} disabled={busy === l.sid}
                   onClick={() => void unlock(l.sid)}>{busy === l.sid ? '解锁中…' : '解锁'}</button>
               </td>
             </tr>

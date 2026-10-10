@@ -1,5 +1,5 @@
 // 流量面板（egress 白名单/临时授权/拒绝历史）——从 AdminPanel 拆出（v0.6.12）
-import { useEffect, useState } from 'react';
+import { Fragment, useEffect, useState } from 'react';
 import { api } from '../../api/client';
 
 export default function EgressPanel() {
@@ -9,12 +9,13 @@ export default function EgressPanel() {
   const [mode, setMode] = useState('');
   const [allow, setAllow] = useState<string[]>([]);
   const [expanded, setExpanded] = useState<string | null>(null);
+  const [err, setErr] = useState('');
   const load = async () => {
     try {
       const d = await api<{ events: { ts: string; host: string; decision: string }[]; mode: string; allow: string[] }>(
         '/api/admin/egress?n=100');
-      setEvents(d.events); setMode(d.mode); setAllow(d.allow ?? []);
-    } catch { /* 忽略 */ }
+      setEvents(d.events); setMode(d.mode); setAllow(d.allow ?? []); setErr('');
+    } catch (e) { setErr(`流量数据加载失败：${String(e)}`); }  // 服务不可达≠无外发请求，必须区分
   };
   useEffect(() => { void load(); const t = setInterval(() => void load(), 15000); return () => clearInterval(t); }, []);
 
@@ -37,6 +38,9 @@ export default function EgressPanel() {
 
   return (
     <div className="admin-body">
+      {err && <div className="admin-msg err" style={{ marginBottom: 10 }}>
+        {err} <button className="link" onClick={() => void load()}>重试</button>
+      </div>}
       <div style={{ display: 'flex', gap: 16, marginBottom: 12, flexWrap: 'wrap', fontSize: 13 }}>
         <span>模式 <b style={{ color: mode === 'enforce' ? undefined : '#d4a017' }}>{mode || '-'}</b></span>
         <span>窗口内请求 <b>{events.length}</b></span>
@@ -51,14 +55,14 @@ export default function EgressPanel() {
       <table className="kv-table" style={{ width: '100%' }}>
         <thead><tr><th>域名</th><th style={{ width: 70 }}>次数</th><th style={{ width: 90 }}>判定</th><th style={{ width: 90 }}>最近</th></tr></thead>
         <tbody>
-          {hosts.length === 0 && (
+          {hosts.length === 0 && !err && (
             <tr><td colSpan={4} className="muted" style={{ textAlign: 'center', padding: 16 }}>
               （窗口内没有对外请求——模型调用不算外发）
             </td></tr>
           )}
           {hosts.map(([h, v]) => (
-            <>
-              <tr key={h} style={{ cursor: 'pointer' }} onClick={() => setExpanded(expanded === h ? null : h)}>
+            <Fragment key={h}>
+              <tr style={{ cursor: 'pointer' }} onClick={() => setExpanded(expanded === h ? null : h)}>
                 <td>
                   <span style={{ marginRight: 6, display: 'inline-block', transition: '.15s', transform: expanded === h ? 'rotate(90deg)' : undefined }}>›</span>
                   {h}
@@ -70,13 +74,13 @@ export default function EgressPanel() {
                 <td style={{ fontVariantNumeric: 'tabular-nums' }}>{v.last.slice(11, 19)}</td>
               </tr>
               {expanded === h && (
-                <tr key={h + '-x'}>
+                <tr>
                   <td colSpan={4} className="muted" style={{ fontSize: 12, padding: '4px 12px' }}>
                     {v.times.slice(0, 20).join(' · ')}{v.times.length > 20 ? ' …' : ''}
                   </td>
                 </tr>
               )}
-            </>
+            </Fragment>
           ))}
         </tbody>
       </table>

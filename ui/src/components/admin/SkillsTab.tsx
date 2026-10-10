@@ -14,14 +14,16 @@ export default function SkillsTab() {
   const [editing, setEditing] = useState<string | null>(null);
   const [installing, setInstalling] = useState(false);
   const [creating, setCreating] = useState(false);
-  const [msg, setMsg] = useState('');
+  const [msg, setMsg] = useState<{ t: string; err?: boolean } | null>(null);
   const fileRef = useRef<HTMLInputElement>(null);
 
   async function reload() {
-    const d = await api<{ skills: SkillItem[] }>('/api/skills');
-    setSkills(d.skills);
-    // 英文描述 → 后端翻译（kv 缓存）补中文简介；失败回退原文
-    void fetchZhDesc(d.skills).then(setZh);
+    try {
+      const d = await api<{ skills: SkillItem[] }>('/api/skills');
+      setSkills(d.skills);
+      // 英文描述 → 后端翻译（kv 缓存）补中文简介；失败回退原文
+      void fetchZhDesc(d.skills).then(setZh);
+    } catch (e) { setMsg({ t: `加载失败：${String(e)}`, err: true }); }
   }
   useEffect(() => { void reload(); }, []);
 
@@ -29,8 +31,8 @@ export default function SkillsTab() {
     if (!confirm(`删除 skill「${s.name}」？整目录移除，不可恢复。`)) return;
     try {
       await api(`/api/skills/${encodeURIComponent(s.name)}?force=true`, { method: 'DELETE' });
-      setMsg(`已删除 ${s.name}`);
-    } catch (e) { setMsg(`删除失败：${String(e)}`); }
+      setMsg({ t: `已删除 ${s.name}` });
+    } catch (e) { setMsg({ t: `删除失败：${String(e)}`, err: true }); }
     void reload();
   }
 
@@ -38,21 +40,21 @@ export default function SkillsTab() {
     try {
       await api(`/api/skills/${encodeURIComponent(s.name)}/toggle`, {
         method: 'POST', body: JSON.stringify({ disabled: !s.disabled }) });
-      setMsg(s.disabled ? `已启用 ${s.name}（新会话生效，引用它的 active 会话已补挂）`
-                        : `已禁用 ${s.name}（新会话不挂载，active 会话下一 turn 失效）`);
-    } catch (e) { setMsg(`操作失败：${String(e)}`); }
+      setMsg({ t: s.disabled ? `已启用 ${s.name}（新会话生效，引用它的 active 会话已补挂）`
+                        : `已禁用 ${s.name}（新会话不挂载，active 会话下一 turn 失效）` });
+    } catch (e) { setMsg({ t: `操作失败：${String(e)}`, err: true }); }
     void reload();
   }
 
   async function uploadZip(f: File) {
     const fd = new FormData();
     fd.append('file', f);
-    setMsg(`安装 ${f.name} 中…`);
+    setMsg({ t: `安装 ${f.name} 中…` });
     try {
       const d = await api<{ installed: string[]; skipped?: string[] }>(
         withQ('/api/skills/upload'), { method: 'POST', body: fd });
-      setMsg(`已安装：${d.installed.join(', ')}${d.skipped?.length ? '（跳过 ' + d.skipped.join('; ') + '）' : ''}`);
-    } catch (e) { setMsg(`安装失败：${String(e)}`); }
+      setMsg({ t: `已安装：${d.installed.join(', ')}${d.skipped?.length ? '（跳过 ' + d.skipped.join('; ') + '）' : ''}` });
+    } catch (e) { setMsg({ t: `安装失败：${String(e)}`, err: true }); }
     void reload();
   }
 
@@ -69,7 +71,7 @@ export default function SkillsTab() {
               <input ref={fileRef} type="file" accept=".zip" hidden
                 onChange={e => { const f = e.target.files?.[0]; if (f) void uploadZip(f); e.target.value = ''; }} />
               <button className="btn sm primary" onClick={() => setInstalling(true)}><Globe size={13} /> 市场安装</button>
-              {msg && <span className="admin-msg">{msg}</span>}
+              {msg && <span className={msg.err ? 'admin-msg err' : 'admin-msg'}>{msg.t}</span>}
             </div>
             {creating && <NewSkillForm onDone={() => { setCreating(false); void reload(); }} />}
             <div className="skill-grid">
