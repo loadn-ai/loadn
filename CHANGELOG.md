@@ -3,6 +3,15 @@
 本项目的全部显著变更记录于此。格式遵循 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/)，
 版本遵循 [SemVer](https://semver.org/lang/zh-CN/)。
 
+## [0.7.19] - 2026-10-10
+
+- **升级非空闲守卫**：`upgrade --require-idle` 严格模式——有活跃 turn 在
+  preflight 后、DB 备份/资产重刷之前直接拒绝（零副作用退出，防误切）；
+  `--wait-idle 0` 跳过等待且非 `--yes` 时 stderr 强警告（活跃 turn 清单+
+  两档中断语义：直跑档收养续跑/沙箱档 die-with-parent 必断），不再静默
+  强切。背景：DB 实证历史 18 个 turn 因 server_restart 中断，均为非空闲
+  窗口静默跳过等待所致。
+
 ## [0.7.18] - 2026-10-10
 
 - **四项交互批**：
