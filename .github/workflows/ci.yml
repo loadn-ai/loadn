@@ -71,25 +71,47 @@ jobs:
       # tests/ 单目录混引擎+平台用例（yaml/fastapi 依赖遍布全量收集）——
       # dev-only 安装会 64 个收集错误（exit 2）；矩阵装全 extras 跑全量
       - run: pip install -e ".[webui,dev]"
-      - run: pytest -q
+      - name: pytest（tee 日志供失败上抛）
+        run: |
+          set -o pipefail
+          pytest -q 2>&1 | tee pytest.log
         env:
           LOADN_PROVIDER: fake
+      # 失败清单上抛 annotations：公开仓 annotations 匿名 API 可读——
+      # 无登录也能定位失败用例（run 38152202517 排查时日志三通道全 403 的教训）
+      - name: 失败清单上抛（annotations 匿名可读）
+        if: failure()
+        run: |
+          echo "::error::summary: $(grep -E '[0-9]+ (passed|failed)' pytest.log | tail -1 || echo no-summary)"
+          grep -E '^(FAILED|ERROR)' pytest.log | head -10 | while IFS= read -r l; do
+            echo "::error::${l:0:240}"
+          done || true
 
   coverage:
     # T1（tests/TEST-PLAN.md）：双包行覆盖率 + 门禁（基线 78.8%；
     # 每张 T 卡收口时收紧 fail-under——TEST-PLAN §六目标 85%）
     runs-on: ubuntu-latest
-    timeout-minutes: 20
+    timeout-minutes: 35   # 5add728 实测 20 分钟装不下 cov 全量（超时被杀）
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
         with:
           python-version: "3.12"
       - run: pip install -e ".[webui,dev]" pytest-cov
-      - run: pytest -q --cov=loadn --cov=loadn_webui --cov-report=term
-             --cov-fail-under=83
+      - name: pytest（tee 日志供失败上抛）
+        run: |
+          set -o pipefail
+          pytest -q --cov=loadn --cov=loadn_webui --cov-report=term
+                 --cov-fail-under=83 2>&1 | tee pytest.log
         env:
           LOADN_PROVIDER: fake
+      - name: 失败清单上抛（annotations 匿名可读）
+        if: failure()
+        run: |
+          echo "::error::summary: $(grep -E '[0-9]+ (passed|failed)' pytest.log | tail -1 || echo no-summary)"
+          grep -E '^(FAILED|ERROR)' pytest.log | head -10 | while IFS= read -r l; do
+            echo "::error::${l:0:240}"
+          done || true
 
   ui:
     # 前端可构建（tsc + vite build），dist 不入库但随 release 发布
@@ -126,7 +148,7 @@ jobs:
     # 平台全量（loadn_webui）：webui extras + 同 venv 引擎（契约对赌需要
     # loadn console_script）。legacy 资产依赖的测试自带 skipif。
     runs-on: ubuntu-latest
-    timeout-minutes: 25   # 含 playwright 浏览器安装
+    timeout-minutes: 40   # 5add728 实测 25 分钟不够（超时被杀，含浏览器安装）
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
@@ -134,9 +156,19 @@ jobs:
           python-version: "3.12"
       - run: pip install -e ".[webui,dev]" pytest-cov
       - run: pip install playwright && playwright install chromium --with-deps || true
-      - run: pytest -q --cov=loadn_webui --cov-fail-under=83
+      - name: pytest（tee 日志供失败上抛）
+        run: |
+          set -o pipefail
+          pytest -q --cov=loadn_webui --cov-fail-under=83 2>&1 | tee pytest.log
         env:
           LOADN_PROVIDER: fake
+      - name: 失败清单上抛（annotations 匿名可读）
+        if: failure()
+        run: |
+          echo "::error::summary: $(grep -E '[0-9]+ (passed|failed)' pytest.log | tail -1 || echo no-summary)"
+          grep -E '^(FAILED|ERROR)' pytest.log | head -10 | while IFS= read -r l; do
+            echo "::error::${l:0:240}"
+          done || true
 
   audit:
     # 供应链：依赖漏洞周扫（pip-audit 对 extras 全量解析）
