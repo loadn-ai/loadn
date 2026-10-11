@@ -1,5 +1,10 @@
 # loadn（老登，读 **load-n**）
 
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="docs/assets/logo-dark.svg">
+  <img src="docs/assets/logo.svg" alt="loadn" width="330">
+</picture>
+
 [![CI](https://img.shields.io/github/actions/workflow/status/loadn-ai/loadn/ci.yml?branch=main&label=CI)](https://github.com/loadn-ai/loadn/actions/workflows/ci.yml)
 [![Release](https://img.shields.io/github/v/release/loadn-ai/loadn)](https://github.com/loadn-ai/loadn/releases)
 [![License](https://img.shields.io/badge/license-Apache--2.0-blue)](LICENSE)
@@ -41,26 +46,38 @@ loadn 是一组预印本（2026，即将公开）的**部署态参考系统**，
   本地 pinned toolbelt / 混合）。loadn 的本地优先工具供给即富供给臂的
   设计哲学。
 
-```
-┌────────────────────────────────────────────────────────────┐
-│  CLI:  loadn -p / REPL / python -m loadn             │
-├────────────────────────────────────────────────────────────┤
-│  AgentCore   loop · LoopGuard · Compactor (92% window)     │
-│              stream-event synth (--verbose deltas)         │
-│              ContextAssembler · PermissionEngine · Hooks   │
-│              SubagentManager (Task tool + .claude/agents)  │
-├────────────────────────────────────────────────────────────┤
-│  Tools: Bash(+cwd/env, 60s auto-bg) Read Write Edit        │
-│         MultiEdit NotebookEdit Grep Glob Skill              │
-│         InteractiveShell(pty) WebFetch WebSearch TodoWrite  │
-│         (+ MCP dynamic)                                     │
-├────────────────────────────────────────────────────────────┤
-│  Providers: Anthropic-native SSE │ OpenAI-compatible       │
-│             retry/backoff │ usage accounting               │
-├────────────────────────────────────────────────────────────┤
-│  Persistence: transcript JSONL (append-only, resume,       │
-│               compact-aware replay) + SQLite index         │
-└────────────────────────────────────────────────────────────┘
+```mermaid
+flowchart TB
+    subgraph HOSTS["CLI · 库 · 守护进程"]
+        HEAD["headless -p<br/>（stream-json NDJSON）"]
+        REPL["REPL"]
+        DAEMON["daemon（UDS attach）"]
+        LIB["python 库<br/>build_agent()"]
+    end
+    subgraph CORE["AgentCore"]
+        ASM["ContextAssembler"] --> LOOP["agent loop"]
+        LOOP --> PERM["PermissionEngine"]
+        LOOP --> HOOKS["Hooks"]
+        LOOP --> GUARD["LoopGuard"]
+        LOOP --> COMP["Compactor（92% 窗口）"]
+        LOOP --> SUB["SubagentManager"]
+        LOOP --> EVT["stream-event 合成<br/>（--verbose 增量）"]
+    end
+    subgraph TOOLS["工具 — 12 内置 + MCP 动态"]
+        BASH["Bash / Read / Write<br/>Edit / MultiEdit / Grep / Glob"]
+        SHELL["InteractiveShell (pty) · Task · Skill<br/>WebFetch · WebSearch · TodoWrite"]
+        MCP["mcp__server__tool"]
+    end
+    subgraph PROV["Providers"]
+        ANT["Anthropic 形态 SSE"]
+        OAI["OpenAI 兼容"]
+    end
+    PERSIST[("transcript JSONL（append-only）<br/>+ SQLite 索引")]
+
+    HOSTS --> CORE
+    CORE <-- "工具调用" --> TOOLS
+    CORE <-- "chat chunks" --> PROV
+    CORE --> PERSIST
 ```
 
 ## Monorepo：引擎 + 平台
@@ -74,6 +91,8 @@ loadn 是一组预印本（2026，即将公开）的**部署态参考系统**，
 | `desktop/` | 桌面形态（Tauri 壳+Debian rootfs：整个执行域跑在 mac/win 内的 Linux VM 里） | `desktop/image/` 构建链 |
 | `ui/` | React 前端（管理中心含安全中心/流量/成本面板） | `cd ui && npm run build` |
 
+![loadn-web 工作台——会话管理/技能教学卡/审批门/成本面板](docs/assets/platform-preview.png)
+
 文档索引：[ARCHITECTURE](docs/ARCHITECTURE.md)（三平面/数据布局）·
 [EXTENDING](docs/EXTENDING.md)（定制缝地图：引擎/provider/skill/MCP/hooks）·
 [PROTOCOL](docs/PROTOCOL.md)（引擎方言契约）·
@@ -85,6 +104,15 @@ loadn 是一组预印本（2026，即将公开）的**部署态参考系统**，
 **1 · 沿不可逆边界的纵深防御。** 平台内置框架原生的执行安全栈——
 七层、**enforcement path 上无 LLM**、默认 fail-closed，按动作可逆性
 分层（可逆工作圈进沙箱，不可逆动作停在审批门——承重墙是沙箱）：
+
+```mermaid
+flowchart LR
+    CALL["agent 工具调用"] --> L1["L1<br/>凭证<br/>保险库"] --> L2["L2<br/>bash AST<br/>策略"] --> L3["L3<br/>出口白名单<br/>代理"] --> L4["L4<br/>文件系统<br/>沙箱"] --> L5["L5<br/>不可逆动作<br/>审批门"] --> L6["L6<br/>蜜罐+<br/>审计链"] --> L7["L7<br/>供应链<br/>信任门"] --> EXEC["执行"]
+    style CALL fill:#F8FAFC,stroke:#94A3B8
+    style EXEC fill:#FEF3C7,stroke:#F59E0B
+```
+
+七层、**enforcement path 上无 LLM**、默认 fail-closed；每层机制与源码：
 
 | # | 层 | 机制 | 源码 |
 |---|---|---|---|

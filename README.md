@@ -1,5 +1,10 @@
 # loadn
 
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="docs/assets/logo-dark.svg">
+  <img src="docs/assets/logo.svg" alt="loadn" width="330">
+</picture>
+
 [![CI](https://img.shields.io/github/actions/workflow/status/loadn-ai/loadn/ci.yml?branch=main&label=CI)](https://github.com/loadn-ai/loadn/actions/workflows/ci.yml)
 [![Release](https://img.shields.io/github/v/release/loadn-ai/loadn)](https://github.com/loadn-ai/loadn/releases)
 [![License](https://img.shields.io/badge/license-Apache--2.0-blue)](LICENSE)
@@ -46,26 +51,38 @@ appear). Each paper's claims are anchored to this codebase:
   hybrid). loadn's local-first tool supply is the rich arm's design
   philosophy.
 
-```
-┌────────────────────────────────────────────────────────────┐
-│  CLI:  loadn -p / REPL / python -m loadn                   │
-├────────────────────────────────────────────────────────────┤
-│  AgentCore   loop · LoopGuard · Compactor (92% window)     │
-│              stream-event synth (--verbose deltas)         │
-│              ContextAssembler · PermissionEngine · Hooks   │
-│              SubagentManager (Task tool + .claude/agents)  │
-├────────────────────────────────────────────────────────────┤
-│  Tools: Bash(+cwd/env, 60s auto-bg) Read Write Edit        │
-│         MultiEdit NotebookEdit Grep Glob Skill             │
-│         InteractiveShell(pty) WebFetch WebSearch TodoWrite │
-│         (+ MCP dynamic)                                    │
-├────────────────────────────────────────────────────────────┤
-│  Providers: Anthropic-native SSE │ OpenAI-compatible       │
-│             retry/backoff │ usage accounting               │
-├────────────────────────────────────────────────────────────┤
-│  Persistence: transcript JSONL (append-only, resume,       │
-│               compact-aware replay) + SQLite index         │
-└────────────────────────────────────────────────────────────┘
+```mermaid
+flowchart TB
+    subgraph HOSTS["CLI · library · daemon"]
+        HEAD["headless -p<br/>(stream-json NDJSON)"]
+        REPL["REPL"]
+        DAEMON["daemon (UDS attach)"]
+        LIB["python library<br/>build_agent()"]
+    end
+    subgraph CORE["AgentCore"]
+        ASM["ContextAssembler"] --> LOOP["agent loop"]
+        LOOP --> PERM["PermissionEngine"]
+        LOOP --> HOOKS["Hooks"]
+        LOOP --> GUARD["LoopGuard"]
+        LOOP --> COMP["Compactor (92% window)"]
+        LOOP --> SUB["SubagentManager"]
+        LOOP --> EVT["stream-event synth<br/>(--verbose deltas)"]
+    end
+    subgraph TOOLS["Tools — 12 builtin + MCP dynamic"]
+        BASH["Bash / Read / Write<br/>Edit / MultiEdit / Grep / Glob"]
+        SHELL["InteractiveShell (pty) · Task · Skill<br/>WebFetch · WebSearch · TodoWrite"]
+        MCP["mcp__server__tool"]
+    end
+    subgraph PROV["Providers"]
+        ANT["Anthropic-form SSE"]
+        OAI["OpenAI-compatible"]
+    end
+    PERSIST[("transcript JSONL (append-only)<br/>+ SQLite index")]
+
+    HOSTS --> CORE
+    CORE <-- "tool calls" --> TOOLS
+    CORE <-- "chat chunks" --> PROV
+    CORE --> PERSIST
 ```
 
 ## Monorepo: engine + platform
@@ -79,6 +96,8 @@ agent platform**:
 | `loadn_webui/` | Web platform: session management / scheduling / cost / sharing, with a framework-native **seven-layer execution-security stack** (credential vault · bash-AST policy · egress allowlist proxy · bwrap sandbox · irreversible-action approval gate · canary+audit chain · supply-chain trust gate) | `pip install -e ".[webui]"` → `loadn-web init` → `loadn-web serve` |
 | `desktop/` | Desktop form (Tauri shell + Debian rootfs: the whole execution domain runs inside a Linux VM on mac/win) | `desktop/image/` build pipeline |
 | `ui/` | React frontend (admin center with security / traffic / cost panels) | `cd ui && npm run build` |
+
+![The loadn-web workbench — sessions, skill teaching cards, approval gates, cost panels](docs/assets/platform-preview.png)
 
 Docs index: [ARCHITECTURE](docs/ARCHITECTURE.md) (planes / data layout /
 test system) · [CONFIG](docs/CONFIG.md) (every config key) ·
@@ -94,6 +113,16 @@ ships a framework-native execution-security stack — seven layers, **no LLM
 on the enforcement path**, fail-closed by default, tiered by action
 reversibility (reversible work is fenced into the sandbox; irreversible
 actions stop at the approval gate — the sandbox is the load-bearing wall):
+
+```mermaid
+flowchart LR
+    CALL["agent tool call"] --> L1["L1<br/>credential<br/>vault"] --> L2["L2<br/>bash-AST<br/>policy"] --> L3["L3<br/>egress allowlist<br/>proxy"] --> L4["L4<br/>filesystem<br/>sandbox"] --> L5["L5<br/>irreversible-action<br/>approval gate"] --> L6["L6<br/>canary +<br/>audit chain"] --> L7["L7<br/>supply-chain<br/>trust gate"] --> EXEC["exec"]
+    style CALL fill:#F8FAFC,stroke:#94A3B8
+    style EXEC fill:#FEF3C7,stroke:#F59E0B
+```
+
+Seven layers, **no LLM on the enforcement path**, fail-closed by default;
+the mechanism and source of each layer:
 
 | # | Layer | Mechanism | Source |
 |---|---|---|---|
