@@ -14,6 +14,7 @@ pytestmark = [pytest.mark.coverage("sec.d1")]
 import json
 import os
 import subprocess
+import sys
 import uuid
 from pathlib import Path
 
@@ -23,6 +24,17 @@ from loadn_webui.security import sandbox
 
 pytestmark = pytest.mark.skipif(not sandbox.bwrap_available(),
                                 reason="bwrap 不可用（CI/受限环境）")
+
+# real_turn 前提：wrap_loadn 的 bind 矩阵按「引擎 bin 所在 venv 的
+# parent=仓库根」假设挂载包树（--ro-bind-try venv.parent/loadn_webui 等）。
+# venv 不在仓库内（CI runner 的临时 venv）时沙箱内 import 必败——环境
+# 前提不满足，skip（根治=矩阵显式解析 -e 包树，见 ROADMAP）。
+import shutil as _shutil
+_engine_bin = (_shutil.which("loadn")
+               or str(Path(sys.executable).parent / "loadn"))
+_REAL_TURN_OK = (Path(_engine_bin).resolve().parent.parent.parent
+                 == Path(__import__("loadn_webui").__file__)
+                 .resolve().parent.parent)
 
 
 def _engine_home() -> Path:
@@ -67,7 +79,7 @@ def test_d1_workspace_and_archive_ok(tmp_path):
         tmp_path, sid_session,
         "echo data > out.txt && cat out.txt && "
         "echo arch > " + str(_engine_home() / "sessions" / sid_session)
-        + "/t.log && /data/code/loadn/.venv/bin/python --version")
+        + f"/t.log && {sys.executable} --version")
     assert "data" in p.stdout and "Python" in p.stdout
     assert ((_engine_home() / "sessions" / sid_session / "t.log")
             .read_text().strip() == "arch")     # 档案写透回宿主
@@ -96,6 +108,8 @@ def test_d1_env_cleared(tmp_path):
     assert "KEEP=7" in p.stdout
 
 
+@pytest.mark.skipif(not _REAL_TURN_OK,
+                    reason='引擎解释器树不在仓库内（-e bind 面外）——沙箱内 import loadn 必败')
 async def test_d1_sandboxed_real_turn(client, ws_root, monkeypatch):
     """W2-a 门禁：sandbox=bwrap 下 loadn 引擎真 turn（fake）全链跑通——
     沙箱不破坏 spawn/事件流/steer 协议通道（同路径 bind）。"""
