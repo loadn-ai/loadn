@@ -491,7 +491,18 @@ def admin_token_value() -> str:
 def ensure_dirs() -> None:
     for key in ("workspace", "var", "logs", "call_logs", "run", "pid_dir",
                 "pages_cache", "backups", "skills"):   # skills：数据根 overlay 首启即建
-        PATHS[key].mkdir(parents=True, exist_ok=True)
+        p = PATHS[key]
+        try:
+            p.mkdir(parents=True, exist_ok=True)
+        except FileExistsError:
+            # 悬空 symlink（目标被删/从未存在）：mkdir exist_ok 不接受——
+            # 已损坏的链接按损坏处理，摘链重建为真目录（W0 安全审计
+            # 测试树曾因 REPO/skills 缺席悬空而全量 306 error 实证）
+            if p.is_symlink() and not p.exists():
+                p.unlink()
+                p.mkdir(parents=True, exist_ok=True)
+            else:
+                raise
 
 def behavior_file(name: str, rel: str) -> Path:
     """在 behavior_dirs(name) 搜索路径中找 rel 文件（先到先得=数据根覆盖）。"""

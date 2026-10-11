@@ -37,7 +37,11 @@ def _home(tmp_path, monkeypatch):
     monkeypatch.setenv("LOADN_HOME", str(home))
     monkeypatch.setattr(Path, "home", staticmethod(lambda: fake_home))
     for k in ("ANTHROPIC_AUTH_TOKEN", "ANTHROPIC_API_KEY",
-              "ANTHROPIC_BASE_URL", "LOADN_API_KEY", "LOADN_BASE_URL"):
+              "ANTHROPIC_BASE_URL", "LOADN_API_KEY", "LOADN_BASE_URL",
+              # provider 选择也须隔离：LOADN_PROVIDER=fake（全量测试环境）
+              # 会让 provider_config 以 "fake" 名取 auth.json 条目而落空
+              # （顺序耦合假绿：本机全量曾因前序测试环境恰好通过）
+              "LOADN_PROVIDER", "HAHANESS_PROVIDER"):
         monkeypatch.delenv(k, raising=False)
     monkeypatch.setattr(A, "_loadn_web_bin", lambda: None)   # 默认无平台
     return home

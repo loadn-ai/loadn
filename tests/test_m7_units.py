@@ -203,15 +203,28 @@ def test_params_validate_and_effective_sandbox():
 
 def test_wrap_engine_session_tier_override(monkeypatch, tmp_path):
     """requested_tier 覆盖链：会话 off → direct（全局 bwrap 不吃）；None=全局。"""
+    from pathlib import Path
+
     from loadn_webui.config import CONFIG
     from loadn_webui.security import sandbox as sb
+    # claude 分支的必需 binds：~/.claude/projects（rw）+ cmd[0] 派生 node 树
+    # （ro）——干净环境（CI/全新 HOME）两者都不存在 → _wrap_generic 返
+    # None → direct-fallback。此处造伪前提，与宿主是否装过 claude CLI
+    # 解耦（本机曾因 ~/.claude 恰好存在而假绿）。
+    fake_home = tmp_path / "fakehome"
+    (fake_home / ".claude" / "projects").mkdir(parents=True)
+    node_tree = tmp_path / "node" / "v1" / "bin"
+    node_tree.mkdir(parents=True)
+    (node_tree / "x").write_text("#!/bin/sh\n")
+    monkeypatch.setattr(Path, "home", staticmethod(lambda: fake_home))
     monkeypatch.setattr(CONFIG.security, "sandbox", "bwrap")
     monkeypatch.setattr(sb, "bwrap_available", lambda: True)
     monkeypatch.setattr(sb, "resolve_tier", lambda req=None:
                         ("off", "") if req == "off" else ("bwrap", ""))
-    cmd, mode = sb.wrap_engine(["x"], {}, engine="claude", sid="s",
+    xbin = str(node_tree / "x")
+    cmd, mode = sb.wrap_engine([xbin], {}, engine="claude", sid="s",
                                cwd=str(tmp_path), requested_tier="off")
     assert mode == "direct"                            # 会话级 off 生效
-    cmd2, mode2 = sb.wrap_engine(["x"], {}, engine="claude", sid="s",
+    cmd2, mode2 = sb.wrap_engine([xbin], {}, engine="claude", sid="s",
                                  cwd=str(tmp_path))    # None=全局 bwrap
     assert mode2 == "bwrap"

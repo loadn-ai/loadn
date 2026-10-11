@@ -6,8 +6,26 @@ overlay 挡交互）。工厂经 API 登录 admin（无则 setup 建）→ Set-C
 """
 from __future__ import annotations
 
+from pathlib import Path
+
 import httpx
 import pytest
+
+# playwright 包缺席 → 整目录按既有 importorskip 语义跳过；
+# 包在席但 chromium 二进制未装（playwright install 缺步——CI test
+# 矩阵 job 不装浏览器）→ collect_ignore 整目录，不假红。
+try:
+    from playwright.sync_api import sync_playwright as _spw
+    with _spw() as _p:
+        with _p.chromium.launch():
+            pass
+    _CHROMIUM_READY = True
+except Exception:  # noqa: BLE001 — 任何启动失败都归为"环境不可用"
+    _CHROMIUM_READY = False
+
+if not _CHROMIUM_READY:
+    collect_ignore = [p.name for p in
+                      Path(__file__).parent.glob("test_*.py")]
 
 
 @pytest.fixture()

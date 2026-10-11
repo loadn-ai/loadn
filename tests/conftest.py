@@ -43,10 +43,14 @@ for _name in ("profiles", "prompts"):
     _src = REPO / _name
     if _src.exists():
         (_HOME / _name).symlink_to(_src, target_is_directory=True)
-# skills：测试期直连 legacy 资产；CI（无本机资产）回落 monorepo skills/（空）
+# skills：测试期直连 legacy 资产；CI（无本机资产）回落空真目录——
+# 不 symlink 不存在的 REPO/skills（悬空链接会让 ensure_dirs 的 mkdir
+# exist_ok 抛 FileExistsError，server 起不来=CI 全量 306 error 实证）
 _LEGACY_SKILLS_LINK = Path.home() / ".loadn-data/skills"
-_SKILLS_SRC = _LEGACY_SKILLS_LINK if _LEGACY_SKILLS_LINK.exists() else REPO / "skills"
-(_HOME / "skills").symlink_to(_SKILLS_SRC, target_is_directory=True)
+if _LEGACY_SKILLS_LINK.exists():
+    (_HOME / "skills").symlink_to(_LEGACY_SKILLS_LINK, target_is_directory=True)
+else:
+    (_HOME / "skills").mkdir(exist_ok=True)
 LEGACY_ASSETS = _LEGACY_SKILLS_LINK.exists()
 # skills：monorepo skills/ 仅公开包；测试借用原 workdaddy 仓资产（迁移过渡）
 _LEGACY_SKILLS = Path.home() / ".loadn-data/skills"

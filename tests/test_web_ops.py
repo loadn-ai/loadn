@@ -12,11 +12,6 @@ from pathlib import Path
 
 import pytest
 
-# 依赖本机 legacy skills 资产（web-ops 库）与真浏览器；CI 上无本机资产时跳过
-pytestmark = pytest.mark.skipif(
-    not Path("/data/code/workdaddy/skills").exists(),
-    reason="需要本机 legacy skills 资产（迁移过渡期）")
-
 HERE = Path(__file__).resolve().parent
 import os as _os
 
@@ -26,7 +21,12 @@ sys_path_hack = str(_skills_root / "web-ops")
 
 CHROME = shutil.which("google-chrome") or shutil.which("chromium")
 
-pytestmark = pytest.mark.skipif(not CHROME, reason="本机无 chrome（原语测试需真浏览器）")
+# 守卫条件与实际取用一致：web-ops 原语库可解析 + 真 chrome 在席。
+# （旧条件用本机绝对路径 /data/code/workdaddy——与 LOADN_SKILLS_EXTRA
+# 回退链脱节：干净环境不 skip 反而在 import 期炸 No module 'ops'）
+pytestmark = pytest.mark.skipif(
+    not Path(sys_path_hack).exists() or not CHROME,
+    reason="web-ops 原语库（skills overlay）或 chrome 不可用")
 
 
 def _free_port() -> int:
