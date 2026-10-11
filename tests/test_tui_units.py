@@ -14,7 +14,7 @@ import pytest
 # skip 守卫永远轮不到——CI 干净环境实证过这一失败形态。
 textual = pytest.importorskip("textual")  # noqa: F841 —— extras 缺席整组跳过
 
-from loadn.tui import result_excerpt, tool_line, usage_line
+from loadn.tui import result_excerpt, tool_line, usage_line  # noqa: I001,E402
 
 
 # ---------------- 渲染助手（含否定/边界） ----------------
