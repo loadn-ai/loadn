@@ -506,7 +506,13 @@ def test_parse_mail_html_only():
     assert it["codes"] == ["491573"]
     assert "491573" in it["body"] and "color:red" not in it["body"]
     assert it["links"] == ["https://example.com/activate?x=1&y=2"]
-    assert it["receive_time"] == "2026-09-13 00:31:00"
+    # receive_time 按服务器本地时区渲染（产品语义：用户视角时间）——期望值
+    # 从同一 Date 头推导，UTC runner 与 +08 本机一致（硬编码 +0800 渲染会漂移）
+    from datetime import datetime
+    from email.utils import parsedate_to_datetime
+    assert it["receive_time"] == datetime.fromtimestamp(
+        parsedate_to_datetime("Sat, 13 Sep 2026 00:31:00 +0800").timestamp()
+    ).strftime("%Y-%m-%d %H:%M:%S")
     assert it["from"] == "GitHub <noreply@github.com>"
 
 

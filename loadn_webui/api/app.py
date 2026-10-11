@@ -386,7 +386,10 @@ async def index():
     if p.exists():
         return FileResponse(p, headers={"Cache-Control": "no-store"})
     return JSONResponse({"name": "loadn webui", "status": "api-only",
-                         "hint": "frontend/dist 不存在；API 文档见 /docs"})
+                         "hint": "frontend/dist 不存在；API 文档见 /docs"},
+                        # 与 dist 分支同语义：未构建落点也不可被代理缓存
+                        # （构建部署后切换不落灰；/assets 404 门同款 no-store）
+                        headers={"Cache-Control": "no-store"})
 
 
 @app.get("/{full_path:path}")

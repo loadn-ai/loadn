@@ -76,10 +76,14 @@ async def test_sse_event_stream(client, ws_root):
         pytest.skip("引擎 venv 不在仓库内（spawn bind/import 面外）")
     sess = await _create(client, title="SSE测试", profile="researcher")
     sid = sess["id"]
-    # skills symlink 挂载（researcher → deep-research/doc-export）
-    sk = ws_root / sid / ".claude" / "skills"
-    assert (sk / "deep-research").is_symlink()
-    assert (sk / "doc-export").is_symlink()
+    # skills symlink 挂载（researcher → deep-research/doc-export）——两者属
+    # 本机 legacy 资产（不随开源仓分发）：缺席时跳过挂载断言，SSE 旅程本身
+    # 不依赖技能在场（同 0cfa8d1 守卫批语义；根治=公开 skills 包化，ROADMAP）
+    from pathlib import Path as _P2
+    if (_P2.home() / ".loadn-data" / "skills" / "deep-research").exists():
+        sk = ws_root / sid / ".claude" / "skills"
+        assert (sk / "deep-research").is_symlink()
+        assert (sk / "doc-export").is_symlink()
     # 控制文件：工具 + todos + 产物
     ctrl = ws_root / sid / ".fake"
     ctrl.mkdir(parents=True, exist_ok=True)
