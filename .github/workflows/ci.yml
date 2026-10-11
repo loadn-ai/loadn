@@ -108,8 +108,7 @@ jobs:
       - name: pytest（tee 日志供失败上抛）
         run: |
           set -o pipefail
-          pytest -q --cov=loadn --cov=loadn_webui --cov-report=term
-                 --cov-fail-under=83 2>&1 | tee pytest.log
+          pytest -q --cov=loadn --cov=loadn_webui --cov-report=term --cov-fail-under=83 2>&1 | tee pytest.log
         env:
           LOADN_PROVIDER: fake
       - name: 失败清单上抛（annotations 匿名可读）
