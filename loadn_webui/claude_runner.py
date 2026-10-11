@@ -401,8 +401,12 @@ async def run_turn(call: TurnCall, stop: StopHandle | None = None) -> TurnProcRe
     try:
         # stdout 直写文件（不经管道）：daemon 死后 CLI 无反压继续写——收养的
         # 根基。父进程的 fd 副本 spawn 完立刻关（子进程持有 dup）。
-        fo = out_log.open("wb")
-        fe = err_log.open("wb")
+        # "ab" 而非 "wb"：路径本就含毫秒时间戳唯一（truncate 无意义），且
+        # 子进程继承的 fd 带 O_APPEND——多写者并发追加 EOF-safe（实证：
+        # 测试向运行中日志追加 steer 回执，慢启动环境子进程首写从共享
+        # offset 0 覆写已追加字节，回执凭空消失 → salvage 误判重投）
+        fo = out_log.open("ab")
+        fe = err_log.open("ab")
         try:
             proc = await asyncio.create_subprocess_exec(
                 *cmd, cwd=str(call.cwd), stdout=fo, stderr=fe,
