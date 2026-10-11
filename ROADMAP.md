@@ -30,6 +30,10 @@
 - [ ] 子进程覆盖盲区（COVERAGE_PROCESS_START）：83→85%+
 - [ ] 性能基准门：启动/turn 延迟/内存的回归防线
 - [ ] scheduler 时序 flake 根治（全量跑偶发 1-2 例，复跑绿）
+- [ ] 测试宿主隔离：test_context_sections/test_auth_cli/test_fingerprint
+      等对真实 HOME 与环境变量敏感（开发机全量 11 failed、干净
+      runner 全绿的差异源）——conftest 统一 monkeypatch
+      LOADN_HOME/ANTHROPIC_* 到 tmp，消除"基线失败"话术
 
 ## 能力扩展
 
