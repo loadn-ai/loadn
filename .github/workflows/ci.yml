@@ -160,6 +160,18 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: "3.12"
+      # 先构建前端：e2e_ui 真浏览器用例驱动真 UI——无 dist 时根路由回落
+      # api-only JSON，选择器永不出场（run 38163192995 七例 wait_for_selector
+      # 超时+覆盖率 81<83 连带的实证）。本 job 的存在意义就是测真 UI。
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: npm
+          cache-dependency-path: ui/package-lock.json
+      - run: npm ci
+        working-directory: ui
+      - run: npm run build
+        working-directory: ui
       - run: pip install -e ".[webui,dev]" pytest-cov
       - run: pip install playwright && playwright install chromium --with-deps || true
       - name: pytest（tee 日志供失败上抛）
