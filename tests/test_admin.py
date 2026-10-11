@@ -85,6 +85,11 @@ async def test_skill_crud_and_mount(client):
 
 # ---------------------------------------------------------------- 禁用/启用
 async def test_skill_toggle(client):
+    # 断言对象含本机 legacy skills 资产（wechat-send/file-parse 等
+    # 不随开源仓分发）——资产缺席时跳过（根治=测试自造素材，见 ROADMAP）
+    from pathlib import Path as _P
+    if not (_P.home() / ".loadn-data" / "skills").exists():
+        pytest.skip("依赖本机 legacy skills 资产（开源环境不可满足）")
     from loadn_webui.config import PATHS
 
     assert (await client.post("/api/skills/toggle-test/toggle",

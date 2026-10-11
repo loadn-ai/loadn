@@ -641,6 +641,11 @@ async def test_cli_r(monkeypatch, capsys):
 
 # ---------------------------------------------------------------- skills 默认挂载
 async def test_new_skills_default_mounted(client, ws_root):
+    # 断言对象含本机 legacy skills 资产（wechat-send/file-parse 等
+    # 不随开源仓分发）——资产缺席时跳过（根治=测试自造素材，见 ROADMAP）
+    from pathlib import Path as _P
+    if not (_P.home() / ".loadn-data" / "skills").exists():
+        pytest.skip("依赖本机 legacy skills 资产（开源环境不可满足）")
     from loadn_webui import skills as skills_mod
     names = {s["name"] for s in skills_mod.available()}
     assert {"file-parse", "web-hands-on", "mobile-sms", "email-inbox"} <= names

@@ -9,6 +9,8 @@
 import asyncio
 import json
 
+import pytest
+
 from tests.conftest import wait_turn
 
 
@@ -63,6 +65,14 @@ async def test_resume_second_message(client, fake_calls):
 
 
 async def test_sse_event_stream(client, ws_root):
+    # spawn 引擎链路假设 venv 在仓库内（bind/import 面）——venv 在外
+    # （CI runner 临时 venv）时引擎 turn 必败（同 d1 real_turn 守卫）
+    import shutil as _sh, sys as _sys
+    from pathlib import Path as _P
+    _bin = _sh.which("loadn") or str(_P(_sys.executable).parent / "loadn")
+    if _P(_bin).resolve().parent.parent.parent != \
+            _P(__import__("loadn_webui").__file__).resolve().parent.parent:
+        pytest.skip("引擎 venv 不在仓库内（spawn bind/import 面外）")
     sess = await _create(client, title="SSE测试", profile="researcher")
     sid = sess["id"]
     # skills symlink 挂载（researcher → deep-research/doc-export）
@@ -234,6 +244,11 @@ async def test_export_html_docx(client, ws_root):
 
 
 async def test_profiles_and_skills_api(client):
+    # 断言对象含本机 legacy skills 资产（wechat-send/file-parse 等
+    # 不随开源仓分发）——资产缺席时跳过（根治=测试自造素材，见 ROADMAP）
+    from pathlib import Path as _P
+    if not (_P.home() / ".loadn-data" / "skills").exists():
+        pytest.skip("依赖本机 legacy skills 资产（开源环境不可满足）")
     resp = await client.get("/api/profiles")
     names = {p["name"] for p in resp.json()["profiles"]}
     assert {"researcher", "coder", "assistant"} <= names

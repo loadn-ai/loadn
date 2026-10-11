@@ -234,6 +234,11 @@ async def test_fix_detection_with_tool_results(tmp_path):
 async def test_fix_skill_dual_write_to_library(client):
     """复查修#5 对赌：确认后双写——会话工作区（本会话立即生效）+ 平台
     技能库（跨会话持久，管理面可见）。"""
+    # 断言对象含本机 legacy skills 资产（wechat-send/file-parse 等
+    # 不随开源仓分发）——资产缺席时跳过（根治=测试自造素材，见 ROADMAP）
+    from pathlib import Path as _P
+    if not (_P.home() / ".loadn-data" / "skills").exists():
+        pytest.skip("依赖本机 legacy skills 资产（开源环境不可满足）")
     from loadn_webui import skills as platform_skills
     from loadn_webui.config import PATHS
     r = await client.post("/api/sessions", json={"title": "双写"})
