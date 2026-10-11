@@ -265,7 +265,10 @@ async def test_r3_salvage_recovers_unconsumed_steers(client, ws_root,
     with db_mod.conn() as c:
         log_out = db_mod.get_turn(c, tid)["log_out"]
     with open(log_out, "a", encoding="utf-8") as f:
-        f.write(json.dumps({"type": "steer", "text": "已注入的"}) + "\n")
+        # 前置空行保行对齐：fake 引擎正在写同一文件，其尾行未带换行时
+        # 追加行会黏连成一条非法 JSON → salvage 判「未注入」误重投
+        # （CI 慢 I/O 实测触发；空行被两侧解析器跳过）
+        f.write("\n" + json.dumps({"type": "steer", "text": "已注入的"}) + "\n")
     sp = ws_mod.ws_of(sid) / f".steer.{sid}.jsonl"
     sp.write_text(
         json.dumps({"ts": 1, "text": "已注入的"}) + "\n"

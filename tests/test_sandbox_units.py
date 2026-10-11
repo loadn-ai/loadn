@@ -66,8 +66,13 @@ def test_wrap_engine_loadn_routes(monkeypatch, tmp_path):
     assert called["sid"] == "aaaa-bbbb"            # 档案 id 取 argv session-id
 
 
-def test_wrap_generic_full_argv(tmp_path):
-    """真实 _wrap_generic：binds/try-ro 缺失跳过/env 接尾/cmd 接尾。"""
+def test_wrap_generic_full_argv(tmp_path, monkeypatch):
+    """真实 _wrap_generic：binds/try-ro 缺失跳过/env 接尾/cmd 接尾。
+
+    argv 组装不执行 bwrap——which 打桩即可在无 bwrap 环境（CI）真跑，
+    不必 skipif 丢覆盖（_wrap_generic 内部自查 which，与全局探测无关）。
+    """
+    monkeypatch.setattr(sandbox.shutil, "which", lambda _: "/usr/bin/bwrap")
     real = tmp_path / "must-exist"
     real.mkdir()
     wrapped = sandbox._wrap_generic(

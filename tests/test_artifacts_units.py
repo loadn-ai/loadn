@@ -61,8 +61,20 @@ async def test_ensure_summaries_backfill_and_idempotent(aw, monkeypatch):
 
     async def fake_chat(system, user, max_tokens=64):
         calls.append(user)
-        return '[{"i":0,"t":"因子回测方法","s":"描述回测协议与样本区间"},' \
-               '{"i":1,"t":"数据集","s":"数值数据文件"}]'
+        # 批次顺序 = ORDER BY mtime DESC——同 ns 平局（本机 tmpfs）与真实
+        # ns 序（CI ext4）依平台而异：按实际送入的文件序映射标题，期望与
+        # 排序解耦（CI 实测 alpha/beta 序翻转致 i 错位、标题互串）
+        import json as _json
+        import re as _re
+        by_name = {"alpha.md": ("因子回测方法", "描述回测协议与样本区间"),
+                   "beta.json": ("数据集", "数值数据文件")}
+        out = []
+        for line in user.splitlines():
+            m = _re.match(r"\[(\d+)\] 文件: (\S+)", line)
+            if m:
+                t, s = by_name[m.group(2).rsplit("/", 1)[-1]]
+                out.append({"i": int(m.group(1)), "t": t, "s": s})
+        return _json.dumps(out, ensure_ascii=False)
 
     from loadn_webui.integrations import titlegen
     monkeypatch.setattr(titlegen, "_chat", fake_chat)

@@ -219,6 +219,9 @@ def test_wrap_engine_session_tier_override(monkeypatch, tmp_path):
     monkeypatch.setattr(Path, "home", staticmethod(lambda: fake_home))
     monkeypatch.setattr(CONFIG.security, "sandbox", "bwrap")
     monkeypatch.setattr(sb, "bwrap_available", lambda: True)
+    # _wrap_generic 内部自查 which("bwrap")（不走 bwrap_available 探测）——
+    # CI 无 bwrap 二进制时同样打桩，argv 组装照真跑（否则 direct-fallback 假败）
+    monkeypatch.setattr(sb.shutil, "which", lambda _: "/usr/bin/bwrap")
     monkeypatch.setattr(sb, "resolve_tier", lambda req=None:
                         ("off", "") if req == "off" else ("bwrap", ""))
     xbin = str(node_tree / "x")
