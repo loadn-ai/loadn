@@ -1,0 +1,13 @@
+# gitleaks 白名单——下列指纹全部是 tests/ fixture 的自造假值
+# （dummy api_key/token/sms_token，generic-api-key 宽规则误报）。
+# 行内注释不被解析，故注释只放头部；真实泄漏永不入此清单。
+
+9dbad04958adda0c52f00eebae2858a706a4545b:tests/test_auth_cli.py:generic-api-key:46
+9dbad04958adda0c52f00eebae2858a706a4545b:tests/test_auth_cli.py:generic-api-key:71
+9dbad04958adda0c52f00eebae2858a706a4545b:tests/test_memory.py:generic-api-key:66
+9dbad04958adda0c52f00eebae2858a706a4545b:tests/test_resources.py:generic-api-key:86
+a39531d022241cdb85430318cc5e236bbabbab95:tests/test_auth_cli.py:generic-api-key:46
+a39531d022241cdb85430318cc5e236bbabbab95:tests/test_auth_cli.py:generic-api-key:71
+dca1255ed146a6a3a271e0cddd372d8343040351:tests/test_memory.py:generic-api-key:63
+e131c11d025415535ec9771db55b3da7d8491108:tests/test_resources.py:generic-api-key:72
+e93902bc9d27ec3207aab6e545a93fdc7247a50a:tests/test_resources.py:generic-api-key:71

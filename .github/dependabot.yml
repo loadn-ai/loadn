@@ -1,0 +1,20 @@
+# Dependabot：依赖与 GitHub Actions 版本系统化更新（周更 PR，人工审后合）
+# ——action 大版本升级（如 checkout node24 迁移）交给它提 PR 验证，
+# 不手工盲升；pip 依赖锁定下限版本的安全补丁同渠道跟进。
+version: 2
+updates:
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: weekly
+    commit-message:
+      prefix: "ci(deps)"
+    groups:
+      actions-minor:
+        update-types: [minor, patch]   # minor/patch 成组；major 单独 PR 评审
+  - package-ecosystem: pip
+    directory: /
+    schedule:
+      interval: weekly
+    commit-message:
+      prefix: "build(deps)"

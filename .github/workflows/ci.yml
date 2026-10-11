@@ -68,7 +68,9 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: ${{ matrix.python-version }}
-      - run: pip install -e ".[dev]"
+      # tests/ 单目录混引擎+平台用例（yaml/fastapi 依赖遍布全量收集）——
+      # dev-only 安装会 64 个收集错误（exit 2）；矩阵装全 extras 跑全量
+      - run: pip install -e ".[webui,dev]"
       - run: pytest -q
         env:
           LOADN_PROVIDER: fake
@@ -111,10 +113,14 @@ jobs:
     steps:
       - uses: actions/checkout@v4
         with:
-          fetch-depth: 0
-      - uses: gitleaks/gitleaks-action@v2
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          fetch-depth: 0      # gitleaks 扫全历史
+      # 直跑官方二进制而非 gitleaks-action@v2：v2 强制 GITLEAKS_LICENSE
+      # secret（public repo 也要注册），缺失即红——CI #5 起 19 连红的根因
+      # 之一。二进制 pin 到 release tag，供应链可审计。
+      - name: gitleaks 全历史扫描
+        run: |
+          curl -sSfL https://github.com/gitleaks/gitleaks/releases/download/v8.30.1/gitleaks_8.30.1_linux_x64.tar.gz | tar xz gitleaks
+          ./gitleaks detect --source . --redact -v
 
   webui:
     # 平台全量（loadn_webui）：webui extras + 同 venv 引擎（契约对赌需要

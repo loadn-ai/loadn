@@ -9,9 +9,12 @@ import asyncio
 
 import pytest
 
-from loadn.tui import result_excerpt, tool_line, usage_line
-
+# 注意顺序：importorskip 必须先于 loadn.tui（后者顶层 import textual）。
+# 颠倒会让缺席环境收集期直接 ModuleNotFoundError（pytest exit 2），
+# skip 守卫永远轮不到——CI 干净环境实证过这一失败形态。
 textual = pytest.importorskip("textual")  # noqa: F841 —— extras 缺席整组跳过
+
+from loadn.tui import result_excerpt, tool_line, usage_line
 
 
 # ---------------- 渲染助手（含否定/边界） ----------------
