@@ -58,7 +58,7 @@ jobs:
 
   test:
     runs-on: ubuntu-latest
-    timeout-minutes: 20
+    timeout-minutes: 30   # 名义全量≈5.5min；3.12 曾两轮 20min 超时（挂点待 pytest-timeout 曝名）
     strategy:
       fail-fast: false
       matrix:
@@ -70,11 +70,11 @@ jobs:
           python-version: ${{ matrix.python-version }}
       # tests/ 单目录混引擎+平台用例（yaml/fastapi 依赖遍布全量收集）——
       # dev-only 安装会 64 个收集错误（exit 2）；矩阵装全 extras 跑全量
-      - run: pip install -e ".[webui,dev]"
+      - run: pip install -e ".[webui,dev]" pytest-timeout
       - name: pytest（tee 日志供失败上抛）
         run: |
           set -o pipefail
-          pytest -q 2>&1 | tee pytest.log
+          pytest -q --timeout=300 2>&1 | tee pytest.log
         env:
           LOADN_PROVIDER: fake
       # 失败清单上抛 annotations：公开仓 annotations 匿名 API 可读——
