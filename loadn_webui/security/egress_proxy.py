@@ -269,7 +269,15 @@ class EgressProxy:
                     *self._session_servers.values()):
             if srv:
                 srv.close()
-                await srv.wait_closed()
+                # 3.12+ wait_closed 语义变更（gh-104344）：等全部 handler 退出
+                # 才返回。隧道 _pipe 是「双向 EOF 才收尾」语义（防截断 TLS
+                # 长流），活跃隧道下 handler 不退 → stop 永挂（3.10/3.11
+                # 立即返回故不显现）。停机不该被残留隧道挂死：2s 优雅上限
+                # 后放行，遗留任务随 loop 关闭收场。
+                try:
+                    await asyncio.wait_for(srv.wait_closed(), timeout=2)
+                except (asyncio.TimeoutError, TimeoutError):
+                    pass
 
     async def _handle(self, reader: asyncio.StreamReader,
                       writer: asyncio.StreamWriter,

@@ -83,7 +83,8 @@ async def test_connect_tunnel_allow_and_deny(proxy, monkeypatch):
     finally:
         await proxy.stop()
         server.close()
-        await server.wait_closed()
+        # 不 wait_closed：3.12+ 语义等全部 handler 退出，隧道故意保持到
+        # 双向 EOF（见 _pipe），无界等价挂死（stop 同因已加 2s 上限）
 
 
 async def test_connect_tunnel_unknown_host_502(proxy):
