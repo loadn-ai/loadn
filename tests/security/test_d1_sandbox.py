@@ -30,6 +30,7 @@ pytestmark = pytest.mark.skipif(not sandbox.bwrap_available(),
 # venv 不在仓库内（CI runner 的临时 venv）时沙箱内 import 必败——环境
 # 前提不满足，skip（根治=矩阵显式解析 -e 包树，见 ROADMAP）。
 import shutil as _shutil
+
 _engine_bin = (_shutil.which("loadn")
                or str(Path(sys.executable).parent / "loadn"))
 _REAL_TURN_OK = (Path(_engine_bin).resolve().parent.parent.parent

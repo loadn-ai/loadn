@@ -67,7 +67,8 @@ async def test_resume_second_message(client, fake_calls):
 async def test_sse_event_stream(client, ws_root):
     # spawn 引擎链路假设 venv 在仓库内（bind/import 面）——venv 在外
     # （CI runner 临时 venv）时引擎 turn 必败（同 d1 real_turn 守卫）
-    import shutil as _sh, sys as _sys
+    import shutil as _sh
+    import sys as _sys
     from pathlib import Path as _P
     _bin = _sh.which("loadn") or str(_P(_sys.executable).parent / "loadn")
     if _P(_bin).resolve().parent.parent.parent != \
