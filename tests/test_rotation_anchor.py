@@ -299,7 +299,11 @@ async def test_r3_salvage_recovers_unconsumed_steers(client, ws_root,
     assert "运行中插话" in requeued["content"]
     dup = [m for m in (await client.get(f"/api/sessions/{sid}")).json()["messages"]
            if m["role"] == "user" and "已注入的" in m["content"]]
-    assert not dup, "已注入的插话不得重投"
+    # 失败时自曝证据（CI 专属时序，本地不可复现）：回执是否还在输出日志里
+    # =「文件层丢失」vs「重放未消费」二分；dup 内容定位消息来源
+    _receipt_kept = "已注入的" in Path(log_out).read_text(encoding="utf-8")
+    assert not dup, (f"已注入的插话不得重投 receipt_in_log={_receipt_kept} "
+                     f"dup={[m['content'][:60] for m in dup]}")
     assert not sp.exists(), "回队后 steer 文件须清空"
 
 

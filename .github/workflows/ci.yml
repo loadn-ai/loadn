@@ -83,7 +83,14 @@ jobs:
         if: failure()
         run: |
           echo "::error::summary: $(grep -E '[0-9]+ (passed|failed)' pytest.log | tail -1 || echo no-summary)"
-          grep -E '^(FAILED|ERROR)' pytest.log | head -10 | while IFS= read -r l; do
+          grep -E '^(FAILED|ERROR)' pytest.log | head -4 | while IFS= read -r l; do
+            echo "::error::${l:0:240}"
+          done || true
+          # 断言消息自曝证据（如 r3 的 receipt_in_log=...）+ 挂点栈帧——
+          # FAILURES 段关键行直读，免登录定位
+          sed -n '/=== FAILURES ===/,$p' pytest.log 2>/dev/null \
+            | grep -E 'AssertionError|RuntimeError|receipt_in_log|Timeout' \
+            | head -5 | while IFS= read -r l; do
             echo "::error::${l:0:240}"
           done || true
 

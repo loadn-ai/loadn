@@ -16,26 +16,74 @@ def proxy(monkeypatch):
     return egress_proxy.EgressProxy(port=0)
 
 
-async def test_connect_tunnel_allow_and_deny(proxy):
-    """CONNECT：白名单域直通成隧道；非白名单 403。"""
+async def test_connect_tunnel_allow_and_deny(proxy, monkeypatch):
+    """CONNECT：白名单域直通成隧道；非白名单 403。
+
+    全离线形态（run 38159802912 教训：真连 open.bigmodel.cn 在 CI 3.12
+    挂死 >300s 被 pytest-timeout 击杀——外部端点不可控）。本测试靶心是
+    「门判定 + 隧道管道」语义：白名单/重绑定门打桩，上游用本地回显
+    服务替代真端点（TLS 握手对管道语义无增量，裸 TCP 双向透传即验证）。
+    """
+    from loadn_webui.security import net_policy
+
+    async def echo(reader, writer):
+        try:
+            while True:
+                ln = await reader.readline()
+                if not ln:
+                    break
+                writer.write(ln)
+                await writer.drain()
+        finally:
+            writer.close()
+
+    server = await asyncio.start_server(echo, "127.0.0.1", 0)
+    up_port = server.sockets[0].getsockname()[1]
+    monkeypatch.setattr(egress_proxy, "_allowed",
+                        lambda h: (h or "").lower() == "allow.test")
+    monkeypatch.setattr(net_policy, "rebind_check",
+                        lambda host, **kw: (True, ""))
+
+    async def _fake_open(host, port, **kw):
+        return await asyncio.open_connection("127.0.0.1", up_port)
+
+    class _AioShim:
+        """仅 egress_proxy 模块内的 open_connection 指向本地回显——
+        不动全局 asyncio（测试自身的连接不受劫持）。"""
+        def __getattr__(self, k):
+            return getattr(asyncio, k)
+
+        @staticmethod
+        async def open_connection(host, port, **kw):
+            return await _fake_open(host, port, **kw)
+
+    monkeypatch.setattr(egress_proxy, "asyncio", _AioShim())
     port = await proxy.start()
     try:
-        # 非白名单 → 403
-        blocked = False
-        try:
-            async with httpx.AsyncClient(
-                    proxy=f"http://127.0.0.1:{port}", timeout=10) as c:
-                await c.get("https://denied.example.org/")
-        except (httpx.ProxyError, httpx.ConnectError):
-            blocked = True
-        assert blocked
-        # 白名单（open.bigmodel.cn）→ TLS 直通隧道（真实端点）
-        r = await httpx.AsyncClient(
-            proxy=f"http://127.0.0.1:{port}", timeout=20).get(
-            "https://open.bigmodel.cn/")
-        assert r.status_code in (200, 403, 404)
+        # 非白名单 → 403（裸 socket 直说，不经 httpx）
+        r, w = await asyncio.open_connection("127.0.0.1", port)
+        w.write(b"CONNECT denied.example.org:443 HTTP/1.1\r\nHost: "
+                b"denied.example.org:443\r\n\r\n")
+        await w.drain()
+        resp = await r.readline()
+        w.close()
+        assert resp.startswith(b"HTTP/1.1 403")
+        # 白名单 → 200 隧道建立 + 双向透传（回显自证）
+        r2, w2 = await asyncio.open_connection("127.0.0.1", port)
+        w2.write(b"CONNECT allow.test:443 HTTP/1.1\r\nHost: "
+                 b"allow.test:443\r\n\r\n")
+        await w2.drain()
+        resp2 = await r2.readline()
+        assert resp2.startswith(b"HTTP/1.1 200")
+        await r2.readexactly(2)            # \r\n 收尾
+        w2.write(b"ping-through-tunnel\n")
+        await w2.drain()
+        assert await r2.readline() == b"ping-through-tunnel\n"
+        w2.close()
     finally:
         await proxy.stop()
+        server.close()
+        await server.wait_closed()
 
 
 async def test_connect_tunnel_unknown_host_502(proxy):
