@@ -1,9 +1,10 @@
 """数字员工（DW）：组织架构（部门/正式员工）+ 临时工池。
 
-正式员工=一份 agent 定义（tools 白名单/model/persona），DW-2 起热注入
-SubagentManager.types（对位 .claude/agents 的 extra_types 机制）。
-临时工按召集要求生成（LLM 优先，本地姓名库兜底），供引擎侧 _pick_name
-池优先取用——替代固定 AGENT_NAME_POOL 序列。
+正式员工=一份 agent 定义（tools 白名单/model/persona）：CRUD 同步落
+$LOADN_HOME/agents/<名>.md，引擎侧 load_agent_defs 天然加载——
+Task 工具 subagent_type=员工名 即点名派发（零新增参数面）。
+临时工按召集要求生成（LLM 优先，本地姓名库兜底），落 temp_pool.json
+供引擎侧 _pick_name 池优先取用——替代固定 AGENT_NAME_POOL 序列。
 """
 from __future__ import annotations
 
@@ -11,6 +12,7 @@ import json
 import random
 import re
 import sqlite3
+from pathlib import Path
 
 from . import db as db_mod
 from .util import get_logger, iso
@@ -189,6 +191,7 @@ async def recruit(n: int, brief: str) -> list[dict]:
         rows = [db_mod.to_dict(r) for r in c.execute(
             f"SELECT * FROM temp_pool WHERE id IN ({','.join('?'*len(ids))})",
             ids)]
+        _write_pool_file(c)                  # 引擎侧 _pick_name 即时可见
     for w, r in zip(workers, rows):
         w["id"] = r["id"]
     return workers
@@ -252,6 +255,9 @@ def init_org(c: sqlite3.Connection) -> int:
             " VALUES (?,?,?,?,?,?,?,?,?)",
             (dept_ids[dept], name, title, mbti, traits, persona,
              _EMP_COLORS[i % len(_EMP_COLORS)], now, now))
+    # 种子同步落 agent def（引擎侧 Task 点名即用）
+    for eid in (r["id"] for r in c.execute("SELECT id FROM org_employees")):
+        sync_agent_def(c, eid)
     return len(_SEED_EMPLOYEES)
 
 
@@ -287,14 +293,17 @@ def upsert_employee(c: sqlite3.Connection, body: dict,
                     (emp_id,)).fetchone()
     if row is None:
         raise ValueError(f"员工不存在: {emp_id}")
+    sync_agent_def(c, emp_id)
     return db_mod.to_dict(row)
 
 
 def delete_employee(c: sqlite3.Connection, emp_id: int) -> None:
-    if c.execute("SELECT 1 FROM org_employees WHERE id=?",
-                 (emp_id,)).fetchone() is None:
+    row = c.execute("SELECT name FROM org_employees WHERE id=?",
+                    (emp_id,)).fetchone()
+    if row is None:
         raise ValueError(f"员工不存在: {emp_id}")
     c.execute("DELETE FROM org_employees WHERE id=?", (emp_id,))
+    remove_agent_def(row["name"])          # agent def 同步摘除
 
 
 def upsert_department(c: sqlite3.Connection, body: dict,
@@ -337,3 +346,95 @@ def retire_temp(c: sqlite3.Connection, tid: int) -> None:
                  (tid,)).fetchone() is None:
         raise ValueError(f"临时工不存在: {tid}")
     c.execute("UPDATE temp_pool SET state='retired' WHERE id=?", (tid,))
+    _write_pool_file(c)
+
+
+# ------------------------------------------------------- agent def 同步（引擎侧）
+# 员工 CRUD 同步落 $LOADN_HOME/agents/<名>.md：引擎 load_agent_defs 天然
+# 加载（build.py 装配 extra_types），Task subagent_type=员工名 即点名。
+
+def _loadn_home() -> Path:
+    import os
+    if os.environ.get("LOADN_HOME"):
+        return Path(os.environ["LOADN_HOME"])
+    if os.environ.get("HAHANESS_HOME"):          # 旧名兼容（与 loadn 同源）
+        return Path(os.environ["HAHANESS_HOME"])
+    return Path.home() / ".loadn"
+
+
+def _def_filename(name: str) -> str:
+    """员工名 → agent def 文件名（路径非法字符替换；中文原样保留）。"""
+    return re.sub(r"[/\\\s:]+", "_", name)[:64] + ".md"
+
+
+def persona_system_add(emp: dict, dept_name: str) -> str:
+    """persona 模板拼装（引擎 system_add 正文，设计 §4.2）。"""
+    head = f"你是{emp['name']}，{dept_name or '未分配'}{emp.get('title') or '员工'}。"
+    if emp.get("mbti"):
+        head += f"性格：{emp['mbti']}"
+        if emp.get("traits"):
+            head += f"（{emp['traits']}）。"
+        else:
+            head += "。"
+    parts = [head]
+    if emp.get("persona"):
+        parts.append(str(emp["persona"]))
+    parts.append("工作要求：按你的性格与人设行事——说话风格、关注点、决策"
+                 "习惯都要符合；结论要专业、可执行。")
+    return "\n\n".join(parts)
+
+
+def sync_agent_def(c: sqlite3.Connection, emp_id: int) -> None:
+    """员工行 → agent def 文件（disabled=摘除文件不注入）。"""
+    emp = c.execute("SELECT * FROM org_employees WHERE id=?",
+                    (emp_id,)).fetchone()
+    if emp is None:
+        return
+    emp = db_mod.to_dict(emp)
+    base = _loadn_home() / "agents"
+    path = base / _def_filename(emp["name"])
+    if emp["status"] != "active":
+        path.unlink(missing_ok=True)
+        return
+    dept = ""
+    if emp["dept_id"]:
+        row = c.execute("SELECT name FROM org_departments WHERE id=?",
+                        (emp["dept_id"],)).fetchone()
+        dept = row["name"] if row else ""
+    fm = [f"name: {emp['name']}"]
+    skills = (emp.get("title") or "员工")
+    if dept:
+        skills = f"{dept}·{skills}"
+    if emp.get("mbti"):
+        skills += f"（{emp['mbti']}）"
+    fm.append(f"description: {skills}——数字员工（Task 指定 subagent_type="
+              f"\"{emp['name']}\" 点名派发）")
+    if emp.get("tools"):
+        try:
+            tools = json.loads(emp["tools"])
+            if isinstance(tools, list) and tools:
+                fm.append("tools: [" + ", ".join(str(t) for t in tools) + "]")
+        except (ValueError, TypeError):
+            pass
+    if emp.get("model"):
+        fm.append(f"model: {emp['model']}")
+    body = persona_system_add(emp, dept)
+    base.mkdir(parents=True, exist_ok=True)
+    path.write_text("---\n" + "\n".join(fm) + "\n---\n\n" + body + "\n",
+                    encoding="utf-8")
+
+
+def remove_agent_def(name: str) -> None:
+    (_loadn_home() / "agents" / _def_filename(name)).unlink(missing_ok=True)
+
+
+def _write_pool_file(c: sqlite3.Connection) -> None:
+    """idle 池全量落 temp_pool.json（引擎 _pick_name 只读，单写者零竞态）。"""
+    names = [r["name"] for r in c.execute(
+        "SELECT name FROM temp_pool WHERE state='idle' ORDER BY id")]
+    try:
+        _loadn_home().mkdir(parents=True, exist_ok=True)
+        (_loadn_home() / "temp_pool.json").write_text(
+            json.dumps({"names": names}, ensure_ascii=False), encoding="utf-8")
+    except OSError as e:          # 引擎盘不可写不阻断业务（池文件可重建）
+        log.warning("temp_pool.json 写入失败：%s", e)

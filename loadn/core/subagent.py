@@ -11,9 +11,11 @@ planner（core/plan.py）仍只产内建三类型——自定义类型不经并�
 from __future__ import annotations
 
 import asyncio
+import random
 import time
 from pathlib import Path
 
+from loadn import loadn_home
 from loadn.constants import AGENT_NAME_POOL, SUBAGENT_CONCURRENCY, TASK_OUTPUT_MAX_CHARS
 from loadn.core.loop import AgentCore, LoopSettings
 from loadn.tools.base import Tool, ToolContext, ToolError
@@ -75,11 +77,34 @@ class SubagentManager:
         self._used_names: set[str] = set()
 
     def _pick_name(self) -> str:
-        """确定性取人名（AGENT_NAME_POOL 按序轮转；同回合撞名追加「·N」）。"""
-        base = AGENT_NAME_POOL[(self._n - 1) % len(AGENT_NAME_POOL)]
+        """子代理取名：临时工池优先（temp_pool.json 随机取），池空回落
+        AGENT_NAME_POOL 确定性轮转；同回合撞名追加「·N」。
+
+        池文件由 webui recruit/retire 全量重写（单写者），引擎侧只读零竞态。"""
+        base = None
+        pool = self._temp_pool_names()
+        if pool:
+            for cand in random.sample(pool, len(pool)):
+                if cand not in self._used_names:
+                    base = cand
+                    break
+        if base is None:
+            base = AGENT_NAME_POOL[(self._n - 1) % len(AGENT_NAME_POOL)]
         name = base if base not in self._used_names else f"{base}·{self._n}"
         self._used_names.add(name)
         return name
+
+    def _temp_pool_names(self) -> list[str]:
+        """读 $LOADN_HOME/temp_pool.json（缺文件/坏 JSON=空池，静默回落）。"""
+        import json as _json
+        try:
+            raw = (self.home or loadn_home()).joinpath(
+                "temp_pool.json").read_text(encoding="utf-8")
+            names = _json.loads(raw).get("names")
+            return [str(n)[:32] for n in names if str(n).strip()] \
+                if isinstance(names, list) else []
+        except (OSError, ValueError, AttributeError):
+            return []
 
     async def task(self, prompt: str, subagent_type: str = "general",
                    description: str = "", emit=None) -> str:
