@@ -48,6 +48,7 @@ TYPES = (
     "consolidate",                # 经验固化：技能建议接受/拒绝/教训转正（P12）
     "anomaly",
     "system",                     # 系统运维动作：管理面备份触发/验证（AC-4.1）
+    "org",                        # 数字员工：组织架构 init/编辑/召集（DW-1）
 )
 
 GENESIS = "0" * 64

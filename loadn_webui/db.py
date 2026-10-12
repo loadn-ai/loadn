@@ -29,7 +29,8 @@ from .config import PATHS
 # rev11：projects.repo（项目绑定代码仓——任务目录落 <repo>/tasks/，宪法链带仓规则）
 # rev12：ping_history（AC-5.10f——资源探测历史入库，可回看趋势）
 # rev13：sessions.size_bytes/size_checked_at（BD-3——磁盘占用落库，排序可下推 SQL）
-SCHEMA_REV = 13
+# rev14：org_departments/org_employees/temp_pool（DW——数字员工：组织架构+临时工池）
+SCHEMA_REV = 14
 from .util import iso
 
 SCHEMA = """
@@ -260,6 +261,39 @@ CREATE TABLE IF NOT EXISTS ping_history (      -- AC-5.10f（P2-6）：资源探
   ts TEXT                          -- iso()，字典序即时序
 );
 CREATE INDEX IF NOT EXISTS idx_ping_target_ts ON ping_history(target, ts);
+
+CREATE TABLE IF NOT EXISTS org_departments (     -- DW-1：数字员工部门
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  name TEXT UNIQUE NOT NULL,          -- 部门名（法务部）
+  icon TEXT DEFAULT 'briefcase',      -- feather 图标名（前端直显）
+  sort INTEGER DEFAULT 0,             -- 树排序
+  created_at TEXT
+);
+CREATE TABLE IF NOT EXISTS org_employees (        -- DW-1：正式员工=一份 agent 定义
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  dept_id INTEGER REFERENCES org_departments(id) ON DELETE SET NULL,
+  name TEXT UNIQUE NOT NULL,          -- 员工名（Task employee 参数按名匹配）
+  title TEXT DEFAULT '',              -- 头衔（法务顾问）
+  mbti TEXT DEFAULT '',               -- MBTI 16 型（ESTJ…）
+  traits TEXT DEFAULT '',             -- 性格标签（逗号串）
+  persona TEXT DEFAULT '',            -- 人设正文（进 subagent system_add）
+  tools TEXT,                         -- 工具白名单 JSON 数组；NULL=通用面
+  model TEXT,                         -- 可选独立模型；NULL=随主
+  status TEXT CHECK(status IN ('active','disabled')) DEFAULT 'active',
+  color TEXT DEFAULT '',              -- 归属色（Task 卡/思考卡色条）
+  created_at TEXT, updated_at TEXT
+);
+CREATE TABLE IF NOT EXISTS temp_pool (           -- DW-1：临时工池（recruit 生成）
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  name TEXT NOT NULL,                -- 生成的名字
+  mbti TEXT DEFAULT '',
+  traits TEXT DEFAULT '',
+  brief TEXT DEFAULT '',             -- 召集时的人物要求
+  state TEXT CHECK(state IN ('idle','busy','retired')) DEFAULT 'idle',
+  turn_id TEXT,                      -- 出勤记录（最近一次派发）
+  created_at TEXT, used_at TEXT
+);
+CREATE INDEX IF NOT EXISTS idx_temp_pool_state ON temp_pool(state, id);
 """
 
 ACTIVE_TURN_STATUSES = ("queued", "running")
