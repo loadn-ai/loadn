@@ -321,6 +321,8 @@ button:focus-visible, .tab:focus-visible, .chip:focus-visible {
 .think-body { white-space: pre-wrap; word-break: break-word; color: var(--text-dim); line-height: 1.65;
   max-height: 320px; overflow-y: auto; border-top: 1px solid var(--border); margin-top: 2px;
   padding: 10px 14px 12px; }
+/* 子代理思考聚合块（低频转发）：左侧归属色条与工具卡 sub 形态呼应 */
+.think-card.sub { border-left: 2px solid var(--accent2); }
 
 /* 工具卡（可展开详情） */
 .tool-card { background: var(--bg2); border: 1px solid var(--border); border-radius: var(--radius);

@@ -71,6 +71,15 @@ class StreamJsonEmitter:
             self._emit({"type": "stream_event", "event": event["event"],
                         "session_id": self.session_id,
                         "parent_tool_use_id": None})
+        elif t == "subagent_thinking":
+            # 子代理思考低频聚合块（core/subagent.py fwd_emit）——旧宿主不识
+            # 此类型，_consume 无匹配分支即跳过，零影响；新宿主渲染
+            # 「子N 思考中… 已 N 字」折叠卡（Agent 视角下展开全文）
+            self._emit({"type": "subagent_thinking",
+                        "session_id": self.session_id,
+                        "n": event.get("n"),
+                        "text": event.get("text") or "",
+                        "cum": event.get("cum") or 0})
         elif t == "steer":
             # 用户插话被注入（消费回执）：宿主据此把该条从待回队列摘除
             self._emit({"type": "steer", "session_id": self.session_id,

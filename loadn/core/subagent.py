@@ -11,11 +11,21 @@ planner（core/plan.py）仍只产内建三类型——自定义类型不经并�
 from __future__ import annotations
 
 import asyncio
+import time
 from pathlib import Path
 
 from loadn.constants import AGENT_NAME_POOL, SUBAGENT_CONCURRENCY, TASK_OUTPUT_MAX_CHARS
 from loadn.core.loop import AgentCore, LoopSettings
 from loadn.tools.base import Tool, ToolContext, ToolError
+
+# 子代理思考低频转发（2026-10-12）：thinking 不再全吞——聚合成块、
+# 时间/字数双阈值节流外发，收尾兜底冲刷。主控端看到的是「子N 思考中…
+# 已 N 字」折叠卡（每块 ≤SUB_THINK_BLOCK_CAP 字，cum 为该子代理累计），
+# 完整思考在 Agent 视角（agentFilter）下按归属展开——既保留过程感，
+# 又不重蹈「多子代理交错糊成一团」的覆辙。
+SUB_THINK_FLUSH_S = 20.0        # 距上次冲刷 ≥20s
+SUB_THINK_FLUSH_CHARS = 4000    # 或缓冲累计 ≥4000 字
+SUB_THINK_BLOCK_CAP = 8000      # 单块截断上限（cum 仍按全量计）
 
 SUBAGENT_PROMPT = """你是被派来独立完成一项子任务的 agent。纪律：
 - 你的最终回复就是给派发方的全部交付物——只返回最终结果原文（结论/清单/
@@ -119,25 +129,56 @@ class SubagentManager:
 
             # 归属转发：把子代理的工具活动（tool_use/tool_result）打上
             # 「子N·」标签转发到主 emit——用户能看到每个子任务在干什么、
-            # 干到哪一步（thinking/text 噪声不转——多子代理交错会糊成一团）。
+            # 干到哪一步。text 仍是噪声不转（final text 已由结果卡回传）；
+            # thinking 改为低频聚合转发（SUB_THINK_* 阈值，见上）。
             # 注意形状：主 emit 是 StreamJsonEmitter，assistant 分支要求
             # message.content 是带 to_dict() 的块对象（ToolUseBlock）
             fwd_emit = None
             if emit is not None:
                 from loadn.types import Message as _Msg
+                from loadn.types import ThinkingBlock as _TB
                 from loadn.types import ToolUseBlock as _TUB
                 tag = f"子{self._n}"
+                sub_n = self._n
+                think_buf: list[str] = []   # 聚合缓冲
+                think_len = 0               # 缓冲字数（避免反复 join 计长）
+                think_total = 0             # 累计字数（「已 N 字」显示）
+                last_flush = time.monotonic()
+
+                async def _flush_think() -> None:
+                    nonlocal last_flush, think_len
+                    buf = "".join(think_buf)
+                    think_buf.clear()
+                    think_len = 0
+                    if not buf:
+                        return
+                    last_flush = time.monotonic()
+                    await _fire_event(emit, {
+                        "type": "subagent_thinking", "n": sub_n,
+                        "text": buf[:SUB_THINK_BLOCK_CAP],
+                        "cum": think_total})
 
                 async def fwd_emit(ev: dict) -> None:
+                    nonlocal think_total, think_len
                     t = ev.get("type")
                     if t == "assistant":
-                        blocks = [b for b in ev["message"].content
-                                  if isinstance(b, _TUB)]
-                        if blocks:
-                            await _fire_event(emit, {"type": "assistant", "message": _Msg(
-                                role="assistant",
-                                content=[_TUB(id=b.id, name=f"{tag}·{b.name}",
-                                              input=b.input) for b in blocks])})
+                        for b in ev["message"].content:
+                            if isinstance(b, _TUB):
+                                await _fire_event(emit, {
+                                    "type": "assistant",
+                                    "message": _Msg(
+                                        role="assistant",
+                                        content=[_TUB(id=b.id,
+                                                      name=f"{tag}·{b.name}",
+                                                      input=b.input)])})
+                            elif isinstance(b, _TB):
+                                think_buf.append(b.thinking)
+                                think_len += len(b.thinking)
+                                think_total += len(b.thinking)
+                                if (think_len >= SUB_THINK_FLUSH_CHARS
+                                        or time.monotonic() - last_flush
+                                        >= SUB_THINK_FLUSH_S):
+                                    await _flush_think()
                     elif t == "tool_result":
                         await _fire_event(emit, {
                             "type": "tool_result",
@@ -146,6 +187,8 @@ class SubagentManager:
 
             summary = await core.run_turn(prompt, emit=fwd_emit,
                                           stream_events=False)
+            if fwd_emit is not None:
+                await _flush_think()   # 收尾冲刷：残留尾巴不丢
         text = summary.text or ""
         if summary.subtype != "success":
             err = f"｜{summary.error}" if summary.error else ""
@@ -248,6 +291,9 @@ class TaskTool(Tool):
         prompt = (args.get("prompt") or "").strip()
         if not prompt:
             raise ToolError("prompt 不能为空")
+        # 单发 Task 也走归属转发：loop.run_turn 每轮把 emit 塞进 ctx.extras
+        # （此前只有 plan 并行 gather 路径传 emit，单发 Task 子代理全程黑箱）
         return await self.manager.task(
             prompt, subagent_type=str(args.get("subagent_type") or "general"),
-            description=str(args.get("description") or ""))
+            description=str(args.get("description") or ""),
+            emit=(ctx.extras.get("emit") if ctx is not None else None))

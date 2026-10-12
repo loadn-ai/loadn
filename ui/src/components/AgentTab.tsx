@@ -2,9 +2,9 @@
 // （每轮计数器从头取名），该名下的所有派出实例在此按「派遣」分组呈现——
 // 每组=一张派发卡+该次的过程流水。产物按 agent_name 归并。
 import { useStore } from '../stores/sessions';
-import type { ArtifactInfo, ToolEvent, ToolItem } from '../stores/sessions';
+import type { ArtifactInfo, ThinkItem, ToolEvent, ToolItem } from '../stores/sessions';
 import { SUB_TAG_RE, type AgentInfo } from '../stores/agents';
-import { ToolCard } from './ChatStream';
+import { ThinkingCard, ToolCard } from './ChatStream';
 import { AgentArtCard, AgentAvatar, DispatchCard } from './SubtaskTab';
 
 /** 块/流水项是否属于该派出实例（新字段优先，旧数据回退 子N· 前缀） */
@@ -15,16 +15,31 @@ function belongsTo(tool: { id?: string | null; name?: string | null;
   return !!m && Number(m[1]) === a.n;
 }
 
+/** 思考块归属（子代理思考低频聚合块：agent_id/agent_n，无 name 前缀可回退） */
+function thinkBelongsTo(b: { agent_id?: string | null; agent_n?: number | null },
+                        a: AgentInfo): boolean {
+  if (b.agent_id) return b.agent_id === a.agentId;
+  return b.agent_n != null && b.agent_n === a.n;
+}
+
 interface HistTool { id: string | null; name: string; brief: string;
   input?: Record<string, unknown>; result?: string; is_error?: boolean;
   agent_id?: string | null }
 
-/** 一次派出的完整轨迹（该 (turn, agent) 的 Task 卡 + 工具流水） */
+/** 派遣组时间线条目：工具 / 思考（按 blocks 真实顺序穿插） */
+type HistEntry =
+  | { kind: 'tool'; t: HistTool }
+  | { kind: 'think'; text: string; agent_n: number | null };
+type LiveEntry =
+  | { kind: 'tool'; it: ToolItem }
+  | { kind: 'think'; it: ThinkItem };
+
+/** 一次派出的完整轨迹（该 (turn, agent) 的 Task 卡 + 工具/思考流水） */
 interface Dispatch {
   agent: AgentInfo;
   card: HistTool | null;
-  tools: HistTool[];
-  liveTools: ToolItem[];
+  flow: HistEntry[];
+  liveFlow: LiveEntry[];
 }
 
 export default function AgentTab({ name, dispatches, onOpenFile }: {
@@ -40,14 +55,26 @@ export default function AgentTab({ name, dispatches, onOpenFile }: {
 
   const groups: Dispatch[] = [];
   for (const agent of dispatches) {
-    const g: Dispatch = { agent, card: null, tools: [], liveTools: [] };
+    const g: Dispatch = { agent, card: null, flow: [], liveFlow: [] };
     for (const m of messages) {
       if (m.role !== 'assistant' || m.turn_id !== agent.turnId
           || !m.blocks_json) continue;
       let blocks: any[];
       try { blocks = JSON.parse(m.blocks_json); } catch { continue; }
       for (const b of blocks) {
-        if (!b || b.type !== 'tool') continue;
+        if (!b) continue;
+        if (b.type === 'thinking') {
+          // 子代理思考聚合块（带归属）→ 视角页思考时间线；主控思考不带
+          // agent 字段不属于任何 agent，天然排除
+          if (b.agent_id != null || b.agent_n != null) {
+            if (thinkBelongsTo(b, agent)) {
+              g.flow.push({ kind: 'think', text: String(b.text ?? ''),
+                agent_n: b.agent_n ?? null });
+            }
+          }
+          continue;
+        }
+        if (b.type !== 'tool') continue;
         const t: HistTool = { id: b.id ?? null, name: String(b.name ?? '?'),
           brief: String(b.brief ?? ''), input: b.input, result: b.result,
           is_error: b.is_error, agent_id: b.agent_id };
@@ -56,12 +83,16 @@ export default function AgentTab({ name, dispatches, onOpenFile }: {
           g.card = t;        // 该次派发的 Task 卡（含结束结果）
           continue;
         }
-        if (belongsTo(t, agent)) g.tools.push(t);
+        if (belongsTo(t, agent)) g.flow.push({ kind: 'tool', t });
       }
     }
     if (live && live.turnId === agent.turnId) {
-      g.liveTools = live.items.filter((it): it is ToolItem =>
-        it.kind === 'tool' && belongsTo(it, agent));
+      g.liveFlow = live.items.flatMap((it): LiveEntry[] => {
+        if (it.kind === 'tool' && belongsTo(it, agent)) return [{ kind: 'tool', it }];
+        if (it.kind === 'thinking' && (it as ThinkItem).agent_n != null
+            && thinkBelongsTo(it, agent)) return [{ kind: 'think', it }];
+        return [];
+      });
     }
     groups.push(g);
   }
@@ -110,12 +141,16 @@ export default function AgentTab({ name, dispatches, onOpenFile }: {
               </span>
             </div>
             {g.card && <DispatchCard tool={g.card} turnId={g.agent.turnId} />}
-            {g.liveTools.map((it, i) =>
-              <ToolCard key={`lv${i}`} tool={it} />)}
-            {g.tools.map((t, i) => (
-              <ToolCard key={`hb${i}`} tool={t as ToolEvent}
-                        done={t.result !== undefined || t.is_error !== undefined} />
-            ))}
+            {g.liveFlow.map((e, i) => e.kind === 'tool'
+              ? <ToolCard key={`lv${i}`} tool={e.it} />
+              : <ThinkingCard key={`lv${i}`} text={e.it.text} live
+                  tag={e.it.agent_n != null ? `子${e.it.agent_n}` : undefined}
+                  cum={e.it.cum} />)}
+            {g.flow.map((e, i) => e.kind === 'tool'
+              ? <ToolCard key={`hb${i}`} tool={e.t as ToolEvent}
+                  done={e.t.result !== undefined || e.t.is_error !== undefined} />
+              : <ThinkingCard key={`hb${i}`} text={e.text}
+                  tag={e.agent_n != null ? `子${e.agent_n}` : undefined} />)}
           </div>
         ))}
         {groups.length === 0 && (

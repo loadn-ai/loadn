@@ -2,7 +2,7 @@ import { memo, useEffect, useState } from 'react';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import { useStore } from '../stores/sessions';
-import type { StreamItem, ToolEvent, ToolItem } from '../stores/sessions';
+import type { StreamItem, ThinkItem, ToolEvent, ToolItem } from '../stores/sessions';
 import { api, fmtTime } from '../api/client';
 import {
   FileImage, Cloud, Tool, CheckSquare, Check, ChevronDown, ChevronRight,
@@ -76,7 +76,9 @@ export function parseBlocks(json: string | null | undefined): StreamItem[] {
   try { raw = JSON.parse(json); } catch { return []; }
   if (!Array.isArray(raw)) return [];
   return raw.map(b => b?.type === 'thinking'
-    ? { kind: 'thinking' as const, text: String(b.text ?? '') }
+    ? { kind: 'thinking' as const, text: String(b.text ?? ''),
+        agent_id: b?.agent_id ?? null, agent_name: b?.agent_name ?? null,
+        agent_n: b?.agent_n ?? null } as ThinkItem
     : b?.type === 'text'
     ? { kind: 'text' as const, text: String(b.text ?? '') }
     : {
@@ -250,7 +252,8 @@ function AssistantMsg({ text, blocks, ts, mid, hits, turnId }:
       {blocks.length > 0 && (interleaved ? (
         <div className="replay">
           {blocks.map((b, i) => {
-            if (b.kind === 'thinking') return <ThinkingCard key={i} text={b.text} />;
+            if (b.kind === 'thinking') return <ThinkingCard key={i} text={b.text}
+              tag={b.agent_n != null ? `子${b.agent_n}` : undefined} />;
             if (b.kind === 'tool') return <ToolLine key={i} b={b} done turnId={turnId ?? null} />;
             return <MdText key={i} text={b.text} />;
           })}
@@ -263,7 +266,8 @@ function AssistantMsg({ text, blocks, ts, mid, hits, turnId }:
             {open ? <ChevronDown size={13} /> : <ChevronRight size={13} />}
           </div>
           {open && blocks.map((b, i) => {
-            if (b.kind === 'thinking') return <ThinkingCard key={i} text={b.text} />;
+            if (b.kind === 'thinking') return <ThinkingCard key={i} text={b.text}
+              tag={b.agent_n != null ? `子${b.agent_n}` : undefined} />;
             if (b.kind === 'tool') return <ToolLine key={i} b={b} done turnId={turnId ?? null} />;
             return null;
           })}
@@ -321,7 +325,8 @@ function LiveTurn({ live }: { live: NonNullable<ReturnType<typeof useStore.getSt
       )}
       {shown.map((it, i) => {
         // key 用绝对索引（hidden+i）：窗口滑动时已有项 key 不变，memo 才能跳过重渲染
-        if (it.kind === 'thinking') return <ThinkingCard key={hidden + i} text={it.text} live />;
+        if (it.kind === 'thinking') return <ThinkingCard key={hidden + i} text={it.text} live
+          tag={it.agent_n != null ? `子${it.agent_n}` : undefined} cum={it.cum} />;
         if (it.kind === 'tool') return <ToolLine key={hidden + i} b={it} turnId={live.turnId} />;
         if (it.kind === 'steer') return <SteerNote key={hidden + i} text={it.text} />;
         return <MdText key={hidden + i} text={it.text} />;
@@ -376,14 +381,25 @@ function splitSubTag(name: string): { tag?: string; base: string } {
   return m ? { tag: `子${m[1]}`, base: name.slice(m[0].length) } : { base: name };
 }
 
-/** 思考卡：live 默认展开（看过程），历史默认收起（留一行预览）；memo 防整列表重渲染 */
-export const ThinkingCard = memo(function ThinkingCard({ text, live }: { text: string; live?: boolean }) {
-  const [open, setOpen] = useState(!!live);
+/** 字数人类可读：≥1000 → 「x.xk 字」 */
+function fmtChars(n: number): string {
+  return n >= 1000 ? `${(n / 1000).toFixed(1)}k 字` : `${n} 字`;
+}
+
+/** 思考卡：live 默认展开（看过程），历史默认收起（留一行预览）；memo 防整列表重渲染。
+ *  子代理聚合块（tag 非空）低频到达——live 也默认收起，收起时显示
+ *  「思考中… 已 N 字」累计行（cum），点开看该块全文（视角页有完整时间线） */
+export const ThinkingCard = memo(function ThinkingCard({ text, live, tag, cum }: {
+  text: string; live?: boolean; tag?: string; cum?: number | null }) {
+  const [open, setOpen] = useState(!!live && !tag);
   return (
-    <div className={`think-card ${open ? 'open' : ''}`}>
+    <div className={`think-card ${open ? 'open' : ''} ${tag ? 'sub' : ''}`}>
       <div className="think-head" onClick={() => setOpen(!open)}>
         <span className="think-tag"><Cloud size={12} /> 思考</span>
-        {!open && <span className="think-preview">{text.slice(0, 80).replace(/\s+/g, ' ')}</span>}
+        {tag && <span className="tool-subtag" title="子代理归属">{tag}</span>}
+        {!open && (tag && cum != null
+          ? <span className="think-preview">思考中… 已 {fmtChars(cum)}</span>
+          : <span className="think-preview">{text.slice(0, 80).replace(/\s+/g, ' ')}</span>)}
         <span className="chev">{open ? <ChevronDown size={13} /> : <ChevronRight size={13} />}</span>
       </div>
       {open && <div className="think-body">{text}</div>}

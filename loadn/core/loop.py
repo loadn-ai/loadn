@@ -363,6 +363,9 @@ class AgentCore:
                        stream_events: bool = False) -> TurnSummary:
         t0 = time.time()
         self._emit_hook = emit              # P2-3：工具区事件源（v2）
+        # TaskTool 单发子代理的转发通道（TaskTool.execute 从 extras 取）——
+        # 每轮刷新，None 也覆盖，防跨轮串旧 emit
+        self.ctx.extras["emit"] = emit
         first_user_text = user_msg         # P1-7：标题语料（首 turn）
         self._warmer_bump()               # P1-6：新 turn 即失效在途保温
         summary = TurnSummary()

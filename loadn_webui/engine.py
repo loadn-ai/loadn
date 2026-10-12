@@ -675,6 +675,29 @@ class Engine:
                         except Exception:  # noqa: BLE001 — 轨迹非关键路径
                             log.warning("agent_files 轨迹落库失败 sid=%s", sid,
                                         exc_info=True)
+        elif t == "subagent_thinking":
+            # 子代理思考低频聚合块（subagent.py fwd_emit → stream_json 透传）。
+            # 归属宿主派生（与「子N·」工具块同构）：agent_id=sub_N，人名查
+            # turn 内学习表（Task 开始卡先到的顺序保证）。blocks 带 agent
+            # 字段落库（Agent 视角回放），SSE 走既有 "thinking" 事件形状
+            # （delta=False 新建卡）+ agent_n/cum 扩展字段——旧前端忽略
+            # 扩展字段照常渲染思考卡，新前端带「子N」徽标。
+            try:
+                n = int(ev.get("n"))
+            except (TypeError, ValueError):
+                return
+            think = str(ev.get("text") or "")[:_THINK_CAP]
+            if not think.strip():
+                return
+            aid = f"sub_{n}"
+            agent: dict = {"agent_id": aid, "agent_n": n}
+            nm = at.agent_names.get(aid)
+            if nm:
+                agent["agent_name"] = nm
+            at.blocks.append({"type": "thinking", "text": think, **agent})
+            self._emit(at, sid, "thinking",
+                       {"turn_id": tid, "text": think, "delta": False,
+                        "cum": ev.get("cum"), **agent})
         elif t == "user":
             for b in (ev.get("message") or {}).get("content") or []:
                 if not (isinstance(b, dict) and b.get("type") == "tool_result"):

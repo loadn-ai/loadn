@@ -103,10 +103,17 @@ export interface ToolEvent {
   subagent_type?: string | null;
 }
 
-/** 过程流水项：思考 / 工具调用 / 文本 / 运行中插话，按真实顺序穿插渲染 */
+/** 过程流水项：思考 / 工具调用 / 文本 / 运行中插话，按真实顺序穿插渲染。
+ *  thinking 带 agent 字段 = 子代理思考低频聚合块（宿主派生归属，
+ *  cum 为该子代理累计字数——live 折叠行「思考中… 已 N 字」显示用） */
+export interface ThinkItem {
+  kind: 'thinking'; text: string;
+  agent_id?: string | null; agent_name?: string | null;
+  agent_n?: number | null; cum?: number | null;
+}
 export interface ToolItem extends ToolEvent { kind: 'tool' }
 export type StreamItem =
-  | { kind: 'thinking'; text: string }
+  | ThinkItem
   | ToolItem
   | { kind: 'text'; text: string }
   | { kind: 'steer'; text: string };
@@ -835,14 +842,17 @@ async function refreshExtras(get: () => Store, set: SetFn, sid: string) {
 /** 文本/思考条目追加：delta=true 时续写到末条同类项（流式滚屏），
  *  否则整块新起一条（回放/无流式引擎的既有语义）。 */
 function appendText(items: StreamItem[], kind: 'text' | 'thinking',
-                    text: string, delta?: boolean): StreamItem[] {
+                    text: string, delta?: boolean,
+                    attrs?: { agent_id?: string | null; agent_n?: number | null;
+                              agent_name?: string | null; cum?: number | null }): StreamItem[] {
   if (delta && items.length) {
     const last = items[items.length - 1];
-    if (last.kind === kind) {
+    // 归属一致才合并：主控 delta 不能拼到子代理聚合卡尾（反之亦然）
+    if (last.kind === kind && (last as ThinkItem).agent_n === (attrs?.agent_n ?? undefined)) {
       return [...items.slice(0, -1), { ...last, text: last.text + text }];
     }
   }
-  return [...items, { kind, text } as StreamItem];
+  return [...items, { kind, text, ...attrs } as StreamItem];
 }
 
 /** resync 冷却（module 级）：focus 与 visibilitychange 常成对触发，5s 内去重 */
@@ -948,7 +958,11 @@ function handleEvent(
       break;
     case 'thinking':
       set(s => (s.live && s.live.turnId === data.turn_id
-        ? { live: { ...s.live, items: appendText(s.live.items, 'thinking', data.text, data.delta) } } : {}));
+        ? { live: { ...s.live, items: appendText(s.live.items, 'thinking', data.text, data.delta,
+            data.agent_n != null
+              ? { agent_id: data.agent_id, agent_n: data.agent_n,
+                  agent_name: data.agent_name, cum: data.cum }
+              : undefined) } } : {}));
       break;
     case 'tool_use':
       set(s => {
