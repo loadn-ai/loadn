@@ -9,12 +9,13 @@ import CategoryIcon, { BUILTIN_ICONS } from './CategoryIcon';
 import CategoryEditor from './CategoryEditor';
 import PopupMenu from './Menu';
 import type { MenuEntry } from './Menu';
-import { Settings, Plus, Pencil, Trash, Archive, Star, Clock, Pin } from './icons';
+import { Settings, Plus, Pencil, Trash, Archive, Star, Clock, Pin, Users } from './icons';
 import { api } from '../api/client';
 import { askConfirm } from '../stores/confirm';
 
-export default function IconRail({ onAdmin, adminActive }: {
+export default function IconRail({ onAdmin, adminActive, onOrg, orgActive }: {
   onAdmin: (tab?: 'cost') => void; adminActive?: boolean;
+  onOrg?: () => void; orgActive?: boolean;
 }) {
   const activeSpace = useStore(s => s.activeSpace);
   const setActiveSpace = useStore(s => s.setActiveSpace);
@@ -93,6 +94,13 @@ export default function IconRail({ onAdmin, adminActive }: {
           onClick={() => setActiveSpace('archive')} />
       </div>
       <div className="rail-foot">
+        {onOrg && (
+          <button className={`rail-btn ${orgActive ? 'on' : ''}`} title="组织架构（数字员工）"
+                  onClick={onOrg}>
+            <Users size={16} />
+            <span className="rail-tip">组织架构（数字员工）</span>
+          </button>
+        )}
         <button className={`rail-btn ${adminActive ? 'on' : ''}`} title="管理中心"
                 onClick={() => onAdmin()}>
           <Settings size={16} />

@@ -5,6 +5,7 @@ import Sidebar from './components/Sidebar';
 import SessionView from './components/SessionView';
 import AdminPanel from './components/AdminPanel';
 import type { AdminTab } from './components/AdminPanel';
+import OrgPage from './components/OrgPage';
 import Toasts from './components/Toasts';
 import ConfirmDialog from './components/ConfirmDialog';   // BD-2：全局确认框（askConfirm 驱动）
 import TokenGate from './components/TokenGate';
@@ -30,6 +31,7 @@ export default function App() {
   const [stale, setStale] = useState(false);
   // #/cost 为旧深链兼容（等同 #/admin/cost）
   const admin = hash.startsWith('#/admin') || hash.startsWith('#/cost');
+  const org = hash.startsWith('#/org');   // DW-3：组织架构页（数字员工）
   const path = hash.split('?')[0];
   const adminTab: AdminTab | undefined =
     path.startsWith('#/admin/tasks') ? 'tasks'
@@ -144,7 +146,9 @@ export default function App() {
             // AC-3.2：统一语义——已在管理页（任意子 tab）点击=退出；不在=进入（tab 参数仅入口快捷）
             setHash(admin ? '' : (tab === 'cost' ? '#/admin/cost' : '#/admin'));
           }}
-          adminActive={admin} />
+          adminActive={admin}
+          onOrg={() => { setNavOpen(false); setHash(org ? '' : '#/org'); }}
+          orgActive={org} />
         <Sidebar
           onNew={() => void quickNew()}
           onAdmin={tab => {
@@ -155,7 +159,9 @@ export default function App() {
           adminActive={admin} />
       </div>
       <main className="main">
-        {admin
+        {org
+          ? <OrgPage onClose={() => setHash('')} />
+          : admin
           ? <AdminPanel onClose={() => { setHash(''); void loadMeta(); }}
               initialTab={adminTab} filterSid={filterSid}
               onClearFilter={() => setHash('#/admin/schedules')} />
