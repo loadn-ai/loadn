@@ -79,12 +79,65 @@ def _entry_of(dir_, eid: str) -> dict:
 
 @router.get("/memory/domains")
 def list_domains():
-    return {"domains": mstore.list_domain_keys()}
+    """域列表 + 可读信息：p:hex 对用户不可读（记忆页可读性批）——
+    sessions/projects 的 workspace 反查 hex 标注 label，条目 manifest
+    出 count/last_at。sessions.workspace 取最新（DESC 覆盖式），归档
+    会话回落全条目 origin_session 反查；仍无 → label 空（前端显 hex）。"""
+    keys = mstore.list_domain_keys()
+    from ... import db as _db
+    ws_map: dict[str, str] = {}
+    claude2s: dict[str, str] = {}
+    sid2s: dict[str, str] = {}
+    with _db.conn() as c:
+        for r in c.execute(
+                "SELECT title, workspace FROM sessions "
+                "WHERE workspace IS NOT NULL ORDER BY created_at DESC"):
+            ws_map[mstore.cached_project_key(r["workspace"])] = r["title"]
+        for r in c.execute(
+                "SELECT title, workspace FROM projects "
+                "WHERE workspace IS NOT NULL"):
+            ws_map.setdefault(mstore.cached_project_key(r["workspace"]),
+                              r["title"])
+        claude2s = {r["claude_session_id"]: r["title"] for r in c.execute(
+            "SELECT claude_session_id, title FROM sessions")
+            if r["claude_session_id"]}
+        sid2s = {r["id"]: r["title"] for r in c.execute(
+            "SELECT id, title FROM sessions")}
+    info: dict[str, dict] = {}
+    for k in keys:
+        d = mstore.domain_dir_by_key(k)
+        es = mstore.entries_of(d) if d else []
+        if k == "user":
+            label = "用户级（跨项目）"
+        else:
+            label = ws_map.get(k[2:], "")
+            if not label:
+                for e in sorted(es, key=lambda x: x.get("created_at") or "",
+                                reverse=True):
+                    sid = e.get("origin_session") or ""
+                    if sid in claude2s:
+                        label = claude2s[sid]
+                        break
+                    if sid in sid2s:
+                        label = sid2s[sid]
+                        break
+        last = max(es, key=lambda x: x.get("created_at") or "") if es else None
+        info[k] = {"label": label, "count": len(es),
+                   "last_at": (last or {}).get("created_at"),
+                   "last_summary": (last or {}).get("summary")}
+    return {"domains": keys, "info": info}
 
 
 @router.get("/memory/entries")
 def list_entries(domain: str):
-    dir_ = _dir_of(domain)
+    try:
+        dir_ = _dir_of(domain)
+    except HTTPException as e:
+        # 空域不是错误：user 域恒在列表但「先有写入才有域」——目录缺失
+        # 即空态（200 空列表）；p:hex 域无目录/属主拒绝仍走原 404
+        if e.status_code == 404 and domain == "user":
+            return {"entries": []}
+        raise
     return {"entries": mstore.entries_of(dir_)}
 
 

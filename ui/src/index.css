@@ -789,6 +789,11 @@ button:focus-visible, .tab:focus-visible, .chip:focus-visible {
 /* AC-5.3：记忆页三栏（列表 1/编辑 2/历史 1）——窄屏（≤900px）竖排，子栏
    占满行宽；内联 flex:N 仅在宽屏行内生效 */
 .mem-cols { display: flex; gap: 12px; align-items: flex-start; }
+/* 记忆域 tab 栏：域多（每会话一个 p:hex）→ 单行横滚，不换行堆叠 */
+.mem-domains { display: flex; gap: 6px; align-items: center; margin-bottom: 10px;
+  overflow-x: auto; flex-wrap: nowrap; padding-bottom: 4px; }
+.mem-domain-btn { flex: none; white-space: nowrap; max-width: 240px; }
+.mem-domain-label { overflow: hidden; text-overflow: ellipsis; vertical-align: bottom; }
 @media (max-width: 900px) {
   .mem-cols { flex-direction: column; }
   .mem-cols > * { flex: none !important; width: 100%; }

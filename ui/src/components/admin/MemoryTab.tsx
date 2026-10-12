@@ -11,9 +11,11 @@ import { askConfirm } from '../../stores/confirm';
 
 interface Entry { id: string; summary: string; content?: string; origin_session: string; created_at: string; draft?: boolean }
 interface Ver { hash: string; date: string; subject: string }
+interface DomInfo { label: string; count: number; last_at?: string | null; last_summary?: string | null }
 
 export default function MemoryTab() {
   const [domains, setDomains] = useState<string[]>([]);
+  const [domInfo, setDomInfo] = useState<Record<string, DomInfo>>({});
   const [domain, setDomain] = useState('user');
   const [entries, setEntries] = useState<Entry[]>([]);
   const [sel, setSel] = useState<Entry | null>(null);
@@ -41,10 +43,17 @@ export default function MemoryTab() {
 
   async function reloadDomains() {
     try {
-      const d = await api<{ domains: string[] }>('/api/memory/domains');
+      const d = await api<{ domains: string[]; info?: Record<string, DomInfo> }>('/api/memory/domains');
       setDomains(d.domains);
+      setDomInfo(d.info ?? {});
     } catch (e) { setMsg({ t: `域列表加载失败：${String(e)}`, err: true }); }
   }
+  // 域 tab 排序：用户级固定首位，其余按最近写入时间倒序（无活动壊底）
+  const sortedDomains = [...domains].sort((a, b) => {
+    if (a === 'user') return -1;
+    if (b === 'user') return 1;
+    return (domInfo[b]?.last_at ?? '').localeCompare(domInfo[a]?.last_at ?? '');
+  });
   async function reloadEntries(dom = domain) {
     const seq = ++entriesSeq.current;
     try {
@@ -53,7 +62,10 @@ export default function MemoryTab() {
       setEntries(d.entries.reverse());   // 新在前
     } catch (e) {
       if (seq !== entriesSeq.current) return;
-      setEntries([]); setMsg({ t: `记忆列表加载失败：${String(e)}`, err: true });
+      setEntries([]);
+      // 空域不是错误（先有写入才有域）——404 静默空态，其余真报错
+      if (!String(e).includes('404'))
+        setMsg({ t: `记忆列表加载失败：${String(e)}`, err: true });
     }
   }
   useEffect(() => { void reloadDomains(); }, []);
@@ -133,15 +145,28 @@ export default function MemoryTab() {
 
   return (
     <div className="admin-body">
+      <div className="mem-domains">
+        {sortedDomains.map(d => {
+          const inf = domInfo[d];
+          const label = d === 'user' ? '用户级（跨项目）' : (inf?.label || d);
+          const tip = [d, inf?.count ? `${inf.count} 条` : null,
+            inf?.last_at ? `最近写入 ${inf.last_at.slice(0, 16)}` : null,
+            inf?.last_summary].filter(Boolean).join('\n');
+          return (
+            <button key={d} className={`btn sm mem-domain-btn ${d === domain ? 'primary' : 'ghost'}`}
+              title={tip}
+              onClick={async () => {
+                if (d !== domain && dirty
+                  && !await askConfirm({ title: '当前条目有未保存修改，切域将丢弃——确认？', danger: true })) return;
+                setDomain(d);
+              }}>
+              <span className="mem-domain-label">{label}</span>
+              {!!inf?.count && <span className="chip">{inf.count}</span>}
+            </button>
+          );
+        })}
+      </div>
       <div className="admin-toolbar">
-        {domains.map(d => (
-          <button key={d} className={`btn sm ${d === domain ? 'primary' : 'ghost'}`}
-            onClick={async () => {
-              if (d !== domain && dirty
-                && !await askConfirm({ title: '当前条目有未保存修改，切域将丢弃——确认？', danger: true })) return;
-              setDomain(d);
-            }}>{d === 'user' ? '用户级（跨项目）' : d}</button>
-        ))}
         <button className="btn sm" onClick={() => setCreating(v => !v)}>
           <Plus size={13} /> 新建
         </button>

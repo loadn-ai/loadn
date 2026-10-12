@@ -11,6 +11,7 @@ import sqlite3
 
 import pytest
 
+from loadn import memorystore as mstore
 from loadn_webui.config import PATHS
 
 
@@ -59,6 +60,41 @@ async def test_domains_and_entries_flow(client):
                              params={"domain": "p:deadbeefcafe"})).status_code == 404
     assert (await client.get("/api/memory/file",
                              params={"domain": "user", "id": "nope"})).status_code == 404
+
+
+# ------------------------------------------- 可读性批：域富化 + 空域空态
+async def test_domains_enriched_and_user_empty_200(client, tmp_path):
+    """p:hex 域反查会话标题；user 域无目录（先有写入才有域）= 200 空列表
+    而非 404 报错——记忆页可读性批对赌。"""
+    from loadn_webui import db as _db
+
+    ws = tmp_path / "ws_alpha"          # 非 git 目录 → hex=sha1(cwd)[:12]
+    ws.mkdir()
+    with _db.conn() as c:
+        c.execute("INSERT INTO sessions (id, title, workspace, created_at) "
+                  "VALUES (?,?,?,datetime('now'))",
+                  ("s1", "显卡选型调研", str(ws)))
+    key = f"p:{mstore.project_key(ws)}"
+    # 经引擎路径写入一条项目记忆（不走 webui 新建面——其 create 不认 p:hex）
+    d = mstore.memory_dir(ws)
+    d.mkdir(parents=True, exist_ok=True)
+    mstore.create_entry(d, "两张显卡", "3060 和 5060。")
+
+    r = await client.get("/api/memory/domains")
+    assert r.status_code == 200
+    body = r.json()
+    assert key in body["domains"]
+    inf = body["info"][key]
+    assert inf["label"] == "显卡选型调研"      # workspace 反查命中
+    assert inf["count"] == 1 and inf["last_summary"] == "两张显卡"
+    assert body["info"]["user"]["label"] == "用户级（跨项目）"
+
+    # user 域空目录 → 200 空列表（不是 404「记忆域不存在」）
+    r = await client.get("/api/memory/entries", params={"domain": "user"})
+    assert r.status_code == 200 and r.json()["entries"] == []
+    # p:hex 域正常列出
+    r = await client.get("/api/memory/entries", params={"domain": key})
+    assert r.status_code == 200 and len(r.json()["entries"]) == 1
 
 
 # ---------------------------------------------------------------- 编辑+护栏
@@ -153,11 +189,12 @@ async def test_create_validation_and_off_domain(client, monkeypatch):
 
 
 async def test_user_domain_created_on_demand_and_no_dup_restore(client):
-    """守卫对赌：空 user 域 GET=404（create 语义只放行新建面）；恢复已存在
-    条目走编辑路径（同 id 不重复入库）。"""
-    # user 域目录尚不存在：读 404（不是空列表——与「先有写入才有域」一致）
-    assert (await client.get("/api/memory/entries",
-                             params={"domain": "user"})).status_code == 404
+    """守卫对赌：空 user 域 GET=200 空列表（可读性批改语义：域恒有效，
+    目录「先有写入才有」——空≠错误）；恢复已存在条目走编辑路径
+    （同 id 不重复入库）。"""
+    # user 域目录尚不存在：读 200 空列表（此前 404 报错——用户看不懂）
+    r = await client.get("/api/memory/entries", params={"domain": "user"})
+    assert r.status_code == 200 and r.json()["entries"] == []
     e = await _mk(client)
     await client.put("/api/memory/file", json={
         "domain": "user", "id": e["id"], "content": "编辑后正文"})
