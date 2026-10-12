@@ -203,7 +203,9 @@ async def test_browser_subtask_tab_appears(server_url, ws_root, logged_context,
         browser = await pw.chromium.launch()
         try:
             page = await (await logged_context(browser)).new_page()
-            page.set_default_timeout(20000)
+            # CI 共享 runner 负载下 SSE→目录条目链路偶发超 20s（run
+            # 38165736019 实测一次性 flake；本机恒快）——30s 只给慢机余量
+            page.set_default_timeout(30000)
             await page.goto(server_url)
             await page.wait_for_selector("text=新任务")
             await page.click("text=新任务")
