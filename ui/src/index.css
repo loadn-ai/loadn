@@ -1172,6 +1172,30 @@ button.attach-chip:hover { border-color: color-mix(in srgb, var(--accent) 40%, v
 .approval-why { margin-top: 6px; font-size: var(--fs-md); border-top: 1px dashed
   var(--border); padding-top: 6px; }
 
+/* ---- P12 技能建议卡透明化（2026-10-12）：触发引用 / 文件预览 / 生效事实 ---- */
+.suggest-quote { margin: 8px 0 2px; padding: 6px 10px; border-left: 2px solid
+  var(--accent2); color: var(--text-dim); font-size: var(--fs-md);
+  font-style: italic; overflow-wrap: anywhere; }
+.suggest-section { margin-top: 8px; border-top: 1px dashed var(--border);
+  padding-top: 6px; }
+.suggest-sec-title { font-size: var(--fs-sm); letter-spacing: .05em;
+  color: var(--text-dim); text-transform: uppercase; margin-bottom: 4px; }
+.suggest-path code { font-size: var(--fs-sm); overflow-wrap: anywhere; }
+.suggest-note-line { font-size: var(--fs-sm); color: var(--text-dim);
+  opacity: 0.85; margin-top: 3px; }
+.suggest-preview { white-space: pre-wrap; overflow: auto; font-size: var(--fs-sm);
+  background: var(--bg); border: 1px solid var(--border);
+  border-radius: var(--radius-xs); padding: 8px 10px; margin: 6px 0 2px;
+  word-break: break-word; }
+.suggest-facts { margin: 2px 0 0; padding-left: 18px; font-size: var(--fs-md);
+  color: var(--text-dim); }
+.suggest-facts li { margin: 2px 0; }
+.suggest-facts b { color: var(--text); font-weight: 600; }
+.suggest-edit { display: flex; flex-direction: column; gap: 6px; margin-top: 6px; }
+.suggest-edit label { display: flex; flex-direction: column; gap: 3px;
+  font-size: var(--fs-sm); color: var(--text-dim); }
+.suggest-edit input, .suggest-edit textarea { font-size: var(--fs-md); }
+
 /* ---- P3-7 压缩时间线：横向刻度条（turn 点 + compact ▼ 标记） ---- */
 .compact-timeline { position: relative; height: 26px; margin: 2px 14px 0;
   border-bottom: 1px solid var(--border); overflow: hidden; flex: none; }

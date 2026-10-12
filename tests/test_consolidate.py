@@ -69,6 +69,8 @@ async def test_teach_triggers_and_plain_does_not(tmp_path):
     assert card["kind"] == "teach" and card["fingerprint"]
     assert card["body"].startswith("# 用户教导（teach）")
     assert "先跑测试再提交代码" in card["body"]     # 用户原话不改写
+    # 透明化（2026-10-12）：触发摘录独立字段——卡片直接引用「哪句话被识别」
+    assert "先跑测试再提交代码" in card["trigger"]
     assert any(e["type"] == "skill_suggest"
                for e in sess.transcript.read_events())
     # ② 普通对话不触发（新会话）

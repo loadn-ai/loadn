@@ -206,6 +206,9 @@ def maybe_suggest(cwd: Path, session) -> dict | None:
                 "description": first_clause(last_user)
                 or f"用户{'教导' if kind == 'teach' else '纠正'}的规则",
                 "body": body,
+                # 触发摘录（2026-10-12 卡片透明化）：让用户在卡上直接看到
+                # 「是哪句话被识别为纠正」——旧 pending 无此字段，前端回退
+                "trigger": quote,
                 "origin_session": getattr(session, "session_id", ""),
                 "created_at": time.strftime("%Y-%m-%dT%H:%M:%S")}
         pp = pending_path(cwd)

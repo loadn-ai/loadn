@@ -39,8 +39,13 @@ def _pending(ws) -> dict | None:
 
 @router.get("/sessions/{sid}/skill-suggest")
 def get_suggest(sid: str):
-    """当前待决策建议卡（无 pending → {pending: null}）。"""
-    return {"pending": _pending(_ws_of(sid))}
+    """当前待决策建议卡（无 pending → {pending: null}）。
+
+    ws_root 一并返回（2026-10-12 卡片透明化）：卡片展示「将写入的文件
+    完整路径」——相对路径用户无从对照，绝对路径才可核查/事后编辑。
+    """
+    ws = _ws_of(sid)
+    return {"pending": _pending(ws), "ws_root": str(ws)}
 
 
 @router.post("/sessions/{sid}/skill-suggest/decide")
