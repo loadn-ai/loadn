@@ -135,7 +135,7 @@ function McpForm({ init, onDone }: { init: McpServer | null; onDone: () => void 
   return (
     <div className="new-skill-form">
       <label>名称</label>
-      <input value={name} onChange={e => setName(e.target.value)} placeholder="例：context7" disabled={!!init && !init.session_only} />
+      <input value={name} onChange={e => setName(e.target.value)} placeholder="例：context7" disabled={!!init && !init.session_only}  autoComplete="off"/>
       <label>类型</label>
       <div className="skill-row">
         {['stdio', 'http', 'sse'].map(t => (
@@ -144,16 +144,16 @@ function McpForm({ init, onDone }: { init: McpServer | null; onDone: () => void 
       </div>
       {type === 'stdio' ? <>
         <label>command</label>
-        <input value={command} onChange={e => setCommand(e.target.value)} placeholder="npx / uvx / 绝对路径" />
+        <input value={command} onChange={e => setCommand(e.target.value)} placeholder="npx / uvx / 绝对路径"  autoComplete="off"/>
         <label>args（每行一个）</label>
-        <textarea value={args} onChange={e => setArgs(e.target.value)} rows={3} placeholder={'-y\n@mcp/context7-mcp'} />
+        <textarea value={args} onChange={e => setArgs(e.target.value)} rows={3} placeholder={'-y\n@mcp/context7-mcp'}  autoComplete="off"/>
         <label>env（JSON）</label>
-        <textarea className="mono" value={envJson} onChange={e => setEnvJson(e.target.value)} rows={4}>{}</textarea>
+        <textarea className="mono" value={envJson} onChange={e => setEnvJson(e.target.value)} rows={4} autoComplete="off">{}</textarea>
       </> : <>
         <label>url</label>
-        <input value={url} onChange={e => setUrl(e.target.value)} placeholder="https://mcp.example.com/sse" />
+        <input value={url} onChange={e => setUrl(e.target.value)} placeholder="https://mcp.example.com/sse"  autoComplete="off"/>
         <label>headers（JSON）</label>
-        <textarea className="mono" value={envJson} onChange={e => setEnvJson(e.target.value)} rows={4}>{}</textarea>
+        <textarea className="mono" value={envJson} onChange={e => setEnvJson(e.target.value)} rows={4} autoComplete="off">{}</textarea>
       </>}
       <div className="modal-foot">
         <button className="btn ghost sm" onClick={onDone}>取消</button>

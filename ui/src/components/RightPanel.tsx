@@ -468,9 +468,9 @@ function WorkspaceMemory() {
       {creating && (
         <div className="new-skill-form">
           <input placeholder="摘要（≤20 字）" value={summary}
-            onChange={e => setSummary(e.target.value)} />
+            onChange={e => setSummary(e.target.value)}  autoComplete="off"/>
           <textarea className="mono" rows={4} placeholder="记忆正文" value={content}
-            onChange={e => setContent(e.target.value)} />
+            onChange={e => setContent(e.target.value)}  autoComplete="off"/>
           <div className="modal-foot">
             <button className="btn ghost sm" onClick={() => { setCreating(false); setSummary(''); setContent(''); }}>取消</button>
             <button className="btn primary sm" disabled={!summary.trim() || !content.trim()}

@@ -218,7 +218,7 @@ function ParamsSection() {
           <span className="props-k" title={r.hint}>{r.label}</span>
           {r.kind === 'select' ? (
             <select value={draft[r.key] ?? ''}
-              onChange={e => setDraft(d => ({ ...d, [r.key]: e.target.value }))}>
+              onChange={e => setDraft(d => ({ ...d, [r.key]: e.target.value }))} autoComplete="off">
               <option value="">跟随（{fmtVal(r.key, prof[r.key])}）</option>
               <option value="low">low</option>
               <option value="medium">medium</option>
@@ -230,7 +230,7 @@ function ParamsSection() {
               list={r.key === 'model' ? 'props-model-hints' : undefined}
               value={draft[r.key] ?? ''}
               placeholder={`跟随（${fmtVal(r.key, prof[r.key])}）`}
-              onChange={e => setDraft(d => ({ ...d, [r.key]: e.target.value }))} />
+              onChange={e => setDraft(d => ({ ...d, [r.key]: e.target.value }))}  autoComplete="off"/>
           )}
           {r.key === 'model' && (
             <datalist id="props-model-hints">

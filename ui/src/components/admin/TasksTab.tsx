@@ -146,22 +146,22 @@ export default function TasksTab() {
     <div className="admin-body">
       <div className="admin-toolbar">
         <input value={q} placeholder="搜索标题/项目…" maxLength={80}
-               onChange={e => setQ(e.target.value)} style={{ width: 180 }} />
-        <select value={status} onChange={e => setStatus(e.target.value)}>
+               onChange={e => setQ(e.target.value)} style={{ width: 180 }}  autoComplete="off"/>
+        <select value={status} onChange={e => setStatus(e.target.value)} autoComplete="off">
           <option value="all">全部状态</option>
           <option value="active">进行中</option>
           <option value="archived">已归档</option>
         </select>
-        <select value={projectId} onChange={e => setProjectId(e.target.value)}>
+        <select value={projectId} onChange={e => setProjectId(e.target.value)} autoComplete="off">
           <option value="">全部项目</option>
           <option value="__none">（无项目）</option>
           {projects.map(p => <option key={p.id} value={p.id}>{p.title}</option>)}
         </select>
-        <select value={categoryId || ''} onChange={e => setCategoryId(Number(e.target.value) || 0)}>
+        <select value={categoryId || ''} onChange={e => setCategoryId(Number(e.target.value) || 0)} autoComplete="off">
           <option value={0}>全部分类</option>
           {categories.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
         </select>
-        <select value={engineSel} onChange={e => setEngineSel(e.target.value)}>
+        <select value={engineSel} onChange={e => setEngineSel(e.target.value)} autoComplete="off">
           <option value="">全部引擎</option>
           {engines.map(e => <option key={e} value={e}>{e}</option>)}
         </select>
@@ -187,7 +187,7 @@ export default function TasksTab() {
           <button className="btn sm" onClick={() => move('pinned')}><Pin size={11} /> 置顶</button>
           <button className="btn sm" onClick={() => move('starred')}><Star size={11} /> 收藏</button>
           <select onChange={e => { const v = Number(e.target.value); if (v) move({ cat: v }); e.target.value = ''; }}
-                  defaultValue="">
+                  defaultValue="" autoComplete="off">
             <option value="">移入分类…</option>
             {categories.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
           </select>
@@ -225,7 +225,7 @@ export default function TasksTab() {
                          const n = new Set(sel);
                          shown.forEach(r => n.delete(r.id));
                          return n;
-                       })} />
+                       })}  autoComplete="off"/>
               </th>
               {th('title', '任务')}
               <th>项目 / 分类</th>
@@ -247,7 +247,7 @@ export default function TasksTab() {
             {shown.map(r => (
               <tr key={r.id} className={sel.has(r.id) ? 'sel' : ''}>
                 <td><input type="checkbox" checked={sel.has(r.id)}
-                           onChange={() => toggle(r.id)} /></td>
+                           onChange={() => toggle(r.id)}  autoComplete="off"/></td>
                 <td className="tt-title" title={r.id}>
                   <a className="link" onClick={() => { location.hash = '';
                     void openSession(r.id); }}>{r.title}</a>

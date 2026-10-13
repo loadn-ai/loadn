@@ -187,7 +187,7 @@ export default function OrgPage({ onClose }: { onClose: () => void }) {
                          if (e.key === 'Enter') void addDept((e.target as HTMLInputElement).value);
                          if (e.key === 'Escape') setDeptNew(false);
                        }}
-                       onBlur={e => void addDept(e.target.value)} />
+                       onBlur={e => void addDept(e.target.value)}  autoComplete="off"/>
               : <button className="org-dept-add" onClick={() => setDeptNew(true)}><Plus size={12} /> 新建部门</button>}
           </aside>
 
@@ -205,7 +205,7 @@ export default function OrgPage({ onClose }: { onClose: () => void }) {
                 {e.traits && <div className="org-traits">{e.traits.split(/[,，、]/).filter(Boolean).slice(0, 4).map((t, i) => <span key={i} className="chip ghost">{t.trim()}</span>)}</div>}
                 <div className="org-card-foot">
                   <label className="switch" title={e.status === 'active' ? '在岗（可点名）' : '停用（不注入）'}>
-                    <input type="checkbox" checked={e.status === 'active'} onChange={() => void toggleEmp(e)} />
+                    <input type="checkbox" checked={e.status === 'active'} onChange={() => void toggleEmp(e)}  autoComplete="off"/>
                     <span />
                   </label>
                   <span className="org-card-hint">{e.status === 'active' ? 'Task 点名可用' : '已停用'}</span>
@@ -227,12 +227,12 @@ export default function OrgPage({ onClose }: { onClose: () => void }) {
           <p className="org-recruit-note">按人物要求生成 n 名临时工入池；此后未点名的子任务将从池中取名（池空回落默认人名库）。</p>
           <div className="org-recruit-form">
             <label>人数
-              <select value={recN} onChange={e => setRecN(Number(e.target.value))}>
+              <select value={recN} onChange={e => setRecN(Number(e.target.value))} autoComplete="off">
                 {[1, 2, 3, 4, 5, 6, 7, 8].map(n => <option key={n} value={n}>{n}</option>)}
               </select>
             </label>
             <input className="org-brief" placeholder="人物要求（如：懂数据合规的法务助理）"
-                   value={recBrief} onChange={e => setRecBrief(e.target.value)} />
+                   value={recBrief} onChange={e => setRecBrief(e.target.value)}  autoComplete="off"/>
             <button className="btn primary" disabled={busy} onClick={() => void recruit()}>
               {busy ? <Spinner /> : <Users size={13} />} 召集入池
             </button>
@@ -312,29 +312,29 @@ function EmpEditor({ depts, emp, onCancel, onSave }: {
           <button className="icon-btn" onClick={onCancel}><X size={14} /></button>
         </header>
         <div className="drawer-body">
-          <label>姓名（Task 点名键）<input value={name} onChange={e => setName(e.target.value)} placeholder="如：方维正" /></label>
+          <label>姓名（Task 点名键）<input value={name} onChange={e => setName(e.target.value)} placeholder="如：方维正"  autoComplete="off"/></label>
           <label>部门
-            <select value={deptId} onChange={e => setDeptId(e.target.value === '' ? '' : Number(e.target.value))}>
+            <select value={deptId} onChange={e => setDeptId(e.target.value === '' ? '' : Number(e.target.value))} autoComplete="off">
               <option value="">未分配</option>
               {depts.map(d => <option key={d.id} value={d.id}>{d.name}</option>)}
             </select>
           </label>
-          <label>头衔<input value={title} onChange={e => setTitle(e.target.value)} placeholder="如：法务顾问" /></label>
+          <label>头衔<input value={title} onChange={e => setTitle(e.target.value)} placeholder="如：法务顾问"  autoComplete="off"/></label>
           <label>职责说明（负责什么；进 agent 提示，也是模型选人依据）
             <textarea rows={2} value={duty} onChange={e => setDuty(e.target.value)}
-                      placeholder="如：合规审查、风险条款识别与依据引用" /></label>
+                      placeholder="如：合规审查、风险条款识别与依据引用"  autoComplete="off"/></label>
           <label>MBTI
-            <select value={mbti} onChange={e => setMbti(e.target.value)}>
+            <select value={mbti} onChange={e => setMbti(e.target.value)} autoComplete="off">
               {MBTI.map(m => <option key={m} value={m}>{m}</option>)}
             </select>
           </label>
-          <label>性格标签（逗号分隔）<input value={traits} onChange={e => setTraits(e.target.value)} placeholder="如：条框守护者,风险嗅觉,直率" /></label>
+          <label>性格标签（逗号分隔）<input value={traits} onChange={e => setTraits(e.target.value)} placeholder="如：条框守护者,风险嗅觉,直率"  autoComplete="off"/></label>
           <label>人设（行为准则，进子代理 system 提示）
             <textarea rows={5} value={persona} onChange={e => setPersona(e.target.value)}
-                      placeholder="口头禅、说话风格、关注点、交付习惯……" /></label>
+                      placeholder="口头禅、说话风格、关注点、交付习惯……"  autoComplete="off"/></label>
           <label>操作空间 · 工具白名单（逗号分隔，空=通用面）
-            <input value={tools} onChange={e => setTools(e.target.value)} placeholder="如：Read, Grep, WebSearch" /></label>
-          <label>操作空间 · 独立模型（空=随主）<input value={model} onChange={e => setModel(e.target.value)} placeholder="如：glm-5.3-flash" /></label>
+            <input value={tools} onChange={e => setTools(e.target.value)} placeholder="如：Read, Grep, WebSearch"  autoComplete="off"/></label>
+          <label>操作空间 · 独立模型（空=随主）<input value={model} onChange={e => setModel(e.target.value)} placeholder="如：glm-5.3-flash"  autoComplete="off"/></label>
         </div>
         <footer>
           <span className="hint">保存即同步 agent 定义（$LOADN_HOME/agents/），新子代理立即可点名。</span>

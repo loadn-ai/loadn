@@ -115,15 +115,15 @@ export default function SkillSuggestCard() {
             <div className="suggest-edit">
               <label>技能名（小写/数字/._-，即目录名）
                 <input value={d.name}
-                       onChange={e => setDraft({ ...d, name: e.target.value })} />
+                       onChange={e => setDraft({ ...d, name: e.target.value })}  autoComplete="off"/>
               </label>
               <label>简介（新会话里看到的一句话说明）
                 <input value={d.description}
-                       onChange={e => setDraft({ ...d, description: e.target.value })} />
+                       onChange={e => setDraft({ ...d, description: e.target.value })}  autoComplete="off"/>
               </label>
               <label>正文（你的原话引用 + 上轮行为 + 提炼的规则）
                 <textarea rows={6} value={d.body} className="cinput"
-                          onChange={e => setDraft({ ...d, body: e.target.value })} />
+                          onChange={e => setDraft({ ...d, body: e.target.value })}  autoComplete="off"/>
               </label>
             </div>
           ) : (

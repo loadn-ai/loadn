@@ -393,17 +393,17 @@ export default function SettingsTab() {
         <div className="setting-row">
           <span className="setting-k">API Base</span>
           <input value={tg.api_base} onChange={e => setTg({ ...tg, api_base: e.target.value })}
-            placeholder="https://ark.cn-beijing.volces.com/api/v3" />
+            placeholder="https://ark.cn-beijing.volces.com/api/v3"  autoComplete="off"/>
         </div>
         <div className="setting-row">
           <span className="setting-k">模型</span>
           <input value={tg.model} onChange={e => setTg({ ...tg, model: e.target.value })}
-            placeholder="doubao-seed-2-0-mini-260428" />
+            placeholder="doubao-seed-2-0-mini-260428"  autoComplete="off"/>
         </div>
         <div className="setting-row">
           <span className="setting-k">API Key</span>
           <input type="password" value={keyInput} onChange={e => setKeyInput(e.target.value)}
-            placeholder={tg.api_key_set ? `已保存（${tg.api_key_hint}），留空不改` : 'sk-… / 方舟 key'} />
+            placeholder={tg.api_key_set ? `已保存（${tg.api_key_hint}），留空不改` : 'sk-… / 方舟 key'}  autoComplete="off"/>
         </div>
         <div className="setting-row">
           <button className="btn primary sm" onClick={() => void saveTitlegen()}>保存</button>
@@ -418,19 +418,19 @@ export default function SettingsTab() {
         <div className="setting-row">
           <span className="setting-k">并发任务数</span>
           <input type="number" min={1} max={16} value={run.max_concurrent_turns}
-            onChange={e => setRun({ ...run, max_concurrent_turns: Number(e.target.value) })} />
+            onChange={e => setRun({ ...run, max_concurrent_turns: Number(e.target.value) })}  autoComplete="off"/>
           <span className="muted">同时在跑的 claude 进程上限，超出排队（重启服务后生效）</span>
         </div>
         <div className="setting-row">
           <span className="setting-k">回放条数</span>
           <input type="number" min={20} max={2000} value={run.replay_max_events}
-            onChange={e => setRun({ ...run, replay_max_events: Number(e.target.value) })} />
+            onChange={e => setRun({ ...run, replay_max_events: Number(e.target.value) })}  autoComplete="off"/>
           <span className="muted">重进会话只回放活跃任务尾部这些条（无活跃任务零回放；断线补发不受限）</span>
         </div>
         <div className="setting-row">
           <span className="setting-k">事件保留天数</span>
           <input type="number" min={0.5} max={365} step={0.5} value={run.events_retain_days}
-            onChange={e => setRun({ ...run, events_retain_days: Number(e.target.value) })} />
+            onChange={e => setRun({ ...run, events_retain_days: Number(e.target.value) })}  autoComplete="off"/>
           <span className="muted">已完成任务的过线事件自动清理（活跃任务永不清理；聊天记录不受影响）</span>
         </div>
         <div className="setting-row">
@@ -461,10 +461,10 @@ export default function SettingsTab() {
         <div className="setting-row">
           <span className="setting-k">默认模型</span>
           <input value={cl.model} onChange={e => setCl({ ...cl, model: e.target.value })}
-            placeholder="空 = 继承 CLI/订阅默认" style={{ maxWidth: 240 }} />
+            placeholder="空 = 继承 CLI/订阅默认" style={{ maxWidth: 240 }}  autoComplete="off"/>
           <span className="setting-k" style={{ paddingLeft: 12 }}>claude 路径</span>
           <input value={cl.claude_bin} onChange={e => setCl({ ...cl, claude_bin: e.target.value })}
-            placeholder="空 = 自动探测" style={{ maxWidth: 240 }} />
+            placeholder="空 = 自动探测" style={{ maxWidth: 240 }}  autoComplete="off"/>
         </div>
         <div className="setting-row">
           <span className="setting-k">loadn 内压</span>
@@ -475,7 +475,7 @@ export default function SettingsTab() {
           <span className="muted">自动 = profile 设了 rotate_input_tokens 则禁内压</span>
           <span className="setting-k" style={{ paddingLeft: 12 }}>opencode 前缀</span>
           <input value={eng.opencode_provider} onChange={e => setEng({ ...eng, opencode_provider: e.target.value })}
-            placeholder="zai" style={{ maxWidth: 120 }} />
+            placeholder="zai" style={{ maxWidth: 120 }}  autoComplete="off"/>
         </div>
         <div className="tbl-wrap"><table className="mcp-table">
           <thead><tr><th>引擎</th><th>启用</th><th>bin</th><th>模型</th><th>provider</th><th>追加参数（每行一个）</th><th>操作</th></tr></thead>
@@ -485,13 +485,13 @@ export default function SettingsTab() {
               <td><button className={`chip ${p.enabled ? 'on' : ''}`}
                 onClick={() => updEngine(name, { enabled: !p.enabled })}>{p.enabled ? '启用' : '停用'}</button></td>
               <td><input value={p.bin} placeholder="自动" style={{ minWidth: 140 }}
-                onChange={e => updEngine(name, { bin: e.target.value })} /></td>
+                onChange={e => updEngine(name, { bin: e.target.value })}  autoComplete="off"/></td>
               <td><input value={p.model} placeholder="继承" style={{ minWidth: 120 }}
-                onChange={e => updEngine(name, { model: e.target.value })} /></td>
+                onChange={e => updEngine(name, { model: e.target.value })}  autoComplete="off"/></td>
               <td><input value={p.provider} placeholder="—" style={{ minWidth: 90 }}
-                onChange={e => updEngine(name, { provider: e.target.value })} /></td>
+                onChange={e => updEngine(name, { provider: e.target.value })}  autoComplete="off"/></td>
               <td><textarea className="mono" rows={2} value={p.extra_args.join('\n')}
-                onChange={e => updEngine(name, { extra_args: e.target.value.split('\n') })} /></td>
+                onChange={e => updEngine(name, { extra_args: e.target.value.split('\n') })}  autoComplete="off"/></td>
               <td><button className="mini-btn" disabled={!p.override}
                 title={p.override ? '删除 yaml 覆盖段，回自动探测/继承' : '该引擎无覆盖（全靠自动探测）'}
                 onClick={() => void clearEngineOverride(name)}>清除覆盖</button></td>
@@ -519,22 +519,22 @@ export default function SettingsTab() {
         {nf.provider === 'bark' && <div className="setting-row">
           <span className="setting-k">Bark URL</span>
           <input value={nf.bark_url} onChange={e => setNf({ ...nf, bark_url: e.target.value })}
-            placeholder="https://api.day.app/<yourkey>" style={{ maxWidth: 340 }} />
+            placeholder="https://api.day.app/<yourkey>" autoComplete="off" style={{ maxWidth: 340 }} />
         </div>}
         {nf.provider === 'serverchan' && <div className="setting-row">
           <span className="setting-k">SendKey</span>
           <input type="password" value={nfKeys.serverchan_key ?? ''}
             onChange={e => setNfKeys({ ...nfKeys, serverchan_key: e.target.value })}
-            placeholder={nf.serverchan_key_set ? '已保存，留空不改' : 'sct…'} />
+            placeholder={nf.serverchan_key_set ? '已保存，留空不改' : 'sct…'}  autoComplete="off"/>
         </div>}
         {nf.provider === 'telegram' && <div className="setting-row">
           <span className="setting-k">Bot Token</span>
           <input type="password" value={nfKeys.telegram_bot_token ?? ''}
             onChange={e => setNfKeys({ ...nfKeys, telegram_bot_token: e.target.value })}
-            placeholder={nf.telegram_bot_token_set ? '已保存，留空不改' : '123:abc…'} />
+            placeholder={nf.telegram_bot_token_set ? '已保存，留空不改' : '123:abc…'}  autoComplete="off"/>
           <span className="setting-k" style={{ paddingLeft: 12 }}>Chat ID</span>
           <input value={nf.telegram_chat_id} onChange={e => setNf({ ...nf, telegram_chat_id: e.target.value })}
-            placeholder="42" style={{ maxWidth: 140 }} />
+            placeholder="42" style={{ maxWidth: 140 }}  autoComplete="off"/>
         </div>}
         <div className="setting-row">
           <span className="setting-k">事件</span>
@@ -559,7 +559,7 @@ export default function SettingsTab() {
         <div className="setting-row">
           <span className="setting-k">外链 base</span>
           <input value={share.base_url} onChange={e => setShare({ ...share, base_url: e.target.value })}
-            placeholder="https://your-domain.com/share（空 = 未启用）" style={{ maxWidth: 340 }} />
+            placeholder="https://your-domain.com/share（空 = 未启用）" style={{ maxWidth: 340 }}  autoComplete="off"/>
           <button className="btn primary sm" onClick={() => void saveShare()}>保存</button>
           {shareMsg && <span className={shareMsg.err ? 'admin-msg err' : 'admin-msg'}>{shareMsg.t}</span>}
         </div>
@@ -576,14 +576,14 @@ export default function SettingsTab() {
               <td><input type="number" min={1} max={1440} value={r.timeout_s ? Math.round(r.timeout_s / 60) : ''}
                 placeholder="不限"
                 onChange={e => updConv(r.name, {
-                  timeout_s: e.target.value === '' ? 0 : Math.max(1, Math.round(Number(e.target.value)) || 1) * 60 })} /></td>
+                  timeout_s: e.target.value === '' ? 0 : Math.max(1, Math.round(Number(e.target.value)) || 1) * 60 })}  autoComplete="off"/></td>
               <td><input type="number" min={1} max={1440} value={Math.round(r.stall_timeout_s / 60)}
                 onChange={e => updConv(r.name, {
-                  stall_timeout_s: Math.max(1, Math.round(Number(e.target.value)) || 1) * 60 })} /></td>
+                  stall_timeout_s: Math.max(1, Math.round(Number(e.target.value)) || 1) * 60 })}  autoComplete="off"/></td>
               <td><input type="number" min={1} max={1000} value={r.max_turns ?? ''}
                 placeholder="不限"
                 onChange={e => updConv(r.name, {
-                  max_turns: e.target.value === '' ? null : Number(e.target.value) })} /></td>
+                  max_turns: e.target.value === '' ? null : Number(e.target.value) })}  autoComplete="off"/></td>
               <td><button className="mini-btn"
                 title={`弹掉该角色的收敛三键，回默认（${Math.round(convDef.timeout_s / 60)} 分 / ${Math.round(convDef.stall_timeout_s / 60)} 分 / ${convDef.max_turns ?? '不限'}）`}
                 onClick={() => void resetConv(r.name)}>恢复默认</button></td>
@@ -631,7 +631,7 @@ export default function SettingsTab() {
           <span className="setting-k">USD/CNY</span>
           <input type="number" min={0} max={100} step={0.01} value={pricing.usd_cny}
             onChange={e => setPricing({ ...pricing, usd_cny: Number(e.target.value) })}
-            style={{ maxWidth: 110 }} />
+            style={{ maxWidth: 110 }}  autoComplete="off"/>
           <span className="muted">0 = 内置 7.1</span>
         </div>
         <PriceTable label="按量价 api" unit="单位 $/M tokens（input / cache_read / output）"
@@ -707,13 +707,13 @@ function PriceTable({ label, unit, cacheKey, rows, setRows, builtin }: {
               {rows.map((r, i) => (
                 <tr key={i} style={r.err ? { background: 'rgba(229,72,77,.08)' } : undefined}>
                   <td><input value={r.model} placeholder="glm-…" style={{ minWidth: 140 }}
-                    onChange={e => upd(i, { model: e.target.value })} /></td>
+                    onChange={e => upd(i, { model: e.target.value })}  autoComplete="off"/></td>
                   <td><input type="number" min={0} step="0.01" value={r.input} style={{ minWidth: 90 }}
-                    onChange={e => upd(i, { input: e.target.value })} /></td>
+                    onChange={e => upd(i, { input: e.target.value })}  autoComplete="off"/></td>
                   <td><input type="number" min={0} step="0.01" value={r.cache} style={{ minWidth: 90 }}
-                    onChange={e => upd(i, { cache: e.target.value })} /></td>
+                    onChange={e => upd(i, { cache: e.target.value })}  autoComplete="off"/></td>
                   <td><input type="number" min={0} step="0.01" value={r.output} style={{ minWidth: 90 }}
-                    onChange={e => upd(i, { output: e.target.value })} /></td>
+                    onChange={e => upd(i, { output: e.target.value })}  autoComplete="off"/></td>
                   <td><a className="danger-link" title="删除该模型行（回兜底表价）"
                     onClick={() => setRows(rows.filter((_, j) => j !== i))}>×</a></td>
                 </tr>

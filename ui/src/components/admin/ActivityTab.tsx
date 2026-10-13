@@ -106,18 +106,18 @@ export default function ActivityTab() {
   return (
     <div className="admin-body">
       <div className="admin-toolbar">
-        <select value={src} onChange={e => setSrc(e.target.value as 'ops' | 'audit' | 'both')}>
+        <select value={src} onChange={e => setSrc(e.target.value as 'ops' | 'audit' | 'both')} autoComplete="off">
           <option value="ops">运营台账</option>
           <option value="audit">安全审计账本</option>
           <option value="both">双源合并</option>
         </select>
         {src !== 'audit' && <>
-          <select value={kind} onChange={e => setKind(e.target.value)}>
+          <select value={kind} onChange={e => setKind(e.target.value)} autoComplete="off">
             <option value="">全部类型</option>
             {Object.entries(KIND_LABEL).map(([v, l]) =>
               <option key={v} value={v}>{l}</option>)}
           </select>
-          <select value={status} onChange={e => setStatus(e.target.value)}>
+          <select value={status} onChange={e => setStatus(e.target.value)} autoComplete="off">
             <option value="">全部状态</option>
             {Object.entries(STATUS_LABEL).map(([v, l]) =>
               <option key={v} value={v}>{l}</option>)}

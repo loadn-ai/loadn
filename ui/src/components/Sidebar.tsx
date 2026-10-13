@@ -243,7 +243,7 @@ export default function Sidebar({ onNew, onAdmin, onNav, adminActive }: {
       <div className="sidebar-search">
         <input value={q} placeholder="搜索任务…" maxLength={80}
           onChange={e => setQ(e.target.value)}
-          onKeyDown={e => { if (e.key === 'Escape') setQ(''); }} />
+          onKeyDown={e => { if (e.key === 'Escape') setQ(''); }}  autoComplete="off"/>
         {q && <button className="search-clear" title="清空"
           onClick={() => setQ('')}>×</button>}
       </div>
@@ -380,7 +380,7 @@ function ProjectGroup({ project, kids, collapsed: collapsedProp, onToggle, onOpe
                 if (e.key === 'Enter') commit((e.target as HTMLInputElement).value);
                 else if (e.key === 'Escape') setEditing(false);
               }}
-              onBlur={e => commit(e.target.value)} />
+              onBlur={e => commit(e.target.value)}  autoComplete="off"/>
           : <span className="row-title">{project.title}</span>}
         {!editing && !archived && project.pinned ? <Pin size={11} className="row-flag pin" /> : null}
         {!editing && !archived && project.starred ? <Star size={11} filled className="row-flag star" /> : null}
@@ -408,7 +408,7 @@ function ProjectGroup({ project, kids, collapsed: collapsedProp, onToggle, onOpe
                    if (e.key === 'Enter') void commitRepo((e.target as HTMLInputElement).value);
                    else if (e.key === 'Escape') setRepoEdit(false);
                  }}
-                 onBlur={e => void commitRepo(e.target.value)} />
+                 onBlur={e => void commitRepo(e.target.value)}  autoComplete="off"/>
         </div>
       )}
       {!collapsed && kids.map(k => (
@@ -496,7 +496,7 @@ function SessionRow({ sid, onClick, current, archived = false }: {
               if (e.key === 'Enter') commit((e.target as HTMLInputElement).value);
               else if (e.key === 'Escape') setEditing(false);
             }}
-            onBlur={e => commit(e.target.value)} />
+            onBlur={e => commit(e.target.value)}  autoComplete="off"/>
         : <span className="row-title">{s.title}</span>}
       {!editing && !archived && s.pinned ? <Pin size={11} className="row-flag pin" /> : null}
       {!editing && !archived && s.starred ? <Star size={11} filled className="row-flag star" /> : null}

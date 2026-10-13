@@ -152,7 +152,7 @@ function EditBox({ initial, onSave, onCancel }:
   const [val, setVal] = useState(initial);
   return (
     <div className="bubble-edit">
-      <textarea value={val} onChange={e => setVal(e.target.value)} rows={Math.min(10, Math.max(2, val.split('\n').length + 1))} autoFocus />
+      <textarea value={val} onChange={e => setVal(e.target.value)} rows={Math.min(10, Math.max(2, val.split('\n').length + 1))} autoFocus  autoComplete="off"/>
       <div className="bubble-edit-ops">
         <button className="btn sm" onClick={() => val.trim() && onSave(val.trim())}>保存</button>
         <button className="btn ghost sm" onClick={onCancel}>取消</button>

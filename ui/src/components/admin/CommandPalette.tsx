@@ -31,7 +31,7 @@ export default function CommandPalette({ tabs, onPick, onClose }: {
       <div className="cmdk" onClick={e => e.stopPropagation()} onKeyDown={onKey}>
         <input ref={inputRef} value={q}
           onChange={e => { setQ(e.target.value); setIdx(0); }}   // 过滤变化回到首项
-          placeholder={`切换到…（${tabs.length} 个面板 · ↑↓ 选择 · Enter 跳转 · Esc 关）`} />
+          placeholder={`切换到…（${tabs.length} 个面板 · ↑↓ 选择 · Enter 跳转 · Esc 关）`}  autoComplete="off"/>
         <div className="cmdk-list">
           {filtered.map((t, i) => (
             <div key={t.id} className={`cmdk-item${i === idx ? ' on' : ''}`}

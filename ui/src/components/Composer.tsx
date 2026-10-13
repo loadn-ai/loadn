@@ -234,10 +234,10 @@ export default function Composer() {
             ? (queueMode === 'steer' ? '运行中，发送即插话' : '运行中，发送将排队')
             : '描述任务…（Enter 发送 · Shift+Enter 换行，可粘贴或拖入附件）'}
           rows={1}
-        />
+         autoComplete="off"/>
         <div className="cbar">
           <input ref={fileInput} type="file" multiple hidden
-                 onChange={e => { addFiles(e.target.files ?? []); e.target.value = ''; }} />
+                 onChange={e => { addFiles(e.target.files ?? []); e.target.value = ''; }}  autoComplete="off"/>
           <button className="cbtn" title="上传附件" onClick={() => fileInput.current?.click()}>
             <Paperclip size={16} />
           </button>

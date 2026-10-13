@@ -74,7 +74,7 @@ export default function SkillsTab() {
               <button className="btn sm" onClick={() => setCreating(true)}><Plus size={13} /> 新建</button>
               <button className="btn sm" onClick={() => fileRef.current?.click()}><Upload size={13} /> 上传 zip</button>
               <input ref={fileRef} type="file" accept=".zip" hidden
-                onChange={e => { const f = e.target.files?.[0]; if (f) void uploadZip(f); e.target.value = ''; }} />
+                onChange={e => { const f = e.target.files?.[0]; if (f) void uploadZip(f); e.target.value = ''; }}  autoComplete="off"/>
               <button className="btn sm primary" onClick={() => setInstalling(true)}><Globe size={13} /> 市场安装</button>
               {msg && <span className={msg.err ? 'admin-msg err' : 'admin-msg'}>{msg.t}</span>}
             </div>
@@ -124,8 +124,8 @@ function NewSkillForm({ onDone }: { onDone: () => void }) {
   const [err, setErr] = useState('');
   return (
     <div className="new-skill-form">
-      <input placeholder="skill 名称（小写字母/数字/._-）" value={name} onChange={e => setName(e.target.value)} />
-      <input placeholder="一句话描述（agent 按此判断何时使用）" value={desc} onChange={e => setDesc(e.target.value)} />
+      <input placeholder="skill 名称（小写字母/数字/._-）" value={name} onChange={e => setName(e.target.value)}  autoComplete="off"/>
+      <input placeholder="一句话描述（agent 按此判断何时使用）" value={desc} onChange={e => setDesc(e.target.value)}  autoComplete="off"/>
       <div className="modal-foot">
         <button className="btn ghost sm" onClick={onDone}>取消</button>
         <button className="btn primary sm" disabled={!name.trim()} onClick={() => void (async () => {

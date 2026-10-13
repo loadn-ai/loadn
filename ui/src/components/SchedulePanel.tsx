@@ -446,7 +446,7 @@ function JobForm({ job, presetSid, onDone }: {
         )}
         {kind === 'message' ? (
           <Field label="目标会话">
-            <select value={sid} onChange={e => setSid(e.target.value)}>
+            <select value={sid} onChange={e => setSid(e.target.value)} autoComplete="off">
               <option value="">（选择会话）</option>
               {activeSessions.map(s => <option key={s.id} value={s.id}>{s.title}</option>)}
             </select>
@@ -455,16 +455,16 @@ function JobForm({ job, presetSid, onDone }: {
           <div className="sched-grid-3">
             <Field label="会话标题">
               <input value={title} onChange={e => setTitle(e.target.value)}
-                     placeholder="默认用任务标签" />
+                     placeholder="默认用任务标签"  autoComplete="off"/>
             </Field>
             <Field label="角色">
-              <select value={profile} onChange={e => setProfile(e.target.value)}>
+              <select value={profile} onChange={e => setProfile(e.target.value)} autoComplete="off">
                 <option value="auto">auto（按内容匹配）</option>
                 {profiles.map(p => <option key={p.name} value={p.name}>{p.name}</option>)}
               </select>
             </Field>
             <Field label="引擎">
-              <select value={engine} onChange={e => setEngine(e.target.value)}>
+              <select value={engine} onChange={e => setEngine(e.target.value)} autoComplete="off">
                 <option value="">跟随默认（{defaultEngine}）</option>
                 {Object.keys(engines).map(n => <option key={n} value={n}>{n}</option>)}
               </select>
@@ -482,7 +482,7 @@ function JobForm({ job, presetSid, onDone }: {
         ]} />
         {trig === 'once' && (
           <Field label="触发时刻">
-            <input type="datetime-local" value={at} onChange={e => setAt(e.target.value)} />
+            <input type="datetime-local" value={at} onChange={e => setAt(e.target.value)}  autoComplete="off"/>
           </Field>
         )}
         {trig === 'every' && (
@@ -490,8 +490,8 @@ function JobForm({ job, presetSid, onDone }: {
             <Field label="间隔">
               <div className="sched-inline">
                 <input className="sched-num" type="number" min={1} value={everyN}
-                       onChange={e => setEveryN(e.target.value)} />
-                <select value={everyU} onChange={e => setEveryU(e.target.value)}>
+                       onChange={e => setEveryN(e.target.value)}  autoComplete="off"/>
+                <select value={everyU} onChange={e => setEveryU(e.target.value)} autoComplete="off">
                   <option value="m">分钟</option>
                   <option value="h">小时</option>
                   <option value="d">天</option>
@@ -500,7 +500,7 @@ function JobForm({ job, presetSid, onDone }: {
             </Field>
             <Field label="次数上限">
               <input className="sched-num" type="number" min={1} max={100000} value={maxFires}
-                     onChange={e => setMaxFires(e.target.value)} />
+                     onChange={e => setMaxFires(e.target.value)}  autoComplete="off"/>
             </Field>
           </div>
         )}
@@ -515,12 +515,12 @@ function JobForm({ job, presetSid, onDone }: {
             <div className="sched-grid-2">
               {(cronMode === 'daily' || cronMode === 'weekly') && (
                 <Field label="时刻">
-                  <input type="time" value={hhmm} onChange={e => setHhmm(e.target.value)} />
+                  <input type="time" value={hhmm} onChange={e => setHhmm(e.target.value)}  autoComplete="off"/>
                 </Field>
               )}
               {cronMode === 'weekly' && (
                 <Field label="星期">
-                  <select value={dow} onChange={e => setDow(e.target.value)}>
+                  <select value={dow} onChange={e => setDow(e.target.value)} autoComplete="off">
                     {['周日', '周一', '周二', '周三', '周四', '周五', '周六'].map((lab, i) =>
                       <option key={i} value={i}>{lab}</option>)}
                   </select>
@@ -529,26 +529,26 @@ function JobForm({ job, presetSid, onDone }: {
               {cronMode === 'hours' && (
                 <Field label="间隔（小时）">
                   <input className="sched-num" type="number" min={1} max={23} value={everyH}
-                         onChange={e => setEveryH(e.target.value)} />
+                         onChange={e => setEveryH(e.target.value)}  autoComplete="off"/>
                 </Field>
               )}
               {cronMode === 'custom' && (
                 <Field label="cron 表达式" hint="分 时 日 月 周（本地时区）">
                   <input className="mono" value={cronText} onChange={e => setCronText(e.target.value)}
-                         placeholder="0 20 * * 1-5" />
+                         placeholder="0 20 * * 1-5"  autoComplete="off"/>
                 </Field>
               )}
               {cronMode !== 'custom' && (
                 <Field label="次数上限">
                   <input className="sched-num" type="number" min={1} max={100000} value={maxFires}
-                         onChange={e => setMaxFires(e.target.value)} />
+                         onChange={e => setMaxFires(e.target.value)}  autoComplete="off"/>
                 </Field>
               )}
             </div>
             {cronMode === 'custom' && (
               <Field label="次数上限">
                 <input className="sched-num" type="number" min={1} max={100000} value={maxFires}
-                       onChange={e => setMaxFires(e.target.value)} />
+                       onChange={e => setMaxFires(e.target.value)}  autoComplete="off"/>
               </Field>
             )}
             <div className="sched-cron-preview">cron：<code>{cron}</code>
@@ -563,13 +563,13 @@ function JobForm({ job, presetSid, onDone }: {
         <div className="sched-grid-2">
           <Field label="标签">
             <input value={label} onChange={e => setLabel(e.target.value)}
-                   placeholder="如：比赛参赛 / 到期巡检" />
+                   placeholder="如：比赛参赛 / 到期巡检"  autoComplete="off"/>
           </Field>
         </div>
         <Field label="到点投递的指令"
                hint="撞上运行中的 loadn 任务会作为插话实时注入（不等排队）">
           <textarea rows={3} value={prompt} onChange={e => setPrompt(e.target.value)}
-                    placeholder="到点交给 agent 做什么" />
+                    placeholder="到点交给 agent 做什么"  autoComplete="off"/>
         </Field>
       </div>
 

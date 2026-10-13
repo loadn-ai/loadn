@@ -79,19 +79,19 @@ export default function ChannelsCard() {
       <div className="setting-row">
         <label>启用</label>
         <input type="checkbox" checked={cfg.telegram_enabled}
-          onChange={e => setCfg({ ...cfg, telegram_enabled: e.target.checked })} />
+          onChange={e => setCfg({ ...cfg, telegram_enabled: e.target.checked })}  autoComplete="off"/>
         <span className="muted">白名单 chat_id 收发；token 只进 vault</span>
       </div>
       <div className="setting-row">
         <label>bot token</label>
         <input className="mono" type="password" placeholder={cfg.token_set ? '（已存，留空=不改）' : '123456:ABC-…'}
-          value={token} onChange={e => setToken(e.target.value)} />
+          value={token} onChange={e => setToken(e.target.value)}  autoComplete="off"/>
         <button className="res-btn" onClick={() => void probe()}>探测 getMe</button>
       </div>
       <div className="setting-row">
         <label>白名单 chat_id</label>
         <input className="mono" placeholder="123456789, 987654321（逗号分隔）"
-          value={allow} onChange={e => setAllow(e.target.value)} />
+          value={allow} onChange={e => setAllow(e.target.value)}  autoComplete="off"/>
       </div>
       <div className="setting-row">
         <button className="btn sm primary" onClick={() => void save()}>保存</button>

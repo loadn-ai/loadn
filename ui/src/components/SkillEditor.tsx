@@ -105,7 +105,7 @@ export default function SkillEditor({ name, onBack }: { name: string; onBack: ()
         {preview
           ? <div className="md se-preview"><Markdown>{content}</Markdown></div>
           : <textarea className="se-text mono" value={content} spellCheck={false} disabled={!ready}
-            onChange={e => { setContent(e.target.value); setDirty(true); }} />}
+            onChange={e => { setContent(e.target.value); setDirty(true); }}  autoComplete="off"/>}
         {msg && <div className="se-msg">{msg}</div>}
       </div>
     </div>

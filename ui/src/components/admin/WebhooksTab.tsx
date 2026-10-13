@@ -155,17 +155,17 @@ function HookForm({ profiles, hook, onDone }: {
       <div className="sk-head"><b>{editing ? `编辑 #${hook!.id} · ${hook!.name}` : '新建 webhook'}</b>
         {editing && <span className="muted" style={{ fontSize: 'var(--fs-md)' }}>（token 不变，外部 URL 无需更换）</span>}
       </div>
-      <input placeholder="名称（例：PR 合并处理）" value={name} onChange={e => setName(e.target.value)} />
+      <input placeholder="名称（例：PR 合并处理）" value={name} onChange={e => setName(e.target.value)}  autoComplete="off"/>
       <textarea className="mono" rows={4} value={tpl} onChange={e => setTpl(e.target.value)}
-        placeholder="prompt 模板，须含 {{payload}} 占位符（payload 原样嵌入，不求值）" />
+        placeholder="prompt 模板，须含 {{payload}} 占位符（payload 原样嵌入，不求值）"  autoComplete="off"/>
       <div style={{ display: 'flex', gap: 8 }}>
-        <select value={profile} onChange={e => setProfile(e.target.value)}>
+        <select value={profile} onChange={e => setProfile(e.target.value)} autoComplete="off">
           <option value="auto">auto（按内容匹配）</option>
           {profiles.map(p => <option key={p} value={p}>{p}</option>)}
         </select>
         <input type="number" min={1} max={600} value={rate}
-          onChange={e => setRate(Number(e.target.value))} title="限流（次/分钟）" />
-        <input placeholder="IP 白名单（可选，逗号分隔）" value={ips} onChange={e => setIps(e.target.value)} />
+          onChange={e => setRate(Number(e.target.value))} title="限流（次/分钟）"  autoComplete="off"/>
+        <input placeholder="IP 白名单（可选，逗号分隔）" value={ips} onChange={e => setIps(e.target.value)}  autoComplete="off"/>
       </div>
       <div className="modal-foot">
         <button className="btn ghost sm" onClick={cancel}>取消</button>

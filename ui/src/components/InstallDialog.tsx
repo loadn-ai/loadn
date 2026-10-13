@@ -69,7 +69,7 @@ export default function InstallDialog({ onClose }: { onClose: () => void }) {
           <div className="search-row">
             <input value={q} onChange={e => setQ(e.target.value)}
               onKeyDown={e => { if (e.key === 'Enter') void search(); }}
-              placeholder="搜技能，例：excel / pdf / 爬虫 / react" autoFocus />
+              placeholder="搜技能，例：excel / pdf / 爬虫 / react" autoFocus  autoComplete="off"/>
             <button className="btn sm primary" onClick={() => void search()}>搜索</button>
           </div>
           {hubErr && <div className="admin-err">{hubErr}（可用 GitHub 链接直装）</div>}
@@ -123,7 +123,7 @@ export default function InstallDialog({ onClose }: { onClose: () => void }) {
         <div className="url-install">
           <label>GitHub 地址 / owner/repo 简写 / 任意 https 归档 URL（.zip/.tar.gz，agentskills.io 兼容）</label>
           <textarea className="mono" rows={4} value={url} onChange={e => setUrl(e.target.value)}
-            placeholder={'anthropics/skills/skills/docx\ngithub.com/owner/repo#skills~my-skill\ngithub.com/owner/repo/tree/main/skills/my-skill\nhttps://example.com/my-skill.zip'} />
+            placeholder={'anthropics/skills/skills/docx\ngithub.com/owner/repo#skills~my-skill\ngithub.com/owner/repo/tree/main/skills/my-skill\nhttps://example.com/my-skill.zip'}  autoComplete="off"/>
           <button className="btn primary sm" disabled={!url.trim() || !!busy}
             onClick={() => {
               // github.com 地址与无协议简写走 repo_url；其余 https 归档走 url

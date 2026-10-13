@@ -166,7 +166,7 @@ export default function MemoryTab() {
           {sel ? (
             <>
               <input value={summary} onChange={e => setSummary(e.target.value)}
-                placeholder="摘要（注入索引用）" />
+                placeholder="摘要（注入索引用）"  autoComplete="off"/>
               <div className="admin-toolbar">
                 <button className={`btn sm ${preview ? 'ghost' : 'primary'}`}
                   onClick={() => setPreview(false)}>源码</button>
@@ -179,7 +179,7 @@ export default function MemoryTab() {
               {preview
                 ? <div className="md-preview"><ReactMarkdown>{text}</ReactMarkdown></div>
                 : <textarea className="mono" rows={14} value={text}
-                    onChange={e => setText(e.target.value)} />}
+                    onChange={e => setText(e.target.value)}  autoComplete="off"/>}
             </>
           ) : <div className="panel-empty">左侧选择一条记忆查看/编辑</div>}
         </div>
@@ -214,9 +214,9 @@ function NewEntryForm({ onDone }: { onDone: () => void }) {
   return (
     <div className="new-skill-form">
       <input placeholder="摘要（≤20 字，注入索引按它检索）" value={summary}
-        onChange={e => setSummary(e.target.value)} />
+        onChange={e => setSummary(e.target.value)}  autoComplete="off"/>
       <textarea className="mono" rows={4} placeholder="记忆正文（蜜罐/凭证护栏同守）"
-        value={content} onChange={e => setContent(e.target.value)} />
+        value={content} onChange={e => setContent(e.target.value)}  autoComplete="off"/>
       <div className="modal-foot">
         <button className="btn ghost sm" onClick={async () => {
           if ((summary.trim() || content.trim())

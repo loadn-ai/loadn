@@ -69,7 +69,7 @@ export default function UsersCard() {
       </div>
       <div className="admin-toolbar" style={{ marginBottom: 6 }}>
         <input placeholder="搜索用户名/昵称…" value={q} style={{ width: 200 }}
-               onChange={e => { setQ(e.target.value); setPage(1); }} />
+               onChange={e => { setQ(e.target.value); setPage(1); }}  autoComplete="off"/>
         <span className="muted" style={{ fontSize: 'var(--fs-md)' }}>
           共 {users.length} 个账号{q.trim() ? ` · 命中 ${filtered.length}` : ''}
         </span>
@@ -115,7 +115,7 @@ export default function UsersCard() {
             {resetPw?.uid === u.id && (
               <span style={{ display: 'inline-flex', gap: 6, alignItems: 'center' }}>
                 <input type="password" placeholder="新密码（≥8 位）" value={resetPw.pw}
-                  onChange={e => setResetPw({ uid: u.id, pw: e.target.value })} />
+                  onChange={e => setResetPw({ uid: u.id, pw: e.target.value })}  autoComplete="off"/>
                 <button className="btn sm primary" disabled={resetPw.pw.length < 8}
                   title="重置后其会话全部失效"
                   onClick={() => {
@@ -137,11 +137,11 @@ export default function UsersCard() {
       )}
       <div className="setting-row" style={{ gap: 6 }}>
         <input placeholder="新用户名" value={adding.username}
-               onChange={e => setAdding(a => ({ ...a, username: e.target.value }))} />
+               onChange={e => setAdding(a => ({ ...a, username: e.target.value }))}  autoComplete="off"/>
         <input placeholder="初始密码（≥8 位）" type="password" value={adding.password}
-               onChange={e => setAdding(a => ({ ...a, password: e.target.value }))} />
+               onChange={e => setAdding(a => ({ ...a, password: e.target.value }))}  autoComplete="off"/>
         <select value={adding.role}
-                onChange={e => setAdding(a => ({ ...a, role: e.target.value }))}>
+                onChange={e => setAdding(a => ({ ...a, role: e.target.value }))} autoComplete="off">
           <option value="user">用户</option>
           <option value="admin">管理员</option>
         </select>

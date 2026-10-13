@@ -267,11 +267,11 @@ export default function ResourcesPanel() {
           {svcAdd && (
             <div className="res-addbar focused">
               <input placeholder="名称（小写，如 jina-api）" style={{ width: 150 }} value={svcAdd.name}
-                onChange={e => setSvcAdd({ ...svcAdd, name: e.target.value })} />
+                onChange={e => setSvcAdd({ ...svcAdd, name: e.target.value })}  autoComplete="off"/>
               <input placeholder="端点 https://…（http(s)）" style={{ flex: 1, minWidth: 200 }} value={svcAdd.url}
-                onChange={e => setSvcAdd({ ...svcAdd, url: e.target.value })} />
+                onChange={e => setSvcAdd({ ...svcAdd, url: e.target.value })}  autoComplete="off"/>
               <input placeholder="备注（可选）" style={{ width: 150 }} value={svcAdd.note}
-                onChange={e => setSvcAdd({ ...svcAdd, note: e.target.value })} />
+                onChange={e => setSvcAdd({ ...svcAdd, note: e.target.value })}  autoComplete="off"/>
               <button className="res-btn"
                 disabled={!svcAdd.name.trim() || !svcAdd.url.trim()}
                 onClick={() => void upsertCustom(svcAdd)}>保存</button>
@@ -299,7 +299,7 @@ export default function ResourcesPanel() {
                             onKeyDown={e => {
                               if (e.key === 'Enter') void saveService(f.key, editVal);
                               if (e.key === 'Escape') setEditKey(null);
-                            }} />
+                            }}  autoComplete="off"/>
                         ) : (
                           <span className={`res-v ${valOf(f.key) ? '' : 'empty'}`}
                             title={`${valOf(f.key) || f.ph}（点击编辑）`}
@@ -388,7 +388,7 @@ export default function ResourcesPanel() {
                           onKeyDown={e => {
                             if (e.key === 'Enter') void upsertCustom({ name: c.name, url: editVal, note: c.note });
                             if (e.key === 'Escape') setEditKey(null);
-                          }} />
+                          }}  autoComplete="off"/>
                         <button className="res-btn"
                           onClick={() => void upsertCustom({ name: c.name, url: editVal, note: c.note })}>存</button>
                         <button className="res-btn" onClick={() => setEditKey(null)}>取消</button>
@@ -408,7 +408,7 @@ export default function ResourcesPanel() {
                           onKeyDown={e => {
                             if (e.key === 'Enter') void saveSecret(`svc:${c.name}`);
                             if (e.key === 'Escape') { setSecretInput(null); setSecretVal(''); }
-                          }} />
+                          }}  autoComplete="off"/>
                         <button className="res-btn" onClick={() => void saveSecret(`svc:${c.name}`)}>存</button>
                       </span>
                     ) : (
@@ -469,7 +469,7 @@ export default function ResourcesPanel() {
           </div>
           <div className="res-toolbar" style={{ marginBottom: 0 }}>
             <input className="res-search" placeholder="搜索平台 / 账号…" value={vSearch}
-              onChange={e => setVSearch(e.target.value)} />
+              onChange={e => setVSearch(e.target.value)}  autoComplete="off"/>
             <span className="spacer" />
             <span className="muted" style={{ fontSize: 'var(--fs-md)', display: 'inline-flex', alignItems: 'center', gap: 4 }}>
               {data.vault.verify.ok

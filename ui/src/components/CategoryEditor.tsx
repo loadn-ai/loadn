@@ -17,7 +17,7 @@ export default function CategoryEditor({ initialName, initialIcon, onCommit, onC
              onKeyDown={e => {
                if (e.key === 'Escape') onCancel();
                else if (e.key === 'Enter' && name.trim()) onCommit(name.trim(), icon);
-             }} />
+             }}  autoComplete="off"/>
       <div className="cat-editor-grid">
         {CATEGORY_ICON_KEYS.map(k => (
           <button key={k} title={iconLabel(k)}

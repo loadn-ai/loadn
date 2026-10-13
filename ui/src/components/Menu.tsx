@@ -99,7 +99,7 @@ export default function PopupMenu({ anchor, items, onClose }: {
                      const v = e.currentTarget.value.trim();
                      if (v) { it.onSubmit(v); onClose(); }
                    }
-                 }} />
+                 }}  autoComplete="off"/>
         );
         const Icon = it.icon;
         return (
