@@ -35,7 +35,7 @@ export const Chat = (p: IconProps) => (
 );
 
 export const Bot = (p: IconProps) => (
-  <Svg {...p}><rect x="4" y="8" width="16" height="12" rx="3" /><path d="M12 8V4" /><circle cx="12" cy="3" r="1" /><path d="M9 13v1M15 13v1" /></Svg>
+  <Svg {...p}><rect x="4" y="8" width="16" height="12" rx="2" /><path d="M12 8V4" /><circle cx="12" cy="3" r="1" /><path d="M9 13v1M15 13v1" /></Svg>
 );
 
 export const ChevronDown = (p: IconProps) => (
@@ -153,8 +153,11 @@ export const Link = (p: IconProps) => (
   <Svg {...p}><path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71" /><path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71" /></Svg>
 );
 
+/** 平面包裹箱（分类候选 box/交付）：2026-10-13 风格统一——旧形为等距
+ *  立体立方（透视与集内平面正视冲突），重绘为正视包裹箱：圆角箱体 +
+ *  盖线 + 中缝胶带三笔。InstallDialog/SecurityPanel 复用同形。 */
 export const Box = (p: IconProps) => (
-  <Svg {...p}><path d="M21 8l-9-5-9 5v8l9 5 9-5V8z" /><path d="M3.3 8.3L12 13l8.7-4.7" /><path d="M12 22V13" /></Svg>
+  <Svg {...p}><rect x="4" y="4.5" width="16" height="15" rx="2" /><path d="M4 9h16" /><path d="M12 9v10.5" /></Svg>
 );
 
 export const ChevronRight = (p: IconProps) => (
@@ -233,6 +236,12 @@ export const ArrowRight = (p: IconProps) => (
 );
 
 // ---- 分类空间图标（icon rail / IconPicker 候选集） ----
+// 风格契约（2026-10-13 统一审计后固化，新增候选必须遵守）：
+//   线条 stroke=currentColor / strokeWidth=1.9（Svg 默认，不覆写）；
+//   填充 fill=none（纯描边，无实心/半实心混排）；
+//   透视 平面正视（flat）——禁等距立体/斜投影（Box/Layers 旧立体形已重绘）；
+//   圆角 容器类 rect rx=2、内嵌元素 rx≤1.5（内外层级语言一致）；
+//   尖角主题形（Zap/Heart/Compass 指针）靠 round join 软化，属例外许可。
 export const Brain = (p: IconProps) => (
   <Svg {...p}><path d="M9.5 2A2.5 2.5 0 0 1 12 4.5v15a2.5 2.5 0 0 1-4.96.44A2.5 2.5 0 0 1 4.5 18 2.5 2.5 0 0 1 2 15.5a2.5 2.5 0 0 1 1.42-2.25A2.5 2.5 0 0 1 2 11a2.5 2.5 0 0 1 2-2.45A2.5 2.5 0 0 1 6 5.2 2.5 2.5 0 0 1 9.5 2z" /><path d="M14.5 2A2.5 2.5 0 0 0 12 4.5v15a2.5 2.5 0 0 0 4.96.44A2.5 2.5 0 0 0 19.5 18a2.5 2.5 0 0 0 2.5-2.5 2.5 2.5 0 0 0-1.42-2.25A2.5 2.5 0 0 0 22 11a2.5 2.5 0 0 0-2-2.45A2.5 2.5 0 0 0 18 5.2 2.5 2.5 0 0 0 14.5 2z" /></Svg>
 );
@@ -250,7 +259,7 @@ export const Heart = (p: IconProps) => (
 );
 
 export const Cpu = (p: IconProps) => (
-  <Svg {...p}><rect x="4" y="4" width="16" height="16" rx="2" /><rect x="9" y="9" width="6" height="6" /><path d="M9 1v3M15 1v3M9 20v3M15 20v3M1 9h3M1 15h3M20 9h3M20 15h3" /></Svg>
+  <Svg {...p}><rect x="4" y="4" width="16" height="16" rx="2" /><rect x="9" y="9" width="6" height="6" rx="1.5" /><path d="M9 1v3M15 1v3M9 20v3M15 20v3M1 9h3M1 15h3M20 9h3M20 15h3" /></Svg>
 );
 
 export const Database = (p: IconProps) => (
@@ -261,8 +270,11 @@ export const Compass = (p: IconProps) => (
   <Svg {...p}><circle cx="12" cy="12" r="10" /><path d="M16.2 7.8l-2.1 6.3-6.3 2.1 2.1-6.3z" /></Svg>
 );
 
+/** 平面层叠（分类候选 layers/架构）：2026-10-13 风格统一——旧形为等距
+ *  立体菱形堆叠（透视冲突），重绘为正视三片层板（薄片 rx=1.5，非容器，
+ *  无交叠描边穿过）。 */
 export const Layers = (p: IconProps) => (
-  <Svg {...p}><path d="M12 2L2 7l10 5 10-5z" /><path d="M2 17l10 5 10-5" /><path d="M2 12l10 5 10-5" /></Svg>
+  <Svg {...p}><rect x="5" y="3.5" width="14" height="4" rx="1.5" /><rect x="5" y="10" width="14" height="4" rx="1.5" /><rect x="5" y="16.5" width="14" height="4" rx="1.5" /></Svg>
 );
 
 export const Users = (p: IconProps) => (
