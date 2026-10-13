@@ -191,7 +191,12 @@ async def test_planner_gather_emits_task_cards(tmp_path):
         emit=events.append)
     assert out and "子任务1结果" in out[0]
     kinds = [e["type"] for e in events]
-    assert kinds == ["assistant", "tool_result"]  # 开始卡 + 结果卡（emitter 支持的形状）
+    # 开始卡 + [subagent_text：子代理文字即时转发（2026-10-13 起，此前
+    # 整体吞掉全程黑箱）] + 结果卡——首尾形状不变，中间文字可见
+    assert kinds[0] == "assistant" and kinds[-1] == "tool_result"
+    assert "subagent_text" in kinds, "子代理文字须即时外发"
+    subtxt = next(e for e in events if e["type"] == "subagent_text")
+    assert subtxt["text"] == "子任务1结果" and subtxt["n"] == 1
     msg = events[0]["message"]
     blocks = msg.content if hasattr(msg, "content") else msg["content"]
     card = blocks[0].to_dict() if hasattr(blocks[0], "to_dict") else blocks[0]
@@ -200,8 +205,9 @@ async def test_planner_gather_emits_task_cards(tmp_path):
     # 自动人名：池内取值、随 Task input 外发（宿主 UI 拟人展示）；
     # 首个子代理取池首（确定性起点——轮转索引可复现）
     assert card["input"]["agent_name"] == AGENT_NAME_POOL[0]
-    res = events[1]["block"]
-    assert res.tool_use_id == "sub_1" and events[1]["name"] == "Task"
+    tres = next(e for e in events if e["type"] == "tool_result")
+    res = tres["block"]
+    assert res.tool_use_id == "sub_1" and tres["name"] == "Task"
     assert "子任务1结果" in res.content and not res.is_error
 
 
