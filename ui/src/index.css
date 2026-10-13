@@ -845,13 +845,18 @@ button:focus-visible, .tab:focus-visible, .chip:focus-visible {
 .admin-toolbar select, .admin-toolbar input:not([type='checkbox']):not([type='radio']),
 .mcp-table select, .mcp-table input:not([type='checkbox']):not([type='radio']),
 .new-skill-form select, .sched-grid-2 select, .sched-grid-2 input,
-.mem-cols select, .mem-cols input {
+.mem-cols select, .mem-cols input,
+/* 安全页类化批：sec 容器内控件吃同款统一面（文本框美化与全局一致） */
+.sec-detail select, .sec-detail input:not([type='checkbox']):not([type='radio']),
+.sec-detail textarea, .sec-cards select,
+.sec-policy select, .sec-policy input:not([type='checkbox']):not([type='radio']) {
   background: var(--bg3); color: var(--text);
   border: 1px solid var(--border); border-radius: var(--radius-sm);
   padding: 5px 8px; font-size: var(--fs-lg);
 }
 .admin-toolbar select:focus, .admin-toolbar input:focus,
-.mcp-table select:focus, .mcp-table input:focus {
+.mcp-table select:focus, .mcp-table input:focus,
+.sec-detail select:focus, .sec-detail input:focus, .sec-detail textarea:focus {
   outline: none; border-color: color-mix(in srgb, var(--accent) 45%, transparent);
 }
 button.chip { cursor: pointer; }   /* AC-5.7：可点 chip 光标兜底 */
@@ -1232,6 +1237,74 @@ button.attach-chip:hover { border-color: color-mix(in srgb, var(--accent) 40%, v
 .sec-cards-grid { display: grid; grid-template-columns: repeat(auto-fill,
   minmax(290px, 1fr)); gap: 10px; }
 .sec-cards { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+/* ============ 安全页全面类化（用户反馈：交互乱没章法/布局不一致/文本框
+   没美化——内联样式收敛到此段；卡片态/hover 全 CSS 化，干掉
+   onMouseEnter 式副作用写法；控件吃全局统一观感） ============ */
+/* 姿态卡（可点开明细的入口卡） */
+.sec-card { border: 1px solid var(--border); border-radius: var(--radius);
+  padding: 10px 12px; cursor: pointer;
+  transition: border-color .15s, transform .1s; }
+.sec-card:hover { border-color: var(--accent); }
+.sec-card.open { border-color: var(--accent); transform: translateY(-1px); }
+.sec-card.danger { border-color: var(--danger); }
+.sec-card-head { display: flex; align-items: center; font-weight: 600; }
+.sec-card-icon { margin-right: 6px; display: inline-flex; vertical-align: -2px; }
+.sec-card-top { font-size: var(--fs-lg); margin-top: 4px; }
+.sec-card-top.dim { color: var(--muted); }
+.sec-card-sub { margin-top: 6px; font-size: var(--fs-md); line-height: 1.5; }
+.sec-card-hint { font-size: var(--fs-md); margin-top: 6px; color: var(--yellow); }
+.sec-card-more { margin-left: auto; font-size: var(--fs-sm); }
+/* 详情面板（各卡点开后的统一容器——此前裸 div/setting-card/再套 card 三种混用） */
+.sec-detail { border: 1px solid var(--border); border-radius: var(--radius);
+  padding: 10px 12px; margin-bottom: 14px;
+  background: rgba(127, 127, 127, .04); }
+/* 页面操作区：普通操作与紧急操作分组（此前混排一行没章法） */
+.sec-opsbar { display: flex; gap: 10px; align-items: flex-start;
+  flex-wrap: wrap; margin-bottom: 14px; }
+.sec-ops-note { flex: 1; min-width: 260px; padding: 8px 12px;
+  border-radius: var(--radius); font-size: var(--fs-lg);
+  white-space: pre-wrap; line-height: 1.5; }
+.sec-ops-note.ok { border: 1px solid var(--green); color: var(--green); }
+.sec-ops-note.bad { border: 1px solid var(--danger); color: var(--danger); }
+/* 熔断激活横幅 */
+.sec-killbar { border: 1px solid var(--danger); border-radius: var(--radius);
+  padding: 10px 12px; margin-bottom: 14px; font-size: var(--fs-lg); }
+/* 数字输入（TTL/端口/等待秒——与全局控件面同观感，替代裸 width:100 内联） */
+.sec-num { width: 100px; min-width: 100px; flex: none; min-height: 28px;
+  font-variant-numeric: tabular-nums; }
+.sec-num.sm { width: 64px; min-width: 64px; }
+/* 多行列表（授权面 shared/bridges 编辑） */
+.sec-textarea { width: 100%; margin-top: 6px; min-height: 44px;
+  font-size: var(--fs-md); font-variant-numeric: tabular-nums;
+  resize: vertical; }
+.sec-textarea.tall { min-height: 60px; }
+/* 出口策略框（EgressDetail 内的策略子面板） */
+.sec-policy { border: 1px solid var(--border); border-radius: var(--radius);
+  padding: 8px 10px; margin-bottom: 10px; }
+/* 策略行 label */
+.sec-k { min-width: 64px; }
+/* 凭证编辑器网格 */
+.sec-vault-grid { display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(240px, 1fr));
+  gap: 4px 12px; }
+/* 白名单/授权 chip 行 */
+.sec-chiprow { margin-top: 10px; font-size: var(--fs-md); line-height: 2; }
+.sec-chip { margin-right: 6px; }
+.sec-chip .x { margin-left: 4px; cursor: pointer; opacity: .7; }
+/* 熔断按钮 armed 态（二段确认激活——5 秒内再点生效） */
+.btn.danger[data-armed] { background: var(--danger); color: #fff;
+  border-color: var(--danger); }
+/* 安全运维面（sec-detail 内的 setting-card：去掉与外框的叠加边距） */
+.sec-ops { margin-top: 14px; box-shadow: none; }
+.fs-note { font-size: var(--fs-md); }
+/* 授权面列表行（竖排：头行+两个 textarea） */
+.sec-lists { align-items: flex-start; flex-direction: column; }
+.sec-lists-head { display: flex; align-items: center; gap: 10px; width: 100%; }
+/* 态势导语（卡片网格上方一句总览） */
+.sec-lede { margin-bottom: 10px; }
+/* 凭证行内编辑器 td */
+.sec-vault-editor { padding: 4px 0 12px 12px;
+  background: rgba(128, 128, 128, .06); }
 .kv-table th {
   text-align: left; font-weight: 500; color: var(--text-dim); font-size: var(--fs-sm);
   letter-spacing: .04em; padding: 6px 10px 8px; border-bottom: 1px solid var(--border);

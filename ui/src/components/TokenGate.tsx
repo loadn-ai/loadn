@@ -100,14 +100,16 @@ export default function TokenGate() {
             归并到这个账号下。
           </div>
         )}
-        <input autoFocus placeholder="用户名" value={user}
+        <input autoFocus placeholder="用户名" value={user} autoComplete="username"
                onChange={e => setUser(e.target.value)} style={input} />
-        <input type="password" placeholder="密码" value={pass}
-               onChange={e => setPass(e.target.value)} style={input}
+        <input type="password" placeholder="密码" value={pass} style={input}
+               autoComplete={mode === 'setup' ? 'new-password' : 'current-password'}
+               onChange={e => setPass(e.target.value)}
                onKeyDown={e => { if (e.key === 'Enter' && mode === 'login') void submit(); }} />
         {mode === 'setup' && (
-          <input type="password" placeholder="确认密码" value={pass2}
-                 onChange={e => setPass2(e.target.value)} style={input}
+          <input type="password" placeholder="确认密码" value={pass2} style={input}
+                 autoComplete="new-password"
+                 onChange={e => setPass2(e.target.value)}
                  onKeyDown={e => { if (e.key === 'Enter') void submit(); }} />
         )}
         {err ? <div style={{ color: '#e5484d', fontSize: 'var(--fs-lg)' }}>{err}</div> : null}
@@ -124,7 +126,7 @@ export default function TokenGate() {
             </button>
             {advanced && (
               <>
-                <input placeholder="粘贴 token" value={tok}
+                <input placeholder="粘贴 token" value={tok} autoComplete="off"
                        onChange={e => setTok(e.target.value)} style={input} />
                 <button disabled={!tok.trim()} style={{ ...btn, opacity: tok.trim() ? 1 : 0.5 }}
                         onClick={() => { setToken(tok.trim()); location.reload(); }}>
