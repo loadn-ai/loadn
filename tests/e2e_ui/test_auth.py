@@ -226,17 +226,18 @@ async def test_multiuser_batch3_domain_and_channel(server_url):
     admin = httpx.AsyncClient(base_url=server_url, timeout=10,
                               cookies=admin_cookies)
     userc = httpx.AsyncClient(base_url=server_url, timeout=10)
+    _restore_allow = None      # 预绑：try 中途失败时 finally 不再 UnboundLocalError 掩盖原始异常
     try:
         # userc 登录（批2 测试建过）
         assert (await userc.post("/api/auth/login", json={
             "username": "userc", "password": "userc-pass-123"})).status_code == 200
-        # ① user 域：普通用户被属主门拦（403）；admin 过门（域未写过
-        # → 404「先有写入才有域」——与 403 区分即 guard 生效证据）
+        # ① user 域：普通用户被属主门拦（403）；admin 过门——空域 200 空列表
+        # （可读性批改语义：目录「先有写入才有」，空≠错误；与 403 区分即 guard 生效证据）
         assert (await userc.get(
             "/api/memory/entries", params={"domain": "user"})
         ).status_code == 403
-        assert (await admin.get(
-            "/api/memory/entries", params={"domain": "user"})).status_code == 404
+        r = await admin.get("/api/memory/entries", params={"domain": "user"})
+        assert r.status_code == 200 and r.json()["entries"] == []
         # 他人/不存在项目域 → 404（不暴露）
         assert (await userc.get(
             "/api/memory/entries", params={"domain": "p:000000000000"})
@@ -285,7 +286,8 @@ async def test_multiuser_batch3_domain_and_channel(server_url):
         sids_c = (await userc.get("/api/sessions")).json()["sessions"]
         assert b["session_id"] in [s["id"] for s in sids_c]
     finally:
-        _restore_allow()
+        if _restore_allow:
+            _restore_allow()
         from loadn_webui import db as _dbm
         with _dbm.conn() as _c:      # 清 chat 777 的测试 binding（防污染
             _c.execute("DELETE FROM channel_bindings "  # 后续 channels 测试
