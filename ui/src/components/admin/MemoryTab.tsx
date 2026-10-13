@@ -134,7 +134,7 @@ export default function MemoryTab() {
       <div className="admin-toolbar">
         <span className="chip" title="仅本页可维护用户级记忆（跨项目共享）">用户级（跨项目）</span>
         <span className="admin-msg">项目记忆请到项目中查看（任务右侧边栏·工作区·记忆），数字员工记忆请到数字员工处查看（组织架构）</span>
-        <button className="btn sm" onClick={() => setCreating(v => !v)}>
+        <button className="btn sm primary" onClick={() => setCreating(v => !v)}>
           <Plus size={13} /> 新建
         </button>
         {msg && <span className={msg.err ? 'admin-msg err' : 'admin-msg'}>{msg.t}</span>}

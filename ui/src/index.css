@@ -631,8 +631,11 @@ button:focus-visible, .tab:focus-visible, .chip:focus-visible {
 /* ---------------- 管理中心（独立页面） ---------------- */
 .sidebar-foot { padding: 12px 14px; border-top: 1px solid var(--border); }
 .admin-btn { color: var(--text-dim); }
-.admin-page { flex: 1; display: flex; flex-direction: column; min-width: 0; padding: 20px 32px 28px; }
+.admin-page { flex: 1; display: flex; flex-direction: column; min-width: 0; padding: 20px 32px 28px;
+  background: var(--glow); }   /* 风格统一批：与前台同款氛围光（welcome/main 一致的产品气质） */
 .admin-head { display: flex; justify-content: space-between; align-items: center; flex-shrink: 0; }
+.admin-kicker { font-size: var(--fs-xs); text-transform: uppercase; letter-spacing: .08em;
+  color: var(--text-dim); font-weight: 500; margin-bottom: 2px; }   /* 同 space-kicker 层次语言 */
 .admin-head h2 { font-size: 18px; font-weight: 600; letter-spacing: -.01em; }
 .admin-tabs { display: flex; border-bottom: 1px solid var(--border); margin-top: 12px; flex-shrink: 0;
   overflow-x: auto; scrollbar-width: none; }  /* AC-5.10a：去 padding:0 8px——tab 文字与 admin-body 内容左缘对齐 */
@@ -829,7 +832,8 @@ button:focus-visible, .tab:focus-visible, .chip:focus-visible {
 @keyframes toast-in { from { opacity: 0; transform: translateX(10px); }
   to { opacity: 1; transform: none; } }
 .hub-card { background: var(--bg3); border: 1px solid var(--border); border-radius: var(--radius);   /* AC-5.7：与其余卡片圆角对齐 */
-  padding: 11px 13px; display: flex; flex-direction: column; gap: 5px; }
+  padding: 11px 13px; display: flex; flex-direction: column; gap: 5px;
+  box-shadow: var(--shadow-sm); }   /* 风格统一批：卡片阴影与前台对齐 */
 .hub-card.slim { flex-direction: row; align-items: center; justify-content: space-between; }
 .hub-card.on { border-color: color-mix(in srgb, var(--accent) 45%, var(--border));
   background: var(--accent-soft); }
@@ -1242,9 +1246,10 @@ button.attach-chip:hover { border-color: color-mix(in srgb, var(--accent) 40%, v
    onMouseEnter 式副作用写法；控件吃全局统一观感） ============ */
 /* 姿态卡（可点开明细的入口卡） */
 .sec-card { border: 1px solid var(--border); border-radius: var(--radius);
-  padding: 10px 12px; cursor: pointer;
-  transition: border-color .15s, transform .1s; }
-.sec-card:hover { border-color: var(--accent); }
+  padding: 10px 12px; cursor: pointer; background: var(--bg2);
+  box-shadow: var(--shadow-sm);
+  transition: border-color .15s, transform .1s, box-shadow .15s; }
+.sec-card:hover { border-color: var(--accent); box-shadow: var(--shadow-md); }
 .sec-card.open { border-color: var(--accent); transform: translateY(-1px); }
 .sec-card.danger { border-color: var(--danger); }
 .sec-card-head { display: flex; align-items: center; font-weight: 600; }

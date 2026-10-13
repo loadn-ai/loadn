@@ -130,7 +130,11 @@ export default function AdminPanel({ onClose, initialTab, filterSid, onClearFilt
   return (
     <div className="admin-page">
       <div className="admin-head">
-        <h2>管理中心</h2>
+        {/* 风格统一批：kicker+标题层次（同前台 space-kicker 语言）；标题随 tab 走 */}
+        <div>
+          <div className="admin-kicker">管理中心 · Control Center</div>
+          <h2>{TABS.find(t => t.id === tab)?.label ?? '管理中心'}</h2>
+        </div>
         <button className="btn ghost" onClick={onClose}>← 返回</button>
       </div>
       {cmdk && <CommandPalette tabs={visibleTabs}

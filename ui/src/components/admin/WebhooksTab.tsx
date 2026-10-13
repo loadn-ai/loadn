@@ -74,7 +74,7 @@ export default function WebhooksTab() {
   return (
     <div className="admin-body">
       <div className="admin-toolbar">
-        <button className="btn sm" onClick={() => setCreating(true)}><Plus size={13} /> 新建</button>
+        <button className="btn sm primary" onClick={() => setCreating(true)}><Plus size={13} /> 新建</button>
         {msg && <span className={msg.err ? 'admin-msg err' : 'admin-msg'}>{msg.t}</span>}
       </div>
       {creating && <HookForm profiles={profiles} onDone={() => {

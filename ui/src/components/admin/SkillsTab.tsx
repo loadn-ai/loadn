@@ -71,7 +71,7 @@ export default function SkillsTab() {
           ? <InstallDialog onClose={() => { setInstalling(false); void reload(); }} />
           : <>
             <div className="admin-toolbar">
-              <button className="btn sm" onClick={() => setCreating(true)}><Plus size={13} /> 新建</button>
+              <button className="btn sm primary" onClick={() => setCreating(true)}><Plus size={13} /> 新建</button>
               <button className="btn sm" onClick={() => fileRef.current?.click()}><Upload size={13} /> 上传 zip</button>
               <input ref={fileRef} type="file" accept=".zip" hidden
                 onChange={e => { const f = e.target.files?.[0]; if (f) void uploadZip(f); e.target.value = ''; }}  autoComplete="off"/>
