@@ -30,7 +30,8 @@ from .config import PATHS
 # rev12：ping_history（AC-5.10f——资源探测历史入库，可回看趋势）
 # rev13：sessions.size_bytes/size_checked_at（BD-3——磁盘占用落库，排序可下推 SQL）
 # rev14：org_departments/org_employees/temp_pool（DW——数字员工：组织架构+临时工池）
-SCHEMA_REV = 14
+# rev15：org_employees.duty（DW-6——职责说明：卡片展示+进 agent 提示与选人参考）
+SCHEMA_REV = 15
 from .util import iso
 
 SCHEMA = """
@@ -274,6 +275,7 @@ CREATE TABLE IF NOT EXISTS org_employees (        -- DW-1：正式员工=一份 
   dept_id INTEGER REFERENCES org_departments(id) ON DELETE SET NULL,
   name TEXT UNIQUE NOT NULL,          -- 员工名（Task employee 参数按名匹配）
   title TEXT DEFAULT '',              -- 头衔（法务顾问）
+  duty TEXT DEFAULT '',               -- 职责说明（做什么/负责什么；DW-6 进 def）
   mbti TEXT DEFAULT '',               -- MBTI 16 型（ESTJ…）
   traits TEXT DEFAULT '',             -- 性格标签（逗号串）
   persona TEXT DEFAULT '',            -- 人设正文（进 subagent system_add）
@@ -417,6 +419,11 @@ def _migrate(c: sqlite3.Connection) -> None:
         c.execute("ALTER TABLE sessions ADD COLUMN size_bytes INTEGER")
     if "size_checked_at" not in scols:
         c.execute("ALTER TABLE sessions ADD COLUMN size_checked_at TEXT")
+
+    # rev15（DW-6）：org_employees.duty 职责说明列（旧库补列；新表走 SCHEMA）
+    ocols = {r["name"] for r in c.execute("PRAGMA table_info(org_employees)")}
+    if ocols and "duty" not in ocols:
+        c.execute("ALTER TABLE org_employees ADD COLUMN duty TEXT DEFAULT ''")
 
     # 三轮修（backlog 清）：artifacts (session_id,path) 唯一索引——先清
     # 存量重复行（保最新），建索引后 upsert_artifact 的 ON CONFLICT 原子化。

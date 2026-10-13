@@ -1622,10 +1622,32 @@ button.attach-chip:hover { border-color: color-mix(in srgb, var(--accent) 40%, v
 .org-card-head strong { color: var(--text); font-size: var(--fs-md); }
 .org-card-sub { color: var(--text-dim); font-size: var(--fs-xs); }
 .org-traits { display: flex; gap: 4px; flex-wrap: wrap; }
+/* DW-6 职责说明：卡片两行截断，悬停 title 看全文 */
+.org-duty { color: var(--text-dim); font-size: var(--fs-xs); line-height: 1.5;
+  display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical;
+  overflow: hidden; margin-top: 2px; }
 .org-card-foot { display: flex; align-items: center; gap: 6px; margin-top: auto; }
 .org-card-hint { color: var(--text-dim); font-size: var(--fs-xs); }
-.org-card-foot .spacer, .org-recruit .spacer { flex: 1; }
+.org-card-foot .spacer, .org-recruit .spacer, .org-card-head .spacer { flex: 1; }
+/* DW-6 任务记录抽屉 */
+.org-tasks .drawer-body { gap: 0; padding: 8px 12px; }
+.org-task-row { padding: 9px 4px; border-bottom: 1px solid var(--border); display: flex;
+  flex-direction: column; gap: 4px; }
+.org-task-row:last-of-type { border-bottom: none; }
+.org-task-desc { color: var(--text); font-size: var(--fs-sm); line-height: 1.5; }
+.org-task-meta { display: flex; align-items: center; gap: 8px; flex-wrap: wrap;
+  color: var(--text-dim); font-size: var(--fs-xs); }
+.org-task-sess { max-width: 180px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.org-task-at { margin-left: auto; font-family: var(--mono); }
+.org-task-empty { color: var(--text-dim); font-size: var(--fs-sm); line-height: 1.7;
+  padding: 24px 8px; text-align: center; }
+.org-task-more { color: var(--text-dim); font-size: var(--fs-xs); text-align: center; padding: 8px 0; }
+.org-tasks header h3 { display: inline-flex; align-items: center; gap: 6px; }
 .chip.mbti { color: var(--accent2); font-family: var(--mono); letter-spacing: .3px; }
+/* 工作区记忆批：工作区 tab 三子 tab（文件/记忆/历史）+侧栏记忆/快照面 */
+.ws-subtabs { display: flex; gap: 6px; margin-bottom: 10px; }
+.ws-memory, .ws-snaps { overflow-y: auto; }
+.ws-memory .admin-list { max-height: none; }
 .chip.ok { color: var(--green, #10b981); }
 .icon-btn { display: inline-flex; align-items: center; justify-content: center; border: none;
   background: none; color: var(--text-dim); cursor: pointer; padding: 3px; border-radius: 4px; }

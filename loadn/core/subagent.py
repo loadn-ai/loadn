@@ -29,6 +29,15 @@ SUB_THINK_FLUSH_S = 20.0        # 距上次冲刷 ≥20s
 SUB_THINK_FLUSH_CHARS = 4000    # 或缓冲累计 ≥4000 字
 SUB_THINK_BLOCK_CAP = 8000      # 单块截断上限（cum 仍按全量计）
 
+# 子代理文字转发（2026-10-13）：text 不再整体吞掉。实况归因：子代理全程
+# 只有 thinking+tool_use 转发、TextBlock 按「噪声」丢弃（final text 只靠
+# 收尾 Task 结果卡回传），长任务运行期主控端零文字反馈，用户看到的就是
+# 「子代理没有文字输出」。修复：assistant 轮里的 TextBlock 即时外发
+# subagent_text 事件（无节流——文字是交付物本体，不同于思考的噪声面），
+# 单块截断 SUB_TEXT_BLOCK_CAP；宿主渲染成带「子N」归属的文字卡，收尾
+# Task 结果卡照旧（官方回传，双通道不冲突）。
+SUB_TEXT_BLOCK_CAP = 8000       # 单块截断上限
+
 SUBAGENT_PROMPT = """你是被派来独立完成一项子任务的 agent。纪律：
 - 你的最终回复就是给派发方的全部交付物——只返回最终结果原文（结论/清单/
   路径/数据），不寒暄、不解释过程、不附工作日志。
@@ -154,13 +163,15 @@ class SubagentManager:
 
             # 归属转发：把子代理的工具活动（tool_use/tool_result）打上
             # 「子N·」标签转发到主 emit——用户能看到每个子任务在干什么、
-            # 干到哪一步。text 仍是噪声不转（final text 已由结果卡回传）；
-            # thinking 改为低频聚合转发（SUB_THINK_* 阈值，见上）。
+            # 干到哪一步。thinking 低频聚合转发（SUB_THINK_* 阈值）；
+            # text 即时转发 subagent_text（2026-10-13：此前按「噪声」整体
+            # 丢弃，运行期零文字反馈；final text 仍由收尾结果卡官方回传）。
             # 注意形状：主 emit 是 StreamJsonEmitter，assistant 分支要求
             # message.content 是带 to_dict() 的块对象（ToolUseBlock）
             fwd_emit = None
             if emit is not None:
                 from loadn.types import Message as _Msg
+                from loadn.types import TextBlock as _TXB
                 from loadn.types import ThinkingBlock as _TB
                 from loadn.types import ToolUseBlock as _TUB
                 tag = f"子{self._n}"
@@ -204,6 +215,10 @@ class SubagentManager:
                                         or time.monotonic() - last_flush
                                         >= SUB_THINK_FLUSH_S):
                                     await _flush_think()
+                            elif isinstance(b, _TXB) and (b.text or "").strip():
+                                await _fire_event(emit, {
+                                    "type": "subagent_text", "n": sub_n,
+                                    "text": b.text[:SUB_TEXT_BLOCK_CAP]})
                     elif t == "tool_result":
                         await _fire_event(emit, {
                             "type": "tool_result",

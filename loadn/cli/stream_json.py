@@ -80,6 +80,13 @@ class StreamJsonEmitter:
                         "n": event.get("n"),
                         "text": event.get("text") or "",
                         "cum": event.get("cum") or 0})
+        elif t == "subagent_text":
+            # 子代理文字块（2026-10-13：此前 text 整体吞掉，运行期零文字
+            # 反馈）——即时转发无节流；旧宿主不识此类型即跳过，零影响
+            self._emit({"type": "subagent_text",
+                        "session_id": self.session_id,
+                        "n": event.get("n"),
+                        "text": event.get("text") or ""})
         elif t == "steer":
             # 用户插话被注入（消费回执）：宿主据此把该条从待回队列摘除
             self._emit({"type": "steer", "session_id": self.session_id,

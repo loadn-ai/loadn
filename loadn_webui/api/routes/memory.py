@@ -15,7 +15,7 @@ from loadn import memorystore as mstore
 from loadn.util import parse_frontmatter as _parse_fm
 
 from ...security.audit import audit
-from ._common import _http_err
+from ._common import _get_session_or_404, _http_err
 
 router = APIRouter(prefix="/api")
 
@@ -29,8 +29,10 @@ def _guard_domain(domain: str) -> None:
     """多用户批3：记忆域属主收口（token/宽限通道 user=None 放行）。
 
     - user 域=全局用户记忆 → admin 维护（普通用户 403）
-    - p: 域=项目记忆 → 反查 projects（hex 缓存映射）→ 属主；无映射域
-      → admin（不暴露存在性以外信息）
+    - p: 域=项目记忆 → 反查 projects ∪ sessions（hex 缓存映射）→ 属主；
+      无映射域 → admin（不暴露存在性以外信息）。工作区记忆批：普通（非
+      项目）会话的工作区不在 projects 表，补 sessions 反查——会话属主
+      在任务右侧边栏·工作区·记忆里可管自己工作区的项目记忆域。
     """
     from ...security import userauth as _ua
     u = _ua.current_user()
@@ -44,9 +46,12 @@ def _guard_domain(domain: str) -> None:
         from ... import db as _db
         hex_ = domain[2:]
         with _db.conn() as _c:
-            projs = _c.execute(
-                "SELECT id, owner_id, workspace FROM projects").fetchall()
-        for pr in projs:
+            rows = _c.execute(
+                "SELECT owner_id, workspace FROM projects "
+                "WHERE workspace IS NOT NULL").fetchall() + _c.execute(
+                "SELECT owner_id, workspace FROM sessions "
+                "WHERE workspace IS NOT NULL").fetchall()
+        for pr in rows:
             ws = pr["workspace"]
             if ws and _ms.cached_project_key(ws) == hex_ \
                     and _ua.owner_ok(pr, u):
@@ -223,6 +228,22 @@ def restore_version(body: dict):
     except mstore.MemoryOpError as e:
         raise HTTPException(400, str(e)) from None
     return {"ok": True, "entry": e}
+
+
+# ------------------------------------------------ 工作区记忆批：任务右侧边栏
+@router.get("/sessions/{sid}/memory")
+def session_memory(sid: str):
+    """会话工作区的项目记忆域（任务右侧边栏·工作区·记忆子 tab 数据源）。
+
+    返回域键 p:<hex>（前端后续编辑/删除/历史/恢复走 /api/memory/* 同域，
+    写操作经 _guard_domain 会话属主收口）+ 条目清单。空域（先有写入才有
+    域）→ 空列表；会话属主检查复用 _get_session_or_404（项目子任务
+    workspace 同表，hex 按 ws_of 的 DB 感知路径算——与引擎注入同域）。
+    """
+    _get_session_or_404(sid)
+    domain = f"p:{mstore.cached_project_key(str(ws_of(sid)))}"
+    d = mstore.domain_dir_by_key(domain)
+    return {"domain": domain, "entries": mstore.entries_of(d) if d else []}
 
 
 # ---------------------------------------------------------------- P7 sources

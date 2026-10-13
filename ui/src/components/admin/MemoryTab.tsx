@@ -1,6 +1,8 @@
-// 记忆管理页（P6）：域 tab + 左条目列表 + 右编辑器（源码/预览双模式）+
-// 历史侧栏（版本查看/恢复）。存储经 /api/memory（后端过 memorystore：
-// 护栏重跑 + 保存即 commit + 删除留史可恢复）。
+// 记忆管理页（P6）：仅用户级记忆——左条目列表 + 右编辑器（源码/预览
+// 双模式）+ 历史侧栏（版本查看/恢复）。存储经 /api/memory（后端过
+// memorystore：护栏重跑 + 保存即 commit + 删除留史可恢复）。
+// 工作区记忆批：项目/数字员工记忆不在此页——项目记忆去任务右侧边栏·
+// 工作区·记忆子 tab，数字员工记忆去组织架构（数字员工）处查看。
 import { useEffect, useRef, useState } from 'react';
 import ReactMarkdown from 'react-markdown';
 import { api } from '../../api/client';
@@ -11,12 +13,10 @@ import { askConfirm } from '../../stores/confirm';
 
 interface Entry { id: string; summary: string; content?: string; origin_session: string; created_at: string; draft?: boolean }
 interface Ver { hash: string; date: string; subject: string }
-interface DomInfo { label: string; count: number; last_at?: string | null; last_summary?: string | null }
+
+const DOMAIN = 'user';   // 本页只管用户级（跨项目）记忆
 
 export default function MemoryTab() {
-  const [domains, setDomains] = useState<string[]>([]);
-  const [domInfo, setDomInfo] = useState<Record<string, DomInfo>>({});
-  const [domain, setDomain] = useState('user');
   const [entries, setEntries] = useState<Entry[]>([]);
   const [sel, setSel] = useState<Entry | null>(null);
   const [text, setText] = useState('');
@@ -28,12 +28,12 @@ export default function MemoryTab() {
   const [busy, setBusy] = useState(false);
   const [opBusy, setOpBusy] = useState('');   // AC-5.5b：行操作 busy（del:<id>/restore:<hash>）
   const [msg, setMsg] = useState<{ t: string; err?: boolean } | null>(null);
-  // AC-5.3 竞态守卫：快速切条目/切域/点版本时旧响应后到覆盖新状态——
+  // AC-5.3 竞态守卫：快速切条目/点版本时旧响应后到覆盖新状态——
   // 各异步面独立递增序号，响应回程序号不匹配即丢弃
   const pickSeq = useRef(0);
   const entriesSeq = useRef(0);
   const verSeq = useRef(0);
-  // AC-5.3 dirty：编辑器态 vs 加载快照（切条目/切域 confirm + 上报管理页登记）
+  // AC-5.3 dirty：编辑器态 vs 加载快照（切条目 confirm + 上报管理页登记）
   const [orig, setOrig] = useState({ text: '', summary: '' });
   const dirty = !!sel && (text !== orig.text || summary !== orig.summary);
   useEffect(() => {
@@ -41,24 +41,11 @@ export default function MemoryTab() {
     return () => useAdminDirty.getState().setDirty('memory', false);
   }, [dirty]);
 
-  async function reloadDomains() {
-    try {
-      const d = await api<{ domains: string[]; info?: Record<string, DomInfo> }>('/api/memory/domains');
-      setDomains(d.domains);
-      setDomInfo(d.info ?? {});
-    } catch (e) { setMsg({ t: `域列表加载失败：${String(e)}`, err: true }); }
-  }
-  // 域 tab 排序：用户级固定首位，其余按最近写入时间倒序（无活动壊底）
-  const sortedDomains = [...domains].sort((a, b) => {
-    if (a === 'user') return -1;
-    if (b === 'user') return 1;
-    return (domInfo[b]?.last_at ?? '').localeCompare(domInfo[a]?.last_at ?? '');
-  });
-  async function reloadEntries(dom = domain) {
+  async function reloadEntries() {
     const seq = ++entriesSeq.current;
     try {
-      const d = await api<{ entries: Entry[] }>(`/api/memory/entries?domain=${dom}`);
-      if (seq !== entriesSeq.current) return;   // 已切到别的域——丢弃旧响应
+      const d = await api<{ entries: Entry[] }>(`/api/memory/entries?domain=${DOMAIN}`);
+      if (seq !== entriesSeq.current) return;   // 已过时的响应——丢弃
       setEntries(d.entries.reverse());   // 新在前
     } catch (e) {
       if (seq !== entriesSeq.current) return;
@@ -68,8 +55,7 @@ export default function MemoryTab() {
         setMsg({ t: `记忆列表加载失败：${String(e)}`, err: true });
     }
   }
-  useEffect(() => { void reloadDomains(); }, []);
-  useEffect(() => { setSel(null); void reloadEntries(domain); }, [domain]);
+  useEffect(() => { void reloadEntries(); }, []);
 
   async function pick(e: Entry) {
     if (dirty && e.id !== sel?.id
@@ -79,13 +65,13 @@ export default function MemoryTab() {
     void (async () => {
       try {
         const d = await api<{ text: string }>(
-          `/api/memory/file?domain=${domain}&id=${e.id}`);
+          `/api/memory/file?domain=${DOMAIN}&id=${e.id}`);
         if (seq !== pickSeq.current) return;   // 已选中别的条目
         const body = d.text.replace(/^---\n[\s\S]*?\n---\n/, '').trim();
         setText(body);
         setOrig({ text: body, summary: e.summary });   // dirty 基线
         const h = await api<{ history: Ver[] }>(
-          `/api/memory/history?domain=${domain}&id=${e.id}`);
+          `/api/memory/history?domain=${DOMAIN}&id=${e.id}`);
         if (seq !== pickSeq.current) return;
         setHist(h.history);
       } catch (er) {
@@ -100,7 +86,7 @@ export default function MemoryTab() {
     setBusy(true);
     try {
       await api('/api/memory/file', { method: 'PUT', body: JSON.stringify({
-        domain, id: sel.id, content: text, summary }) });
+        domain: DOMAIN, id: sel.id, content: text, summary }) });
       toast('已保存（一次 commit，历史可回溯）');
       pick(sel); void reloadEntries();
     } catch (e) { toast(`保存被拒：${String(e)}`, false); }   // 护栏拒绝原因直显
@@ -111,7 +97,7 @@ export default function MemoryTab() {
     if (!await askConfirm({ title: `删除记忆「${e.summary}」？git 历史保留（可经历史恢复）。`, danger: true })) return;
     setOpBusy(`del:${e.id}`);
     try {
-      await api(`/api/memory/entry?domain=${domain}&id=${e.id}`, { method: 'DELETE' });
+      await api(`/api/memory/entry?domain=${DOMAIN}&id=${e.id}`, { method: 'DELETE' });
       setSel(null); toast(`已删除 ${e.summary}（历史在，可恢复）`);
       void reloadEntries();
     } catch (err) { toast(`删除失败：${String(err)}`, false); }
@@ -123,7 +109,7 @@ export default function MemoryTab() {
     setOpBusy(`restore:${v.hash}`);
     try {
       await api('/api/memory/restore', { method: 'POST', body: JSON.stringify({
-        domain, id: sel.id, ref: v.hash }) });
+        domain: DOMAIN, id: sel.id, ref: v.hash }) });
       toast(`已恢复到 ${v.hash}（${v.subject}）`);
       pick(sel);
     } catch (e) { toast(`恢复失败：${String(e)}`, false); }
@@ -134,7 +120,7 @@ export default function MemoryTab() {
     const seq = ++verSeq.current;
     try {
       const d = await api<{ text: string }>(
-        `/api/memory/version?domain=${domain}&id=${sel?.id}&ref=${v.hash}`);
+        `/api/memory/version?domain=${DOMAIN}&id=${sel?.id}&ref=${v.hash}`);
       if (seq !== verSeq.current) return;   // 已点看别的版本
       setVerText(d.text.replace(/^---\n[\s\S]*?\n---\n/, '').trim());
     } catch (e) {
@@ -145,34 +131,15 @@ export default function MemoryTab() {
 
   return (
     <div className="admin-body">
-      <div className="mem-domains">
-        {sortedDomains.map(d => {
-          const inf = domInfo[d];
-          const label = d === 'user' ? '用户级（跨项目）' : (inf?.label || d);
-          const tip = [d, inf?.count ? `${inf.count} 条` : null,
-            inf?.last_at ? `最近写入 ${inf.last_at.slice(0, 16)}` : null,
-            inf?.last_summary].filter(Boolean).join('\n');
-          return (
-            <button key={d} className={`btn sm mem-domain-btn ${d === domain ? 'primary' : 'ghost'}`}
-              title={tip}
-              onClick={async () => {
-                if (d !== domain && dirty
-                  && !await askConfirm({ title: '当前条目有未保存修改，切域将丢弃——确认？', danger: true })) return;
-                setDomain(d);
-              }}>
-              <span className="mem-domain-label">{label}</span>
-              {!!inf?.count && <span className="chip">{inf.count}</span>}
-            </button>
-          );
-        })}
-      </div>
       <div className="admin-toolbar">
+        <span className="chip" title="仅本页可维护用户级记忆（跨项目共享）">用户级（跨项目）</span>
+        <span className="admin-msg">项目记忆→任务右侧边栏·工作区·记忆；数字员工记忆→组织架构页员工卡</span>
         <button className="btn sm" onClick={() => setCreating(v => !v)}>
           <Plus size={13} /> 新建
         </button>
         {msg && <span className={msg.err ? 'admin-msg err' : 'admin-msg'}>{msg.t}</span>}
       </div>
-      {creating && <NewEntryForm domain={domain} onDone={() => {
+      {creating && <NewEntryForm onDone={() => {
         setCreating(false); void reloadEntries();
       }} />}
       <div className="mem-cols">
@@ -240,7 +207,7 @@ export default function MemoryTab() {
 }
 
 
-function NewEntryForm({ domain, onDone }: { domain: string; onDone: () => void }) {
+function NewEntryForm({ onDone }: { onDone: () => void }) {
   const [summary, setSummary] = useState('');
   const [content, setContent] = useState('');
   const [err, setErr] = useState('');
@@ -260,7 +227,7 @@ function NewEntryForm({ domain, onDone }: { domain: string; onDone: () => void }
           onClick={() => void (async () => {
             try {
               await api('/api/memory/file', { method: 'POST', body: JSON.stringify({
-                domain, summary: summary.trim(), content }) });
+                domain: DOMAIN, summary: summary.trim(), content }) });
               onDone();
             } catch (e) { setErr(String(e)); }
           })()}>创建</button>

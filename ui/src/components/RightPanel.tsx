@@ -5,6 +5,7 @@ import { api, withToken } from '../api/client';
 import PropertiesPanel from './PropertiesPanel';
 import { Folder, FileDoc, ChevronDown, ChevronRight, Download } from './icons';
 import { toast } from '../stores/toasts';
+import { askConfirm } from '../stores/confirm';
 
 type Tab = 'properties' | 'artifacts' | 'files';
 
@@ -78,7 +79,7 @@ export default function RightPanel({ onOpenFile }: { onOpenFile: (path: string) 
         {tab === 'properties' && <PropertiesPanel />}
         {tab !== 'properties' && <ScopeFilterRow />}
         {tab === 'artifacts' && <ArtifactsTab onOpenFile={onOpenFile} />}
-        {tab === 'files' && <FilesTab tree={tree} onOpenFile={onOpenFile} />}
+        {tab === 'files' && <WorkspaceTab tree={tree} onOpenFile={onOpenFile} />}
       </div>
     </aside>
   );
@@ -390,6 +391,173 @@ function FilesTab({ tree, onOpenFile }: {
         <div className="panel-empty">该筛选条件下工作区暂无文件</div>
       )}
       <div className="files-hint muted">点击文件在主区新 tab 预览（md / html）</div>
+    </div>
+  );
+}
+
+/** 工作区 tab：三子 tab（文件/记忆/历史）——记忆=本工作区项目记忆域，
+ * 历史=文件快照（可回滚）。子 tab 本地态，切会话不重置（无跨会话一致性风险）。 */
+function WorkspaceTab({ tree, onOpenFile }: {
+  tree: { path: string; dir: boolean; size: number | null }[];
+  onOpenFile: (path: string) => void;
+}) {
+  const [sub, setSub] = useState<'files' | 'memory' | 'history'>('files');
+  return (
+    <div className="ws-wrap">
+      <div className="ws-subtabs">
+        {(['files', 'memory', 'history'] as const).map(s => (
+          <button key={s} className={`btn xs ${sub === s ? 'primary' : 'ghost'}`}
+            onClick={() => setSub(s)}>
+            {s === 'files' ? '文件' : s === 'memory' ? '记忆' : '历史'}
+          </button>
+        ))}
+      </div>
+      {sub === 'files' && <FilesTab tree={tree} onOpenFile={onOpenFile} />}
+      {sub === 'memory' && <WorkspaceMemory />}
+      {sub === 'history' && <SnapshotList />}
+    </div>
+  );
+}
+
+interface MemEntry { id: string; summary: string; origin_session: string; created_at: string; draft?: boolean }
+
+/** 工作区记忆（项目记忆域）：列表/新建/删除/看正文——写操作走
+ * /api/memory/* 同域（后端会话属主收口）。 */
+function WorkspaceMemory() {
+  const sid = useStore(s => s.currentSid);
+  const [domain, setDomain] = useState('');
+  const [entries, setEntries] = useState<MemEntry[]>([]);
+  const [open, setOpen] = useState<MemEntry | null>(null);
+  const [body, setBody] = useState('');
+  const [creating, setCreating] = useState(false);
+  const [summary, setSummary] = useState('');
+  const [content, setContent] = useState('');
+  const [err, setErr] = useState('');
+
+  const reload = async () => {
+    if (!sid) return;
+    try {
+      const d = await api<{ domain: string; entries: MemEntry[] }>(
+        `/api/sessions/${encodeURIComponent(sid)}/memory`);
+      setDomain(d.domain);
+      setEntries([...d.entries].reverse());   // 新在前
+    } catch { setEntries([]); }
+  };
+  useEffect(() => { setOpen(null); void reload(); }, [sid]);
+
+  const show = async (e: MemEntry) => {
+    if (open?.id !== e.id) {
+      setOpen(e); setBody('加载中…');
+      try {
+        const d = await api<{ text: string }>(
+          `/api/memory/file?domain=${domain}&id=${e.id}`);
+        setBody(d.text.replace(/^---\n[\s\S]*?\n---\n/, '').trim());
+      } catch { setBody('（加载失败）'); }
+    } else setOpen(null);
+  };
+
+  if (!sid) return <div className="panel-empty">未选中会话</div>;
+  return (
+    <div className="ws-memory">
+      <div className="admin-toolbar">
+        <button className="btn sm" onClick={() => setCreating(v => !v)}>＋ 新建</button>
+        <span className="muted" style={{ fontSize: 'var(--fs-xs)' }}>
+          本工作区记忆（仅本会话/项目的新会话注入）
+        </span>
+      </div>
+      {creating && (
+        <div className="new-skill-form">
+          <input placeholder="摘要（≤20 字）" value={summary}
+            onChange={e => setSummary(e.target.value)} />
+          <textarea className="mono" rows={4} placeholder="记忆正文" value={content}
+            onChange={e => setContent(e.target.value)} />
+          <div className="modal-foot">
+            <button className="btn ghost sm" onClick={() => { setCreating(false); setSummary(''); setContent(''); }}>取消</button>
+            <button className="btn primary sm" disabled={!summary.trim() || !content.trim()}
+              onClick={() => void (async () => {
+                try {
+                  await api('/api/memory/file', { method: 'POST', body: JSON.stringify({
+                    domain, summary: summary.trim(), content }) });
+                  setCreating(false); setSummary(''); setContent(''); void reload();
+                } catch (e2) { setErr(String(e2)); }
+              })()}>创建</button>
+          </div>
+          {err && <div className="admin-err">{err}</div>}
+        </div>
+      )}
+      <div className="admin-list">
+        {entries.map(e => (
+          <div key={e.id} className={`hub-card slim${open?.id === e.id ? ' on' : ''}`}>
+            <b onClick={() => void show(e)} role="button">{e.summary}{e.draft
+              ? <span className="chip" title="候选教训——保存转正">待确认</span> : null}</b>
+            {open?.id === e.id && (
+              <pre className="mono" style={{
+                fontSize: 'var(--fs-sm)', whiteSpace: 'pre-wrap',
+                background: 'var(--bg2)', padding: 8, borderRadius: 6 }}>{body}</pre>
+            )}
+            <div className="sk-foot">
+              <span className="sk-time">{e.created_at?.slice(0, 16)}</span>
+              <button className="link danger-link" onClick={() => void (async () => {
+                if (!await askConfirm({ title: `删除「${e.summary}」？历史保留可恢复。`, danger: true })) return;
+                try {
+                  await api(`/api/memory/entry?domain=${domain}&id=${e.id}`, { method: 'DELETE' });
+                  toast('已删除（历史在，可恢复）');
+                  if (open?.id === e.id) setOpen(null);
+                  void reload();
+                } catch (er) { toast(`删除失败：${String(er)}`, false); }
+              })()}>删除</button>
+            </div>
+          </div>
+        ))}
+        {!entries.length && (
+          <div className="panel-empty">（暂无记忆——本工作区会话沉淀的
+            项目事实/教训会出现在这里；首次写入自动建域）</div>)}
+      </div>
+    </div>
+  );
+}
+
+interface Snap { point: string; at: string; files?: number }
+
+/** 工作区历史：文件快照清单 + 回滚（POST /sessions/{sid}/rollback）。 */
+function SnapshotList() {
+  const sid = useStore(s => s.currentSid);
+  const [snaps, setSnaps] = useState<Snap[]>([]);
+  const [busy, setBusy] = useState('');
+  const reload = async () => {
+    if (!sid) return;
+    try {
+      const d = await api<{ snapshots: Snap[] }>(
+        `/api/sessions/${encodeURIComponent(sid)}/snapshots`);
+      setSnaps(d.snapshots ?? []);
+    } catch { setSnaps([]); }
+  };
+  useEffect(() => { void reload(); }, [sid]);
+  if (!sid) return <div className="panel-empty">未选中会话</div>;
+  return (
+    <div className="ws-snaps">
+      <div className="files-hint muted">每次文件改动的快照点；回滚会恢复当时的工作区文件</div>
+      {snaps.map(sp => (
+        <div key={sp.point} className="hub-card slim">
+          <div className="mono" style={{ fontSize: 'var(--fs-sm)' }}>{sp.point}</div>
+          <div className="sk-foot">
+            <span className="sk-time">{sp.at} {sp.files ? `· ${sp.files} 文件` : ''}</span>
+            <button className="link danger-link" disabled={busy === sp.point}
+              onClick={() => void (async () => {
+                if (!await askConfirm({
+                  title: `回滚到快照 ${sp.point}？此后改动将被撤销。`, danger: true })) return;
+                setBusy(sp.point);
+                try {
+                  await api(`/api/sessions/${encodeURIComponent(sid)}/rollback`, {
+                    method: 'POST', body: JSON.stringify({ point: sp.point }) });
+                  toast(`已回滚到 ${sp.point}`);
+                } catch (e) { toast(`回滚失败：${String(e)}`, false); }
+                finally { setBusy(''); }
+              })()}>回滚</button>
+          </div>
+        </div>
+      ))}
+      {!snaps.length && <div className="panel-empty">（暂无快照——文件改动后自动生成）</div>}
     </div>
   );
 }

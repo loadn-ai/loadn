@@ -112,9 +112,16 @@ export interface ThinkItem {
   agent_n?: number | null; cum?: number | null;
 }
 export interface ToolItem extends ToolEvent { kind: 'tool' }
+/** 子代理文字块（宿主派生归属）：live/回放渲染成带「子N」徽标的文字卡 */
+export interface SubTextItem {
+  kind: 'text'; text: string;
+  agent_id?: string | null; agent_name?: string | null;
+  agent_n?: number | null;
+}
 export type StreamItem =
   | ThinkItem
   | ToolItem
+  | SubTextItem
   | { kind: 'text'; text: string }
   | { kind: 'steer'; text: string };
 
@@ -954,7 +961,12 @@ function handleEvent(
       break;
     case 'text':
       set(s => (s.live && s.live.turnId === data.turn_id
-        ? { live: { ...s.live, items: appendText(s.live.items, 'text', data.text, data.delta) } } : {}));
+        ? { live: { ...s.live, items: appendText(s.live.items, 'text', data.text, data.delta,
+            // 子代理文字块带 agent 归属（与 thinking 同构）：无归属=主控正文
+            data.agent_n != null
+              ? { agent_id: data.agent_id, agent_n: data.agent_n,
+                  agent_name: data.agent_name }
+              : undefined) } } : {}));
       break;
     case 'thinking':
       set(s => (s.live && s.live.turnId === data.turn_id

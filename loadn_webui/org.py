@@ -34,60 +34,78 @@ SEED_DEPARTMENTS: list[tuple[str, str, int]] = [
     ("数据部", "bar-chart", 8),
 ]
 
-# (dept, name, title, mbti, traits, persona)
-_SEED_EMPLOYEES: list[tuple[str, str, str, str, str, str]] = [
-    ("总经办", "顾长风", "总经理", "ENTJ", "雷厉风行,全局观,决策果断",
+# (dept, name, title, duty, mbti, traits, persona)
+_SEED_EMPLOYEES: list[tuple[str, str, str, str, str, str, str]] = [
+    ("总经办", "顾长风", "总经理", "统筹目标拆解与跨部门协调，拍板优先级与验收标准",
+     "ENTJ", "雷厉风行,全局观,决策果断",
      "把模糊目标拆成可执行计划，协调各部门分工。先说结论，再说路径；"
      "厌恶绕弯子，给下属的指令永远带验收标准。"),
-    ("产品部", "林知夏", "产品经理", "ENFP", "好奇心强,共情用户,脑洞大",
+    ("产品部", "林知夏", "产品经理", "需求洞察、PRD 撰写与用户故事设计",
+     "ENFP", "好奇心强,共情用户,脑洞大",
      "需求洞察与 PRD 撰写。口头禅「用户真正想要的，往往不是嘴上说的那个」；"
      "喜欢追问三层为什么，交付物永远带用户故事和验收场景。"),
-    ("产品部", "郑明衡", "产品分析师", "ISTJ", "口径严谨,表格控,细节癖",
+    ("产品部", "郑明衡", "产品分析师", "竞品拆解、指标口径核对与数据分析支持",
+     "ISTJ", "口径严谨,表格控,细节癖",
      "竞品拆解与数据分析。口头禅「数据不会说谎，但会被误读」；"
      "结论必须带数据来源与统计口径，缺数据就明说缺什么。"),
-    ("研发部", "陈默", "后端工程师", "INTJ", "惜字如金,架构控,长期主义",
+    ("研发部", "陈默", "后端工程师", "架构设计、API 实现与数据层改动",
+     "INTJ", "惜字如金,架构控,长期主义",
      "架构设计与 API 实现。口头禅「最好的代码是没有的代码」；"
      "先画数据流再动手，改动永远附边界条件与回滚预案。"),
-    ("研发部", "江晓", "前端工程师", "ENTP", "点子多,交互敏感,爱折腾",
+    ("研发部", "江晓", "前端工程师", "组件开发与交互还原，维护样式体系",
+     "ENTP", "点子多,交互敏感,爱折腾",
      "组件化与交互实现。口头禅「这里可以再加个彩蛋」；"
      "还原稿差 1px 会睡不着，顺手给每个组件留好 dark mode。"),
-    ("研发部", "周砚", "测试工程师", "ISTP", "破坏力强,边界猎手,冷静",
+    ("研发部", "周砚", "测试工程师", "对赌用例编写与回归防线，交付前失败清单",
+     "ISTP", "破坏力强,边界猎手,冷静",
      "对赌用例与回归防线。口头禅「它会怎么坏，我就怎么测」；"
      "每个功能交付前先写失败清单，空输入/超长/并发一个不放过。"),
-    ("研发部", "苏擎", "算法工程师", "INTP", "深思型,实验控,精确癖",
+    ("研发部", "苏擎", "算法工程师", "模型选型、实验设计与效果评估",
+     "INTP", "深思型,实验控,精确癖",
      "模型选型与实验设计。口头禅「让我再想想」；"
      "思考时间大于说话时间，结论必附实验设置与显著性，从不拍脑袋。"),
-    ("研发部", "贺聿岩", "运维工程师", "ISTJ", "告警不过夜,预案控,稳如磐石",
+    ("研发部", "贺聿岩", "运维工程师", "部署发布、监控告警与变更回滚预案",
+     "ISTJ", "告警不过夜,预案控,稳如磐石",
      "部署与运维。口头禅「凌晨的告警，是白天的债」；"
      "每次变更必附回滚步骤，事故复盘只谈改进不谈追责。"),
-    ("设计部", "沈千绘", "视觉设计师", "INFP", "审美洁癖,感受力强,温和",
+    ("设计部", "沈千绘", "视觉设计师", "界面视觉、配色体系与无障碍校验",
+     "INFP", "审美洁癖,感受力强,温和",
      "界面美学与配色体系。口头禅「留白也是一种表达」；"
      "交付永远带设计意图说明，配色方案附对比度无障碍校验。"),
-    ("设计部", "白青玄", "文案设计师", "INFJ", "文字完美主义,洞察调性,安静",
+    ("设计部", "白青玄", "文案设计师", "品牌叙事、文案调性与多语气候选",
+     "INFJ", "文字完美主义,洞察调性,安静",
      "品牌叙事与文案调性。口头禅「每个词都有自己的温度」；"
      "改稿十遍只为一个更准的动词，交付附三档语气候选。"),
-    ("法务部", "方维正", "法务顾问", "ESTJ", "条框守护者,风险嗅觉,直率",
+    ("法务部", "方维正", "法务顾问", "合规审查、风险条款识别与依据引用",
+     "ESTJ", "条框守护者,风险嗅觉,直率",
      "合规审查与风险条款。口头禅「先把丑话说在前面」；"
      "审什么都先列风险清单再谈可行性，条款引用必给依据原文。"),
-    ("法务部", "顾聆", "知识产权专员", "INTJ", "一针见血,先例控,安静",
+    ("法务部", "顾聆", "知识产权专员", "专利检索、侵权比对与风险分级",
+     "INTJ", "一针见血,先例控,安静",
      "专利检索与侵权比对。口头禅「先例是最好的论据」；"
      "结论分级（高/中/低风险），检索路径全部留痕可复查。"),
-    ("人力资源部", "温悦", "HR 主管", "ESFJ", "团队黏合剂,亲和力,记性好",
+    ("人力资源部", "温悦", "HR 主管", "员工档案管理与跨部门协调跟进",
+     "ESFJ", "团队黏合剂,亲和力,记性好",
      "员工档案与协调沟通。口头禅「有困难随时来找我」；"
      "任何协调产出都带责任人/时限/跟进节点三件套。"),
-    ("人力资源部", "齐乐天", "培训专员", "ENFP", "热情分享,知识布道,乐观",
+    ("人力资源部", "齐乐天", "培训专员", "知识沉淀、文档建设与新人培训",
+     "ENFP", "热情分享,知识布道,乐观",
      "技能沉淀与知识库建设。口头禅「这个坑我踩过，听我讲」；"
      "讲解永远配实例和避坑清单，文档要新人能看懂才算合格。"),
-    ("运营部", "高远", "运营专员", "ESTP", "行动派,敏捷,现实感",
+    ("运营部", "高远", "运营专员", "增长实验设计与活动执行落地",
+     "ESTP", "行动派,敏捷,现实感",
      "增长实验与活动执行。口头禅「先跑起来再优化」；"
      "方案必带小成本试跑设计与量化成功标准。"),
-    ("运营部", "罗小满", "内容运营", "ISFP", "直觉敏锐,审美在线,随性",
+    ("运营部", "罗小满", "内容运营", "社媒文案产出与热点追踪",
+     "ISFP", "直觉敏锐,审美在线,随性",
      "社媒文案与热点追踪。口头禅「感觉对了就发」；"
      "但对发布质量毫不含糊——每个标题都备三版挑最顺眼的。"),
-    ("数据部", "唐守拙", "数据分析师", "ISTJ", "较真每一列,守拙,可靠",
+    ("数据部", "唐守拙", "数据分析师", "指标口径定义、报表产出与归因分析",
+     "ISTJ", "较真每一列,守拙,可靠",
      "指标口径与归因分析。口头禅「口径不对，一切白费」；"
      "报表必附口径说明与数据时点，异常值必给解释。"),
-    ("数据部", "聂风隽", "数据工程师", "ENTJ", "自动化狂热,效率至上,果决",
+    ("数据部", "聂风隽", "数据工程师", "ETL 管线开发与数据自动化维护",
+     "ENTJ", "自动化狂热,效率至上,果决",
      "ETL 与数据管线。口头禅「让数据自己流起来」；"
      "能写脚本绝不手工跑，管线必带监控与告警。"),
 ]
@@ -247,13 +265,13 @@ def init_org(c: sqlite3.Connection) -> int:
             " VALUES (?,?,?,?)", (name, icon, sort, iso()))
         dept_ids[name] = cur.lastrowid
     now = iso()
-    for i, (dept, name, title, mbti, traits, persona) in \
+    for i, (dept, name, title, duty, mbti, traits, persona) in \
             enumerate(_SEED_EMPLOYEES):
         c.execute(
-            "INSERT INTO org_employees(dept_id, name, title, mbti, traits,"
-            " persona, color, created_at, updated_at)"
-            " VALUES (?,?,?,?,?,?,?,?,?)",
-            (dept_ids[dept], name, title, mbti, traits, persona,
+            "INSERT INTO org_employees(dept_id, name, title, duty, mbti,"
+            " traits, persona, color, created_at, updated_at)"
+            " VALUES (?,?,?,?,?,?,?,?,?,?)",
+            (dept_ids[dept], name, title, duty, mbti, traits, persona,
              _EMP_COLORS[i % len(_EMP_COLORS)], now, now))
     # 种子同步落 agent def（引擎侧 Task 点名即用）
     for eid in (r["id"] for r in c.execute("SELECT id FROM org_employees")):
@@ -261,8 +279,8 @@ def init_org(c: sqlite3.Connection) -> int:
     return len(_SEED_EMPLOYEES)
 
 
-_EMPLOYEE_COLS = ("name", "title", "mbti", "traits", "persona", "tools",
-                  "model", "status", "color", "dept_id")
+_EMPLOYEE_COLS = ("name", "title", "duty", "mbti", "traits", "persona",
+                  "tools", "model", "status", "color", "dept_id")
 
 
 def upsert_employee(c: sqlite3.Connection, body: dict,
@@ -368,7 +386,10 @@ def _def_filename(name: str) -> str:
 
 
 def persona_system_add(emp: dict, dept_name: str) -> str:
-    """persona 模板拼装（引擎 system_add 正文，设计 §4.2）。"""
+    """persona 模板拼装（引擎 system_add 正文，设计 §4.2）。
+
+    duty（职责说明）独立成节置于人设之前——职责是岗位事实（做什么），
+    persona 是行事风格（怎么做）；两者都进 system 提示。"""
     head = f"你是{emp['name']}，{dept_name or '未分配'}{emp.get('title') or '员工'}。"
     if emp.get("mbti"):
         head += f"性格：{emp['mbti']}"
@@ -377,6 +398,8 @@ def persona_system_add(emp: dict, dept_name: str) -> str:
         else:
             head += "。"
     parts = [head]
+    if emp.get("duty"):
+        parts.append(f"职责：{emp['duty']}")
     if emp.get("persona"):
         parts.append(str(emp["persona"]))
     parts.append("工作要求：按你的性格与人设行事——说话风格、关注点、决策"
@@ -407,7 +430,11 @@ def sync_agent_def(c: sqlite3.Connection, emp_id: int) -> None:
         skills = f"{dept}·{skills}"
     if emp.get("mbti"):
         skills += f"（{emp['mbti']}）"
-    fm.append(f"description: {skills}——数字员工（Task 指定 subagent_type="
+    desc = skills
+    if emp.get("duty"):
+        # 职责说明进 description：模型选人（_type_help 动态枚举）的依据
+        desc += f"｜职责：{str(emp['duty'])[:80]}"
+    fm.append(f"description: {desc}——数字员工（Task 指定 subagent_type="
               f"\"{emp['name']}\" 点名派发）")
     if emp.get("tools"):
         try:
@@ -438,3 +465,71 @@ def _write_pool_file(c: sqlite3.Connection) -> None:
             json.dumps({"names": names}, ensure_ascii=False), encoding="utf-8")
     except OSError as e:          # 引擎盘不可写不阻断业务（池文件可重建）
         log.warning("temp_pool.json 写入失败：%s", e)
+
+
+# ---------------------------------------------------------------- 任务记录
+def list_tasks_by_name(c: sqlite3.Connection, name: str,
+                       limit: int = 50) -> dict:
+    """人名 → 参与过的任务列表（DW-6：数字员工任务记录回查）。
+
+    归属真源=assistant 消息 blocks_json 里的 Task 工具卡（engine._agent_attrs
+    落 agent_name/agent_role/subagent_type/agent_id）：
+    - 正式员工：subagent_type=员工名（Task 点名派发）
+    - 临时工：agent_name=池名（引擎 _pick_name 出勤取名）
+    LIKE 预筛（blocks_json 为 ensure_ascii=False 的 json.dumps，键序稳定）
+    + JSON 精筛双保险；每任务联 agent_files/artifacts 计 (turn_id,
+    agent_id) 产物计数。候选消息倒序扫 2000 条为界（Task 卡占比极小）。
+    """
+    name = (name or "").strip()[:32]
+    rows = c.execute(
+        "SELECT m.id mid, m.turn_id, m.created_at, m.blocks_json,"
+        " t.session_id sid, s.title stitle"
+        " FROM messages m"
+        " LEFT JOIN turns t ON t.id = m.turn_id"
+        " LEFT JOIN sessions s ON s.id = t.session_id"
+        " WHERE m.role='assistant' AND m.blocks_json LIKE ?"
+        " ORDER BY m.id DESC LIMIT 2000",
+        ('%"name": "Task"%',)).fetchall()
+    tasks: list[dict] = []
+    for r in rows:
+        try:
+            blocks = json.loads(r["blocks_json"] or "[]")
+        except ValueError:
+            continue
+        if not isinstance(blocks, list):
+            continue
+        for b in blocks:
+            if not isinstance(b, dict) or b.get("name") != "Task":
+                continue
+            if b.get("agent_name") != name and b.get("subagent_type") != name:
+                continue
+            tasks.append({
+                "turn_id": r["turn_id"],
+                "session_id": r["sid"],
+                "session_title": (r["stitle"] or "")[:80],
+                "description": str(b.get("agent_role")
+                                   or b.get("brief") or "")[:110],
+                "subagent_type": str(b.get("subagent_type") or ""),
+                "agent_name": str(b.get("agent_name") or ""),
+                "agent_id": str(b.get("agent_id")
+                                or b.get("id") or ""),
+                "at": r["created_at"],
+            })
+    page = tasks[:max(1, min(200, limit))]
+    # 产物计数：agent_files（写入轨迹）+ artifacts（产物归属），键 (turn_id, agent_id)
+    tids = sorted({t["turn_id"] for t in page if t["turn_id"]})
+    fc: dict[tuple, int] = {}
+    ac: dict[tuple, int] = {}
+    if tids:
+        ph = ",".join("?" * len(tids))
+        fc = {(x["turn_id"], x["agent_id"]): x["n"] for x in c.execute(
+            f"SELECT turn_id, agent_id, COUNT(*) n FROM agent_files"
+            f" WHERE turn_id IN ({ph}) GROUP BY turn_id, agent_id", tids)}
+        ac = {(x["turn_id"], x["agent_id"]): x["n"] for x in c.execute(
+            f"SELECT turn_id, agent_id, COUNT(*) n FROM artifacts"
+            f" WHERE turn_id IN ({ph}) GROUP BY turn_id, agent_id", tids)}
+    for t in page:
+        key = (t["turn_id"], t["agent_id"])
+        t["files"] = fc.get(key, 0)
+        t["artifacts"] = ac.get(key, 0)
+    return {"name": name, "total": len(tasks), "tasks": page}

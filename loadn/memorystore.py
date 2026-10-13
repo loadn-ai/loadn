@@ -136,12 +136,16 @@ def memory_dir(cwd: Path, domain: str = PROJECT_DOMAIN) -> Path:
 
 def domain_dir_by_key(key: str, *, create: bool = False) -> Path | None:
     """管理面按键寻域目录：'user' 或 'p:<hex键>'（p- 前缀与目录名隔离）。
-    create=True：user 域目录不存在也返回（新建面——首写自动建目录）。"""
+    create=True：目录不存在也返回（新建面——首写自动建目录；工作区记忆
+    批起 p:hex 同权：任务右侧边栏对空域首建不再 404）。"""
     if key == USER_DOMAIN:
         d = memory_root() / USER_DIR_NAME
         return d if (create or d.is_dir()) else None
     if key.startswith("p:") and re.fullmatch(r"p:[0-9a-f]{12}", key):
         d = memory_root() / key[2:]
+        if create:
+            d.mkdir(parents=True, exist_ok=True)
+            return d
         return d if d.is_dir() else None
     return None
 

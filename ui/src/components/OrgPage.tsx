@@ -1,16 +1,18 @@
 // 组织架构页（DW-3/4）：部门树 + 正式员工卡（编辑操作空间）+ 临时工
 // 召集面板。员工即 agent 定义——编辑保存即同步 $LOADN_HOME/agents/，
 // Task 工具 subagent_type=员工名 即点名派发。
+// DW-6：职责说明（duty）卡片展示+进 agent 提示；任务记录抽屉按人名
+// 回查 Task 卡归属（员工=subagent_type 点名 / 临时工=agent_name 出勤）。
 import { useCallback, useEffect, useState } from 'react';
 import { api } from '../api/client';
 import { toast } from '../stores/toasts';
 import { askConfirm } from '../stores/confirm';
-import { Users, Plus, Pencil, Trash, X, RotateCw, Spinner } from './icons';
+import { Users, Plus, Pencil, Trash, X, RotateCw, Spinner, ListTasks } from './icons';
 
 interface Employee {
   id: number; dept_id: number | null; name: string; title: string;
-  mbti: string; traits: string; persona: string; tools: string | null;
-  model: string | null; status: string; color: string;
+  duty: string; mbti: string; traits: string; persona: string;
+  tools: string | null; model: string | null; status: string; color: string;
 }
 interface Department {
   id: number; name: string; icon: string; sort: number; employees: Employee[];
@@ -19,6 +21,11 @@ interface Org { departments: Department[]; pool: Record<string, number> }
 interface TempWorker {
   id: number; name: string; mbti: string; traits: string;
   brief: string; state: string;
+}
+interface AgentTask {
+  turn_id: number | null; session_id: string | null; session_title: string;
+  description: string; subagent_type: string; agent_name: string;
+  agent_id: string; files: number; artifacts: number; at: string | null;
 }
 
 const MBTI = ['INTJ', 'INTP', 'ENTJ', 'ENTP', 'INFJ', 'INFP', 'ENFJ', 'ENFP',
@@ -32,6 +39,8 @@ export default function OrgPage({ onClose }: { onClose: () => void }) {
   const [deptSel, setDeptSel] = useState<number | 'all'>('all');
   const [editor, setEditor] = useState<null | { mode: 'new' } | { mode: 'edit'; emp: Employee }>(null);
   const [deptNew, setDeptNew] = useState(false);
+  // 任务记录抽屉（DW-6）：按人名回查（员工与临时工共用）
+  const [taskView, setTaskView] = useState<string | null>(null);
   // 召集面板（DW-4）
   const [recN, setRecN] = useState(3);
   const [recBrief, setRecBrief] = useState('');
@@ -192,6 +201,7 @@ export default function OrgPage({ onClose }: { onClose: () => void }) {
                   {e.mbti && <span className="chip mbti">{e.mbti}</span>}
                 </div>
                 <div className="org-card-sub">{(deptSel === 'all' && (e as any).dept) ? `${(e as any).dept} · ` : ''}{e.title || '员工'}</div>
+                {e.duty && <div className="org-duty" title={e.duty}>{e.duty}</div>}
                 {e.traits && <div className="org-traits">{e.traits.split(/[,，、]/).filter(Boolean).slice(0, 4).map((t, i) => <span key={i} className="chip ghost">{t.trim()}</span>)}</div>}
                 <div className="org-card-foot">
                   <label className="switch" title={e.status === 'active' ? '在岗（可点名）' : '停用（不注入）'}>
@@ -200,6 +210,7 @@ export default function OrgPage({ onClose }: { onClose: () => void }) {
                   </label>
                   <span className="org-card-hint">{e.status === 'active' ? 'Task 点名可用' : '已停用'}</span>
                   <span className="spacer" />
+                  <button className="icon-btn" title="任务记录" onClick={() => setTaskView(e.name)}><ListTasks size={12} /></button>
                   <button className="icon-btn" title="编辑" onClick={() => setEditor({ mode: 'edit', emp: e })}><Pencil size={12} /></button>
                   <button className="icon-btn" title="解聘" onClick={() => void delEmp(e)}><Trash size={12} /></button>
                 </div>
@@ -235,6 +246,9 @@ export default function OrgPage({ onClose }: { onClose: () => void }) {
                     {w.mbti && <span className="chip mbti">{w.mbti}</span>}
                     <span className={'chip ' + (w.state === 'idle' ? 'ok' : 'ghost')}>
                       {w.state === 'idle' ? '空闲' : w.state === 'busy' ? '出勤中' : '已退役'}</span>
+                    <span className="spacer" />
+                    <button className="icon-btn" title="任务记录（出勤留痕）"
+                            onClick={() => setTaskView(w.name)}><ListTasks size={11} /></button>
                   </div>
                   {w.traits && <div className="org-traits">{w.traits.split(/[,，、]/).filter(Boolean).slice(0, 3).map((t, i) => <span key={i} className="chip ghost">{t.trim()}</span>)}</div>}
                   {w.brief && <div className="org-card-sub">{w.brief}</div>}
@@ -251,6 +265,7 @@ export default function OrgPage({ onClose }: { onClose: () => void }) {
 
       {editor && <EmpEditor depts={org?.departments ?? []} emp={editor.mode === 'edit' ? editor.emp : null}
                             onCancel={() => setEditor(null)} onSave={saveEmp} />}
+      {taskView && <TaskHistory name={taskView} onClose={() => setTaskView(null)} />}
     </div>
   );
 }
@@ -262,6 +277,7 @@ function EmpEditor({ depts, emp, onCancel, onSave }: {
   const [name, setName] = useState(emp?.name ?? '');
   const [deptId, setDeptId] = useState<number | ''>(emp?.dept_id ?? '');
   const [title, setTitle] = useState(emp?.title ?? '');
+  const [duty, setDuty] = useState(emp?.duty ?? '');
   const [mbti, setMbti] = useState(emp?.mbti ?? 'INTJ');
   const [traits, setTraits] = useState(emp?.traits ?? '');
   const [persona, setPersona] = useState(emp?.persona ?? '');
@@ -272,8 +288,9 @@ function EmpEditor({ depts, emp, onCancel, onSave }: {
   const commit = () => {
     setSaving(true);
     const data: Record<string, unknown> = {
-      name: name.trim(), title: title.trim(), mbti, traits: traits.trim(),
-      persona: persona.trim(), model: model.trim() || null,
+      name: name.trim(), title: title.trim(), duty: duty.trim(), mbti,
+      traits: traits.trim(), persona: persona.trim(),
+      model: model.trim() || null,
       tools: tools.trim() ? tools.split(/[,，]/).map((s: string) => s.trim()).filter(Boolean) : null,
     };
     if (deptId !== '') data.dept_id = deptId;
@@ -296,6 +313,9 @@ function EmpEditor({ depts, emp, onCancel, onSave }: {
             </select>
           </label>
           <label>头衔<input value={title} onChange={e => setTitle(e.target.value)} placeholder="如：法务顾问" /></label>
+          <label>职责说明（负责什么；进 agent 提示，也是模型选人依据）
+            <textarea rows={2} value={duty} onChange={e => setDuty(e.target.value)}
+                      placeholder="如：合规审查、风险条款识别与依据引用" /></label>
           <label>MBTI
             <select value={mbti} onChange={e => setMbti(e.target.value)}>
               {MBTI.map(m => <option key={m} value={m}>{m}</option>)}
@@ -315,6 +335,66 @@ function EmpEditor({ depts, emp, onCancel, onSave }: {
           <button className="btn primary" disabled={saving || !name.trim()} onClick={commit}>
             {saving && <Spinner />} 保存
           </button>
+        </footer>
+      </div>
+    </div>
+  );
+}
+
+function TaskHistory({ name, onClose }: { name: string; onClose: () => void }) {
+  // 任务记录抽屉（DW-6）：GET /api/org/tasks?name=——员工（subagent_type
+  // 点名）与临时工（agent_name 出勤）双归属合并，倒序含产物计数。
+  const [data, setData] = useState<{ total: number; tasks: AgentTask[] } | null>(null);
+  const [err, setErr] = useState('');
+  const [attempt, setAttempt] = useState(0);
+
+  useEffect(() => {
+    let alive = true;                      // 竞态守卫（AC-5.3 同款）
+    setData(null); setErr('');
+    api<{ name: string; total: number; tasks: AgentTask[] }>(
+      `/api/org/tasks?name=${encodeURIComponent(name)}&limit=100`)
+      .then(r => { if (alive) setData({ total: r.total, tasks: r.tasks }); })
+      .catch(e => { if (alive) setErr(String((e as Error).message || e)); });
+    return () => { alive = false; };
+  }, [name, attempt]);
+
+  return (
+    <div className="drawer-mask" onClick={onClose}>
+      <div className="drawer org-tasks" onClick={e => e.stopPropagation()}>
+        <header>
+          <h3><ListTasks size={14} /> 任务记录 · {name}</h3>
+          <button className="icon-btn" onClick={onClose}><X size={14} /></button>
+        </header>
+        <div className="drawer-body">
+          {err && <div className="admin-msg err">{err} <button className="btn" onClick={() => setAttempt(a => a + 1)}>重试</button></div>}
+          {!err && !data && <div className="org-task-empty"><Spinner /> 加载中……</div>}
+          {data && data.tasks.length === 0 && (
+            <div className="org-task-empty">
+              尚未参与过任务。<br />
+              <span className="org-card-hint">Task 点名 subagent_type="{name}" 派发后，此处留痕。</span>
+            </div>
+          )}
+          {data && data.tasks.map((t, i) => (
+            <div key={`${t.turn_id}-${t.agent_id}-${i}`} className="org-task-row">
+              <div className="org-task-desc">{t.description || '（无任务描述）'}</div>
+              <div className="org-task-meta">
+                <span className="chip ghost">{t.subagent_type === name ? '点名派发' : '临时出勤'}</span>
+                {t.session_title && <span className="org-task-sess" title={t.session_id ?? ''}>{t.session_title}</span>}
+                {(t.files > 0 || t.artifacts > 0) && (
+                  <span>{[t.files > 0 && `写文件 ${t.files}`, t.artifacts > 0 && `产物 ${t.artifacts}`]
+                    .filter(Boolean).join(' · ')}</span>
+                )}
+                {t.at && <span className="org-task-at">{String(t.at).slice(0, 16).replace('T', ' ')}</span>}
+              </div>
+            </div>
+          ))}
+          {data && data.total > data.tasks.length && (
+            <div className="org-task-more">仅显示最近 {data.tasks.length} 条（共 {data.total} 条）</div>
+          )}
+        </div>
+        <footer>
+          <span className="hint">归属真源：Task 工具卡（员工=subagent_type 点名；临时工=agent_name 出勤）。</span>
+          <button className="btn" onClick={onClose}>关闭</button>
         </footer>
       </div>
     </div>

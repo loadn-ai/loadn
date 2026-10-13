@@ -698,6 +698,29 @@ class Engine:
             self._emit(at, sid, "thinking",
                        {"turn_id": tid, "text": think, "delta": False,
                         "cum": ev.get("cum"), **agent})
+        elif t == "subagent_text":
+            # 子代理文字块（subagent.py fwd_emit → stream_json 透传，
+            # 2026-10-13：此前 text 整体吞掉，运行期零文字反馈）。
+            # 归属派生与 subagent_thinking 同构（agent_id=sub_N + 学习表
+            # 人名）；只进 blocks 时间线与 SSE text 事件（带 agent 扩展
+            # 字段），**不进 at.texts**——那是主控回复正文的持久层，
+            # 子代理文字混入会变成主控说过的话。回放走 blocks（agent
+            # 字段透传），旧前端忽略扩展字段照常渲染文字。
+            try:
+                n = int(ev.get("n"))
+            except (TypeError, ValueError):
+                return
+            txt = str(ev.get("text") or "")[:_THINK_CAP]
+            if not txt.strip():
+                return
+            aid = f"sub_{n}"
+            agent = {"agent_id": aid, "agent_n": n}
+            nm = at.agent_names.get(aid)
+            if nm:
+                agent["agent_name"] = nm
+            at.blocks.append({"type": "text", "text": txt, **agent})
+            self._emit(at, sid, "text",
+                       {"turn_id": tid, "text": txt, "delta": False, **agent})
         elif t == "user":
             for b in (ev.get("message") or {}).get("content") or []:
                 if not (isinstance(b, dict) and b.get("type") == "tool_result"):

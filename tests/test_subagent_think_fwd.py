@@ -192,3 +192,87 @@ async def test_engine_consume_subagent_thinking():
         assert q.empty()
     finally:
         ENGINE._subs.pop(sid, None)
+
+
+# ------------------------------------------------- subagent_text（2026-10-13）
+def _text_tool_round(text: str, tid: str = "t1") -> list[Chunk]:
+    """text+tool 混合轮：文字块与工具调用同轮（真实子代理形态——
+    纯 text 轮是终局，连续文字必须靠 tool 轮续航）。"""
+    import json as _j
+    raw = _j.dumps({"msg": "x"})
+    return [Chunk(kind="text_delta", text=text),
+            Chunk(kind="input_json_delta", tool_use_id=tid,
+                  tool_name="Echo", partial_json=raw),
+            Chunk(kind="stop", usage={"input_tokens": 100, "output_tokens": 30},
+                  stop_reason="tool_use")]
+
+
+async def test_fwd_text_immediate_no_throttle(tmp_path):
+    """子代理文字块即时转发（无节流，与思考的聚合节流不同——文字是
+    交付物本体）：每条 TextBlock 一条 subagent_text 事件，带 n。
+    首轮 text+tool（继续）、末轮纯 text（终局）——纯 text 轮即收尾。"""
+    mgr = _mgr(tmp_path, [_text_tool_round("第一段结论", "t1"),
+                          _text_tool_round("中途说明", "t2"),
+                          H.text_round("第二段")])
+    events: list[dict] = []
+
+    async def emit(ev: dict) -> None:
+        events.append(ev)
+
+    out = await mgr.task("写两段", emit=emit)
+    subs = [e for e in events if e.get("type") == "subagent_text"]
+    assert [s["text"] for s in subs] == ["第一段结论", "中途说明", "第二段"]
+    assert all(s["n"] == 1 for s in subs)
+    # 主控 text 通道不受污染（final text 仍由 Task 结果卡官方回传）
+    assert not any(e.get("type") == "text" for e in events)
+
+
+async def test_fwd_text_block_cap_truncates(tmp_path, monkeypatch):
+    import loadn.core.subagent as sub_mod
+    monkeypatch.setattr(sub_mod, "SUB_TEXT_BLOCK_CAP", 10)
+    long = "字" * 30
+    mgr = _mgr(tmp_path, [H.text_round(long)])
+    events: list[dict] = []
+
+    async def emit(ev: dict) -> None:
+        events.append(ev)
+
+    await mgr.task("超长", emit=emit)
+    subs = [e for e in events if e.get("type") == "subagent_text"]
+    assert len(subs) == 1 and subs[0]["text"] == "字" * 10   # 单块截断
+
+
+async def test_stream_json_and_engine_pass_subagent_text(capsys):
+    """输出层双通道：stream_json 透传 + 宿主归属派生（blocks+SSE text
+    事件带 agent 扩展、不进 at.texts——主控正文不被子代理文字污染）。"""
+    from loadn.cli.stream_json import StreamJsonEmitter
+    emitter = StreamJsonEmitter(model="fake", tools=[])
+    emitter.session_id = "s-subtext"
+    await emitter({"type": "subagent_text", "n": 2, "text": "正文"})
+    lines = [json.loads(ln) for ln in capsys.readouterr().out.splitlines()
+             if ln.strip()]
+    assert lines and lines[-1]["type"] == "subagent_text"
+    assert lines[-1]["n"] == 2 and lines[-1]["text"] == "正文"
+
+    from loadn_webui.claude_runner import StopHandle
+    from loadn_webui.engine import ENGINE, ActiveTurn
+    sid, tid = "subtext-sid", 99931
+    q: asyncio.Queue = asyncio.Queue()
+    ENGINE._subs[sid] = {q}
+    at = ActiveTurn(turn_id=tid, session_id=sid, stop=StopHandle(),
+                    started_at=asyncio.get_event_loop().time())
+    at.agent_names["sub_2"] = "方维正"
+    texts_before = list(at.texts)
+    try:
+        await ENGINE._consume(sid, tid, at, {
+            "type": "subagent_text", "n": 2, "text": "合同风险三条"})
+        eid, typ, data = q.get_nowait()
+        assert typ == "text" and data["text"] == "合同风险三条"
+        assert data["agent_id"] == "sub_2" and data["agent_n"] == 2
+        assert data["agent_name"] == "方维正" and data["delta"] is False
+        assert at.blocks[-1] == {"type": "text", "text": "合同风险三条",
+                                 "agent_id": "sub_2", "agent_n": 2,
+                                 "agent_name": "方维正"}
+        assert list(at.texts) == texts_before   # 不进主控正文持久层
+    finally:
+        ENGINE._subs.pop(sid, None)

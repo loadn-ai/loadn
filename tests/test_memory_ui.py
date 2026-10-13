@@ -279,3 +279,83 @@ async def test_fix_project_domain_sources(client, tmp_path, monkeypatch):
     assert h["status"] == "present", "project 域被误报 deleted"
     assert "src/app/main.py" in h["content"]
     assert h["origin_session"] == "sess-p"
+
+
+# -------------------------------------------- 工作区记忆批：任务右侧边栏
+async def test_session_memory_endpoint_and_edit(client):
+    """工作区·记忆子 tab 数据源：域键=会话工作区 hex（与引擎注入同域）、
+    空域=空列表、引擎写入后可见、编辑走通用 /api/memory/* 同域、未知会话 404。"""
+    from loadn_webui.config import PATHS
+
+    sid = (await client.post("/api/sessions", json={"title": "工作区记忆"})) \
+        .json()["session"]["id"]
+    ws = PATHS["workspace"] / sid
+    key = f"p:{mstore.project_key(ws)}"
+
+    r = await client.get(f"/api/sessions/{sid}/memory")
+    assert r.status_code == 200
+    assert r.json() == {"domain": key, "entries": []}
+
+    e = mstore.remember(ws, "部署口令", "重启顺序：先 db 后 api",
+                        origin_session=sid)
+    r = await client.get(f"/api/sessions/{sid}/memory")
+    body = r.json()
+    assert body["domain"] == key
+    assert [x["id"] for x in body["entries"]] == [e["id"]]
+    assert body["entries"][0]["content"].startswith("重启顺序")
+
+    # 编辑/历史走通用面（同域；护栏与审计同守）
+    r = await client.put("/api/memory/file", json={
+        "domain": key, "id": e["id"], "content": "重启顺序：先 db 后 api（v2）"})
+    assert r.status_code == 200, r.text
+    assert (await client.get(f"/api/sessions/{sid}/memory")
+            ).json()["entries"][0]["content"].endswith("（v2）")
+
+    assert (await client.get("/api/sessions/no-such/memory")).status_code == 404
+
+
+async def test_session_memory_owner_scoping(client, monkeypatch, tmp_path):
+    """属主对赌（工作区记忆批）：普通 cookie 用户——自己的会话可读工作区
+    记忆（sessions 反查放行，工作区不在 projects 表是本批修的盲区）；他人
+    会话/他人域 404（不暴露存在性）；写面仍管理面（cookie 普通用户 403，
+    token/admin 通道不受影响——放行后到条目层 404）。"""
+    from loadn_webui import db as _db
+    from loadn_webui.security import userauth as ua
+
+    ws = tmp_path / "ws_mine"
+    ws.mkdir()
+    with _db.conn() as c:
+        c.execute("INSERT INTO sessions (id, title, workspace, owner_id, "
+                  "created_at) VALUES (?,?,?,?,datetime('now'))",
+                  ("mine-sid", "我的会话", str(ws), 7))
+        c.execute("INSERT INTO sessions (id, title, workspace, owner_id, "
+                  "created_at) VALUES (?,?,?,?,datetime('now'))",
+                  ("other-sid", "别人的会话", str(tmp_path / "ws_other"), 8))
+    mstore.remember(ws, "我的项目事实", "入口在 src/main.py",
+                    origin_session="mine-sid")
+    key = f"p:{mstore.project_key(ws)}"
+
+    monkeypatch.setattr(ua, "session_user",
+                        lambda _c: {"id": 7, "role": "user", "username": "u7"})
+    r = await client.get("/api/sessions/mine-sid/memory")
+    assert r.status_code == 200 and r.json()["domain"] == key
+    assert [x["summary"] for x in r.json()["entries"]] == ["我的项目事实"]
+    # 通用面同域读：sessions 反查（此前只查 projects → 恒 404 的盲区）→ 放行
+    r = await client.get("/api/memory/entries", params={"domain": key})
+    assert r.status_code == 200 and len(r.json()["entries"]) == 1
+    # 他人会话 404；他人域（有会话映射但属主不匹配）同 404
+    assert (await client.get("/api/sessions/other-sid/memory")).status_code == 404
+    (tmp_path / "ws_other").mkdir()
+    key2 = f"p:{mstore.project_key(tmp_path / 'ws_other')}"
+    assert (await client.get("/api/memory/entries",
+                             params={"domain": key2})).status_code == 404
+    # 写面仍管理面：cookie 普通用户 PUT → 403（middleware admin 门）
+    r = await client.put("/api/memory/file", json={
+        "domain": key, "id": "x", "content": "y"})
+    assert r.status_code == 403
+    # token/admin 通道（session_user=None）不受影响：过门后到条目层
+    # 400（edit_entry 对不存在条目抛 MemoryOpError → 400 带原因）
+    monkeypatch.setattr(ua, "session_user", lambda _c: None)
+    r = await client.put("/api/memory/file", json={
+        "domain": key, "id": "x", "content": "y"})
+    assert r.status_code == 400 and "条目不存在" in r.json()["detail"]

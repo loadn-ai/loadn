@@ -132,6 +132,16 @@ def list_pool(state: str = ""):
         return {"pool": rows}
 
 
+@router.get("/org/tasks")
+def agent_tasks(name: str = "", limit: int = 50):
+    """按人名查任务记录（DW-6）：正式员工 subagent_type=名（点名派发）、
+    临时工 agent_name=名（出勤取名）双归属；倒序，含产物/文件计数。"""
+    if not (name or "").strip():
+        raise HTTPException(400, "name 必填（员工名或临时工名）")
+    with db_mod.conn() as c:
+        return org_mod.list_tasks_by_name(c, name.strip(), limit)
+
+
 @router.delete("/org/pool/{tid}")
 def retire_temp(tid: int):
     """退役临时工（软删除 state=retired，不再被取用）。"""

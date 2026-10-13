@@ -569,16 +569,25 @@ class AgentCore:
                 if texts:
                     final_text = texts[-1]
                 if not tool_uses:
-                    # 截断空转兜底：stop_reason=max_tokens 且零文本零工具
-                    # （长 thinking 吃满输出上限——Terminal-Bench aimo 实测：
-                    # 16k 全耗在推理、result 为空串空转一轮）→ 注入一次收敛
-                    # 续轮；再截断就按空文本终结
-                    if (not texts and asm.stop_reason == "max_tokens"
-                            and not truncation_nudged):
+                    # 零正文兜底：终局轮没有任何 text 也没有 tool_use——
+                    # ①stop_reason=max_tokens（长 thinking 吃满输出上限，
+                    # Terminal-Bench aimo 实测：16k 全耗在推理、result 为
+                    # 空串空转一轮）②静默空收尾（end_turn 零正文——子代理
+                    # 修复实证：GLM 思考型偶尔整轮只想不写，success+空
+                    # text 一路透传到结果卡，用户端就是「没有文字输出」）。
+                    # 两种形态都注入一次收敛续轮逼出正文；再空就按空文本终结
+                    if not texts and not truncation_nudged:
                         truncation_nudged = True
-                        nudge = ("你的上一条回复被输出长度上限截断，且没有产出任何"
-                                 "正文或工具调用。请立即收敛：直接给出最终答案"
-                                 "或下一步行动，不要再展开长推理。")
+                        if asm.stop_reason == "max_tokens":
+                            nudge = ("你的上一条回复被输出长度上限截断，且没有"
+                                     "产出任何正文或工具调用。请立即收敛：直接"
+                                     "给出最终答案或下一步行动，不要再展开长"
+                                     "推理。")
+                        else:
+                            nudge = ("你的上一条回复没有产出任何正文（只有思考"
+                                     "或空内容）。请立即给出最终答复正文——"
+                                     "这是派发方唯一能看到的交付物，没有正文"
+                                     "等于没有交付。")
                         messages.append(Message(role="user", content=[
                             TextBlock(text=nudge)]))
                         self.session.append_event("user", {
