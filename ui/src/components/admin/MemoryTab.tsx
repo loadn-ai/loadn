@@ -133,7 +133,7 @@ export default function MemoryTab() {
     <div className="admin-body">
       <div className="admin-toolbar">
         <span className="chip" title="仅本页可维护用户级记忆（跨项目共享）">用户级（跨项目）</span>
-        <span className="admin-msg">项目记忆→任务右侧边栏·工作区·记忆；数字员工记忆→组织架构页员工卡</span>
+        <span className="admin-msg">项目记忆请到项目中查看（任务右侧边栏·工作区·记忆），数字员工记忆请到数字员工处查看（组织架构）</span>
         <button className="btn sm" onClick={() => setCreating(v => !v)}>
           <Plus size={13} /> 新建
         </button>
@@ -160,7 +160,7 @@ export default function MemoryTab() {
               </div>
             </div>
           ))}
-          {!entries.length && <div className="panel-empty">（该域暂无记忆）</div>}
+          {!entries.length && <div className="panel-empty">（暂无用户记忆）</div>}
         </div>
         <div style={{ flex: 2 }}>
           {sel ? (

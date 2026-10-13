@@ -2,12 +2,12 @@ import { memo, useEffect, useState } from 'react';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import { useStore } from '../stores/sessions';
-import type { StreamItem, ThinkItem, ToolEvent, ToolItem } from '../stores/sessions';
+import type { StreamItem, TextItem, ThinkItem, ToolEvent, ToolItem } from '../stores/sessions';
 import { api, fmtTime } from '../api/client';
 import {
   FileImage, Cloud, Tool, CheckSquare, Check, ChevronDown, ChevronRight,
   Terminal, Search, Globe, BookOpen, Pencil, PenLine, Plus, RotateCw, Star,
-  Trash, Copy, Users, Spinner,
+  Trash, Copy, Users, Spinner, Chat,
 } from './icons';
 import type { ComponentType } from 'react';
 import { useAutoScroll } from './SessionView';
@@ -80,7 +80,9 @@ export function parseBlocks(json: string | null | undefined): StreamItem[] {
         agent_id: b?.agent_id ?? null, agent_name: b?.agent_name ?? null,
         agent_n: b?.agent_n ?? null } as ThinkItem
     : b?.type === 'text'
-    ? { kind: 'text' as const, text: String(b.text ?? '') }
+    ? { kind: 'text' as const, text: String(b.text ?? ''),
+        agent_id: b?.agent_id ?? null, agent_name: b?.agent_name ?? null,
+        agent_n: b?.agent_n ?? null } as TextItem
     : {
         kind: 'tool' as const,
         id: b?.id ?? null,
@@ -255,6 +257,9 @@ function AssistantMsg({ text, blocks, ts, mid, hits, turnId }:
             if (b.kind === 'thinking') return <ThinkingCard key={i} text={b.text}
               tag={b.agent_n != null ? `子${b.agent_n}` : undefined} />;
             if (b.kind === 'tool') return <ToolLine key={i} b={b} done turnId={turnId ?? null} />;
+            if (b.kind === 'text' && b.agent_n != null)
+              return <SubTextCard key={i} text={b.text}
+                tag={`子${b.agent_n}`} name={b.agent_name} />;
             return <MdText key={i} text={b.text} />;
           })}
         </div>
@@ -329,6 +334,8 @@ function LiveTurn({ live }: { live: NonNullable<ReturnType<typeof useStore.getSt
           tag={it.agent_n != null ? `子${it.agent_n}` : undefined} cum={it.cum} />;
         if (it.kind === 'tool') return <ToolLine key={hidden + i} b={it} turnId={live.turnId} />;
         if (it.kind === 'steer') return <SteerNote key={hidden + i} text={it.text} />;
+        if (it.agent_n != null) return <SubTextCard key={hidden + i} text={it.text}
+          tag={`子${it.agent_n}`} name={it.agent_name} live />;
         return <MdText key={hidden + i} text={it.text} />;
       })}
       <span className="cursor">▍</span>
@@ -403,6 +410,25 @@ export const ThinkingCard = memo(function ThinkingCard({ text, live, tag, cum }:
         <span className="chev">{open ? <ChevronDown size={13} /> : <ChevronRight size={13} />}</span>
       </div>
       {open && <div className="think-body">{text}</div>}
+    </div>
+  );
+});
+
+/** 子代理文字卡（2026-10-13：subagent_text 转发链的渲染端）：归属徽标
+ *  「子N·人名」+ markdown 正文，常展开（文字是交付物本体，不同于思考的
+ *  可折叠噪声面）；与 think-card.sub 同视觉语言（左侧色条 + 徽标行）。 */
+export const SubTextCard = memo(function SubTextCard({ text, tag, name, live }: {
+  text: string; tag?: string; name?: string | null; live?: boolean }) {
+  return (
+    <div className={`sub-text-card ${live ? 'live' : ''}`}>
+      <div className="sub-text-head">
+        <span className="think-tag"><Chat size={12} /> 回复</span>
+        {tag && <span className="tool-subtag" title="子代理归属">
+          {name ? `${tag}·${name}` : tag}</span>}
+      </div>
+      <div className="sub-text-body">
+        <ReactMarkdown remarkPlugins={[remarkGfm]}>{text}</ReactMarkdown>
+      </div>
     </div>
   );
 });

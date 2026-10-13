@@ -112,8 +112,9 @@ export interface ThinkItem {
   agent_n?: number | null; cum?: number | null;
 }
 export interface ToolItem extends ToolEvent { kind: 'tool' }
-/** 子代理文字块（宿主派生归属）：live/回放渲染成带「子N」徽标的文字卡 */
-export interface SubTextItem {
+/** 文字项：agent_n 非空 = 子代理文字块（宿主派生归属，渲染成带「子N」
+ *  徽标的文字卡）；空 = 主控正文。两态同构，避免 union 重复成员 */
+export interface TextItem {
   kind: 'text'; text: string;
   agent_id?: string | null; agent_name?: string | null;
   agent_n?: number | null;
@@ -121,8 +122,7 @@ export interface SubTextItem {
 export type StreamItem =
   | ThinkItem
   | ToolItem
-  | SubTextItem
-  | { kind: 'text'; text: string }
+  | TextItem
   | { kind: 'steer'; text: string };
 
 interface LiveTurn {

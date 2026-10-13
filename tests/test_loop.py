@@ -301,6 +301,42 @@ async def test_truncation_nudge_only_once(tmp_path):
     assert summary.text == ""
 
 
+async def test_silent_empty_end_nudge_recovers(tmp_path):
+    """静默空收尾（end_turn 零正文）→ 同样注入一次收敛续轮（2026-10-13
+    子代理修复实证：GLM 思考型偶尔整轮只想不写，success+空 text 一路
+    透传，用户端就是「没有文字输出」——此前兜底只认 max_tokens）。"""
+    from loadn.providers import Chunk
+
+    def silent():
+        return [Chunk(kind="thinking_delta", text="我想完了但没写正文"),
+                Chunk(kind="stop", usage={"output_tokens": 300},
+                      stop_reason="end_turn")]
+
+    core, _ = await _core(tmp_path, [silent(), H.text_round("补上的最终答复")])
+    summary = await core.run_turn("给结论")
+    assert summary.subtype == "success"
+    assert summary.text == "补上的最终答复"
+    assert summary.num_turns == 2
+    # 收敛提示进了第二次 chat 的上下文
+    assert any("没有产出任何正文" in (m.text_parts() or "")
+               for m in core.provider.calls[1])
+
+
+async def test_silent_empty_end_nudge_only_once(tmp_path):
+    """连续两次静默空收尾：只续一次，第二次按空文本终结（与截断兜底同语义）。"""
+    from loadn.providers import Chunk
+
+    def silent():
+        return [Chunk(kind="thinking_delta", text="还是只想不写"),
+                Chunk(kind="stop", usage={"output_tokens": 300},
+                      stop_reason="end_turn")]
+
+    core, _ = await _core(tmp_path, [silent(), silent()])
+    summary = await core.run_turn("x")
+    assert summary.subtype == "success"
+    assert core.provider.i == 2 and summary.text == ""
+
+
 # ---------------------------------------------------------------- grace call
 async def test_max_turns_grace_call_writes_conclusion(tmp_path):
     """轮次耗尽 → 一次无工具收尾调用：text 进 result、usage 并入。"""

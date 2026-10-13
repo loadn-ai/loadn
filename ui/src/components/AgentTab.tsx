@@ -2,9 +2,9 @@
 // （每轮计数器从头取名），该名下的所有派出实例在此按「派遣」分组呈现——
 // 每组=一张派发卡+该次的过程流水。产物按 agent_name 归并。
 import { useStore } from '../stores/sessions';
-import type { ArtifactInfo, ThinkItem, ToolEvent, ToolItem } from '../stores/sessions';
+import type { ArtifactInfo, TextItem, ThinkItem, ToolEvent, ToolItem } from '../stores/sessions';
 import { SUB_TAG_RE, type AgentInfo } from '../stores/agents';
-import { ThinkingCard, ToolCard } from './ChatStream';
+import { SubTextCard, ThinkingCard, ToolCard } from './ChatStream';
 import { AgentArtCard, AgentAvatar, DispatchCard } from './SubtaskTab';
 
 /** 块/流水项是否属于该派出实例（新字段优先，旧数据回退 子N· 前缀） */
@@ -15,7 +15,7 @@ function belongsTo(tool: { id?: string | null; name?: string | null;
   return !!m && Number(m[1]) === a.n;
 }
 
-/** 思考块归属（子代理思考低频聚合块：agent_id/agent_n，无 name 前缀可回退） */
+/** 归属判定（子代理思考聚合块/文字块：agent_id/agent_n，无 name 前缀可回退） */
 function thinkBelongsTo(b: { agent_id?: string | null; agent_n?: number | null },
                         a: AgentInfo): boolean {
   if (b.agent_id) return b.agent_id === a.agentId;
@@ -26,13 +26,15 @@ interface HistTool { id: string | null; name: string; brief: string;
   input?: Record<string, unknown>; result?: string; is_error?: boolean;
   agent_id?: string | null }
 
-/** 派遣组时间线条目：工具 / 思考（按 blocks 真实顺序穿插） */
+/** 派遣组时间线条目：工具 / 思考 / 子代理文字（按 blocks 真实顺序穿插） */
 type HistEntry =
   | { kind: 'tool'; t: HistTool }
-  | { kind: 'think'; text: string; agent_n: number | null };
+  | { kind: 'think'; text: string; agent_n: number | null }
+  | { kind: 'text'; text: string; agent_n: number | null; agent_name: string | null };
 type LiveEntry =
   | { kind: 'tool'; it: ToolItem }
-  | { kind: 'think'; it: ThinkItem };
+  | { kind: 'think'; it: ThinkItem }
+  | { kind: 'text'; it: TextItem };
 
 /** 一次派出的完整轨迹（该 (turn, agent) 的 Task 卡 + 工具/思考流水） */
 interface Dispatch {
@@ -74,6 +76,16 @@ export default function AgentTab({ name, dispatches, onOpenFile }: {
           }
           continue;
         }
+        if (b.type === 'text') {
+          // 子代理文字块（带归属）→ 视角页文字卡；主控正文无 agent 字段排除
+          if (b.agent_id != null || b.agent_n != null) {
+            if (thinkBelongsTo(b, agent)) {
+              g.flow.push({ kind: 'text', text: String(b.text ?? ''),
+                agent_n: b.agent_n ?? null, agent_name: b.agent_name ?? null });
+            }
+          }
+          continue;
+        }
         if (b.type !== 'tool') continue;
         const t: HistTool = { id: b.id ?? null, name: String(b.name ?? '?'),
           brief: String(b.brief ?? ''), input: b.input, result: b.result,
@@ -91,6 +103,8 @@ export default function AgentTab({ name, dispatches, onOpenFile }: {
         if (it.kind === 'tool' && belongsTo(it, agent)) return [{ kind: 'tool', it }];
         if (it.kind === 'thinking' && (it as ThinkItem).agent_n != null
             && thinkBelongsTo(it, agent)) return [{ kind: 'think', it }];
+        if (it.kind === 'text' && it.agent_n != null
+            && thinkBelongsTo(it, agent)) return [{ kind: 'text', it }];
         return [];
       });
     }
@@ -143,12 +157,20 @@ export default function AgentTab({ name, dispatches, onOpenFile }: {
             {g.card && <DispatchCard tool={g.card} turnId={g.agent.turnId} />}
             {g.liveFlow.map((e, i) => e.kind === 'tool'
               ? <ToolCard key={`lv${i}`} tool={e.it} />
+              : e.kind === 'text'
+              ? <SubTextCard key={`lv${i}`} text={e.it.text}
+                  tag={e.it.agent_n != null ? `子${e.it.agent_n}` : undefined}
+                  name={e.it.agent_name} live />
               : <ThinkingCard key={`lv${i}`} text={e.it.text} live
                   tag={e.it.agent_n != null ? `子${e.it.agent_n}` : undefined}
                   cum={e.it.cum} />)}
             {g.flow.map((e, i) => e.kind === 'tool'
               ? <ToolCard key={`hb${i}`} tool={e.t as ToolEvent}
                   done={e.t.result !== undefined || e.t.is_error !== undefined} />
+              : e.kind === 'text'
+              ? <SubTextCard key={`hb${i}`} text={e.text}
+                  tag={e.agent_n != null ? `子${e.agent_n}` : undefined}
+                  name={e.agent_name} />
               : <ThinkingCard key={`hb${i}`} text={e.text}
                   tag={e.agent_n != null ? `子${e.agent_n}` : undefined} />)}
           </div>

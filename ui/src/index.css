@@ -324,6 +324,17 @@ button:focus-visible, .tab:focus-visible, .chip:focus-visible {
 /* 子代理思考聚合块（低频转发）：左侧归属色条与工具卡 sub 形态呼应 */
 .think-card.sub { border-left: 2px solid var(--accent2); }
 
+/* 💬 子代理文字卡（subagent_text 转发链渲染端）：交付物本体，常展开；
+   左侧归属色条与 think-card.sub / tool-card.sub 同视觉语言 */
+.sub-text-card { border: 1px solid var(--border); border-left: 2px solid var(--accent2);
+  border-radius: var(--radius); background: var(--bg2); margin: 4px 0;
+  font-size: var(--fs-md); max-width: 100%; overflow: hidden; box-shadow: var(--shadow-sm); }
+.sub-text-head { display: flex; align-items: center; gap: 8px; padding: 7px 14px 0;
+  color: var(--text-dim); }
+.sub-text-body { padding: 6px 14px 10px; line-height: 1.6; }
+.sub-text-body :first-child { margin-top: 0; }
+.sub-text-body :last-child { margin-bottom: 0; }
+
 /* 工具卡（可展开详情） */
 .tool-card { background: var(--bg2); border: 1px solid var(--border); border-radius: var(--radius);
   margin: 4px 0; font-size: var(--fs-md); max-width: 100%; overflow: hidden; box-shadow: var(--shadow-sm);
