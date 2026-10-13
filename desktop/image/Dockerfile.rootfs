@@ -49,10 +49,14 @@ RUN useradd -m -u 1000 -s /bin/bash loadn \
     && chown -R loadn:loadn /home/loadn /opt/loadn
 
 # ---- VM 装配脚本 + systemd 单元 + wsl.conf ----
+# vsock transport 开机自动加载（VZ 形态 8792/2222 都走 vsock；WSL 无该设备
+# 模块加载失败无害——modules-load 对不存在模块静默容错）
+RUN printf 'vmw_vsock_virtio_transport\n' > /etc/modules-load.d/loadn-vsock.conf
 COPY loadn-vm-install.sh loadn-vm-start.sh /usr/local/sbin/
 RUN chmod 0755 /usr/local/sbin/loadn-vm-install.sh /usr/local/sbin/loadn-vm-start.sh
 COPY loadn-vm.service /etc/systemd/system/loadn-vm.service
 COPY loadn-vm-exec.service /etc/systemd/system/loadn-vm-exec.service
+COPY loadn-vm-http.service /etc/systemd/system/loadn-vm-http.service
 COPY wsl.conf /etc/wsl.conf
 # docker 内无运行中的 systemd——手工链接代替 systemctl enable（两种 VM 通用）
 RUN mkdir -p /etc/systemd/system/multi-user.target.wants \
@@ -61,6 +65,9 @@ RUN mkdir -p /etc/systemd/system/multi-user.target.wants \
     # exec 通道：vsock 在场才启（WSL 无 /dev/vsock，Condition 自然跳过）
     && ln -sfn /etc/systemd/system/loadn-vm-exec.service \
         /etc/systemd/system/multi-user.target.wants/loadn-vm-exec.service \
+    # HTTP 通道：vsock 8792 → TCP 8792（VZ 形态壳的 WebView 流量入口；WSL 同样跳过）
+    && ln -sfn /etc/systemd/system/loadn-vm-http.service \
+        /etc/systemd/system/multi-user.target.wants/loadn-vm-http.service \
     # 空机器 id：VZ 首启 systemd 自动生成（WSL 忽略）；避免镜像克隆告警
     && : > /etc/machine-id
 

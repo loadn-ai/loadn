@@ -31,9 +31,10 @@ jobs:
       - name: vfkit（mac 侧 VM 进程，随资产分发）
         run: |
           cd desktop/image/dist
-          curl -fsSL -o vfkit.zip \
-            https://github.com/crc-org/vfkit/releases/latest/download/vfkit-$(uname -m).zip
-          unzip -o vfkit.zip && rm vfkit.zip
+          # vfkit ≥0.6 只发裸二进制（vfkit-$(uname -m).zip 已停发；arm64=最新 release 的 vfkit）
+          curl -fsSL -o vfkit \
+            https://github.com/crc-org/vfkit/releases/download/v0.6.4/vfkit
+          chmod +x vfkit
       - uses: actions/upload-artifact@v4
         with:
           name: vm-assets

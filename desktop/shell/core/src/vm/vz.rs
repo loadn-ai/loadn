@@ -46,7 +46,8 @@ impl Vz {
             "--kernel", "vmlinuz",
             "--initrd", "initrd.img",
             // ext4 裸盘（无分区表）→ virtio-blk 即 /dev/vda；console=hvc0 便于现场诊断
-            "--kernel-args", "root=/dev/vda rw console=hvc0",
+            // （真机实证 vfkit ≥0.6.x 的 flag 是 --kernel-cmdline；--kernel-args 直接拒启）
+            "--kernel-cmdline", "root=/dev/vda rw console=hvc0",
             "--device", "virtio-blk,path=rootfs.ext4",
             "--device", "virtio-net,nat",
         ]
