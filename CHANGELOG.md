@@ -3,6 +3,16 @@
 本项目的全部显著变更记录于此。格式遵循 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/)，
 版本遵循 [SemVer](https://semver.org/lang/zh-CN/)。
 
+## [0.7.23] - 2026-10-13
+
+- **修复：egress 隧道 CLOSE_WAIT 泄漏打满 fd**（生产事故实证）：任务侧
+  断开后隧道挂在「双向 EOF 才收尾」上（上游 keepalive 不发 FIN），挂死
+  的转发协程被回收销毁时，上游 socket 的关闭义务随之丢失——长时间运行
+  积累上千个 CLOSE_WAIT 打满进程 fd 上限，表现为服务无响应+数据库
+  打不开（两者均为 fd 耗尽症状）。三层收敛：单方向 EOF 即对上游
+  半关（在途下行数据照常泵完）；空闲看门狗（300s 双向静默判死隧道）；
+  try/finally 兜底——任何异常/取消路径必关两侧连接。
+
 ## [0.7.22] - 2026-10-12
 
 - **数字员工（Digital Workers）**：把子代理从「每次随机起名」升级为
