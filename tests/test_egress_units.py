@@ -254,3 +254,181 @@ async def test_llm_gateway_large_body_integrity(monkeypatch):
     finally:
         await px.stop()
         srv.close()
+
+
+# ------------------------------------------------- 隧道泄漏回归（2026-10-13
+# 生产事故：job 断开后 _pipe 挂死在「双向 EOF 才收尾」，task 被 GC 销毁时
+# upstream socket 无人 close——CLOSE_WAIT 堆积 ~1000 打满 fd；accept 重置
+# + sqlite 打不开都是 fd 耗尽症状）。三个用例各自锁死一层收敛：
+# EOF 半关 / 空闲看门狗 / 取消路径 finally close。
+
+async def test_tunnel_client_gone_upstream_closed(proxy, monkeypatch):
+    """job 断开 → 上游连接必须随之收敛（半关通知，不等上游 idle 断开）。
+
+    对赌：旧「双向 EOF」语义下，上游（模拟 nginx keepalive 静默）不主动
+    FIN，隧道永挂——上游侧 close 事件永不来，用例超时失败。
+    """
+    from loadn_webui.security import net_policy
+
+    upstream_closed = asyncio.Event()
+
+    async def silent_upstream(reader, writer):
+        """模拟 nginx keepalive：收到数据不响应不主动断（挂在读上）。"""
+        try:
+            while True:
+                ln = await reader.readline()
+                if not ln:
+                    break
+        finally:
+            writer.close()
+            try:
+                await writer.wait_closed()
+            except (OSError, RuntimeError):
+                pass
+            upstream_closed.set()
+
+    server = await asyncio.start_server(silent_upstream, "127.0.0.1", 0)
+    up_port = server.sockets[0].getsockname()[1]
+    monkeypatch.setattr(egress_proxy, "_allowed",
+                        lambda h: (h or "").lower() == "allow.test")
+    monkeypatch.setattr(net_policy, "rebind_check",
+                        lambda host, **kw: (True, ""))
+
+    async def _fake_open(host, port, **kw):
+        return await asyncio.open_connection("127.0.0.1", up_port)
+
+    class _AioShim:
+        def __getattr__(self, k):
+            return getattr(asyncio, k)
+
+        @staticmethod
+        async def open_connection(host, port, **kw):
+            return await _fake_open(host, port, **kw)
+
+    monkeypatch.setattr(egress_proxy, "asyncio", _AioShim())
+    port = await proxy.start()
+    try:
+        r, w = await asyncio.open_connection("127.0.0.1", port)
+        w.write(b"CONNECT allow.test:443 HTTP/1.1\r\nHost: "
+                b"allow.test:443\r\n\r\n")
+        await w.drain()
+        assert (await r.readline()).startswith(b"HTTP/1.1 200")
+        await r.readexactly(2)
+        w.write(b"data\n")
+        await w.drain()
+        w.close()                      # job 侧直接断开
+        # 半关 FIN → 上游读 EOF → 上游关连接 → 事件到。旧代码此处永挂。
+        await asyncio.wait_for(upstream_closed.wait(), timeout=10)
+    finally:
+        await proxy.stop()
+        server.close()
+
+
+async def test_tunnel_idle_watchdog_reaps_dead_tunnel(proxy, monkeypatch):
+    """烂对端（收到 FIN 也不关）→ 空闲看门狗收尾，egress 侧仍关 socket。
+
+    断言点在 egress 侧的 upstream writer close 调用：对已 write_eof 的
+    连接，close() 不再产生网络事件，烂对端侧无法感知——「fd 已释放」
+    这一被测事实只能从持有一侧（egress）断言。
+    """
+    from loadn_webui.security import net_policy
+
+    monkeypatch.setattr(egress_proxy, "_TUNNEL_IDLE_S", 0.5)
+    upstream_closed = asyncio.Event()
+
+    async def rotten_upstream(reader, writer):
+        """模拟最烂对端：收到对端 FIN（read EOF）后仍挂着不关连接。"""
+        while True:
+            ln = await reader.readline()
+            if not ln:
+                break
+        await asyncio.sleep(3600)      # 故意不退、不关
+
+    server = await asyncio.start_server(rotten_upstream, "127.0.0.1", 0)
+    up_port = server.sockets[0].getsockname()[1]
+    monkeypatch.setattr(egress_proxy, "_allowed",
+                        lambda h: (h or "").lower() == "allow.test")
+    monkeypatch.setattr(net_policy, "rebind_check",
+                        lambda host, **kw: (True, ""))
+
+    async def _fake_open(host, port, **kw):
+        r, w = await asyncio.open_connection("127.0.0.1", up_port)
+        _orig_close = w.close
+
+        def _record_close():
+            _orig_close()
+            upstream_closed.set()
+        w.close = _record_close        # egress 释放 upstream socket 的时刻
+        return r, w
+
+    class _AioShim:
+        def __getattr__(self, k):
+            return getattr(asyncio, k)
+
+        @staticmethod
+        async def open_connection(host, port, **kw):
+            return await _fake_open(host, port, **kw)
+
+    monkeypatch.setattr(egress_proxy, "asyncio", _AioShim())
+    port = await proxy.start()
+    try:
+        r, w = await asyncio.open_connection("127.0.0.1", port)
+        w.write(b"CONNECT allow.test:443 HTTP/1.1\r\nHost: "
+                b"allow.test:443\r\n\r\n")
+        await w.drain()
+        assert (await r.readline()).startswith(b"HTTP/1.1 200")
+        await r.readexactly(2)
+        w.write(b"data\n")
+        await w.drain()
+        w.close()
+        # 半关对烂对端无效 → 看门狗 0.5s 判死 → egress finally close。
+        # 旧代码挂死在 gather（上游永不 EOF）→ close 永不来 → 超时失败。
+        await asyncio.wait_for(upstream_closed.wait(), timeout=10)
+    finally:
+        await proxy.stop()
+        server.close()
+
+
+async def test_pipe_cancel_still_closes_writers(proxy):
+    """task 被取消（CancelledError 传播）→ 两侧 writer 仍必被 close。
+
+    对赌：旧代码 close 循环在 gather 之后裸奔——取消异常直接炸出，
+    upstream socket 泄漏（GC 销毁 task 后无人 close = CLOSE_WAIT）。
+    """
+
+    class _FakeReader:
+        async def read(self, n):
+            await asyncio.sleep(3600)   # 挂起等被取消
+            return b""
+
+    class _FakeWriter:
+        def __init__(self):
+            self.closed = False
+            self.eof_written = False
+
+        def write(self, d):
+            pass
+
+        async def drain(self):
+            pass
+
+        def can_write_eof(self):
+            return True
+
+        def write_eof(self):
+            self.eof_written = True
+
+        def close(self):
+            self.closed = True
+
+    fr1, fw1, fr2, fw2 = _FakeReader(), _FakeWriter(), _FakeReader(), \
+        _FakeWriter()
+    task = asyncio.create_task(proxy._pipe(fr1, fw1, fr2, fw2))
+    await asyncio.sleep(0.05)           # 让 _p 两侧都挂到 read 上
+    task.cancel()
+    try:
+        await task
+    except asyncio.CancelledError:
+        pass
+    assert fw1.closed and fw2.closed, "取消路径必须 close 两侧 writer"
+    assert fw1.eof_written and fw2.eof_written, "取消路径应先半关再 close"

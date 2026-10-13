@@ -27,6 +27,11 @@ GW_PATHS_PREFIX = ("/v1/messages", "/api/anthropic")   # 透传路径族
 # 网关上游总超时：长 thinking/大输出流硬顶（生产长任务可调大——模块常量，
 # 暂不进 config：与 httpx client 生命周期绑定，热更意义小）
 GW_UPSTREAM_TIMEOUT_S = 600
+# 隧道空闲看门狗：双向无数据的静默上限。正常流（SSE/大文件）数据间隔
+# 秒级，300s 只收死隧道。2026-10-13 生产事故实证：无此兜底时 job 断开
+# 后隧道挂死在「双向 EOF 才收尾」语义上，被 GC 销毁的 task 带走 socket
+# 的 close 义务——15h 积累 ~1000 个 CLOSE_WAIT 打满 ulimit 1024。
+_TUNNEL_IDLE_S = 300
 
 # 运行实例（lifespan start() 注册；spawn 侧 ensure_session_uds 的入口）
 _INSTANCE: EgressProxy | None = None
@@ -270,10 +275,10 @@ class EgressProxy:
             if srv:
                 srv.close()
                 # 3.12+ wait_closed 语义变更（gh-104344）：等全部 handler 退出
-                # 才返回。隧道 _pipe 是「双向 EOF 才收尾」语义（防截断 TLS
-                # 长流），活跃隧道下 handler 不退 → stop 永挂（3.10/3.11
-                # 立即返回故不显现）。停机不该被残留隧道挂死：2s 优雅上限
-                # 后放行，遗留任务随 loop 关闭收场。
+                # 才返回。隧道 _pipe 收尾有 idle 看门狗+半关收敛（见其
+                # docstring），但活跃长流下 handler 仍可能不退 → stop 永挂
+                # （3.10/3.11 立即返回故不显现）。停机不该被残留隧道挂死：
+                # 2s 优雅上限后放行，遗留任务随 loop 关闭收场。
                 try:
                     await asyncio.wait_for(srv.wait_closed(), timeout=2)
                 except (asyncio.TimeoutError, TimeoutError):
@@ -530,21 +535,41 @@ class EgressProxy:
             await writer.drain()
 
     async def _pipe(self, r1, w1, r2, w2) -> None:
-        """双向裸转发。关闭时机：两方向都 EOF 后统一收尾——单方向 EOF 提前
-        close 对端会截断 TLS 长流（实测 curl TLS decode_error 教训）。"""
+        """双向裸转发。关闭时机：任一方向 EOF/异常/静默超时即收尾。
+
+        旧「两方向都 EOF 后统一 close」语义在 2026-10-13 生产事故中证伪：
+        job 侧断开后 upstream（nginx keepalive）长时间不 FIN，隧道 task
+        挂死在 gather 上；挂死 task 被 GC 销毁（Task was destroyed but it
+        is pending）时 upstream socket 的 close 义务随之蒸发——CLOSE_WAIT
+        堆积打满 fd。三层收敛：
+        - 单方向 EOF → 对上游 write_eof 半关（只关写侧；在途下行数据继续
+          泵完——旧教训「提前 close 截断 TLS 长流」指的是 close 连读侧
+          一起关，半关无此问题，反而让对端尽早知道不会再有数据）
+        - 空闲看门狗：wait_for 超时视为死隧道（活跃流间隔远小于此值）
+        - try/finally：任何异常/取消路径必 close 两侧 writer
+        """
         async def _p(a, wb):
             try:
                 while True:
-                    chunk = await a.read(65536)
+                    chunk = await asyncio.wait_for(a.read(65536),
+                                                   _TUNNEL_IDLE_S)
                     if not chunk:
                         break
                     wb.write(chunk)
                     await wb.drain()
-            except OSError:
+            except (OSError, asyncio.TimeoutError):
                 pass
-        await asyncio.gather(_p(r1, w1), _p(r2, w2))
-        for w in (w1, w2):
-            try:
-                w.close()
-            except OSError:
-                pass
+            finally:
+                try:
+                    if wb.can_write_eof():
+                        wb.write_eof()
+                except (OSError, RuntimeError):
+                    pass
+        try:
+            await asyncio.gather(_p(r1, w1), _p(r2, w2))
+        finally:
+            for w in (w1, w2):
+                try:
+                    w.close()
+                except (OSError, RuntimeError):
+                    pass
