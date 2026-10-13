@@ -145,7 +145,7 @@ function SessionLink({ sid, jump, truncate = false }: {
   );
 }
 
-const card = { border: '1px solid var(--border)', borderRadius: 8, padding: '10px 12px' };
+const card = { border: '1px solid var(--border)', borderRadius: 'var(--radius)', padding: '10px 12px' };
 type CardKey = 'sandbox' | 'approvals' | 'egress' | 'vault' | 'audit' | 'canary' | 'target';
 
 export default function SecurityPanel() {
@@ -330,7 +330,7 @@ export default function SecurityPanel() {
   return (
     <div className="admin-body">
       {/* ---- 姿态卡（可点开明细） ---- */}
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(290px, 1fr))', gap: 10, marginBottom: open ? 10 : 14 }}>
+      <div className="sec-cards-grid" style={{ marginBottom: open ? 10 : 14 }}>
         {cards.map(c => (
           <div key={c.key} onClick={() => toggle(c.key)}
             style={{
@@ -405,7 +405,7 @@ export default function SecurityPanel() {
       )}
 
       {/* ---- 审计事件流 ---- */}
-      <div ref={feedRef} style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 8, flexWrap: 'wrap' }}>
+      <div ref={feedRef} className="sec-cards" style={{ marginBottom: 8 }}>
         <b style={{ fontSize: 'var(--fs-lg)' }}>操作记录</b>
         <span className="muted" style={{ fontSize: 'var(--fs-md)' }}>
           全部敏感动作的防篡改流水（{posture.audit.last_id} 条中的最近一段）
@@ -413,7 +413,7 @@ export default function SecurityPanel() {
         <a className="link" title="台账 tab 双源合并视图（运营台账 + 审计账本，AC-2.4）"
           onClick={() => { location.hash = '#/admin/activity'; }}>查看完整流水 →</a>
         <select value={filter} onChange={e => setFilter(e.target.value)}
-          style={{ marginLeft: 'auto', padding: '4px 8px', borderRadius: 6 }}>
+          style={{ marginLeft: 'auto', padding: '4px 8px', borderRadius: 'var(--radius-sm)' }}>
           {FILTERS.map(f => <option key={f.key} value={f.key}>{f.label}</option>)}
         </select>
       </div>
@@ -778,7 +778,7 @@ function EgressDetail() {
   return (
     <div>
       <DetailHead title="窗口内外发的目标域" note={`mode=${mode || '-'} · 观测与管控一体（原「流量」tab 已并入此处）`} />
-      <div style={{ border: '1px solid var(--border)', borderRadius: 8, padding: '8px 10px', marginBottom: 10 }}>
+      <div style={{ border: '1px solid var(--border)', borderRadius: 'var(--radius)', padding: '8px 10px', marginBottom: 10 }}>
         <div className="muted" style={{ fontSize: 'var(--fs-md)', marginBottom: 6 }}>出口策略（保存即热生效，不杀在跑任务）</div>
         <div className="setting-row" style={{ marginBottom: 4 }}>
           <span style={{ minWidth: 64 }}>模式</span>

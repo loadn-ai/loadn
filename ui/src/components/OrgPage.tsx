@@ -285,6 +285,13 @@ function EmpEditor({ depts, emp, onCancel, onSave }: {
   const [model, setModel] = useState(emp?.model ?? '');
   const [saving, setSaving] = useState(false);
 
+  // UI 巡检批：Esc 关闭（此前只支持点 mask/× ——键盘用户被锁死）
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => { if (e.key === 'Escape') onCancel(); };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, []);
+
   const commit = () => {
     setSaving(true);
     const data: Record<string, unknown> = {
@@ -347,6 +354,13 @@ function TaskHistory({ name, onClose }: { name: string; onClose: () => void }) {
   const [data, setData] = useState<{ total: number; tasks: AgentTask[] } | null>(null);
   const [err, setErr] = useState('');
   const [attempt, setAttempt] = useState(0);
+
+  // UI 巡检批：Esc 关闭（与编辑抽屉同款——键盘不锁死）
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => { if (e.key === 'Escape') onClose(); };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, []);
 
   useEffect(() => {
     let alive = true;                      // 竞态守卫（AC-5.3 同款）

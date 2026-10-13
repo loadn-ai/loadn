@@ -52,6 +52,9 @@ export default function TokenGate() {
       setSt(d);
       if (d.needs_setup) { setMode('setup'); setOpen(true); }
       else if (d.auth_required) { setMode('login'); setOpen(true); }
+      // UI 巡检批：认证恢复（登录成功/token 配好/宽限生效）自动关框——
+      // 此前一次 401 弹开后 probe 只开不关，token 用户被全屏锁死
+      else setOpen(false);
     } catch { /* 探测失败保持沉默（旧版兼容） */ }
   };
   useEffect(() => {

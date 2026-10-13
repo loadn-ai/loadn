@@ -768,7 +768,12 @@ button:focus-visible, .tab:focus-visible, .chip:focus-visible {
 
 .new-skill-form { background: var(--bg2); border: 1px solid var(--border); border-radius: var(--radius);
   padding: 14px 16px; margin-bottom: 12px; box-shadow: var(--shadow-sm); }
-.new-skill-form input, .new-skill-form textarea { margin-bottom: 8px; }
+/* UI 巡检批：表单控件全宽统一（此前裸 input 无宽度/高度，在 flex 上下文
+   被压扁——“新建记忆组件没布局”根因；记忆/webhooks/skills 三面共用） */
+.new-skill-form input:not([type=checkbox]):not([type=radio]),
+.new-skill-form textarea, .new-skill-form select {
+  width: 100%; box-sizing: border-box; min-height: 30px; margin-bottom: 8px; }
+.new-skill-form input[type=number] { width: 90px; min-height: 28px; }
 
 .skill-editor { display: flex; gap: 14px; height: 68vh; }
 .se-side { width: 220px; flex-shrink: 0; display: flex; flex-direction: column;
@@ -1223,6 +1228,10 @@ button.attach-chip:hover { border-color: color-mix(in srgb, var(--accent) 40%, v
 
 /* ================ 管理面通用表格（kv-table 此前无定义——裸表格是「丑」的根因） ================ */
 .kv-table { border-collapse: collapse; width: 100%; font-size: var(--fs-lg); }
+/* UI 巡检批：安全页容器类（从内联样式抽出——grid 态势卡 + 事件流行） */
+.sec-cards-grid { display: grid; grid-template-columns: repeat(auto-fill,
+  minmax(290px, 1fr)); gap: 10px; }
+.sec-cards { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
 .kv-table th {
   text-align: left; font-weight: 500; color: var(--text-dim); font-size: var(--fs-sm);
   letter-spacing: .04em; padding: 6px 10px 8px; border-bottom: 1px solid var(--border);
@@ -1595,7 +1604,10 @@ button.attach-chip:hover { border-color: color-mix(in srgb, var(--accent) 40%, v
 .bulk-bar .btn.sm { display: inline-flex; align-items: center; gap: 4px; }
 
 /* ------------------------------------------------ DW-3/4：组织架构页（数字员工） */
-.org-page { display: flex; flex-direction: column; gap: 14px; overflow-y: auto; }
+.org-page { display: flex; flex-direction: column; gap: 14px; overflow-y: auto;
+  /* UI 巡检批：org 页根复用 admin-body（无左右 padding，依赖外层 .admin_page
+     提供——org 直接挂主区缺了那层）——“组织架构缺边距”根因 */
+  padding: 4px 28px 28px; }
 .org-head { display: flex; align-items: center; justify-content: space-between; gap: 10px; flex-wrap: wrap; }
 .org-title { display: flex; align-items: center; gap: 8px; color: var(--text); }
 .org-title h2 { margin: 0; font-size: var(--fs-lg); }
