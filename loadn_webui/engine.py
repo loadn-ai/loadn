@@ -294,13 +294,19 @@ class Engine:
                   "kb": a.get("kb"), "is_image": bool(a.get("is_image"))}
                  for a in attachments], ensure_ascii=False)
         with db_mod.conn() as c:
-            if not db_mod.get_session(c, sid):
+            qsess = db_mod.get_session(c, sid)
+            if not qsess:
                 raise KeyError(f"session not found: {sid}")
             tid = db_mod.create_turn(c, session_id=sid, status="queued", mode=mode)
             mid = db_mod.add_message(c, session_id=sid, turn_id=tid, role="user",
                                      content=text, blocks_json=blocks_json)
             db_mod.update_turn(c, tid, message_id=mid)
             db_mod.update_session(c, sid)
+            # 任务列表批：子任务排队也顶起父项目组（左侧项目组按最近活动
+            # 序——此前子任务排队/完成都不碰 projects.updated_at，组在执行
+            # 中靠前端 kidsRunning 置顶、完成后回落创建序=「回到原位」bug）
+            if qsess["project_id"]:
+                db_mod.update_project(c, qsess["project_id"])
             # 自动标题：标记在（未显式命名/未手动改名/尚未成功过）→ 后台生成
             want_title = CONFIG.titlegen.enabled and CONFIG.titlegen.api_key \
                 and db_mod.kv_get(c, f"title_auto:{sid}") is not None
@@ -932,6 +938,10 @@ class Engine:
                 usage_json=json.dumps(merged, ensure_ascii=False), resume_failures=0,
                 **({} if fast_failed else {"session_fresh": 0,
                                            "claude_session_id": res.session_id or sess["claude_session_id"]}))
+            # 任务列表批：子任务完成→父项目 updated_at 跟随（项目组按完成
+            # 序落位，最近完成的排最上，不再回落创建序）
+            if sess["project_id"]:
+                db_mod.update_project(c, sess["project_id"])
 
         # ---- 轮换启发式（token 基；订阅计量可能为 0）
         rotate_reason = ""

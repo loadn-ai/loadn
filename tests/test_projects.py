@@ -268,3 +268,43 @@ async def test_project_create_with_repo(client, ws_root, tmp_path):
     assert not r.json().get("repo_hint")
     from loadn.truststore import gate
     assert gate(repo)[0]
+
+
+# --------------------------------------------- 任务列表批：项目组活动序
+async def test_project_touch_on_subtask_queue_and_finish(client, ws_root):
+    """对赌：子任务排队与完成都 bump 父项目 updated_at（左侧项目组按
+    最近活动序——此前子任务从不碰它，执行中靠前端置顶、完成后回落
+    创建序=「回到原位」bug）；纯标记（starred）不扰动。"""
+    import time as _t
+
+    r = await client.post("/api/sessions", json={"title": "项目排序"})
+    pid = r.json()["session"]["id"]
+    await client.post(f"/api/sessions/{pid}/promote")
+    kid = await _mk_subtask(client, pid, "排序子任务")
+
+    with db_mod.conn() as c:
+        t0 = db_mod.get_project(c, pid)["updated_at"]
+    assert (await client.patch(f"/api/projects/{pid}",
+                               json={"starred": 1})).status_code == 200
+    with db_mod.conn() as c:
+        assert db_mod.get_project(c, pid)["updated_at"] == t0, \
+            "纯标记位（starred）不得扰动项目活动序"
+
+    # 排队联动：发消息（fake 引擎立即拾取）→ updated_at 前移
+    r = await client.post(f"/api/sessions/{kid}/messages", json={"text": "跑一步"})
+    assert r.status_code == 200
+    tid = r.json()["turn"]["id"]
+    from tests.conftest import wait_turn
+    await wait_turn(client, kid, tid, timeout_s=30)
+    with db_mod.conn() as c:
+        t1 = db_mod.get_project(c, pid)["updated_at"]
+    assert t1 > t0, "子任务排队/完成必须顶起父项目（活动序修复失效）"
+
+    # 完成联动（第二轮 turn 收尾再 bump）：同秒粒度下用 sleep 保序
+    _t.sleep(1.1)
+    r = await client.post(f"/api/sessions/{kid}/messages", json={"text": "再跑一步"})
+    tid2 = r.json()["turn"]["id"]
+    await wait_turn(client, kid, tid2, timeout_s=30)
+    with db_mod.conn() as c:
+        t2 = db_mod.get_project(c, pid)["updated_at"]
+    assert t2 > t1, "子任务完成必须再次 bump（最近完成的组排最上）"

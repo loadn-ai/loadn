@@ -531,7 +531,12 @@ def list_projects(c: sqlite3.Connection, include_archived: bool = False) -> list
 
 
 def update_project(c: sqlite3.Connection, pid: str, touch: bool = True, **fields: Any) -> None:
+    """项目行更新。无 fields 且 touch=True = 纯触碰（只 bump updated_at）——
+    任务列表批：子任务排队/完成联动顶起父项目组，左侧列表按最近活动序
+    排（此前子任务从不碰 projects.updated_at，组在完成后回落创建序）。"""
     if not fields:
+        if touch:
+            c.execute("UPDATE projects SET updated_at=? WHERE id=?", (iso(), pid))
         return
     sets = ", ".join(f"{k}=?" for k in fields)
     # touch=False：置顶/收藏/分类等纯标记位不扰动 updated_at（与 sessions 同款）
