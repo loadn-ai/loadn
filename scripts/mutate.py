@@ -266,6 +266,11 @@ TARGET_TESTS: dict[str, list[str]] = {
     "loadn_webui/archive.py": [
         "tests/test_perf_archive.py",
     ],
+    # ---- PERF-5：audit 冻结月表导出（archive_months 段）
+    "loadn_webui/security/audit.py": [
+        "tests/test_perf_audit_arch.py",
+        "tests/security/test_e2_audit_chain.py",
+    ],
     # ---- PERF-3/4：每日维护（窗口/游标守卫/VACUUM 周度）+文件层 retention
     "loadn_webui/maintenance.py": [
         "tests/test_perf_maint.py",
