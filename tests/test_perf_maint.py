@@ -38,21 +38,24 @@ def _step(rep: dict, name: str) -> dict:
 
 # ---------------------------------------------------------------- ① 窗口/游标守卫
 def test_window_and_daily_cursor_gates():
-    """否定路径×2：窗口外不跑；窗口内今天已跑不跑。守卫反转=凌晨外的
-    高峰时段跑 VACUUM/归档（写放大的高峰事故），本用例即杀。"""
+    """否定路径×2+窗口闭开边界：窗口外不跑；窗口内今天已跑不跑；3 点整
+    在窗、6 点整出窗（写死小时——引用 DAILY_WINDOW 会变异同步漂移）。"""
     sid = "20261014_mnt-gate"
     _mk_cold(sid)
-    night = datetime(2026, 10, 14, 4, 0)        # 窗口内
-    noon = datetime(2026, 10, 14, 12, 0)        # 窗口外
     with db_mod.conn() as c:
-        assert maint.maybe_daily(c, now=noon) is False
+        assert maint.maybe_daily(
+            c, now=datetime(2026, 10, 14, 12, 0)) is False     # 正午窗口外
         assert arch.folded_count(c, sid) == 0, "窗口外不得动库"
-        assert maint.maybe_daily(c, now=night) is True
+        assert maint.maybe_daily(
+            c, now=datetime(2026, 10, 14, 6, 0)) is False, "6 点整已出窗"
+        assert maint.maybe_daily(
+            c, now=datetime(2026, 10, 14, 3, 0)) is True, "3 点整在窗内"
     with db_mod.conn() as c:
         assert arch.folded_count(c, sid) == 17, "窗口内首跑须归档"
         assert db_mod.kv_get(c, "maint_last_run") == "2026-10-14"
         # 游标守卫：同日再进窗口 → 零动作
-        assert maint.maybe_daily(c, now=night + timedelta(hours=1)) is False
+        assert maint.maybe_daily(
+            c, now=datetime(2026, 10, 14, 4, 0)) is False
 
 
 # ---------------------------------------------------------------- ② VACUUM 周度+瘦身
@@ -60,16 +63,24 @@ def test_vacuum_weekly_and_shrink():
     sid = "20261014_mnt-vac"
     _mk_cold(sid)
     with db_mod.conn() as c:
-        # 8 天前跑过 → 本轮跳过（周度未到）
+        # 6 天前跑过 → 跳过；恰 7 天前 → 必须跑（写死天数边界，杀 7→8：
+        # 8 天判定下 7d<8d 仍 skip）
         db_mod.kv_set(c, "vacuum_last_run",
                       (datetime.now() - timedelta(days=6)).strftime("%Y-%m-%d"))
     rep = maint.run_maintenance(now=datetime.now())
     assert _step(rep, "vacuum")["skipped"] is True
+    with db_mod.conn() as c:
+        db_mod.kv_set(c, "vacuum_last_run",
+                      (datetime.now() - timedelta(days=7)).strftime("%Y-%m-%d"))
+    rep7 = maint.run_maintenance(now=datetime.now())
+    assert _step(rep7, "vacuum")["done"] is True, "恰 7 天必须回收"
+    assert _step(rep7, "vacuum")["skipped"] is False
+    assert rep7["ok"] is True, "成功路径汇总 ok 必须为 True"
 
     # 造大 free 空间：归档删行 + 再插删一批，freelist >0
     with db_mod.conn() as c:
         arch.archive_session(c, sid)
-        for i in range(500):
+        for _ in range(500):
             c.execute("INSERT INTO messages(session_id, role, content)"
                       " VALUES(?, 'user', ?)", (sid, "x" * 2000))
         c.execute("DELETE FROM messages WHERE session_id=?", (sid,))
@@ -113,6 +124,7 @@ def test_dry_run_zero_side_effects():
     free0, size0 = _freelist(), _db_bytes()
     rep = maint.run_maintenance(dry_run=True, now=datetime.now())
     assert _step(rep, "vacuum")["dry_run"] is True
+    assert _step(rep, "vacuum")["skipped"] is True
     with db_mod.conn() as c:
         assert db_mod.kv_get(c, "maint_last_run") is None, "dry_run 不得推进日游标"
         assert db_mod.kv_get(c, "vacuum_last_run") is None
@@ -120,7 +132,40 @@ def test_dry_run_zero_side_effects():
     assert _freelist() == free0 and _db_bytes() == size0
 
 
-# ---------------------------------------------------------------- ⑤ audit 汇总
+# ---------------------------------------------------------------- ⑤ 失败注入
+def test_vacuum_failure_no_cursor_advance(monkeypatch):
+    """VACUUM 失败（独占拿不到）：汇总 ok=False + failed 字段 + 周度游标
+    不推进（下轮重试语义）——杀 done/failed 分支的报告字段族变异。"""
+    with db_mod.conn() as c:
+        db_mod.kv_del(c, "vacuum_last_run")
+    def _fail(force, days, last, dry_run):
+        return {"step": "vacuum", "skipped": False, "done": False,
+                "failed": "database is locked (注入)"}
+    monkeypatch.setattr(maint, "_vacuum", _fail)
+    rep = maint.run_maintenance(now=datetime.now())
+    vac = _step(rep, "vacuum")
+    assert vac["failed"] and vac["done"] is False
+    assert rep["ok"] is False, "VACUUM 失败必须拉低汇总 ok"
+    with db_mod.conn() as c:
+        assert db_mod.kv_get(c, "vacuum_last_run") is None, \
+            "失败不得推进周度游标（下轮重试）"
+        assert db_mod.kv_get(c, "maint_last_run") is not None, \
+            "日游标照常推进（归档已成功，崩溃安全语义）"
+
+
+def test_archive_failure_ok_false(monkeypatch):
+    """归档步骤异常：汇总 ok=False + steps 带 failed 字段（杀失败分支
+    ok=False→True 变异）。"""
+    def _boom(c, **k):
+        raise RuntimeError("注入的归档故障")
+    monkeypatch.setattr(maint.archive_mod, "archive_cold", _boom)
+    rep = maint.run_maintenance(now=datetime.now())
+    arc = _step(rep, "archive_cold")
+    assert arc.get("failed") == "注入的归档故障"
+    assert rep["ok"] is False
+
+
+# ---------------------------------------------------------------- ⑥ audit 汇总
 def test_audit_system_summary():
     now = datetime.now()
     rep = maint.run_maintenance(now=now)
