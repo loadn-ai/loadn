@@ -203,6 +203,21 @@ async def test_list_pagination_semantics(client):
     assert r.status_code == 200
 
 
+def test_list_sessions_db_defaults():
+    """db 层默认参对赌：不传参=全量含 archived；limit=1 恰一行（杀
+    默认参 True→False 与 max(1,…) 的 1→2 变异——路由层显式传参掩盖了
+    db 层默认，无本用例则两者无观察点）。"""
+    arc = "20261014_0700-defaults"
+    _mk_session(arc, "2030-10-03T00:00:00+00:00", status="archived")
+    with db_mod.conn() as c:
+        ids_default = {r["id"] for r in db_mod.list_sessions(c)}
+        ids_active = {r["id"] for r in db_mod.list_sessions(c,
+                                                            include_archived=False)}
+        assert arc in ids_default, "db 层默认必须含 archived"
+        assert arc not in ids_active
+        assert len(db_mod.list_sessions(c, limit=1)) == 1
+
+
 # ---------------------------------------------------------------- ⑥ conn 短路+自愈
 def test_conn_schema_shortcut_and_selfheal(tmp_path, monkeypatch):
     monkeypatch.setitem(db_mod.PATHS, "db", tmp_path / "a.db")
@@ -294,3 +309,15 @@ def test_session_user_renew_throttle():
                            (sid_stale,)).fetchone()
     assert after2["expires_at"] != row_stale["expires_at"], "过半衰必须续期"
     assert after2["expires_at"] > ua._iso_ts(time.time() + 29 * 86400)
+
+    # 边界（杀半衰除数变异 2→3）：剩 11 天——低于半衰（15d）必须续；
+    # 若阈值漂成 1/3 TTL（10d）则不续，本断言即失败
+    with ua._conn() as c:
+        uid2 = _mk_user(c, "perf-edge11")
+        sid_edge = _mk_auth_sess(c, uid2, 11 * 86400)
+    assert ua.session_user(sid_edge) is not None
+    with ua._conn() as c:
+        after3 = c.execute("SELECT expires_at FROM auth_sessions WHERE id=?",
+                           (sid_edge,)).fetchone()
+    assert after3["expires_at"] > ua._iso_ts(time.time() + 29 * 86400), \
+        "剩余 11 天（<半衰 15 天）必须续期"
