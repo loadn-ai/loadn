@@ -97,9 +97,15 @@ def test_cleanup_orphans_guards():
     r = maint.cleanup_orphans(dry_run=True)
     assert r["removed"] == 0 and len(r["candidates"]) == 4
     assert (var / "workdaddy.db").exists(), "dry_run 零副作用"
+    # 默认参对赌（杀 dry_run=True→False）：不传参=只报数不删（红线动作
+    # 的安全默认——调用方漏传时宁可不动文件）
+    r_def = maint.cleanup_orphans()
+    assert r_def["dry_run"] is True and r_def["removed"] == 0
+    assert (var / "workdaddy.db").exists(), "漏传 dry_run 不得真删"
 
     r2 = maint.cleanup_orphans(dry_run=False)
     assert r2["removed"] == 4
+    assert r2["dry_run"] is False, "真删返回不得标 dry_run"
     assert not (var / "workdaddy.db").exists()
     assert not (var / "state.db").exists()
     assert (var / "state.db.real").exists(), "非空 state.db 名单都不进"
