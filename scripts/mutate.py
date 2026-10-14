@@ -266,9 +266,10 @@ TARGET_TESTS: dict[str, list[str]] = {
     "loadn_webui/archive.py": [
         "tests/test_perf_archive.py",
     ],
-    # ---- PERF-3：每日维护（窗口/游标守卫/VACUUM 周度）
+    # ---- PERF-3/4：每日维护（窗口/游标守卫/VACUUM 周度）+文件层 retention
     "loadn_webui/maintenance.py": [
         "tests/test_perf_maint.py",
+        "tests/test_perf_files.py",
     ],
     # ---- 执行域门 argv 直通层（第 4 起实证 2026-10-10）
     "loadn/cli/main.py": [
