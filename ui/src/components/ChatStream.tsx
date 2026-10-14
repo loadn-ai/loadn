@@ -7,7 +7,7 @@ import { api, fmtTime } from '../api/client';
 import {
   FileImage, Cloud, Tool, CheckSquare, Check, ChevronDown, ChevronRight,
   Terminal, Search, Globe, BookOpen, Pencil, PenLine, Plus, RotateCw, Star,
-  Trash, Copy, Users, Spinner, Chat,
+  Trash, Copy, Users, Spinner, Chat, Undo,
 } from './icons';
 import type { ComponentType } from 'react';
 import { useAutoScroll } from './SessionView';
@@ -333,7 +333,7 @@ function LiveTurn({ live }: { live: NonNullable<ReturnType<typeof useStore.getSt
         if (it.kind === 'thinking') return <ThinkingCard key={hidden + i} text={it.text} live
           tag={it.agent_n != null ? `子${it.agent_n}` : undefined} cum={it.cum} />;
         if (it.kind === 'tool') return <ToolLine key={hidden + i} b={it} turnId={live.turnId} />;
-        if (it.kind === 'steer') return <SteerNote key={hidden + i} text={it.text} />;
+        if (it.kind === 'steer') return <SteerNote key={hidden + i} text={it.text} steerId={it.id} />;
         if (it.agent_n != null) return <SubTextCard key={hidden + i} text={it.text}
           tag={`子${it.agent_n}`} name={it.agent_name} live />;
         return <MdText key={hidden + i} text={it.text} />;
@@ -349,11 +349,19 @@ const MdText = memo(function MdText({ text }: { text: string }) {
 });
 
 /** 运行中插话（steering）：accent 边条卡片，与工具/文本流区分 */
-const SteerNote = memo(function SteerNote({ text }: { text: string }) {
+const SteerNote = memo(function SteerNote({ text, steerId }: { text: string; steerId?: string }) {
+  const retractSteer = useStore(s => s.retractSteer);
+  const currentSid = useStore(s => s.currentSid);
   return (
     <div className="steer-note">
       <span className="steer-tag">插话</span>
       <span className="steer-text">{text}</span>
+      {steerId && currentSid && (
+        <button className="mini-btn" title="撤回（下一轮注入前有效）"
+                onClick={() => void retractSteer(currentSid, steerId)}>
+          <Undo size={11} />
+        </button>
+      )}
     </div>
   );
 });

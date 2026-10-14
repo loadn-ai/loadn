@@ -20,7 +20,9 @@ from ._common import _apply_partition_mutex, _fold_blocks, _get_session_or_404, 
 
 @router.post("/sessions")
 async def create_session(body: dict):
-    title = (body.get("title") or body.get("first_message") or "新任务").strip()[:80]
+    # 默认标题不再硬编码「新任务」：零输入时由 workspace 层落时间短语，
+    # 且目录名免词（纯时间戳+随机）
+    title = (body.get("title") or body.get("first_message") or "").strip()[:80]
     prof_name = body.get("profile") or "auto"
     text_probe = f"{title} {body.get('first_message') or ''}"
     prof = (profile_mod.get(prof_name) if prof_name != "auto"

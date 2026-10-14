@@ -3,6 +3,7 @@ import { create } from 'zustand';
 import { api, apiUpload, connectSse } from '../api/client';
 import { applyResult, applyTool, deriveAgents, type AgentInfo } from './agents';
 import { clearDraft, getDraft, setDraft } from './drafts';
+import { toast } from './toasts';
 
 /** 用户附件（消息 blocks_json 里的 attachment 条目） */
 export interface Attachment {
@@ -123,7 +124,7 @@ export type StreamItem =
   | ThinkItem
   | ToolItem
   | TextItem
-  | { kind: 'steer'; text: string };
+  | { kind: 'steer'; text: string; id?: string };
 
 interface LiveTurn {
   turnId: number;
@@ -251,6 +252,8 @@ interface Store {
   uploadFile: (file: File) => Promise<Attachment>;
   stopTurn: (tid: number) => Promise<void>;
   retractTurn: (tid: number) => Promise<void>;
+  /** 撤回未注入的插话（引擎下一轮 LLM 调用前有效；已注入 409） */
+  retractSteer: (sid: string, steerId: string) => Promise<boolean>;
   deleteMessage: (mid: number) => Promise<void>;
   editMessage: (mid: number, text: string) => Promise<void>;
   renameSession: (sid: string, title: string) => Promise<void>;
@@ -754,6 +757,18 @@ export const useStore = create<Store>((set, get) => ({
     void get().loadSessions();
   },
 
+  async retractSteer(sid, steerId) {
+    // 撤回未注入的插话：成功由 steer_retracted SSE 事件摘条，这里只报错
+    try {
+      await api(`/api/sessions/${encodeURIComponent(sid)}/steer/retract`,
+        { method: 'POST', body: JSON.stringify({ id: steerId }) });
+      return true;
+    } catch (e) {
+      toast(String(e), false);
+      return false;
+    }
+  },
+
   async deleteMessage(mid) {
     // 删单条气泡（展示层）：后端删 messages 行 + resync 拉全量
     await api(`/api/messages/${mid}`, { method: 'DELETE' });
@@ -1008,10 +1023,17 @@ function handleEvent(
         ? { live: { ...s.live, todos: data.todos } } : {}));
       break;
     case 'steer':
-      // 运行中插话已投递：铺进流水（下一轮 LLM 调用前注入上下文）
+      // 运行中插话已投递：铺进流水（下一轮 LLM 调用前注入上下文）。
+      // id=撤回凭据（POST /steer/retract，注入前有效）
       set(s => (s.live && s.live.turnId === data.turn_id
-        ? { live: { ...s.live, items: [...s.live.items, { kind: 'steer', text: data.text }] } }
+        ? { live: { ...s.live, items: [...s.live.items, { kind: 'steer', text: data.text, id: data.id }] } }
         : {}));
+      break;
+    case 'steer_retracted':
+      // 插话已撤回：流水里摘除该条（等同没说过）
+      set(s => (s.live && s.live.turnId === data.turn_id
+        ? { live: { ...s.live, items: s.live.items.filter(
+            it => !(it.kind === 'steer' && it.id === data.id)) } } : {}));
       break;
     case 'turn_done':
     case 'turn_error':

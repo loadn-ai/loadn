@@ -62,9 +62,12 @@ def turn_disallow(prof) -> list[str]:
 
 
 def new_session_id(title: str) -> str:
-    base = "".join(w for w in slugify(title).split("-")[:4]) or "task"
+    """目录名 = 时间戳[-标题 slug]随机：显式命名才带词；空标题（用户零输入
+    建会话）纯时间戳+随机——不再落「新任务」这类无信息量默认词进目录名。"""
+    stem = datetime.now().strftime("%Y%m%d_%H%M")
+    base = "".join(w for w in slugify(title).split("-")[:4]) if (title or "").strip() else ""
     rand = uuid.uuid4().hex[:4]
-    return f"{datetime.now().strftime('%Y%m%d_%H%M')}-{base}{rand}"[:60]
+    return f"{stem}-{base}{rand}"[:60] if base else f"{stem}-{rand}"
 
 
 def _exec_env_block() -> str:
@@ -538,13 +541,16 @@ def create_project(title: str, prof: profile_mod.Profile, skills: list[str] | No
     """建项目（工作区属主）：scaffold 全套 + projects 行。返回 (pid, ws)。"""
     from . import db as db_mod
 
-    title = (title or "").strip() or "新项目"
     skill_names = skills if skills is not None else list(prof.skills)
-    pid = _new_unique_id(title)
-    ws = scaffold(pid, title, prof, skill_names, session_mcp, project=True)
+    # 同会话：零输入项目标题落时间短语，目录名免词
+    from datetime import datetime as _dt
+    proj_raw = (title or "").strip()
+    proj_title = proj_raw or _dt.now().strftime("%m月%d日 %H:%M")
+    pid = _new_unique_id(proj_raw)
+    ws = scaffold(pid, proj_title, prof, skill_names, session_mcp, project=True)
     with db_mod.conn() as c:
         db_mod.create_project(
-            c, id=pid, title=title, workspace=str(ws), profile=prof.name,
+            c, id=pid, title=proj_title, workspace=str(ws), profile=prof.name,
             skills_json=json.dumps(skill_names, ensure_ascii=False),
             mcp_json=json.dumps(session_mcp or {}, ensure_ascii=False))
     return pid, ws
@@ -579,9 +585,14 @@ def create_session(title: str, prof: profile_mod.Profile, skills: list[str] | No
     共享物：宪法（CLAUDE.md，祖先链加载）+ inputs/。对话历史/引擎会话/SSE
     全按 sid 独立（旧版即如此）。
     """
-    from . import db as db_mod
+    # 零输入建会话：标题落可读时间短语（侧栏展示），但目录名不带词
+    # （dir 传空串 → new_session_id 纯时间戳+随机）
+    from datetime import datetime as _dt
 
-    title = (title or "").strip() or "新任务"
+    from . import db as db_mod
+    raw_title = (title or "").strip()
+    title = raw_title or _dt.now().strftime("%m月%d日 %H:%M")
+    dir_slug_arg = raw_title   # 空 = 目录免词
     if project_id:
         with db_mod.conn() as c:
             proj = db_mod.get_project(c, project_id)
@@ -625,7 +636,7 @@ def create_session(title: str, prof: profile_mod.Profile, skills: list[str] | No
         return sid, ws
 
     skill_names = skills if skills is not None else list(prof.skills)
-    sid = _new_unique_id(title)
+    sid = _new_unique_id(dir_slug_arg)
     ws = scaffold(sid, title, prof, skill_names, session_mcp)
     with db_mod.conn() as c:
         db_mod.create_session(

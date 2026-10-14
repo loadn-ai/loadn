@@ -13,6 +13,7 @@ import json
 import os
 import re
 import time
+import uuid
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
@@ -248,16 +249,49 @@ class Engine:
                 row = db_mod.get_turn(c, tid)
                 eng = row["engine"] if row is not None else None
             if eng in ("loadn", "hahaness"):  # hahaness=旧名 alias
+                sid8 = uuid.uuid4().hex[:8]   # 撤回凭据：注入前可按 id 撤（retract）
                 path = ws_mod.ws_of(sid) / f".steer.{sid}.jsonl"
                 path.parent.mkdir(parents=True, exist_ok=True)
                 with path.open("a", encoding="utf-8") as f:
-                    f.write(json.dumps({"ts": iso(), "text": text},
+                    f.write(json.dumps({"id": sid8, "ts": iso(), "text": text},
                                        ensure_ascii=False) + "\n")
-                at.steers.append({"text": text, "consumed": False})
-                self.publish(sid, "steer", {"turn_id": tid, "text": text}, tid)
+                at.steers.append({"id": sid8, "text": text, "consumed": False})
+                self.publish(sid, "steer", {"turn_id": tid, "text": text, "id": sid8}, tid)
                 return tid
             break      # 每 session 串行，至多一个 running turn
         return None
+
+    def retract_steer(self, sid: str, steer_id: str) -> tuple[bool, str]:
+        """撤回未注入的插话（用户「发错话想反悔」）：从 .steer.jsonl 与
+        at.steers 双处移除。已 consumed（引擎已注入上下文）→ (False, 409 语义
+        消息)；无运行中任务 → (False, 404 语义消息)。"""
+        for tid, at in self.active.items():
+            if at.session_id != sid:
+                continue
+            for s in at.steers:
+                if s.get("id") == steer_id:
+                    if s.get("consumed"):
+                        return False, "该插话已注入上下文，无法撤回"
+                    path = ws_mod.ws_of(sid) / f".steer.{sid}.jsonl"
+                    if path.exists():
+                        raw = path.read_text(encoding="utf-8")
+                        keep = []
+                        for ln in raw.splitlines():
+                            if not ln.strip():
+                                continue
+                            try:
+                                if json.loads(ln).get("id") == steer_id:
+                                    continue
+                            except json.JSONDecodeError:
+                                pass   # 老格式行（无 id）：保留不动
+                            keep.append(ln)
+                        path.write_text("".join(x + "\n" for x in keep), encoding="utf-8")
+                    at.steers.remove(s)
+                    self.publish(sid, "steer_retracted",
+                                 {"turn_id": tid, "id": steer_id}, tid)
+                    return True, ""
+            return False, "插话不存在（可能已随轮次结束被消费）"
+        return False, "当前没有运行中的任务"
 
     # ------------------------------------------------------------ 提交
     async def submit(self, sid: str, text: str, mode: str = "foreground",
@@ -759,8 +793,11 @@ class Engine:
         elif t == "steer":
             # loadn 插话消费回执：该条已注入运行中上下文，从待回队列摘除
             text = (ev.get("text") or "").strip()
+            rid = (ev.get("id") or "").strip()
             for s in at.steers:
-                if not s.get("consumed") and s.get("text") == text:
+                if s.get("consumed"):
+                    continue
+                if (rid and s.get("id") == rid) or (not rid and s.get("text") == text):
                     s["consumed"] = True
                     break
         elif t in ("permission_request", "tool_use_failure"):

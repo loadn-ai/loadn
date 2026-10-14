@@ -21,7 +21,13 @@ from ..util import get_logger, iso
 log = get_logger(__name__)
 
 # 暴露给 UI 的内建工具开关（有配额/副作用/子代理派生的一类；只读类不暴露）
-BUILTIN_TOOLS = ["WebSearch", "WebFetch", "Task"]
+# desc：一句话说明（UI 表格「说明」列；用户认知成本高的是 Task 这类派生工具）
+BUILTIN_TOOL_DETAILS = [
+    {"name": "WebSearch", "desc": "联网搜索：走平台搜索通道，返回结果列表与摘要"},
+    {"name": "WebFetch", "desc": "抓网页正文：给定 URL 取主内容（反爬页自动回退真浏览器）"},
+    {"name": "Task", "desc": "派子代理：独立上下文执行子任务（常用于搜索/调研），只回传最终结果，不占用主会话上下文"},
+]
+BUILTIN_TOOLS = [t["name"] for t in BUILTIN_TOOL_DETAILS]
 
 
 def _backup(path: Path) -> None:
@@ -161,7 +167,9 @@ def tools_overview() -> dict:
     for p in reg.values():
         profiles.append({"name": p.name, "description": p.description,
                          "disallowed_tools": list(p.disallowed_tools or [])})
-    return {"builtin_tools": BUILTIN_TOOLS, "profiles": profiles}
+    return {"builtin_tools": BUILTIN_TOOLS,
+            "builtin_details": BUILTIN_TOOL_DETAILS,
+            "profiles": profiles}
 
 
 def put_profile_tools(profile_name: str, disallowed: list[str]) -> dict:

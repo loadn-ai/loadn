@@ -88,6 +88,21 @@ async def steer_session(sid: str, body: dict):
         raise HTTPException(400, "text 不能为空")
     steered = ENGINE.steer_if_running(sid, text) is not None
     return {"ok": True, "steered": steered}
+
+
+@router.post("/sessions/{sid}/steer/retract")
+async def retract_steer(sid: str, body: dict):
+    """撤回未注入的插话（发错话反悔窗：引擎下一轮 LLM 调用前有效；
+    已注入 → 409 诚实拒绝，不假装成功）。"""
+    _get_session_or_404(sid)
+    steer_id = (body.get("id") or "").strip()
+    if not steer_id:
+        raise HTTPException(400, "id 不能为空")
+    ok, msg = ENGINE.retract_steer(sid, steer_id)
+    if not ok:
+        raise HTTPException(409, msg)
+    return {"ok": True, "retracted": steer_id}
+
 @router.delete("/messages/{mid}")
 async def delete_message(mid: int):
     """删除单条气泡（只动展示层：messages 行 + 对应事件；transcript/turn

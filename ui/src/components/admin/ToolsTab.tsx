@@ -10,13 +10,17 @@ export default function ToolsTab() {
   const [servers, setServers] = useState<McpServer[]>([]);
   const [profiles, setProfiles] = useState<ProfileTools[]>([]);
   const [builtin, setBuiltin] = useState<string[]>([]);
+  // 工具名 → 一句话说明（T6：Task 这类派生工具用户看名字猜不出用途）
+  const [details, setDetails] = useState<Record<string, string>>({});
   const [editing, setEditing] = useState<McpServer | 'new' | null>(null);
   const [msg, setMsg] = useState<{ t: string; err?: boolean } | null>(null);
 
   async function reload() {
     try {
-      const d = await api<{ servers: McpServer[]; profiles: ProfileTools[]; builtin_tools: string[] }>('/api/tools');
+      const d = await api<{ servers: McpServer[]; profiles: ProfileTools[];
+        builtin_tools: string[]; builtin_details?: { name: string; desc: string }[] }>('/api/tools');
       setServers(d.servers); setProfiles(d.profiles); setBuiltin(d.builtin_tools);
+      setDetails(Object.fromEntries((d.builtin_details ?? []).map(x => [x.name, x.desc])));
     } catch (e) { setMsg({ t: `加载失败：${String(e)}`, err: true }); }
   }
   useEffect(() => { void reload(); }, []);
@@ -77,11 +81,12 @@ export default function ToolsTab() {
           {/* AC-5.10b D10：转置为「工具为行、角色为列」——工具 20+ 时不再横向膨胀，角色列固定可对照 */}
           <div className="tbl-wrap">
           <table className="mcp-table">
-            <thead><tr><th>内建工具 ＼ 角色</th>{profiles.map(p => <th key={p.name}>{p.name}</th>)}</tr></thead>
+            <thead><tr><th>内建工具 ＼ 角色</th><th>说明</th>{profiles.map(p => <th key={p.name}>{p.name}</th>)}</tr></thead>
             <tbody>
               {builtin.map(t => (
                 <tr key={t}>
                   <td className="mono-cell">{t}</td>
+                  <td className="muted" style={{ fontSize: 'var(--fs-sm)' }}>{details[t] ?? '—'}</td>
                   {profiles.map(p => {
                     const off = p.disallowed_tools.includes(t);
                     return (
@@ -93,7 +98,7 @@ export default function ToolsTab() {
                   })}
                 </tr>
               ))}
-              {builtin.length === 0 && <tr><td colSpan={Math.max(profiles.length + 1, 2)} className="muted">无内建工具</td></tr>}
+              {builtin.length === 0 && <tr><td colSpan={Math.max(profiles.length + 2, 3)} className="muted">无内建工具</td></tr>}
             </tbody>
           </table>
           </div>
