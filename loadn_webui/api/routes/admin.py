@@ -301,6 +301,19 @@ def archive_cold_messages(body: dict):
     dry_run = bool(body.get("dry_run")) if isinstance(body, dict) else False
     with db_mod.conn() as c:
         return archive_mod.archive_cold(c, dry_run=dry_run)
+
+
+@router.post("/admin/maintenance")
+def run_maintenance_now(body: dict):
+    """手动触发每日维护（PERF-3）：不等凌晨窗口立即跑一轮（归档+
+    checkpoint+VACUUM）。body {dry_run?, force_vacuum?}——force_vacuum
+    跳过周度判定。汇总 audit system 留痕在 run_maintenance 内。"""
+    from ... import maintenance as maint_mod
+    if not isinstance(body, dict):
+        body = {}
+    return maint_mod.run_maintenance(
+        force_vacuum=bool(body.get("force_vacuum")),
+        dry_run=bool(body.get("dry_run")))
 @router.get("/admin/egress")
 def egress_recent(n: int = 50):
     """最近外联（面板数据源：audit egress_request 尾窗）+ 活跃临时授权。管理面。"""

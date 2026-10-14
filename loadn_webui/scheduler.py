@@ -161,6 +161,15 @@ class Scheduler:
                 log.info("广播事件清理：%d 行", gone)
         except Exception:                              # noqa: BLE001
             pass
+        # PERF-3：每日低峰维护（冷归档+WAL checkpoint+周度 VACUUM）——
+        # 窗口判定+kv 游标全在 maybe_daily 内，窗口外一次 kv 读即返回
+        try:
+            from .maintenance import maybe_daily
+            with db_mod.conn() as c:
+                if maybe_daily(c):
+                    log.info("每日维护已执行（详见 audit system 事件）")
+        except Exception:                              # noqa: BLE001
+            pass
         n = 0
         for job in jobs:
             try:
