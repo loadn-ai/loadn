@@ -321,3 +321,14 @@ def test_session_user_renew_throttle():
                            (sid_edge,)).fetchone()
     assert after3["expires_at"] > ua._iso_ts(time.time() + 29 * 86400), \
         "剩余 11 天（<半衰 15 天）必须续期"
+
+
+# ---------------------------------------------------------------- ⑧ 发版感知数据源
+async def test_health_release_version_shape(client):
+    """v0.7.29 stale-pill 触发依赖：health 必须带 release 键（前端 60s 轮询
+    对比基线亮「平台已更新」——键漂移=横幅永远不亮）。version 值仅 release
+    构建存在（git 仓无 RELEASE.json=空 dict 属预期），真值形状由 release
+    build 冒烟（healthcheck 验证 release=vX.Y.Z）覆盖。"""
+    r = await client.get("/api/health")
+    assert r.status_code == 200
+    assert isinstance(r.json().get("release"), dict)

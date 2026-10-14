@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react';
 import { useStore } from './stores/sessions';
+import { api } from './api/client';
 import IconRail from './components/IconRail';
 import Sidebar from './components/Sidebar';
 import SessionView from './components/SessionView';
@@ -70,6 +71,28 @@ export default function App() {
     start();
     document.addEventListener("visibilitychange", onVis);
     return () => { stop(); document.removeEventListener("visibilitychange", onVis); };
+  }, []);
+
+  // 发版感知（v0.7.29 修复）：stale-pill 自 workdaddy 迁来后一直缺触发
+  // 逻辑（死 UI——发版后长驻页/PWA 无从感知）。60s 轮询 /api/health 的
+  // release.version 与首查基线比对，变化即亮「平台已更新 · 点击刷新」。
+  // 走 api() 封装（W0 强制认证态下裸 fetch 会 401）；release 字段仅
+  // release 构建有 RELEASE.json（dev/git 仓为空 dict——跳过不误报）。
+  useEffect(() => {
+    let base: string | null = null;
+    let alive = true;
+    const check = async () => {
+      try {
+        const d = await api<{ release?: { version?: string } }>('/api/health');
+        const v = d?.release?.version;
+        if (!alive || !v) return;
+        if (base === null) base = v;
+        else if (v !== base) setStale(true);
+      } catch { /* 瞬断/401 不误报 */ }
+    };
+    void check();
+    const t = window.setInterval(check, 60000);
+    return () => { alive = false; clearInterval(t); };
   }, []);
 
   // 主题同步：<html data-theme> + PWA 状态栏颜色（meta theme-color）
