@@ -292,6 +292,15 @@ def audit_verify():
     """账本哈希链全量校验（管理面写语义——昂贵操作走双头防滥用）。"""
     from ...security import audit as audit_mod
     return {"problems": audit_mod.verify()}
+@router.post("/admin/archive/cold")
+def archive_cold_messages(body: dict):
+    """messages 冷归档（PERF-2）：冷会话中间段折叠到 gzip 分片。
+    body {dry_run?}——dry_run 只报数零副作用。管理面写（audit 逐会话
+    留痕在 archive_session 内）。"""
+    from ... import archive as archive_mod
+    dry_run = bool(body.get("dry_run")) if isinstance(body, dict) else False
+    with db_mod.conn() as c:
+        return archive_mod.archive_cold(c, dry_run=dry_run)
 @router.get("/admin/egress")
 def egress_recent(n: int = 50):
     """最近外联（面板数据源：audit egress_request 尾窗）+ 活跃临时授权。管理面。"""

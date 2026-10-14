@@ -14,6 +14,7 @@ from loadn_webui.api.app import app
 EXPECTED = [
     ("/api/activity", "get"),
     ("/api/admin/approvals", "get"),
+    ("/api/admin/archive/cold", "post"),
     ("/api/admin/audit", "get"),
     ("/api/admin/audit/verify", "post"),
     ("/api/admin/channels", "get,put"),
@@ -107,6 +108,7 @@ EXPECTED = [
     ("/api/sessions/{sid}/kill", "post"),
     ("/api/sessions/{sid}/live", "get"),
     ("/api/sessions/{sid}/messages", "post"),
+    ("/api/sessions/{sid}/messages/archived", "get"),
     ("/api/sessions/{sid}/messages/{mid}/sources", "get"),
     ("/api/sessions/{sid}/memory", "get"),
     ("/api/sessions/{sid}/promote", "post"),

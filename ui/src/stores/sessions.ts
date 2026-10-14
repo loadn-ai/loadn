@@ -168,6 +168,9 @@ interface Store {
   defaultEngine: string;
   currentSid: string | null;
   messages: MessageInfo[];
+  /** PERF-2：已冷归档的消息条数（详情 messages_folded；0=无折叠/已展开） */
+  foldedCount: number;
+  loadArchived: () => Promise<void>;
   turns: TurnInfo[];
   artifacts: ArtifactInfo[];
   /** 当前会话的子代理注册表（turn 域复合键，见 stores/agents.ts） */
@@ -282,7 +285,7 @@ function initialSpace(): string {
 export const useStore = create<Store>((set, get) => ({
   sessions: [], projects: [], categories: [], profiles: [], skills: [], engines: {},
   defaultEngine: 'claude',
-  currentSid: null, messages: [], turns: [], artifacts: [],
+  currentSid: null, messages: [], foldedCount: 0, turns: [], artifacts: [],
   agents: [], subtasks: [],
   live: null,
   stoppingTids: {},
@@ -375,17 +378,18 @@ export const useStore = create<Store>((set, get) => ({
 
   async openSession(sid) {
     get().closeSession();
-    set({ currentSid: sid, messages: [], turns: [], artifacts: [], live: null,
+    set({ currentSid: sid, messages: [], foldedCount: 0, turns: [], artifacts: [], live: null,
           sessionExtras: null, timeline: [], agents: [], subtasks: [],
           mainTab: 'chat', agentFilter: null, artifactScope: null });
     localStorage.setItem('loadn_sid', sid);   // 刷新/重开恢复
     localStorage.removeItem('wd_sid');        // 旧键清理（迁移遗留）
     const d = await api<{ messages: MessageInfo[]; turns: TurnInfo[];
-                        artifacts: ArtifactInfo[]; subtasks: SubtaskInfo[] } & SessionExtras>(
+                        artifacts: ArtifactInfo[]; subtasks: SubtaskInfo[] } & SessionExtras & {
+                        messages_folded?: number }>(
       `/api/sessions/${encodeURIComponent(sid)}`);
     set({ messages: d.messages, turns: d.turns, artifacts: d.artifacts,
           agents: deriveAgents(d.messages, d.turns),
-          subtasks: d.subtasks ?? [] });
+          subtasks: d.subtasks ?? [], foldedCount: d.messages_folded ?? 0 });
     fillExtras(set, sid, d);
     // 进行中 turn：凭 /live 重建元信息（turnId/status/startedAt/todos——计时与停止按钮）。
     // 过程节点（items）不播种：SSE 新连接会精准回放本 turn 尾部事件（sse.py：
@@ -430,6 +434,17 @@ export const useStore = create<Store>((set, get) => ({
     void get().loadSessions();
   },
 
+  /** PERF-2：展开冷归档段（ChatStream「⋯ N 条已归档」按钮）——回源端点
+   *  拉全文 prepend 进 messages；归档 id 恒小于库内保留区，天然有序 */
+  async loadArchived() {
+    const sid = get().currentSid;
+    if (!sid) return;
+    const d = await api<{ messages: MessageInfo[]; count: number }>(
+      `/api/sessions/${encodeURIComponent(sid)}/messages/archived`);
+    if (get().currentSid !== sid) return;
+    set({ messages: [...d.messages, ...get().messages], foldedCount: 0 });
+  },
+
   closeSession() {
     const { es } = get();
     if (es) { es.close(); }
@@ -455,12 +470,13 @@ export const useStore = create<Store>((set, get) => ({
     (async () => {
       try {
         const d = await api<{ messages: MessageInfo[]; turns: TurnInfo[];
-                              artifacts: ArtifactInfo[]; subtasks: SubtaskInfo[] }>(
+                              artifacts: ArtifactInfo[]; subtasks: SubtaskInfo[];
+                              messages_folded?: number }>(
           `/api/sessions/${encodeURIComponent(sid)}`);
         if (get().currentSid !== sid) return;
         set({ messages: d.messages, turns: d.turns, artifacts: d.artifacts,
               agents: deriveAgents(d.messages, d.turns),
-              subtasks: d.subtasks ?? [] });
+              subtasks: d.subtasks ?? [], foldedCount: d.messages_folded ?? 0 });
         // 停止在途标志对账：重拉后已终态的 turn 清标志（SSE 掉线时回前台的
         // resync 就是「引擎已停止」确认通道，不用等 pollStopConfirmed 超时）
         for (const st of Object.keys(get().stoppingTids).map(Number)) {

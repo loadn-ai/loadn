@@ -1,14 +1,17 @@
 // Skills 管理页（列表/上传/翻译/安装）——从 AdminPanel 拆出（v0.6.12）
-import { useEffect, useRef, useState } from 'react';
+// v0.7.27 设计语言重构：kicker 页头+说明 banner+segmented 筛选+搜索+分层卡片（.skp-* 独立命名空间）
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { api, withToken } from '../../api/client';
 import { fetchZhDesc } from '../../api/zh';
 import { toast } from '../../stores/toasts';
 import SkillEditor from '../SkillEditor';
 import InstallDialog from '../InstallDialog';
-import { Plus, Upload, Globe } from '../icons';
+import { Plus, Upload, Globe, Search, BookOpen } from '../icons';
 import { withQ } from './shared';
 import type { SkillItem } from './shared';
 import { askConfirm } from '../../stores/confirm';
+
+type Filter = 'all' | 'local' | 'ext' | 'off';
 
 export default function SkillsTab() {
   const [skills, setSkills] = useState<SkillItem[]>([]);
@@ -17,6 +20,8 @@ export default function SkillsTab() {
   const [installing, setInstalling] = useState(false);
   const [creating, setCreating] = useState(false);
   const [msg, setMsg] = useState<{ t: string; err?: boolean } | null>(null);
+  const [filter, setFilter] = useState<Filter>('all');
+  const [q, setQ] = useState('');
   const fileRef = useRef<HTMLInputElement>(null);
 
   async function reload() {
@@ -63,6 +68,28 @@ export default function SkillsTab() {
     void reload();
   }
 
+  const counts = useMemo(() => ({
+    all: skills.length,
+    local: skills.filter(s => !s.source).length,
+    ext: skills.filter(s => s.source).length,
+    off: skills.filter(s => s.disabled).length,
+  }), [skills]);
+
+  const shown = useMemo(() => {
+    const kw = q.trim().toLowerCase();
+    return skills.filter(s => {
+      if (filter === 'local' && s.source) return false;
+      if (filter === 'ext' && !s.source) return false;
+      if (filter === 'off' && !s.disabled) return false;
+      if (kw && !(s.name.toLowerCase().includes(kw)
+        || (s.description || '').toLowerCase().includes(kw)
+        || (zh[s.name] || '').toLowerCase().includes(kw))) return false;
+      return true;
+    });
+  }, [skills, filter, q, zh]);
+
+  const SEGS: [Filter, string][] = [['all', '全部'], ['local', '本地'], ['ext', '市场'], ['off', '已禁用']];
+
   return (
     <div className="admin-body">
       {editing !== null
@@ -70,46 +97,95 @@ export default function SkillsTab() {
         : installing
           ? <InstallDialog onClose={() => { setInstalling(false); void reload(); }} />
           : <>
-            <div className="admin-toolbar">
-              <button className="btn sm primary" onClick={() => setCreating(true)}><Plus size={13} /> 新建</button>
-              <button className="btn sm" onClick={() => fileRef.current?.click()}><Upload size={13} /> 上传 zip</button>
-              <input ref={fileRef} type="file" accept=".zip" hidden
-                onChange={e => { const f = e.target.files?.[0]; if (f) void uploadZip(f); e.target.value = ''; }}  autoComplete="off"/>
-              <button className="btn sm primary" onClick={() => setInstalling(true)}><Globe size={13} /> 市场安装</button>
-              {msg && <span className={msg.err ? 'admin-msg err' : 'admin-msg'}>{msg.t}</span>}
+            <div className="skp-head">
+              <div className="skp-kicker"><span className="skp-kicker-dot" />技能库 · SKILLS</div>
+              <h2 className="skp-title">技能</h2>
+              <div className="skp-banner">
+                <b>技能 = 可复用的操作知识。</b>每个技能是一个 <code>SKILL.md</code> 目录，新会话自动加载——
+                agent 按描述判断何时使用。禁用后新会话不挂载（active 会话下一 turn 失效）；
+                市场来源带供应链锁（🔒 防篡改）。
+              </div>
             </div>
+
+            <div className="skp-toolbar">
+              <div className="skp-toolbar-l">
+                <button className="btn sm primary" onClick={() => setCreating(true)}><Plus size={13} /> 新建技能</button>
+                <button className="btn sm" onClick={() => fileRef.current?.click()}><Upload size={13} /> 上传 zip</button>
+                <input ref={fileRef} type="file" accept=".zip" hidden
+                  onChange={e => { const f = e.target.files?.[0]; if (f) void uploadZip(f); e.target.value = ''; }}  autoComplete="off"/>
+                <button className="btn sm" onClick={() => setInstalling(true)}><Globe size={13} /> 市场安装</button>
+                {msg && <span className={msg.err ? 'admin-msg err' : 'admin-msg'}>{msg.t}</span>}
+              </div>
+              <div className="skp-toolbar-r">
+                <div className="skp-search">
+                  <Search size={13} />
+                  <input placeholder="搜索技能名/描述…" value={q}
+                    onChange={e => setQ(e.target.value)} autoComplete="off" />
+                </div>
+              </div>
+            </div>
+
             {creating && <NewSkillForm onDone={() => { setCreating(false); void reload(); }} />}
-            <div className="skill-grid">
-              {skills.map(s => (
-                <div key={s.name} className={`skill-card${s.disabled ? ' off' : ''}`}>
-                  <div className="sk-head">
-                    <b>{s.name}</b>
-                    {s.disabled && <span className="sk-src off-tag">已禁用</span>}
-                    <span className={`sk-src ${s.source ? 'ext' : 'local'}`}>
+
+            <div className="skp-seg">
+              {SEGS.map(([k, label]) => (
+                <button key={k} className={`skp-seg-btn${filter === k ? ' on' : ''}`}
+                  onClick={() => setFilter(k)}>
+                  {label}<span className="skp-seg-n">{counts[k]}</span>
+                </button>
+              ))}
+            </div>
+
+            <div className="skp-grid">
+              {shown.map(s => (
+                <div key={s.name} className={`skp-card${s.disabled ? ' off' : ''}`}>
+                  <div className="skp-row1">
+                    <span className="skp-name" title={s.name}>{s.name}</span>
+                    {s.disabled && <span className="skp-badge off-tag">已禁用</span>}
+                    <span className={`skp-badge ${s.source ? 'ext' : 'local'}`}
+                      title={s.source ? (s.source.repo ?? s.source.via) : '本机目录'}>
                       {s.source
                         ? (s.source.repo ?? s.source.via)
                           + (s.lock_ok === false ? ' ⚠锁校验失败' : ' 🔒')
                         : '本地'}
                     </span>
                   </div>
-                  <div className="sk-desc" title={zh[s.name] ? s.description : undefined}>
+                  <div className="skp-desc" title={zh[s.name] ? s.description : undefined}>
                     {zh[s.name]
-                      ? <><span className="zh-tag" title={s.description}>译</span>{zh[s.name]}</>
+                      ? <><span className="skp-zh" title={s.description}>译</span>{zh[s.name]}</>
                       : (s.description || '（无描述）')}
                   </div>
-                  <div className="sk-foot">
-                    <span className="sk-time">{s.mtime}</span>
-                    <span className="sk-actions">
-                      <button className="link" onClick={() => void toggle(s)}>{s.disabled ? '启用' : '禁用'}</button>
-                      <button className="link" onClick={() => setEditing(s.name)}>编辑</button>
+                  <div className="skp-foot">
+                    <span className="skp-time">{s.mtime}</span>
+                    <span className="skp-acts">
+                      <button className="skp-act" onClick={() => void toggle(s)}>{s.disabled ? '启用' : '禁用'}</button>
+                      <button className="skp-act" onClick={() => setEditing(s.name)}>编辑</button>
                       {/* 导出 agentskills.io 兼容 zip：frontmatter 规范化、剥内部元数据 */}
-                      <a className="link" download={`${s.name}.zip`}
+                      <a className="skp-act" download={`${s.name}.zip`}
                         href={withToken(`/api/skills/${encodeURIComponent(s.name)}/export`)}>导出</a>
-                      <button className="link danger-link" onClick={() => void del(s)}>删除</button>
+                      <button className="skp-act danger" onClick={() => void del(s)}>删除</button>
                     </span>
                   </div>
                 </div>
               ))}
+              {shown.length === 0 && (
+                <div className="skp-empty">
+                  <BookOpen size={28} />
+                  <div className="skp-empty-title">
+                    {skills.length === 0 ? '还没有技能' : '没有匹配的技能'}
+                  </div>
+                  <div className="skp-empty-sub">
+                    {skills.length === 0
+                      ? '技能让 agent 学会你的工作流：新建一个，或从市场安装。'
+                      : '换个筛选或清空搜索试试。'}
+                  </div>
+                  {skills.length === 0 && (
+                    <button className="btn sm primary" onClick={() => setCreating(true)}>
+                      <Plus size={13} /> 新建第一个技能
+                    </button>
+                  )}
+                </div>
+              )}
             </div>
           </>}
     </div>

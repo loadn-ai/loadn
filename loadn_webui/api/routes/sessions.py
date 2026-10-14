@@ -141,8 +141,11 @@ def list_sessions(limit: int = 0, offset: int = 0, include_archived: bool = True
 @router.get("/sessions/{sid}")
 def session_detail(sid: str, request: Request):
     sess = _get_session_or_404(sid)
+    from ... import archive as archive_mod
     with db_mod.conn() as c:
         sess["messages"] = [db_mod.to_dict(r) for r in db_mod.list_messages(c, sid)]
+        # PERF-2：冷归档折叠计数（前端渲染「⋯ N 条已归档」提示行）
+        sess["messages_folded"] = archive_mod.folded_count(c, sid)
         for m in sess["messages"]:
             if m.get("role") == "assistant":          # 附件块在 user 消息里，不动
                 m["blocks_json"] = _fold_blocks(m.get("blocks_json"))
@@ -334,6 +337,8 @@ def delete_session(sid: str, purge: bool = False):
         if t.session_id == sid:
             raise HTTPException(409, "会话有 turn 在跑，先停止")
     import shutil
+
+    from ... import archive as archive_mod
     ws = ws_mod.ws_of(sid)
     with db_mod.conn() as c:
         # 共享工作区引用计数：兄弟 session（含归档）或项目行还指着该目录时
@@ -342,7 +347,20 @@ def delete_session(sid: str, purge: bool = False):
         db_mod.delete_session(c, sid)
     if not shared:
         shutil.rmtree(ws, ignore_errors=True)
+    archive_mod.purge_archive(sid)   # PERF-2：归档分片随会话同生命周期
     return {"ok": True, "deleted": sid}
+@router.get("/sessions/{sid}/messages/archived")
+def get_archived_messages(sid: str):
+    """回源折叠段（PERF-2）：id 升序返回归档分片全文。属主门随
+    _get_session_or_404（他人会话=404 不暴露存在性）。坏分片 500 带文件名，
+    不静默吞半截。"""
+    _get_session_or_404(sid)
+    from ... import archive as archive_mod
+    try:
+        msgs = archive_mod.read_archived(sid)
+    except ValueError as e:
+        raise HTTPException(500, str(e))
+    return {"messages": msgs, "count": len(msgs)}
 @router.get("/sessions/{sid}/snapshots")
 def get_snapshots(sid: str):
     from ... import workspace as ws_mod

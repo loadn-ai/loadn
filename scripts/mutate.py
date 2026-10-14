@@ -262,6 +262,10 @@ TARGET_TESTS: dict[str, list[str]] = {
         "tests/test_perf_sessions.py",
         "tests/test_admin_tasks.py",
     ],
+    # ---- PERF-2：messages 冷归档（冷判定守卫/事务边界/回源/purge）
+    "loadn_webui/archive.py": [
+        "tests/test_perf_archive.py",
+    ],
     # ---- 执行域门 argv 直通层（第 4 起实证 2026-10-10）
     "loadn/cli/main.py": [
         "tests/test_cli_main_units.py",
