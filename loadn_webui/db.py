@@ -31,7 +31,8 @@ from .config import PATHS
 # rev13：sessions.size_bytes/size_checked_at（BD-3——磁盘占用落库，排序可下推 SQL）
 # rev14：org_departments/org_employees/temp_pool（DW——数字员工：组织架构+临时工池）
 # rev15：org_employees.duty（DW-6——职责说明：卡片展示+进 agent 提示与选人参考）
-SCHEMA_REV = 15
+# rev16：models 表（T10——模型库：多模型 CRUD+默认标记，apply 写引擎 provider 配置）
+SCHEMA_REV = 16
 from .util import iso
 
 SCHEMA = """
@@ -296,6 +297,19 @@ CREATE TABLE IF NOT EXISTS temp_pool (           -- DW-1：临时工池（recrui
   created_at TEXT, used_at TEXT
 );
 CREATE INDEX IF NOT EXISTS idx_temp_pool_state ON temp_pool(state, id);
+CREATE TABLE IF NOT EXISTS models (              -- T10：模型库（多模型管理）
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  name TEXT UNIQUE NOT NULL,          -- 展示名（deepseek-v3 / glm-4.7）
+  engine TEXT DEFAULT 'loadn',        -- 引擎（loadn=provider 体系）
+  provider TEXT DEFAULT 'openai',     -- provider 类型（openai 兼容/anthropic/fake）
+  base_url TEXT DEFAULT '',           -- API endpoint（openai 兼容 base_url）
+  api_key TEXT DEFAULT '',            -- 密钥（仅引擎侧消费；API 返回脱敏）
+  model TEXT DEFAULT '',              -- 模型 ID（deepseek-chat / glm-4.7）
+  is_default INTEGER DEFAULT 0,       -- 默认模型（至多一个；新会话联动）
+  enabled INTEGER DEFAULT 1,
+  notes TEXT DEFAULT '',
+  created_at TEXT, updated_at TEXT
+);
 """
 
 ACTIVE_TURN_STATUSES = ("queued", "running")

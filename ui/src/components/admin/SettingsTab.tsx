@@ -5,6 +5,7 @@ import { useStore } from '../../stores/sessions';
 import { useAdminDirty } from '../../stores/adminDirty';
 import { Sun, Moon } from '../icons';
 import UsersCard from './UsersCard';
+import ModelsCard from './ModelsCard';
 import { askConfirm } from '../../stores/confirm';
 
 /* ================= 平台设置 ================= */
@@ -439,6 +440,7 @@ export default function SettingsTab() {
       </div>
 
       <G id="g-engine" title="引擎与模型" />
+      <ModelsCard />{/* T10：模型库（多模型 CRUD+默认联动+一键应用） */}
       {eng && cl &&
       <div className="setting-card">
         <h4>引擎与模型 <span className="muted">（默认引擎 / 推理力度 / 模型与路径覆盖；新会话生效）</span></h4>

@@ -57,6 +57,25 @@ async def create_session(body: dict):
     if _u is not None:
         with db_mod.conn() as c:
             db_mod.update_session(c, sid, owner_id=_u["id"])
+    # T10 模型库联动：未显式指定 engine 且库里有启用的默认模型 → 会话吃
+    # provider 体系（engine_override=loadn）+ params.model 指到该模型 id
+    # （端点/密钥由 apply 写全局 config.json，provider_config 最高优先级）
+    if not (body.get("engine") or "").strip():
+        with db_mod.conn() as c:
+            dm = c.execute(
+                "SELECT model FROM models WHERE is_default=1 AND enabled=1"
+            ).fetchone()
+        if dm and dm["model"]:
+            import json as _json
+            with db_mod.conn() as c:
+                sess_row = db_mod.get_session(c, sid)
+                params = _json.loads(sess_row["params_json"] or "{}") \
+                    if sess_row["params_json"] else {}
+                params["model"] = dm["model"]
+                db_mod.update_session(c, sid, touch=False,
+                                      engine_override="loadn",
+                                      params_json=_json.dumps(
+                                          params, ensure_ascii=False))
     with db_mod.conn() as c:
         # 未显式命名 → 允许自动标题（成功生成或手动改名后清标记）
         if not (body.get("title") or "").strip():
