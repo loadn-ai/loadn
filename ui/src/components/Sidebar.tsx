@@ -101,7 +101,16 @@ export default function Sidebar({ onNew, onAdmin, onNav, adminActive }: {
   const projects = useStore(s => s.projects);
   const categories = useStore(s => s.categories);
   const activeSpace = useStore(s => s.activeSpace);
-  const [limit, setLimit] = useState(PAGE);
+  // A5/T2：首屏条数按视口高度自适应（高屏不再 20 条就停+留白一片「更多」）。
+  // 行高 ~34px + 余量：1500px 高屏 ≈ 42 条首屏；「更多」每次仍加一页。
+  const fitLimit = () => Math.max(PAGE, Math.ceil((window.innerHeight - 220) / 34) + 8);
+  const [limit, setLimit] = useState(fitLimit);
+  // 窗口尺寸显著变化（跨档）时重算下限，避免矮窗拉太多
+  useEffect(() => {
+    const onResize = () => setLimit(l => Math.max(l, fitLimit()));
+    window.addEventListener('resize', onResize);
+    return () => window.removeEventListener('resize', onResize);
+  }, []);
   const [q, setQ] = useState('');
   const [newProj, setNewProj] = useState(false);
   const [projTitle, setProjTitle] = useState('');
@@ -272,8 +281,8 @@ export default function Sidebar({ onNew, onAdmin, onNav, adminActive }: {
                 更多（还有 {spaceRows.length - shownRows.length} 个）
               </button>
             )}
-            {activeSpace === 'recent' && shownRows.length >= spaceRows.length && limit > PAGE && (
-              <button className="more-btn" onClick={() => setLimit(PAGE)}>收起</button>
+            {activeSpace === 'recent' && shownRows.length >= spaceRows.length && limit > fitLimit() && (
+              <button className="more-btn" onClick={() => setLimit(fitLimit())}>收起</button>
             )}
             {!searching && spaceRows.length === 0 && (
               <div className="sidebar-empty">
