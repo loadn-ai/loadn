@@ -27,3 +27,5 @@ evals/reports/maturity.md
 # reports/ = 突变扫描/评估的运行产物（mutate-*.json / ci-mutation.json），绝不入库
 reports/
 loadn/skills.lock.json
+desktop/image/payload-arm64/
+desktop/image/dist-arm64/
