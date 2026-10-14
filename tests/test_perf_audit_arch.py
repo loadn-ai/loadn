@@ -84,9 +84,11 @@ def test_frozen_month_roundtrip():
     # 幂等：目标已存在即 skip
     r2 = audit_mod.archive_months()
     assert not any(x["table"] == FROZEN for x in r2["results"])
-    # 审计留痕
-    assert any("audit_month_export" in e["detail_json"]
-               for e in audit_mod.tail(20, "archive"))
+    # 审计留痕（detail 侧 sha256 截断长度也断言——与返回值同口径）
+    ev = next(e for e in audit_mod.tail(20, "archive")
+              if "audit_month_export" in e["detail_json"])
+    d = json.loads(ev["detail_json"])
+    assert d["table"] == FROZEN and len(d["sha256"]) == 16
 
 
 # ---------------------------------------------------------------- ③ dry_run
