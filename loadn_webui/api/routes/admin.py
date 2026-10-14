@@ -314,6 +314,19 @@ def run_maintenance_now(body: dict):
     return maint_mod.run_maintenance(
         force_vacuum=bool(body.get("force_vacuum")),
         dry_run=bool(body.get("dry_run")))
+@router.post("/admin/cleanup/orphans")
+def cleanup_orphans(body: dict):
+    """一次性清理旧名残留（PERF-4）：workdaddy 家族+空 state.db。
+    **默认 dry_run**——真删须显式 {"dry_run": false}（数据文件删除留
+    人手确认；audit 留痕）。"""
+    from ... import maintenance as maint_mod
+    dry = True if not isinstance(body, dict) else bool(body.get("dry_run", True))
+    return maint_mod.cleanup_orphans(dry_run=dry)
+@router.get("/admin/storage/overview")
+def storage_overview():
+    """存储概览（PERF-4 只读）：var/ 各子树占用+workspace top10。"""
+    from ... import maintenance as maint_mod
+    return maint_mod.storage_overview()
 @router.get("/admin/egress")
 def egress_recent(n: int = 50):
     """最近外联（面板数据源：audit egress_request 尾窗）+ 活跃临时授权。管理面。"""

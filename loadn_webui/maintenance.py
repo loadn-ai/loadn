@@ -28,6 +28,32 @@ from .config import PATHS
 
 DAILY_WINDOW = (3, 6)        # 本地时区凌晨窗口（低峰）
 VACUUM_EVERY_DAYS = 7        # 周度：上距超过即回收
+CALL_LOG_DAYS = 30           # var/logs/calls 滚动（backfill 对缺失已容错）
+PAGES_CACHE_DAYS = 90        # 资源页缓存（可再生）
+BACKUP_FILE_DAYS = 30        # var/backups 散文件（对齐 backup.RETENTION_DAYS）
+
+
+def _sweep_files(root, retain_days: int, pattern: str = "*",
+                 now_ts: float | None = None) -> dict[str, Any]:
+    """按 mtime 删 root 下超期的**文件**（只删文件永不删目录——目录树
+    零接触，workspace/归档分片等结构不受扰）。PERF-4。"""
+    from pathlib import Path
+    root = Path(root)
+    if not root.exists():
+        return {"files": 0, "bytes": 0}
+    cutoff = (now_ts if now_ts is not None else datetime.now().timestamp()) \
+        - retain_days * 86400
+    files = bytes_ = 0
+    for p in root.glob(pattern):
+        try:
+            if p.is_file() and p.stat().st_mtime < cutoff:
+                sz = p.stat().st_size
+                p.unlink()
+                files += 1
+                bytes_ += sz
+        except OSError:
+            pass
+    return {"files": files, "bytes": bytes_}
 
 
 def _today(now: datetime | None = None) -> str:
@@ -120,6 +146,22 @@ def run_maintenance(*, force_vacuum: bool = False, dry_run: bool = False,
     except Exception as e:                                # noqa: BLE001
         report["steps"].append({"step": "vacuum", "failed": str(e)})
         report["ok"] = False
+    # PERF-4：文件层滚动（只删文件不删目录）。dry_run 下跳过真删——
+    # _sweep_files 的 now_ts 注入仅供测试，生产走系统钟
+    for name, root, days in (
+            ("call_logs", PATHS["call_logs"], CALL_LOG_DAYS),
+            ("pages_cache", PATHS["pages_cache"], PAGES_CACHE_DAYS),
+            ("backup_files", PATHS["backups"], BACKUP_FILE_DAYS)):
+        try:
+            if dry_run:
+                report["steps"].append({"step": f"sweep_{name}", "skipped": True,
+                                        "dry_run": True})
+                continue
+            gone = _sweep_files(root, days)
+            report["steps"].append({"step": f"sweep_{name}", **gone})
+        except Exception as e:                            # noqa: BLE001
+            report["steps"].append({"step": f"sweep_{name}", "failed": str(e)})
+            report["ok"] = False
     if not dry_run:
         with db_mod.conn() as c:
             db_mod.kv_set(c, "maint_last_run", _today(now))
@@ -127,3 +169,77 @@ def run_maintenance(*, force_vacuum: bool = False, dry_run: bool = False,
         audit("system", {"action": "daily_maintenance",
                          "ok": report["ok"], "steps": report["steps"]})
     return report
+
+
+# ---------------------------------------------------------------- PERF-4 一次性清理
+def _orphan_candidates() -> list[tuple[Any, str]]:
+    """var/ 下旧名残留清单：workdaddy 家族（改名迁移遗留）+ state.db
+    （仅 0 字节——非空视为有人在用，宁可留着）。loadn.db 永不在清单。"""
+    var = PATHS["var"]
+    out: list[tuple[Any, str]] = []
+    for p in sorted(var.glob("workdaddy.db*")):       # .db/-shm/-wal/.bak.*
+        out.append((p, "旧名库残留（workdaddy→loadn 改名迁移遗留）"))
+    st = var / "state.db"
+    try:
+        if st.exists() and st.stat().st_size == 0:
+            out.append((st, "旧现场空库（0 字节）"))
+    except OSError:
+        pass
+    return out
+
+
+def cleanup_orphans(*, dry_run: bool = True) -> dict[str, Any]:
+    """一次性清理旧名残留（管理面手动触发——**不进自动维护**：数据文件
+    自动删除是红线级动作，即使判定再稳也留人手按一次）。"""
+    cands = _orphan_candidates()
+    def _sz(p) -> int:
+        try:
+            return p.stat().st_size
+        except OSError:
+            return 0
+    items = [{"file": str(p), "reason": r, "bytes": _sz(p)}
+             for p, r in cands]
+    if dry_run or not cands:
+        return {"dry_run": dry_run, "candidates": items,
+                "removed": 0, "bytes": 0}
+    removed = bytes_ = 0
+    import os
+    for p, _r in cands:
+        try:
+            sz = p.stat().st_size
+            os.remove(p)
+            removed += 1
+            bytes_ += sz
+        except OSError:
+            pass
+    from .security.audit import audit
+    audit("system", {"action": "cleanup_orphans", "removed": removed,
+                     "bytes": bytes_,
+                     "files": [str(p) for p, _ in cands]})
+    return {"dry_run": False, "candidates": items,
+            "removed": removed, "bytes": bytes_}
+
+
+def storage_overview() -> dict[str, Any]:
+    """存储概览（管理面只读）：var/ 各子树 + 主库/audit/归档占用 +
+    workspace top10（sessions.size_bytes 物化列降序）。PERF-4。"""
+    def _du(path) -> int:
+        import subprocess
+        try:
+            r = subprocess.run(["du", "-sb", str(path)], capture_output=True,
+                               text=True, timeout=30)
+            return int(r.stdout.split()[0])
+        except Exception:                               # noqa: BLE001
+            return 0
+
+    trees = {k: _du(PATHS[k]) for k in
+             ("call_logs", "pages_cache", "backups")}
+    trees["archive"] = _du(PATHS["var"] / "archive")
+    trees["db"] = PATHS["db"].stat().st_size if PATHS["db"].exists() else 0
+    with db_mod.conn() as c:
+        top = [{"sid": r["id"], "title": r["title"],
+                "size_bytes": r["size_bytes"] or 0} for r in c.execute(
+                    "SELECT id, title, size_bytes FROM sessions"
+                    " WHERE size_bytes IS NOT NULL"
+                    " ORDER BY size_bytes DESC LIMIT 10")]
+    return {"trees": trees, "workspace_top": top}
