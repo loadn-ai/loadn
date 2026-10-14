@@ -76,6 +76,8 @@ def test_vacuum_weekly_and_shrink():
     assert _step(rep7, "vacuum")["done"] is True, "恰 7 天必须回收"
     assert _step(rep7, "vacuum")["skipped"] is False
     assert rep7["ok"] is True, "成功路径汇总 ok 必须为 True"
+    assert _step(rep7, "archive_cold")["dry_run"] is False, \
+        "真跑时归档步骤报告不得标 dry_run"
 
     # 造大 free 空间：归档删行 + 再插删一批，freelist >0
     with db_mod.conn() as c:
@@ -145,12 +147,21 @@ def test_vacuum_failure_no_cursor_advance(monkeypatch):
     rep = maint.run_maintenance(now=datetime.now())
     vac = _step(rep, "vacuum")
     assert vac["failed"] and vac["done"] is False
+    assert vac["skipped"] is False, "失败不是跳过（重试语义的口径区分）"
     assert rep["ok"] is False, "VACUUM 失败必须拉低汇总 ok"
     with db_mod.conn() as c:
         assert db_mod.kv_get(c, "vacuum_last_run") is None, \
             "失败不得推进周度游标（下轮重试）"
         assert db_mod.kv_get(c, "maint_last_run") is not None, \
             "日游标照常推进（归档已成功，崩溃安全语义）"
+
+    # 外层 except 分支：_vacuum 抛异常（非返回 failed dict）同样拉低 ok
+    def _raise(force, days, last, dry_run):
+        raise RuntimeError("注入的独占异常")
+    monkeypatch.setattr(maint, "_vacuum", _raise)
+    rep2 = maint.run_maintenance(now=datetime.now())
+    assert rep2["ok"] is False
+    assert _step(rep2, "vacuum").get("failed")
 
 
 def test_archive_failure_ok_false(monkeypatch):
