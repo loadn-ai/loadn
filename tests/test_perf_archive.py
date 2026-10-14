@@ -85,22 +85,23 @@ def test_cold_gates():
         assert arch.folded_count(c, f"{base}-few") == 0
     assert arch.read_archived(f"{base}-few") == []
 
-    # MIN_FOLD 正边界：中间恰 8 条必须归档（杀 8→9 变异——9 时 8<9 跳过）
+    # MIN_FOLD 正边界：中间恰 8 条必须归档。**写死 8 不引用 arch.MIN_FOLD**
+    # ——引用被测常量=变异同步漂移成永久等价类（突变实证教训）
     sid = f"{base}-exact"
     _mk_session(sid, "2000-01-01T00:00:00+00:00")
-    ids = _mk_messages(sid, 23 + arch.MIN_FOLD)
+    ids = _mk_messages(sid, 23 + 8)
     with db_mod.conn() as c:
-        assert arch.archive_session(c, sid)["archived"] == arch.MIN_FOLD
+        assert arch.archive_session(c, sid)["archived"] == 8
         # kv 游标必须指向中间段最后一条（杀 mid[-1]→mid[-2]——游标偏 1
         # 会让下轮窗口残留旧消息）
-        assert db_mod.kv_get(c, f"archived_upto:{sid}") == str(ids[3 + arch.MIN_FOLD - 1])
+        assert db_mod.kv_get(c, f"archived_upto:{sid}") == str(ids[3 + 8 - 1])
 
-    # COLD_DAYS 正边界：30 天+1s 前的会话必须进冷集（杀 30→31——31 天
-    # 判定下 30d 会话不冷；-1s 避开 seconds 截断的相等竞态）
+    # COLD_DAYS 正边界：30 天+1s 前的会话必须进冷集（写死 30 同理；
+    # -1s 避开 seconds 截断的相等竞态）
     from datetime import datetime, timedelta, timezone
     edge = f"{base}-edge30"
     _mk_session(edge, (datetime.now(timezone.utc)
-                       - timedelta(days=arch.COLD_DAYS, seconds=1)).isoformat(
+                       - timedelta(days=30, seconds=1)).isoformat(
                            timespec="seconds"))
     with db_mod.conn() as c:
         assert edge in set(arch.cold_session_ids(c))
@@ -193,6 +194,13 @@ async def test_purge_clears_archive(client):
     with db_mod.conn() as c:
         arch.archive_session(c, sid)
     assert arch._archive_root(sid).exists()
+    assert arch.purge_archive(sid) is True, "有归档目录时返回 True"
+    assert not arch._archive_root(sid).exists()   # 直调同语义
+    # 重建后走 API purge（真实生命周期路径）
+    _mk_messages(sid, 40)
+    _age(sid)
+    with db_mod.conn() as c:
+        arch.archive_session(c, sid)
     r = await client.delete(f"/api/sessions/{sid}?purge=true")
     assert r.status_code == 200
     assert not arch._archive_root(sid).exists(), "purge 须连归档分片一起清"
