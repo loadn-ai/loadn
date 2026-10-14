@@ -252,6 +252,16 @@ TARGET_TESTS: dict[str, list[str]] = {
         "tests/test_subtask_tag.py",
         "tests/test_exec_domain_gate.py",
     ],
+    # ---- PERF-1：sessions 列表热路径（连接短路/批量函数/owner 下推/续期节流）
+    "loadn_webui/db.py": [
+        "tests/test_perf_sessions.py",
+        "tests/test_session_eng.py",
+        "tests/test_target_policy.py",
+    ],
+    "loadn_webui/security/userauth.py": [
+        "tests/test_perf_sessions.py",
+        "tests/test_admin_tasks.py",
+    ],
     # ---- 执行域门 argv 直通层（第 4 起实证 2026-10-10）
     "loadn/cli/main.py": [
         "tests/test_cli_main_units.py",
@@ -355,6 +365,7 @@ TARGET_TESTS: dict[str, list[str]] = {
         "tests/test_w0_security.py",
         "tests/test_params.py",
         "tests/test_session_eng.py",
+        "tests/test_perf_sessions.py",
     ],
     "loadn_webui/api/routes/turns.py": ["tests/test_session_eng.py", "tests/test_steer.py"],
     "loadn_webui/api/routes/admin.py": [

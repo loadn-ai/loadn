@@ -54,11 +54,22 @@ export default function App() {
     : undefined;
   const [navOpen, setNavOpen] = useState(false);   // 移动端侧栏抽屉（桌面常显不受影响）
 
+  // PERF-1：轮询降频——可见 10s / 失焦暂停 / 回焦立即补一次（此前固定
+  // 5s 无脑轮询，列表接口 N+1 时代是持续写锁压力的放大器）
   useEffect(() => {
     void loadSessions();
     void loadMeta();
-    const t = setInterval(() => void loadSessions(), 5000);
-    return () => clearInterval(t);
+    const tick = () => { if (!document.hidden) void loadSessions(); };
+    let t: number | undefined;
+    const start = () => { t = window.setInterval(tick, 10000); };
+    const stop = () => { if (t !== undefined) { clearInterval(t); t = undefined; } };
+    const onVis = () => {
+      if (document.hidden) stop();
+      else { void loadSessions(); start(); }
+    };
+    start();
+    document.addEventListener("visibilitychange", onVis);
+    return () => { stop(); document.removeEventListener("visibilitychange", onVis); };
   }, []);
 
   // 主题同步：<html data-theme> + PWA 状态栏颜色（meta theme-color）

@@ -15,6 +15,7 @@ sessions 只有 active/archived（会话永续，可随时 --resume 续聊），
 from __future__ import annotations
 
 import json
+import re
 import sqlite3
 from collections.abc import Iterator
 from contextlib import contextmanager
@@ -32,8 +33,13 @@ from .config import PATHS
 # rev14：org_departments/org_employees/temp_pool（DW——数字员工：组织架构+临时工池）
 # rev15：org_employees.duty（DW-6——职责说明：卡片展示+进 agent 提示与选人参考）
 # rev16：models 表（T10——模型库：多模型 CRUD+默认标记，apply 写引擎 provider 配置）
-SCHEMA_REV = 16
+# rev17：索引 idx_sess_updated + idx_job_session（PERF-1——列表排序键与
+#        next_wake 下推；旧库首连 executescript 的 IF NOT EXISTS 自愈补上）
+SCHEMA_REV = 17
 from .util import iso
+
+# PERF-1：已完成 executescript+_migrate 的库路径（进程内短路，见 conn()）
+_SCHEMA_READY: set[str] = set()
 
 SCHEMA = """
 CREATE TABLE IF NOT EXISTS sessions (
@@ -214,6 +220,8 @@ CREATE INDEX IF NOT EXISTS idx_evt_session ON session_events(session_id, id);
 CREATE INDEX IF NOT EXISTS idx_evt_turn ON session_events(turn_id, id);
 CREATE INDEX IF NOT EXISTS idx_art_session ON artifacts(session_id, id);
 CREATE INDEX IF NOT EXISTS idx_job_due ON scheduled_jobs(status, due_at);
+CREATE INDEX IF NOT EXISTS idx_sess_updated ON sessions(updated_at);
+CREATE INDEX IF NOT EXISTS idx_job_session ON scheduled_jobs(session_id, status, due_at);
 
 CREATE TABLE IF NOT EXISTS webhooks (          -- P3 事件触发（token 即凭证，删行即吊销）
   id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -312,6 +320,11 @@ CREATE TABLE IF NOT EXISTS models (              -- T10：模型库（多模型�
 );
 """
 
+# 哨兵表集：SCHEMA 全部建表名单（executescript 后应全部在——缺任何一张
+# =库被换/旧备份/DROP 过，短路降级重跑）。从 SCHEMA 静态解析，新增表自动纳入。
+_SCHEMA_TABLES = frozenset(
+    re.findall(r"CREATE TABLE IF NOT EXISTS (\w+)", SCHEMA))
+
 ACTIVE_TURN_STATUSES = ("queued", "running")
 
 
@@ -323,18 +336,39 @@ def conn() -> Iterator[sqlite3.Connection]:
     c.execute("PRAGMA journal_mode=WAL")
     c.execute("PRAGMA busy_timeout=30000")
     try:
-        c.executescript(SCHEMA)
-        _migrate(c)
-        # R7 回滚门禁：记录 schema 版本（只在值变化时写——每次连接都写会
-        # 引发写锁竞争，实测 61 用例 ReadTimeout 的根因）
-        try:
-            row = c.execute("SELECT value FROM kv WHERE key='schema_rev'"
-                            ).fetchone()
-            if row is None or row[0] != str(SCHEMA_REV):
-                c.execute("INSERT OR REPLACE INTO kv(key, value) VALUES"
-                          "('schema_rev', ?)", (str(SCHEMA_REV),))
-        except sqlite3.OperationalError:
-            pass
+        # PERF-1 初始化短路：executescript(SCHEMA)+_migrate 是 ~20 次
+        # PRAGMA table_info 的每连接热点（列表接口 N+1 时代一次请求 2N+2 连接
+        # 全套跑）。进程内按库路径只跑一次；哨兵一条 sqlite_master 计数自愈
+        # ——库文件被删/backup restore 换旧备份/测试 DROP TABLE 后，首连
+        # 发现表集不全即降级重跑完整 DDL+_migrate（IF NOT EXISTS 幂等，
+        # 与修前「每连接 executescript」的表级语义等价）。表集从 SCHEMA
+        # 静态解析，新增表自动纳入。
+        key = str(PATHS["db"])
+        if key in _SCHEMA_READY:
+            try:
+                n = c.execute(
+                    "SELECT COUNT(DISTINCT name) FROM sqlite_master"
+                    " WHERE type='table' AND name IN "
+                    f"({','.join('?' * len(_SCHEMA_TABLES))})",
+                    tuple(_SCHEMA_TABLES)).fetchone()[0]
+                if n != len(_SCHEMA_TABLES):
+                    _SCHEMA_READY.discard(key)
+            except sqlite3.OperationalError:
+                _SCHEMA_READY.discard(key)
+        if key not in _SCHEMA_READY:
+            c.executescript(SCHEMA)
+            _migrate(c)
+            # R7 回滚门禁：记录 schema 版本（只在值变化时写——每次连接都写会
+            # 引发写锁竞争，实测 61 用例 ReadTimeout 的根因）
+            try:
+                row = c.execute("SELECT value FROM kv WHERE key='schema_rev'"
+                                ).fetchone()
+                if row is None or row[0] != str(SCHEMA_REV):
+                    c.execute("INSERT OR REPLACE INTO kv(key, value) VALUES"
+                              "('schema_rev', ?)", (str(SCHEMA_REV),))
+            except sqlite3.OperationalError:
+                pass
+            _SCHEMA_READY.add(key)
         yield c
         c.commit()
     finally:
@@ -473,6 +507,12 @@ def kv_del(c: sqlite3.Connection, key: str) -> None:
     c.execute("DELETE FROM kv WHERE key=?", (key,))
 
 
+def kv_get_prefix(c: sqlite3.Connection, prefix: str) -> dict[str, str]:
+    """前缀批量取（PERF-1：列表接口 profile_auto:* 批量化，替代逐会话 kv_get）。"""
+    return {r["key"]: r["value"] for r in c.execute(
+        "SELECT key, value FROM kv WHERE key LIKE ?", (prefix + "%",))}
+
+
 # ---------------------------------------------------------------- sessions
 def create_session(c: sqlite3.Connection, **fields: Any) -> None:
     now = iso()
@@ -486,13 +526,33 @@ def get_session(c: sqlite3.Connection, sid: str) -> sqlite3.Row | None:
     return c.execute("SELECT * FROM sessions WHERE id=?", (sid,)).fetchone()
 
 
-def list_sessions(c: sqlite3.Connection, include_archived: bool = True) -> list[sqlite3.Row]:
-    """全部会话（updated_at 倒序）。LEFT JOIN 带项目名（侧栏分组/搜索用）。"""
+def list_sessions(c: sqlite3.Connection, include_archived: bool = True,
+                  owner_id: int | None = None, limit: int | None = None,
+                  offset: int = 0) -> list[sqlite3.Row]:
+    """全部会话（updated_at 倒序）。LEFT JOIN 带项目名（侧栏分组/搜索用）。
+
+    PERF-1：属主过滤/分页 SQL 下推（此前路由侧 Python 过滤全量行）。
+    owner_id 严格等值——普通用户只见自己的；legacy NULL 归属由 admin/
+    宽限通道看，**不要**改成 `IS NULL OR`（那是 admin 面的归并语义，
+    用在这里=普通用户看到全部 legacy 会话，权限扩大）。limit 缺省全量
+    （前端侧栏本地分组/搜索依赖全量语义）；显式给时钳制 ≤500（同 admin 面）。
+    """
     q = ("SELECT s.*, p.title AS project_title FROM sessions s "
          "LEFT JOIN projects p ON p.id = s.project_id")
+    conds: list[str] = []
+    args: list[Any] = []
     if not include_archived:
-        q += " WHERE s.status='active'"
-    return c.execute(q + " ORDER BY s.updated_at DESC").fetchall()
+        conds.append("s.status='active'")
+    if owner_id is not None:
+        conds.append("s.owner_id=?")
+        args.append(owner_id)
+    if conds:
+        q += " WHERE " + " AND ".join(conds)
+    q += " ORDER BY s.updated_at DESC"
+    if limit:
+        q += " LIMIT ? OFFSET ?"
+        args += [max(1, min(int(limit), 500)), max(0, int(offset))]
+    return c.execute(q, args).fetchall()
 
 
 def update_session(c: sqlite3.Connection, sid: str, touch: bool = True, **fields: Any) -> None:
@@ -662,6 +722,17 @@ def active_turns(c: sqlite3.Connection, sid: str | None = None) -> list[sqlite3.
             (sid, *ACTIVE_TURN_STATUSES)).fetchall()
     return c.execute(
         f"SELECT * FROM turns WHERE status IN ({ph}) ORDER BY id", ACTIVE_TURN_STATUSES).fetchall()
+
+
+def active_turns_latest(c: sqlite3.Connection) -> dict[str, sqlite3.Row]:
+    """每会话最近一条 active（queued/running）turn（PERF-1：列表接口
+    批量化，此前逐会话 active_turns N+1；活跃 turn 全局个位数，结果极小）。"""
+    ph = ",".join("?" * len(ACTIVE_TURN_STATUSES))
+    rows = c.execute(
+        f"SELECT t.* FROM turns t JOIN (SELECT session_id, MAX(id) AS mid"
+        f" FROM turns WHERE status IN ({ph}) GROUP BY session_id) g"
+        " ON t.id = g.mid", ACTIVE_TURN_STATUSES).fetchall()
+    return {r["session_id"]: r for r in rows}
 
 
 # ---------------------------------------------------------------- messages / events / artifacts

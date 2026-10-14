@@ -188,8 +188,19 @@ def session_user(sid: str):
             if row["disabled"]:
                 return None
             now = time.time()
-            c.execute("UPDATE auth_sessions SET last_seen_at=?, expires_at=? "
-                      "WHERE id=?", (_iso_ts(now), _iso_ts(now + SESSION_TTL_S), sid))
+            # PERF-1 续期节流：每请求 UPDATE（前端轮询下持续放大写锁+WAL
+            # checkpoint 压力）→ 剩余 TTL 不足半衰才续。last_seen_at 同步
+            # 粗化（全仓无 UI 消费点，语义到「最近活跃日」粒度足够）；
+            # 坏 expires_at（parse 失败）按 remain=0 处理→写回合法值，
+            # fail-safe 方向正确。
+            from datetime import datetime
+            try:
+                remain = datetime.fromisoformat(exp).timestamp() - now
+            except (TypeError, ValueError):
+                remain = 0.0
+            if remain < SESSION_TTL_S / 2:
+                c.execute("UPDATE auth_sessions SET last_seen_at=?, expires_at=? "
+                          "WHERE id=?", (_iso_ts(now), _iso_ts(now + SESSION_TTL_S), sid))
             return row
     except sqlite3.Error:
         return None

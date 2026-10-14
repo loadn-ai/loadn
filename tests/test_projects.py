@@ -283,6 +283,10 @@ async def test_project_touch_on_subtask_queue_and_finish(client, ws_root):
     kid = await _mk_subtask(client, pid, "排序子任务")
 
     with db_mod.conn() as c:
+        # 基线拨回过去：iso() 秒粒度下「完成后同秒 bump」会让 t1>t0 误判
+        # 为未 bump（时序 flaky）——远过去基线使任何真 bump 必然可见
+        c.execute("UPDATE projects SET updated_at='2000-01-01T00:00:00+00:00'"
+                  " WHERE id=?", (pid,))
         t0 = db_mod.get_project(c, pid)["updated_at"]
     assert (await client.patch(f"/api/projects/{pid}",
                                json={"starred": 1})).status_code == 200

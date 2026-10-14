@@ -89,23 +89,54 @@ async def create_session(body: dict):
         sess = db_mod.to_dict(db_mod.get_session(c, sid))
     return {"session": sess}
 @router.get("/sessions")
-def list_sessions():
-    from ...scheduler import next_wake
+def list_sessions(limit: int = 0, offset: int = 0, include_archived: bool = True):
+    """会话列表（侧栏）。PERF-1 热路径重写：单连接+批量聚合——此前每
+    session N+1（active_turns/usage_totals/kv_get/next_wake，其中 usage_totals
+    全量重扫该会话所有 turns 逐行 2 次 json.loads+逐模型计价，next_wake 还
+    各自再开连接），189 会话一次请求 ≈2N+2 条连接×每条重跑 DDL+迁移。
+
+    usage 改读 sessions.usage_json/cost_usd（engine 每 turn 收尾增量维护的
+    物化字段）；cost_api_usd 不再重算（Sidebar 有 ?? cost_usd 后备，逐模型
+    计价的真实成本看详情页——_get_session_or_404 保留 usage_totals）。
+    """
     from ...security import userauth as _ua
     _u = _ua.current_user()
     with db_mod.conn() as c:
-        rows = [db_mod.to_dict(r) for r in db_mod.list_sessions(c)]
-    if _u is not None and _u["role"] != "admin":
         # 八轮：cookie 普通用户只见自己的（admin/owner=NULL legacy 由 admin 见）
-        rows = [r for r in rows if r.get("owner_id") == _u["id"]]
+        rows = [db_mod.to_dict(r) for r in db_mod.list_sessions(
+            c, include_archived=include_archived,
+            owner_id=(_u["id"] if _u is not None and _u["role"] != "admin" else None),
+            limit=(limit or None), offset=offset)]
+        # 批量：每会话最近一条 active turn / 自动角色标记 / 下次唤醒
+        act = db_mod.active_turns_latest(c)
+        pa = db_mod.kv_get_prefix(c, "profile_auto:")
+        jobs = db_mod.list_jobs(c, active_only=True)   # active 全局小表
+    wake: dict[str, dict] = {}
+    for j in jobs:    # ORDER BY due_at → 每会话首见即最近一次
+        sid = j["session_id"]
+        if sid and sid not in wake:
+            wake[sid] = {"id": j["id"], "label": j["label"], "due_at": j["due_at"],
+                         "every_s": j["every_s"], "cron": j["cron"],
+                         "fires": j["fires"], "max_fires": j["max_fires"]}
     for r in rows:
-        with db_mod.conn() as c:
-            act = db_mod.active_turns(c, r["id"])
-            r["active_turn"] = db_mod.to_dict(act[-1]) if act else None
-            r["usage"] = db_mod.usage_totals(c, r["id"])
-            # 聊天框模式下拉读列表（5s 轮询），这里带上自动角色标记
-            r["profile_auto"] = bool(db_mod.kv_get(c, f"profile_auto:{r['id']}"))
-            r["next_wake"] = next_wake(r["id"])
+        at = act.get(r["id"])
+        r["active_turn"] = db_mod.to_dict(at) if at else None
+        # 物化 usage 组装（形状与 usage_totals 兼容；坏值容错回 {}）
+        try:
+            u = json.loads(r.get("usage_json") or "{}")
+        except (TypeError, ValueError):
+            u = {}
+        tin = u.get("input_tokens") or 0
+        tout = u.get("output_tokens") or 0
+        cr = u.get("cache_read_input_tokens") or 0
+        cw = u.get("cache_creation_input_tokens") or 0
+        r["usage"] = {"in": tin, "out": tout, "total": tin + tout,
+                      "cache_read": cr, "cache_write": cw,
+                      "total_all": tin + tout + cr + cw,
+                      "cost_usd": round(r.get("cost_usd") or 0, 4)}
+        # 聊天框模式下拉读列表（轮询），这里带上自动角色标记
+        r["profile_auto"] = f"profile_auto:{r['id']}" in pa
+        r["next_wake"] = wake.get(r["id"])
     return {"sessions": rows}
 @router.get("/sessions/{sid}")
 def session_detail(sid: str, request: Request):
