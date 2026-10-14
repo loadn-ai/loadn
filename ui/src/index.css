@@ -501,6 +501,9 @@ button:focus-visible, .tab:focus-visible, .chip:focus-visible {
 .mtab-x:hover { background: color-mix(in srgb, var(--red) 18%, transparent); color: var(--red); }
 
 .file-preview { flex: 1; display: flex; flex-direction: column; min-height: 0; background: var(--bg); }
+/* 全屏预览层：fixed 覆盖整个视口（z 高于 token gate 的 z999），Esc/按钮退出 */
+.file-preview.max { position: fixed; inset: 0; z-index: 1200; }
+.file-preview.max .fp-pre, .file-preview.max .fp-md { max-width: 1400px; }
 .fp-bar { display: flex; align-items: center; gap: 12px; padding: 8px 18px; font-size: var(--fs-md);
   color: var(--text-dim); background: var(--bg2); border-bottom: 1px solid var(--border); flex-shrink: 0; }
 .fp-path { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }

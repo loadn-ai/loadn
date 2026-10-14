@@ -3,7 +3,7 @@ import { useEffect, useState, type ReactNode } from 'react';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import { api, withToken } from '../api/client';
-import { Globe, FileDoc, RotateCw, Link, ExternalLink, Download } from './icons';
+import { Globe, FileDoc, RotateCw, Link, ExternalLink, Download, Maximize2, Minimize2 } from './icons';
 import { toast } from '../stores/toasts';
 
 const MD_EXTS = ['.md', '.markdown'];
@@ -15,6 +15,15 @@ export default function FilePreview({ sid, path }: { sid: string; path: string }
   const [err, setErr] = useState('');
   const [nonce, setNonce] = useState(0);
   const [pdfUrl, setPdfUrl] = useState<string | null>(null);
+  // 小屏预览太小：一键全屏层（fixed 覆盖），ESC/再点退出；切文件自动退出
+  const [max, setMax] = useState(false);
+  useEffect(() => { setMax(false); }, [path]);
+  useEffect(() => {
+    if (!max) return;
+    const onKey = (e: KeyboardEvent) => { if (e.key === 'Escape') setMax(false); };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [max]);
 
   const name = path.split('/').pop() ?? path;
   const dot = name.lastIndexOf('.');
@@ -84,10 +93,10 @@ export default function FilePreview({ sid, path }: { sid: string; path: string }
     body = <img className="fp-img" src={`data:${d.mime};base64,${d.b64}`} alt={path} />;
   else if (d.cat === 'too_large')
     body = <div className="fp-hint">文件超过 2MB 预览上限（{sizeKb}），
-      <a className="link" href={dlUrl} download>点此下载</a></div>;
+      <a className="link" href={dlUrl} download={name}>点此下载</a></div>;
   else if (d.cat === 'binary')
     body = <div className="fp-hint">二进制文件不支持预览（{sizeKb}），
-      <a className="link" href={dlUrl} download>点此下载</a></div>;
+      <a className="link" href={dlUrl} download={name}>点此下载</a></div>;
   else if (HTML_EXTS.includes(ext))
     // src 直载而非 srcDoc：iframe 有自身 URL，文档内锚点可原生滚动（srcDoc 的锚点会
     // 按父页面 base 解析，点击把 iframe 导航到宿主 SPA 路由）。脚本仍被 sandbox 禁用。
@@ -99,15 +108,19 @@ export default function FilePreview({ sid, path }: { sid: string; path: string }
     body = <pre className="fp-pre">{d.text}</pre>;
 
   return (
-    <div className="file-preview">
+    <div className={`file-preview${max ? ' max' : ''}`}>
       <div className="fp-bar">
         <span className="fp-path" title={path}>
           {HTML_EXTS.includes(ext) ? <Globe size={13} /> : <FileDoc size={13} />} {path}
         </span>
         <span className="fp-size">{sizeKb}</span>
-        <a className="btn ghost sm fp-reload" title="下载此文件" href={dlUrl} download>
+        <a className="btn ghost sm fp-reload" title="下载此文件" href={dlUrl} download={name}>
           <Download size={13} />
         </a>
+        <button className="btn ghost sm fp-reload" title={max ? '退出全屏（Esc）' : '全屏预览（小屏放大看）'}
+                onClick={() => setMax(m => !m)}>
+          {max ? <Minimize2 size={13} /> : <Maximize2 size={13} />}
+        </button>
         {shareable && (
           <button className="btn ghost sm fp-reload" title={shareState === 'done' ? '链接已复制' : '分享并复制链接'}
             disabled={shareState === 'busy'} onClick={doShare}>

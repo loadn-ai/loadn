@@ -301,3 +301,15 @@ export const User = (p: IconProps) => (
 export const Crosshair = (p: IconProps) => (
   <Svg {...p}><circle cx="12" cy="12" r="10" /><path d="M22 12h-4M6 12H2M12 6V2M12 22v-4" /></Svg>
 );
+
+export const Maximize2 = (p: IconProps) => (
+  <Svg {...p}><path d="M15 3h6v6" /><path d="M9 21H3v-6" /><path d="M21 3l-7 7" /><path d="M3 21l7-7" /></Svg>
+);
+
+export const Minimize2 = (p: IconProps) => (
+  <Svg {...p}><path d="M4 14h6v6" /><path d="M20 10h-6V4" /><path d="M14 10l7-7" /><path d="M3 21l7-7" /></Svg>
+);
+
+export const ChevronUpDown = (p: IconProps) => (
+  <Svg {...p}><path d="M7 9l5-5 5 5" /><path d="M7 15l5 5 5-5" /></Svg>
+);

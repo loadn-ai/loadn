@@ -74,7 +74,7 @@ export default function IconRail({ onAdmin, adminActive, onOrg, orgActive }: {
         <div className="rail-sep" />
         {categories.map(cat => (
           <RailBtn key={cat.id} iconKey={`cat-${cat.id}`} title={cat.name}
-            icon={<CategoryIcon icon={cat.icon} size={16} />}
+            icon={<CategoryIcon icon={cat.icon} name={cat.name} size={16} />}
             active={activeSpace === `cat:${cat.id}`} dot={catRunning(cat.id)}
             onClick={() => setActiveSpace(`cat:${cat.id}`)}
             onContextMenu={e => {

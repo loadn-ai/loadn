@@ -7,7 +7,7 @@ import type { ReactNode } from 'react';
 import { useStore } from '../stores/sessions';
 import type { ParamsMap } from '../stores/sessions';
 import { api, fmtTokens, fmtTime } from '../api/client';
-import { ChevronDown, ChevronRight, Pencil } from './icons';
+import { ChevronDown, ChevronRight, ChevronUpDown, Pencil } from './icons';
 import { toast } from '../stores/toasts';
 
 /** 模型参数六键（与后端 params.ALLOWED 对齐；kind 只影响输入控件） */
@@ -113,6 +113,29 @@ export default function PropertiesPanel() {
 
 
 /** ---------------------------------------------------------------- 基本信息 */
+/** 长值 kv：默认单行省略 + 展开钮（超长内容看全貌）；copyable 点击复制全文 */
+function KvLong({ label, value, copyable }: { label: string; value: string; copyable?: boolean }) {
+  const [open, setOpen] = useState(false);
+  const long = value.length > 36;
+  return (
+    <div className="kv">
+      <span>{label}</span>
+      <code className={copyable ? 'copyable' : ''}
+        style={open ? { whiteSpace: 'pre-wrap', wordBreak: 'break-all' } : undefined}
+        title={copyable ? '点击复制全文' : value}
+        onClick={copyable ? () => copyText(value) : undefined}>
+        {value}
+      </code>
+      {long && (
+        <button className="mini-btn" style={{ flexShrink: 0 }}
+                title={open ? '收起' : '展开全文'} onClick={() => setOpen(o => !o)}>
+          <ChevronUpDown size={11} style={{ transform: open ? 'rotate(180deg)' : undefined }} />
+        </button>
+      )}
+    </div>
+  );
+}
+
 function BasicSection() {
   const s = useStore(st => st.sessions.find(x => x.id === st.currentSid))!;
   const renameSession = useStore(st => st.renameSession);
@@ -144,18 +167,13 @@ function BasicSection() {
           </code>
         </div>
       )}
-      <div className="kv"><span>会话 ID</span>
-        <code className="copyable" title="点击复制全文" onClick={() => copyText(s.id)}>{s.id}</code></div>
+      <KvLong label="会话 ID" value={s.id} copyable />
       <div className="kv"><span>引擎</span><code>{engine}</code></div>
-      <div className="kv"><span>引擎会话</span>
-        <code className="copyable" title="点击复制全文" onClick={() => copyText(s.claude_session_id ?? '-')}
-          >{s.claude_session_id ? `${s.claude_session_id.slice(0, 13)}…` : '-'}</code></div>
+      <KvLong label="引擎会话" value={s.claude_session_id ?? '-'} copyable />
       <div className="kv"><span>角色</span>
         <code>{s.profile}{s.profile_auto ? ' ✨自动' : ''}</code></div>
-      <div className="kv"><span>skills</span>
-        <code>{skills.join(', ') || '-'}</code></div>
-      {s.workspace && <div className="kv"><span>工作区</span>
-        <code className="copyable" title="点击复制全文" onClick={() => copyText(s.workspace!)}>{s.workspace}</code></div>}
+      <KvLong label="skills" value={skills.join(', ') || '-'} />
+      {s.workspace && <KvLong label="工作区" value={s.workspace} copyable />}
       <div className="kv"><span>tokens</span>
         <code>in {fmtTokens(s.usage?.in)} / out {fmtTokens(s.usage?.out)}</code></div>
       <div className="kv"><span>创建</span><code>{fmtTime(s.created_at)}</code></div>

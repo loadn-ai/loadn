@@ -43,6 +43,14 @@ def get_file(sid: str, path: str, raw: bool = False):
         if suffix == ".pdf":
             headers["Content-Disposition"] = "inline"
             return Response(content=p.read_bytes(), media_type="application/pdf", headers=headers)
+        # 其余字节走下载（<a download> 兜底）：URL path 段是 /file 查询参数，
+        # 无 Content-Disposition 时浏览器保存名退化为 "file"。文件名进
+        # filename*=UTF-8''（RFC 5987，中文名兼容），latin-1 剥离回退位同 archive。
+        from urllib.parse import quote
+        fname = p.name
+        ascii_name = fname.encode("latin-1", "ignore").decode().strip("-_ ") or "file"
+        headers["Content-Disposition"] = (f'attachment; filename="{ascii_name}"; '
+                                          f"filename*=UTF-8''{quote(fname)}")
         return Response(content=p.read_bytes(), media_type="text/plain; charset=utf-8",
                         headers={**headers, "Content-Security-Policy": "sandbox"})
     return art.read_file(ws_mod.ws_of(sid), path)

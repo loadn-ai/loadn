@@ -7,7 +7,7 @@ import PopupMenu from './Menu';
 import type { MenuEntry } from './Menu';
 import {
   Flask, Code, Chat, Bot, Plus, Star, Pencil, Undo, Trash,
-  Folder, ChevronDown, ChevronRight, Box, MoreVertical, Pin, Archive, Tag, Clock,
+  Folder, ChevronDown, ChevronRight, Box, MoreVertical, Pin, Archive, Clock,
   ArrowRight, Settings,
 } from './icons';
 import CategoryIcon from './CategoryIcon';
@@ -60,10 +60,15 @@ function moveEntries(cur: RowBucket, onMove: (d: MoveDest) => void,
     item('recent', '最近（默认）', Clock, 'recent'),
     ...(categories.length ? [
       { kind: 'divider', key: 'sep-cat' } as MenuEntry,
-      ...categories.map((c): MenuEntry => ({
-        kind: 'item', key: `cat-${c.id}`, label: c.name, icon: Tag,
-        check: cur === c.id, onClick: () => onMove({ cat: c.id }),
-      })),
+      ...categories.map((c): MenuEntry => {
+        // 分类图标与 rail 同源渲染（自定义 icon 或按名推断），不再是通用 Tag
+        const CatIco = (p: { size?: number }) =>
+          <CategoryIcon icon={c.icon} name={c.name} size={p.size} />;
+        return {
+          kind: 'item', key: `cat-${c.id}`, label: c.name, icon: CatIco,
+          check: cur === c.id, onClick: () => onMove({ cat: c.id }),
+        };
+      }),
     ] : []),
     { kind: 'input', key: 'new-cat', placeholder: '新建分类并移入…',
       onSubmit: v => { void (async () => {
@@ -81,7 +86,7 @@ function spaceMeta(activeSpace: string, categories: CategoryInfo[]): {
   if (activeSpace === 'starred') return { title: '收藏', sub: '打过星标的任务与项目' };
   if (activeSpace === 'archive') return { title: '归档', sub: '已收起的任务（可恢复）' };
   const cat = categories.find(c => `cat:${c.id}` === activeSpace);
-  if (cat) return { title: cat.name, sub: '自定义空间', icon: <CategoryIcon icon={cat.icon} size={13} /> };
+  if (cat) return { title: cat.name, sub: '自定义空间', icon: <CategoryIcon icon={cat.icon} name={cat.name} size={13} /> };
   return { title: '最近', sub: '全部进行中的任务与项目' };
 }
 
