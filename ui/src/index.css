@@ -1315,6 +1315,21 @@ button.attach-chip:hover { border-color: color-mix(in srgb, var(--accent) 40%, v
 .sec-lists-head { display: flex; align-items: center; gap: 10px; width: 100%; }
 /* 态势导语（卡片网格上方一句总览） */
 .sec-lede { margin-bottom: 10px; }
+/* 子 tab 栏（T9）：总览+各功能页；pill 形态与外层 admin-tabs 区分 */
+.sec-subtabs { display: flex; gap: 6px; flex-wrap: wrap; margin-bottom: 12px;
+  padding-bottom: 10px; border-bottom: 1px solid var(--border); }
+.sec-subtab { border: 1px solid var(--border); background: var(--bg2); color: var(--text-dim);
+  border-radius: 999px; padding: 4px 14px; font-size: var(--fs-md); cursor: pointer; }
+.sec-subtab:hover { color: var(--text); border-color: color-mix(in srgb, var(--accent2) 45%, var(--border)); }
+.sec-subtab.on { color: #fff; background: var(--accent2); border-color: var(--accent2); }
+.sec-subtab.danger { color: var(--red); border-color: color-mix(in srgb, var(--red) 45%, var(--border)); }
+.sec-subtab.danger.on { background: var(--red); color: #fff; border-color: var(--red); }
+/* 功能页介绍头（T9：进 tab 先读介绍再看内容） */
+.sec-intro { display: flex; flex-direction: column; gap: 4px; padding: 10px 14px;
+  background: var(--bg2); border: 1px solid var(--border); border-radius: var(--radius);
+  margin-bottom: 12px; }
+.sec-intro-top { display: flex; align-items: center; gap: 8px; font-size: var(--fs-md); }
+.sec-intro-top b { font-size: var(--fs-lg); }
 /* 凭证行内编辑器 td */
 .sec-vault-editor { padding: 4px 0 12px 12px;
   background: rgba(128, 128, 128, .06); }

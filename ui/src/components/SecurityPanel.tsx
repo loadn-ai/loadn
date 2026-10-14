@@ -147,6 +147,13 @@ function SessionLink({ sid, jump, truncate = false }: {
 
 // 安全页类化批：容器/控件全收敛为 .sec-* CSS 类（原 card 内联对象已删）
 type CardKey = 'sandbox' | 'approvals' | 'egress' | 'vault' | 'audit' | 'canary' | 'target';
+/** 子 tab（T9）：总览=姿态卡；各功能页=介绍+具体内容，点 tab 进入 */
+type SecTab = 'overview' | CardKey;
+const SEC_TABS: [CardKey, string][] = [
+  ['sandbox', '沙箱隔离'], ['approvals', '敏感操作审批'], ['target', '目标放行策略'],
+  ['egress', '网络出口管控'], ['vault', '凭证保险库'], ['audit', '审计账本'],
+  ['canary', '蜜罐诱饵'],
+];
 
 export default function SecurityPanel() {
   const [posture, setPosture] = useState<Posture | null>(null);
@@ -156,7 +163,8 @@ export default function SecurityPanel() {
   const [verifying, setVerifying] = useState(false);
   const [armed, setArmed] = useState(false);
   const [busy, setBusy] = useState('');
-  const [open, setOpen] = useState<CardKey | null>(null);
+  const [open, setOpen] = useState<CardKey | null>(null);   // 卡片展开态（overview 内）
+  const [tab, setTab] = useState<SecTab>('overview');       // 子 tab 导航（T9）
   const armTimer = useRef<number | null>(null);
   const feedRef = useRef<HTMLDivElement | null>(null);
   const openSession = useStore(s => s.openSession);
@@ -220,10 +228,8 @@ export default function SecurityPanel() {
   };
 
   const toggle = (k: CardKey) => {
-    if (k === 'audit') {                    // 账本卡=跳到下方事件流
-      feedRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' });
-      return;
-    }
+    // T9：卡片点击直达功能子 tab（audit 同样——事件流在审计页里）
+    setTab(k);
     setOpen(open === k ? null : k);
   };
 
@@ -329,7 +335,92 @@ export default function SecurityPanel() {
 
   return (
     <div className="admin-body">
-      {/* 态势导语（页面章法：先一句总览再进卡片） */}
+      {/* ---- 子 tab 栏（T9）：总览 + 各功能页 ---- */}
+      <div className="sec-subtabs" role="tablist" aria-label="安全功能分区">
+        <button role="tab" aria-selected={tab === 'overview'}
+                className={`sec-subtab ${tab === 'overview' ? 'on' : ''}`}
+                onClick={() => { setTab('overview'); setOpen(null); }}>总览</button>
+        {SEC_TABS.map(([k, label]) => {
+          const c = cards.find(x => x.key === k);
+          return (
+            <button key={k} role="tab" aria-selected={tab === k}
+                    className={`sec-subtab ${tab === k ? 'on' : ''}${c?.danger ? ' danger' : ''}`}
+                    onClick={() => { setTab(k); setOpen(null); }}>
+              {c?.danger ? '⚠ ' : ''}{label}
+            </button>
+          );
+        })}
+      </div>
+      {posture.canary.kill_all && (
+        <div className="sec-killbar">
+          ⚠ <b>全局熔断激活中</b>：调度已暂停、新任务被拒、原有任务已停止。这是紧急刹车，
+          排查完原因后到总览页点「解除熔断」恢复。
+        </div>
+      )}
+      {tab !== 'overview' ? (() => {
+        /* ---- 功能页：介绍 + 具体内容（T9 核心：点 tab 才进来） ---- */
+        const c = cards.find(x => x.key === tab)!;
+        return (<>
+          <div className="sec-intro">
+            <div className="sec-intro-top">
+              <span className="sec-card-icon">{c.icon}</span><b>{c.name}</b>
+              <span className={c.ok || c.danger ? '' : 'dim'}>{c.top}</span>
+            </div>
+            <div className="muted">{c.sub}</div>
+            {c.hint && <div className="sec-card-hint">→ {c.hint}</div>}
+          </div>
+          {tab !== 'audit' && (
+            <div className="sec-detail">
+              {tab === 'sandbox' && <SandboxDetail events={events} jump={jump} tier={posture.sandbox} />}
+              {tab === 'sandbox' && posture.ops && (
+                <OpsDetail ops={posture.ops} reload={load}
+                  approvalEnforce={posture.policy.approval_enforce} />)}
+              {tab === 'approvals' && <ApprovalsDetail events={events} jump={jump} />}
+              {tab === 'target' && <TargetPolicyDetail />}
+              {tab === 'egress' && <EgressDetail />}
+              {tab === 'vault' && <VaultDetail />}
+              {tab === 'canary' && <CanaryDetail locked={posture.canary.locked_sessions} reload={load} jump={jump} />}
+            </div>
+          )}
+          {tab === 'audit' && (<>
+            <div ref={feedRef} className="sec-cards" style={{ marginBottom: 8 }}>
+              <b style={{ fontSize: 'var(--fs-lg)' }}>操作记录</b>
+              <span className="muted" style={{ fontSize: 'var(--fs-md)' }}>
+                全部敏感动作的防篡改流水（{posture.audit.last_id} 条中的最近一段）
+              </span>
+              <a className="link" title="台账 tab 双源合并视图（运营台账 + 审计账本，AC-2.4）"
+                onClick={() => { location.hash = '#/admin/activity'; }}>查看完整流水 →</a>
+              <select value={filter} onChange={e => setFilter(e.target.value)}
+                autoComplete="off" style={{ marginLeft: 'auto' }}>
+                {FILTERS.map(f => <option key={f.key} value={f.key}>{f.label}</option>)}
+              </select>
+            </div>
+            <table className="kv-table" style={{ width: '100%' }}>
+              <thead><tr><th style={{ width: 96 }}>时间</th><th style={{ width: 90 }}>类型</th><th style={{ width: 130 }}>会话</th><th>内容</th></tr></thead>
+              <tbody>
+                {rows.length === 0 && (
+                  <tr><td colSpan={4} className="muted" style={{ textAlign: 'center', padding: 16 }}>
+                    （该类型暂无记录）
+                  </td></tr>
+                )}
+                {rows.map(r => {
+                  const d = parse(r.detail_json);
+                  const isLlm = r.type === 'egress_request' && d.host === 'llm-gw.internal';
+                  return (
+                    <tr key={r.id} style={isLlm ? { opacity: 0.6 } : undefined}>
+                      <td style={{ fontVariantNumeric: 'tabular-nums' }}>{(r.ts || '').slice(5, 19).replace('T', ' ')}</td>
+                      <td>{isLlm ? '模型调用' : (TYPE_ZH[r.type] ?? r.type)}</td>
+                      <td><SessionLink sid={r.sid} jump={jump} truncate /></td>
+                      <td>{r.count ? humanize(r) + ` × ${r.count}` : humanize(r)}</td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </>)}
+        </>);
+      })() : (<>
+      {/* 态势导语（总览页章法：先一句总览再进卡片） */}
       <div className="muted fs-note sec-lede">
         {(() => {
           const bad = cards.filter(c => c.danger).length;
@@ -342,16 +433,14 @@ export default function SecurityPanel() {
               : `${okN} 面全部正常——点击卡片查看明细与运维面`;
         })()}
       </div>
-      {/* ---- 姿态卡（可点开明细）——态与 hover 全 CSS 化（sec-card.*） ---- */}
-      <div className="sec-cards-grid" style={{ marginBottom: open ? 10 : 14 }}>
+      {/* ---- 姿态卡：点击直达功能子 tab（态与 hover 全 CSS 化） ---- */}
+      <div className="sec-cards-grid" style={{ marginBottom: 14 }}>
         {cards.map(c => (
           <div key={c.key} onClick={() => toggle(c.key)}
             className={`sec-card${open === c.key ? ' open' : ''}${c.danger ? ' danger' : ''}`}>
             <div className="sec-card-head">
               <Dot ok={c.ok} warn={c.warn} /><span className="sec-card-icon">{c.icon}</span>{c.name}
-              <span className="muted sec-card-more">
-                {c.key === 'audit' ? '事件流 ›' : open === c.key ? '收起 ⌃' : '明细 ›'}
-              </span>
+              <span className="muted sec-card-more">明细 ›</span>
             </div>
             <div className={`sec-card-top${c.ok || c.danger ? '' : ' dim'}`}>{c.top}</div>
             <div className="muted sec-card-sub">{c.sub}</div>
@@ -359,21 +448,6 @@ export default function SecurityPanel() {
           </div>
         ))}
       </div>
-
-      {/* ---- 卡片详情面板（统一容器 sec-detail） ---- */}
-      {open && (
-        <div className="sec-detail">
-          {open === 'sandbox' && <SandboxDetail events={events} jump={jump} tier={posture.sandbox} />}
-          {open === 'sandbox' && posture.ops && (
-            <OpsDetail ops={posture.ops} reload={load}
-              approvalEnforce={posture.policy.approval_enforce} />)}
-          {open === 'approvals' && <ApprovalsDetail events={events} jump={jump} />}
-          {open === 'target' && <TargetPolicyDetail />}
-          {open === 'egress' && <EgressDetail />}
-          {open === 'vault' && <VaultDetail />}
-          {open === 'canary' && <CanaryDetail locked={posture.canary.locked_sessions} reload={load} jump={jump} />}
-        </div>
-      )}
 
       {/* ---- 操作区（普通操作左组 / 紧急操作右组，视觉分离） ---- */}
       <div className="sec-opsbar">
@@ -394,48 +468,7 @@ export default function SecurityPanel() {
           <div className={`sec-ops-note ${verify.ok ? 'ok' : 'bad'}`}>{verify.text}</div>
         )}
       </div>
-      {posture.canary.kill_all && (
-        <div className="sec-killbar">
-          ⚠ <b>全局熔断激活中</b>：调度已暂停、新任务被拒、原有任务已停止。这是紧急刹车，
-          排查完原因后点上方「解除熔断」恢复。
-        </div>
-      )}
-
-      {/* ---- 审计事件流 ---- */}
-      <div ref={feedRef} className="sec-cards" style={{ marginBottom: 8 }}>
-        <b style={{ fontSize: 'var(--fs-lg)' }}>操作记录</b>
-        <span className="muted" style={{ fontSize: 'var(--fs-md)' }}>
-          全部敏感动作的防篡改流水（{posture.audit.last_id} 条中的最近一段）
-        </span>
-        <a className="link" title="台账 tab 双源合并视图（运营台账 + 审计账本，AC-2.4）"
-          onClick={() => { location.hash = '#/admin/activity'; }}>查看完整流水 →</a>
-        <select value={filter} onChange={e => setFilter(e.target.value)}
-          autoComplete="off" style={{ marginLeft: 'auto' }}>
-          {FILTERS.map(f => <option key={f.key} value={f.key}>{f.label}</option>)}
-        </select>
-      </div>
-      <table className="kv-table" style={{ width: '100%' }}>
-        <thead><tr><th style={{ width: 96 }}>时间</th><th style={{ width: 90 }}>类型</th><th style={{ width: 130 }}>会话</th><th>内容</th></tr></thead>
-        <tbody>
-          {rows.length === 0 && (
-            <tr><td colSpan={4} className="muted" style={{ textAlign: 'center', padding: 16 }}>
-              （该类型暂无记录）
-            </td></tr>
-          )}
-          {rows.map(r => {
-            const d = parse(r.detail_json);
-            const isLlm = r.type === 'egress_request' && d.host === 'llm-gw.internal';
-            return (
-              <tr key={r.id} style={isLlm ? { opacity: 0.6 } : undefined}>
-                <td style={{ fontVariantNumeric: 'tabular-nums' }}>{(r.ts || '').slice(5, 19).replace('T', ' ')}</td>
-                <td>{isLlm ? '模型调用' : (TYPE_ZH[r.type] ?? r.type)}</td>
-                <td><SessionLink sid={r.sid} jump={jump} truncate /></td>
-                <td>{r.count ? humanize(r) + ` × ${r.count}` : humanize(r)}</td>
-              </tr>
-            );
-          })}
-        </tbody>
-      </table>
+      </>)}
     </div>
   );
 }
