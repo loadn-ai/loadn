@@ -327,6 +327,13 @@ def storage_overview():
     """存储概览（PERF-4 只读）：var/ 各子树占用+workspace top10。"""
     from ... import maintenance as maint_mod
     return maint_mod.storage_overview()
+@router.post("/admin/audit/export")
+def audit_export(body: dict):
+    """audit 冻结月表导出归档（PERF-5，只导不删——账本链完整）。
+    body {dry_run?}。"""
+    from ...security import audit as audit_mod
+    dry = bool(body.get("dry_run")) if isinstance(body, dict) else False
+    return audit_mod.archive_months(dry_run=dry)
 @router.get("/admin/egress")
 def egress_recent(n: int = 50):
     """最近外联（面板数据源：audit egress_request 尾窗）+ 活跃临时授权。管理面。"""

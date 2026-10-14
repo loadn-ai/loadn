@@ -327,3 +327,66 @@ def export_jsonl() -> str:
                     ("id", "ts", "sid", "turn_id", "type", "detail_json",
                      "prev_hash", "hash")},
                    ensure_ascii=False) for r in rows)
+
+
+# ---------------------------------------------------------------- PERF-5 归档
+def _archive_dir() -> Path:
+    from ..config import PATHS
+    return PATHS["var"] / "archive" / "audit"
+
+
+def _sha256_file(p: Path) -> str:
+    return hashlib.sha256(p.read_bytes()).hexdigest()
+
+
+def archive_months(*, dry_run: bool = False) -> dict:
+    """冻结月表导出 gzip 归档（PERF-5，**只导不删**——哈希链账本 DROP
+    旧表即断链，verify 是跨表单链；链验证改造（每表末行锚点+分段 verify）
+    设计确认后另卡放开 DROP）。
+
+    冻结判定：月表在月初切换后不再写（_table_for 按当前时间路由）——
+    表名 != 当月表即完整冻结；audit_events 主表（v1 遗留）同样冻结。
+    幂等：目标文件已存在即 skip——冻结表无新写入（月初切换竞态窗口
+    在分钟级内，而导出发生在凌晨维护窗口，距切换已数小时），无需
+    sha 对比重导。"""
+    from ..util import iso as _iso
+    dest_dir = _archive_dir()
+    current = _table_for(_iso())
+    with _conn() as c:
+        tables = [t for t in _all_tables(c) if t != current]
+    results = []
+    for t in tables:
+        with _conn() as c:
+            rows = c.execute(f"SELECT * FROM {t} ORDER BY id").fetchall()
+        if not rows:
+            continue
+        dest = dest_dir / f"{t}.jsonl.gz"
+        if dest.exists():
+            continue          # 已归档且表已冻结——重复导出无意义（见上）
+        if dry_run:
+            results.append({"table": t, "rows": len(rows), "dry_run": True})
+            continue
+        import gzip as _gzip
+        import os as _os
+        dest_dir.mkdir(parents=True, exist_ok=True)
+        tmp = dest_dir / f"{t}.jsonl.gz.tmp"
+        payload = ("\n".join(
+            json.dumps({k: r[k] for k in
+                        ("id", "ts", "sid", "turn_id", "type", "detail_json",
+                         "prev_hash", "hash")},
+                       ensure_ascii=False) for r in rows) + "\n").encode()
+        with open(tmp, "wb") as f:
+            with _gzip.GzipFile(filename=dest.name, mode="wb", fileobj=f,
+                                mtime=0) as gz:
+                gz.write(payload)
+            f.flush()
+            _os.fsync(f.fileno())
+        _os.replace(tmp, dest)
+        sha = _sha256_file(dest)
+        audit("archive", {"action": "audit_month_export", "table": t,
+                          "rows": len(rows), "bytes": len(payload),
+                          "file": str(dest), "sha256": sha[:16]})
+        results.append({"table": t, "rows": len(rows),
+                        "bytes": len(payload), "sha256": sha[:16]})
+    return {"tables": len(results), "results": results,
+            "dry_run": dry_run}

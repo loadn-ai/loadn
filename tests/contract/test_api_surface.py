@@ -16,6 +16,7 @@ EXPECTED = [
     ("/api/admin/approvals", "get"),
     ("/api/admin/archive/cold", "post"),
     ("/api/admin/audit", "get"),
+    ("/api/admin/audit/export", "post"),
     ("/api/admin/audit/verify", "post"),
     ("/api/admin/maintenance", "post"),
     ("/api/admin/channels", "get,put"),

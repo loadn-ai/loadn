@@ -162,6 +162,20 @@ def run_maintenance(*, force_vacuum: bool = False, dry_run: bool = False,
         except Exception as e:                            # noqa: BLE001
             report["steps"].append({"step": f"sweep_{name}", "failed": str(e)})
             report["ok"] = False
+    # PERF-5：audit 冻结月表导出归档（只导不删——哈希链账本 DROP 断链，
+    # 链验证改造另卡；导出文件含 prev_hash/hash 离线可自行验链）
+    try:
+        if dry_run:
+            report["steps"].append({"step": "audit_export", "skipped": True,
+                                    "dry_run": True})
+        else:
+            from .security.audit import archive_months
+            ae = archive_months()
+            report["steps"].append({"step": "audit_export",
+                                    "tables": ae["tables"]})
+    except Exception as e:                                # noqa: BLE001
+        report["steps"].append({"step": "audit_export", "failed": str(e)})
+        report["ok"] = False
     if not dry_run:
         with db_mod.conn() as c:
             db_mod.kv_set(c, "maint_last_run", _today(now))
