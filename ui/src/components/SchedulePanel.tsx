@@ -88,6 +88,11 @@ export default function SchedulesTab({ filterSid, onClearFilter }: {
   const [creating, setCreating] = useState(false);
   const [msg, setMsg] = useState<{ t: string; err?: boolean } | null>(null);
   const [, setTick] = useState(0);       // 倒计时重渲染节拍
+  // 列表三件套（T7）：搜索 / 状态筛选 / 列排序（默认最近执行完成时间倒序）
+  const [q, setQ] = useState('');
+  const [statusF, setStatusF] = useState<'' | ScheduleInfo['status']>('');
+  const [sort, setSort] = useState<{ k: 'last_fired_at' | 'due_at' | 'label' | 'status';
+                                     desc: boolean }>({ k: 'last_fired_at', desc: true });
 
   async function reload() {
     try {
@@ -102,9 +107,38 @@ export default function SchedulesTab({ filterSid, onClearFilter }: {
     return () => clearInterval(t);
   }, []);
 
-  const rows = useMemo(
-    () => filterSid ? jobs.filter(j => j.session_id === filterSid) : jobs,
-    [jobs, filterSid]);
+  const rows = useMemo(() => {
+    let r = filterSid ? jobs.filter(j => j.session_id === filterSid) : jobs.slice();
+    if (statusF) r = r.filter(j => j.status === statusF);
+    const needle = q.trim().toLowerCase();
+    if (needle) r = r.filter(j =>
+      [j.label, j.prompt, j.title, j.session_title]
+        .some(x => (x ?? '').toLowerCase().includes(needle)));
+    const ts = (x: string | null | undefined) => x ? new Date(x).getTime() : 0;
+    const key = (j: ScheduleInfo): number | string =>
+      sort.k === 'last_fired_at' ? ts(j.last_fired_at)
+      : sort.k === 'due_at' ? ts(j.due_at)
+      : sort.k === 'status' ? j.status
+      : (j.label || j.prompt || '').toLowerCase();
+    r.sort((a, b) => {
+      const ka = key(a), kb = key(b);
+      const d = typeof ka === 'number' && typeof kb === 'number'
+        ? ka - kb : String(ka).localeCompare(String(kb));
+      return sort.desc ? -d : d;
+    });
+    return r;
+  }, [jobs, filterSid, q, statusF, sort]);
+
+  /** 列头排序钮：同列再点反向；空值（未执行过/无下次）恒沉底 */
+  const thSort = (k: typeof sort.k, label: string) => (
+    <th>{label}
+      <button className={`link th-sort ${sort.k === k ? 'on' : ''}`}
+        title={sort.k === k && !sort.desc ? '降序' : '升序'}
+        onClick={() => setSort(s => s.k === k ? { k, desc: !s.desc } : { k, desc: true })}>
+        {sort.k === k ? (sort.desc ? '↓' : '↑') : '↕'}
+      </button>
+    </th>
+  );
 
   async function act(j: ScheduleInfo, status: 'active' | 'paused') {
     try {
@@ -132,6 +166,13 @@ export default function SchedulesTab({ filterSid, onClearFilter }: {
         <button className="btn primary" onClick={() => setCreating(v => !v)}>
           {creating ? <X size={14} /> : <Plus size={14} />} {creating ? '收起新建' : '新建定时任务'}
         </button>
+        <input className="admin-search" placeholder="搜索：名称 / 内容 / 目标会话…"
+               value={q} onChange={e => setQ(e.target.value)} autoComplete="off"/>
+        {([['', '全部'], ['active', '启用'], ['paused', '暂停'], ['done', '完成']] as const).map(
+          ([v, label]) => (
+            <button key={v || 'all'} className={`chip ${statusF === v ? 'on' : ''}`}
+                    onClick={() => setStatusF(v)}>{label}</button>
+          ))}
         {filterSid && (
           <button className="btn ghost sm" onClick={onClearFilter}>
             <X size={13} /> 只看本会话，点此看全部
@@ -150,8 +191,10 @@ export default function SchedulesTab({ filterSid, onClearFilter }: {
         <table className="mcp-table">
           <thead>
             <tr>
-              <th>任务</th><th>目标</th><th>触发</th><th>下次</th><th>次数</th>
-              <th>状态</th><th>操作</th>
+              {thSort('label', '任务')}<th>目标</th><th>触发</th>
+              {thSort('due_at', '下次')}<th>次数</th>
+              {thSort('last_fired_at', '上次执行')}
+              {thSort('status', '状态')}<th>操作</th>
             </tr>
           </thead>
           <tbody>
@@ -159,13 +202,13 @@ export default function SchedulesTab({ filterSid, onClearFilter }: {
               <JobRow key={j.id} job={j} onAct={act} onDel={del} onChanged={reload} />
             ))}
             {!rows.length && (
-              <tr><td colSpan={7} className="panel-empty">（无定时任务）</td></tr>
+              <tr><td colSpan={8} className="panel-empty">（无定时任务）</td></tr>
             )}
           </tbody>
         </table>
       </div>
       <HooksAside />{/* P3：事件触发与 cron 并列展示（管理在 Webhooks tab） */}
-      <RoutinesLib />{/* P11：模板库——Ready 一键启用 / Needs setup 缺什么 */}
+      {/* P11 模板库已拆独立 tab（AdminPanel routines）——本页专注任务列表 */}
     </div>
   );
 }
@@ -239,6 +282,12 @@ function JobRow({ job: j, onAct, onDel, onChanged }: {
             : <span className="muted">{fmtDue(j.due_at)}</span>}
         </td>
         <td>{j.fires}/{j.max_fires}</td>
+        {/* 最近执行完成时间（默认排序列，可见才可感知） */}
+        <td className="sched-last">
+          {j.last_fired_at
+            ? <span title={j.last_fired_at}>{fmtDue(j.last_fired_at)}</span>
+            : <span className="muted">—</span>}
+        </td>
         <td>
           <span className={`sched-dot ${j.status}`} title={j.status} />
           {j.status === 'active' ? '运行中' : j.status === 'paused' ? '已暂停' : '已完成'}
@@ -584,7 +633,7 @@ function JobForm({ job, presetSid, onDone }: {
 }
 
 
-/** P11 模板库：例程模板卡片（安装=复制为用户 schedule，与平台升级解耦） */
+/** P11 模板库（独立 tab）：例程模板卡片（安装=复制为用户 schedule，与平台升级解耦） */
 export function RoutinesLib() {
   const [items, setItems] = useState<RoutineInfo[]>([]);
   useEffect(() => {
@@ -601,13 +650,11 @@ export function RoutinesLib() {
         `/api/routines/${key}/install`, { method: 'POST' });
       toast(d.existing
         ? `「${d.job.label}」此前已安装——已定位既有任务（未重复创建）`
-        : `已安装「${d.job.label}」为你的定时任务（可在上方列表编辑）`);
+        : `已安装「${d.job.label}」为你的定时任务（去「定时」tab 编辑）`);
     } catch (e) { toast(`安装失败：${String(e)}`, false); }
   }
-  if (!items.length) return null;
   return (
-    <div style={{ marginTop: 12 }}>
-      <b style={{ fontSize: 'var(--fs-lg)' }}>模板库</b>
+    <div className="admin-body">
       <div className="admin-list">
         {items.map(t => (
           <div key={t.key} className="hub-card slim">
@@ -634,6 +681,9 @@ export function RoutinesLib() {
             </div>
           </div>
         ))}
+        {!items.length && (
+          <div className="panel-empty">（暂无例程模板——模板随平台版本提供）</div>
+        )}
       </div>
     </div>
   );

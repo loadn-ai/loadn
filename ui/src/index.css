@@ -649,6 +649,11 @@ button:focus-visible, .tab:focus-visible, .chip:focus-visible {
   border-left: 1px solid var(--border); white-space: nowrap; }
 .admin-body { overflow-y: auto; min-height: 0; flex: 1; padding-top: 14px; }
 .admin-toolbar { display: flex; gap: 8px; align-items: center; margin-bottom: 14px; flex-wrap: wrap; }
+/* 定时列表三件套：搜索框吃剩余宽 + 列头排序钮（T7） */
+.admin-toolbar .admin-search { flex: 1; min-width: 160px; max-width: 320px; }
+.th-sort { margin-left: 4px; padding: 0 2px; font-size: var(--fs-xs); opacity: .45; }
+.th-sort.on { opacity: 1; }
+.sched-last { white-space: nowrap; }
 .admin-msg { font-size: var(--fs-md); color: var(--green); overflow-wrap: break-word; }
 .admin-msg.err { color: var(--red); }
 .admin-err { font-size: var(--fs-md); color: var(--red); margin-top: 8px; }

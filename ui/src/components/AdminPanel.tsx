@@ -7,7 +7,7 @@
 import { Fragment, useEffect, useRef, useState } from 'react';
 
 import CostTab from './CostPanel';
-import SchedulesTab from './SchedulePanel';
+import SchedulesTab, { RoutinesLib } from './SchedulePanel';
 import WebhooksTab from './admin/WebhooksTab';
 import MemoryTab from './admin/MemoryTab';
 import ActivityTab from './admin/ActivityTab';
@@ -36,6 +36,7 @@ const TABS: { id: AdminTab; label: string; group: string; adminOnly?: boolean }[
   { id: 'memory', label: '记忆', group: '能力', adminOnly: true },
   { id: 'tasks', label: '任务', group: '自动化' },
   { id: 'schedules', label: '定时', group: '自动化' },
+  { id: 'routines', label: '模板库', group: '自动化' },
   { id: 'webhooks', label: 'Webhook', group: '自动化' },
   { id: 'activity', label: '台账', group: '观测', adminOnly: true },
   { id: 'cost', label: '成本', group: '观测', adminOnly: true },
@@ -158,6 +159,7 @@ export default function AdminPanel({ onClose, initialTab, filterSid, onClearFilt
         : tab === 'tools' ? <ToolsTab />
         : tab === 'schedules'
           ? <SchedulesTab filterSid={filterSid} onClearFilter={onClearFilter} />
+          : tab === 'routines' ? <RoutinesLib />
           : tab === 'webhooks' ? <WebhooksTab />
           : tab === 'memory' ? <MemoryTab />
           : tab === 'activity' ? <ActivityTab />
