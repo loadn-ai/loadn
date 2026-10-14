@@ -159,6 +159,10 @@ async def test_list_batch_fields(client):
         # next_wake：active 取 due_at 最近；paused 不算
         db_mod.create_job(c, session_id=sid, label="perf-wake", prompt="hi",
                           due_at="2030-01-01T00:00:00+00:00")
+        # 同会话更晚的第二条 active：首见即最近的循环守卫若 or/and 反转，
+        # 会被更晚的覆盖（对赌杀 bool:BoolOp 变异）
+        db_mod.create_job(c, session_id=sid, label="perf-wake2", prompt="hi",
+                          due_at="2031-01-01T00:00:00+00:00")
         db_mod.create_job(c, session_id=sid, label="perf-paused", prompt="hi",
                           due_at="2029-01-01T00:00:00+00:00", status="paused")
 
