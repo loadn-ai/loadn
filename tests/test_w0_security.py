@@ -378,6 +378,37 @@ def test_admin_approvals_and_vault_readonly(w0):
     assert "password" not in str(d.get("platforms"))
 
 
+def test_admin_approvals_filter_and_sweep(w0):
+    """>>> 管理面待审清单过滤语义对赌（设计稿「一键清理已超时」落地）：
+    GET 只回真正在等的（超 TTL 惰性翻 expired；approved/denied/executed
+    历史不再混入——此前 list_pending 无 sid 不过滤 status，计数虚高）；
+    POST sweep 幂等收尾。"""
+    from datetime import datetime, timedelta, timezone
+
+    from loadn_webui.security import approve as ap
+    fresh = ap.create("s-admf", "mail_send", {"to": "a@b.c"})     # 在等
+    gone = ap.create("s-admf", "mail_send", {"to": "d@e.f"})      # 将拨过期
+    done = ap.create("s-admf", "mail_send", {"to": "g@h.i"})      # 已驳回
+    ap.decide(done["id"], False, by="t-admin")
+    with ap._conn() as c:
+        old_t = (datetime.now(timezone.utc)
+                 - timedelta(days=2)).isoformat(timespec="seconds")
+        c.execute("UPDATE approvals SET created_at=? WHERE id=?",
+                  (old_t, gone["id"]))
+    r = _get(w0, "/api/admin/approvals", headers=w0["headers"])
+    assert r.status_code == 200
+    ids = [p["id"] for p in r.json()["pending"]]
+    assert fresh["id"] in ids                      # 真在等的保留
+    assert gone["id"] not in ids                   # 过期的惰性清扫出局
+    assert done["id"] not in ids                   # 已决定的历史不混入
+    assert all(p["status"] == "pending" for p in r.json()["pending"])
+    r2 = httpx.post(w0["url"] + "/api/admin/approvals/sweep", timeout=10,
+                    headers=w0["headers"])
+    assert r2.status_code == 200 and r2.json()["ok"] is True
+    assert r2.json()["expired"] == 0               # 惰性已清完 → 幂等 0
+    assert ap.status(fresh["id"])["status"] == "pending"   # 在等的不受清扫影响
+
+
 def test_noauth_mode_admin_plane_open(w0):
     """>>> 无认证模式语义钉死：server.token 置空 = 整站免认证（含管理面写）——
     外层守卫 if token and protected 直接跳过。部署者自负外层防护；本测试

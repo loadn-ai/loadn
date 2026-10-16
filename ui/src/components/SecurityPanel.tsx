@@ -750,11 +750,22 @@ function ApprovalsDetail({ events, jump }: { events: AuditEvent[]; jump: (s: str
   const [pending, setPending] = useState<{ id: number; sid: string; summary: string; created_at: string; ttl_s: number }[]>([]);
   const [err, setErr] = useState('');
   const [busy, setBusy] = useState<number | null>(null);
-  useEffect(() => {
+  const [sweeping, setSweeping] = useState(false);
+  const loadPending = () => {
     void api<{ pending: typeof pending }>('/api/admin/approvals')
       .then(d => setPending(d.pending))
       .catch(e => setErr(String(e)));
-  }, []);
+  };
+  useEffect(loadPending, []);
+  // 设计稿「一键清理已超时记录」：后端 sweep（pending 超 TTL 批量置
+  // expired，幂等）——列表读取已惰性清扫，这里是显式收尾入口
+  const sweep = () => {
+    setSweeping(true); setErr('');
+    void api<{ expired: number }>('/api/admin/approvals/sweep', { method: 'POST' })
+      .then(d => { setSweeping(false); loadPending();
+        toast(d.expired > 0 ? `已清理 ${d.expired} 条超时审批` : '没有已超时的待审记录'); })
+      .catch(e => { setSweeping(false); setErr(`清理失败：${String(e)}`); });
+  };
   // AC-4.2：管理面驳回（decide approve=false，admin 角色后端放行）——
   // 批准语义不变（会话内确认码输入，防伪造）；高危堆积时止损有门
   const deny = async (aid: number) => {
@@ -784,6 +795,9 @@ function ApprovalsDetail({ events, jump }: { events: AuditEvent[]; jump: (s: str
             <span className="sh-card-sub">批准 = 会话内输入确认码（防伪造）；驳回 = 此处一键（AC-4.2）</span>
           </div>
           {pending.length > 0 && <span className="sh-badge">{pending.length} 条待审</span>}
+          <button className="mini-btn" disabled={sweeping}
+            onClick={sweep} title="超时未裁决的 pending 批量置 expired（幂等）">
+            {sweeping ? '清理中…' : '一键清理已超时'}</button>
         </div>
         <div className="sh-card-body flush">
           <table className="sh-table">
@@ -836,6 +850,7 @@ function EgressDetail() {
   const [allow, setAllow] = useState<string[]>([]);
   const [grants, setGrants] = useState<{ sid: string; host: string; expires_at: string }[]>([]);
   const [busy, setBusy] = useState('');
+  const [newHost, setNewHost] = useState('');
   const load = () => {
     void api<{ events: { ts: string; host: string; decision: string }[]; mode: string; on_deny?: string; ask_wait_s?: number; allow: string[]; grants: { sid: string; host: string; expires_at: string }[] }>('/api/admin/egress?n=100')
       .then(d => {
@@ -863,6 +878,11 @@ function EgressDetail() {
     }).then(d => { setAllow(d.allow ?? []); setBusy('');
       setPolMsg({ t: `✓ ${host} 已入白名单（热生效）` }); })
       .catch(e => { setBusy(''); setPolMsg({ t: `放行失败：${String(e)}`, err: true }); });
+  };
+  /** 白名单池尾部手动添加（设计稿语义）：复用 allowHost（含确认弹窗）+清空输入 */
+  const addAllow = async (host: string) => {
+    await allowHost(host);
+    setNewHost('');
   };
   const removeHost = (host: string) => {
     setBusy(host); setPolMsg(null);
@@ -988,6 +1008,14 @@ function EgressDetail() {
           </span>
         ))}
         {allow.length === 0 && <span className="sh-ops-hint">-</span>}
+        <span className="sh-ops-inline" style={{ marginLeft: 'auto' }}>
+          <input value={newHost} placeholder="添加白名单域…" autoComplete="off"
+            style={{ width: 160, fontSize: 'var(--fs-sm)', fontFamily: 'var(--mono)' }}
+            onChange={e => setNewHost(e.target.value)}
+            onKeyDown={e => { if (e.key === 'Enter' && newHost.trim()) void addAllow(newHost.trim()); }} />
+          <button className="mini-btn" disabled={!newHost.trim() || busy === newHost.trim()}
+            onClick={() => void addAllow(newHost.trim())}>+ 加入</button>
+        </span>
       </div>
       {grants.length > 0 && (
         <div className="sh-pool">
@@ -1023,6 +1051,8 @@ function VaultDetail() {
   const [data, setData] = useState<{ platforms: { platform: string; user?: string; email?: string; has_password: boolean; updated_at: string }[]; verify: { ok: boolean; entries: number; encrypted: boolean; error?: string } } | null>(null);
   const [editing, setEditing] = useState<string>('');
   const [q, setQ] = useState('');   // 本地搜索（平台/账号）
+  const [creating, setCreating] = useState(false);   // 新增条目输入行开关
+  const [newName, setNewName] = useState('');
   const load = () => {
     void api<typeof data>('/api/admin/vault').then(setData).catch(() => { });
   };
@@ -1033,6 +1063,18 @@ function VaultDetail() {
         p.platform.toLowerCase().includes(q.trim().toLowerCase()) ||
         (p.user || p.email || '').toLowerCase().includes(q.trim().toLowerCase()))
     : data.platforms;
+  // 新增条目：保存前不在 platforms 里——合成临时行+编辑器（后端 put
+  // 为 upsert，首次保存即建条目；重名前置校验避免误覆盖）
+  const isNew = !!editing && !data.platforms.some(p => p.platform === editing);
+  const startCreate = () => {
+    const name = newName.trim();
+    if (!name) return;
+    if (data.platforms.some(p => p.platform === name)) {
+      toast(`已有 ${name} 条目：在列表中点「编辑」即可`, false);
+      return;
+    }
+    setCreating(false); setNewName(''); setEditing(name);
+  };
   return (
     <div className="sh-card">
       <div className="sh-card-head">
@@ -1045,12 +1087,37 @@ function VaultDetail() {
         </div>
         <input value={q} onChange={e => setQ(e.target.value)} placeholder="搜索平台或账号…"
           autoComplete="off" style={{ width: 180 }} />
+        <button className="mini-btn" onClick={() => { setCreating(c => !c); setNewName(''); }}>
+          {creating ? '取消新增' : '+ 新增凭证'}</button>
       </div>
+      {creating && (
+        <div className="sh-pool">
+          <span className="sh-ops-hint" style={{ fontWeight: 600 }}>新条目平台名：</span>
+          <input value={newName} placeholder="如 github / deepseek_api" autoComplete="off"
+            style={{ flex: 1, minWidth: 200, fontFamily: 'var(--mono)' }}
+            onChange={e => setNewName(e.target.value)}
+            onKeyDown={e => { if (e.key === 'Enter' && newName.trim()) startCreate(); }} />
+          <button className="btn sm" disabled={!newName.trim()}
+            onClick={startCreate}>创建并编辑</button>
+        </div>
+      )}
       <div className="sh-card-body flush">
         <table className="sh-table">
           <thead><tr><th>平台</th><th>账号</th><th style={{ width: 100 }}>密码状态</th><th style={{ width: 120 }}>更新日期</th><th style={{ width: 72, textAlign: 'right' }}>操作</th></tr></thead>
           <tbody>
             {shown.length === 0 && <tr><td colSpan={5} className="muted" style={{ textAlign: 'center', padding: 24 }}>（无匹配凭证）</td></tr>}
+            {isNew && (
+              <Fragment>
+                <tr>
+                  <td style={{ fontFamily: 'var(--mono)', fontWeight: 600 }}>{editing}</td>
+                  <td className="muted num">—</td>
+                  <td><span className="sh-badge">新建</span></td>
+                  <td className="muted num">—</td>
+                  <td style={{ textAlign: 'right' }}><button className="mini-btn" onClick={() => setEditing('')}>收起</button></td>
+                </tr>
+                <VaultEditor platform={editing} onDone={() => { setEditing(''); load(); }} isNew />
+              </Fragment>
+            )}
             {shown.map(p => (
               <Fragment key={p.platform}>
                 <tr>
@@ -1074,12 +1141,18 @@ function VaultDetail() {
 }
 
 /** 行内编辑器：拉掩码视图回填明文字段；提交只送改动的键（merge 语义） */
-function VaultEditor({ platform, onDone }: { platform: string; onDone: () => void }) {
+function VaultEditor({ platform, onDone, isNew = false }: { platform: string; onDone: () => void; isNew?: boolean }) {
   const [draft, setDraft] = useState<Record<string, string>>({});
   const [orig, setOrig] = useState<Record<string, string>>({});
   const [meta, setMeta] = useState<Record<string, string>>({});
   const [busy, setBusy] = useState(false);
   useEffect(() => {
+    if (isNew) {   // 新建：无后端条目，全空初始化（首次保存即创建）
+      const init: Record<string, string> = {};
+      for (const r of VAULT_ROWS) init[r.k] = '';
+      setDraft(init); setOrig(init);
+      return;
+    }
     void api<Record<string, string>>(`/api/admin/vault/${encodeURIComponent(platform)}`)
       .then(d => {
         setMeta({ password: d.password ?? '', recovery: d.recovery ?? '' });
@@ -1089,7 +1162,7 @@ function VaultEditor({ platform, onDone }: { platform: string; onDone: () => voi
         }
         setDraft(init); setOrig(init);
       }).catch(() => { });
-  }, [platform]);
+  }, [platform, isNew]);
   const save = () => {
     const fields: Record<string, string> = {};
     for (const r of VAULT_ROWS) {

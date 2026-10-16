@@ -14,6 +14,7 @@ from loadn_webui.api.app import app
 EXPECTED = [
     ("/api/activity", "get"),
     ("/api/admin/approvals", "get"),
+    ("/api/admin/approvals/sweep", "post"),
     ("/api/admin/archive/cold", "post"),
     ("/api/admin/audit", "get"),
     ("/api/admin/audit/export", "post"),

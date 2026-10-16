@@ -221,9 +221,24 @@ def security_posture():
     }
 @router.get("/admin/approvals")
 def approvals_overview():
-    """全平台待审清单（安全中心「审批」卡明细）。管理面读。"""
+    """全平台待审清单（安全中心「审批」卡明细）。管理面读。
+
+    惰性清扫（R3 同款）：读前先把超 TTL 的 pending 翻 expired（与
+    scheduler 周期 sweep 幂等互备），且只回真正在等的——此前不过滤
+    status，已批准/已驳回/已执行的历史也混进「待审清单」且计数虚高。
+    """
     from ...security import approve as approve_mod
-    return {"pending": approve_mod.list_pending()}
+    approve_mod.sweep_expired()
+    return {"pending": [r for r in approve_mod.list_pending()
+                        if r.get("status") == "pending"]}
+@router.post("/admin/approvals/sweep")
+def approvals_sweep():
+    """一键清理已超时审批：批量置 expired（幂等，审计留痕）。"""
+    from ...security import approve as approve_mod
+    from ...security.audit import audit
+    n = approve_mod.sweep_expired()
+    audit("approval_decision", {"action": "admin_sweep", "expired": n})
+    return {"ok": True, "expired": n}
 @router.get("/admin/vault")
 def vault_overview():
     """凭证库概览（安全中心卡明细）：条目名/安全字段+完整性校验。
