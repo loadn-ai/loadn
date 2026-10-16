@@ -45,13 +45,19 @@ git push origin main && git push origin v1.0.2
 
 1. **建 GitHub Release**（`generate_release_notes` 按 commit/PR 自动
    生成 notes，无需手写）；
-2. Release published 触发 **publish.yml** → 构建 sdist/wheel →
-   Trusted Publishing（OIDC）发 PyPI。
+2. 同链 **publish-pypi** job → 构建 sdist/wheel → Trusted Publishing
+   （OIDC）发 PyPI。
+
+> 历史教训（v0.7.30 前后）：PyPI 发布曾挂在 `on: release` 触发的
+> publish.yml 上，但 GITHUB_TOKEN 创建的 Release 其 `published` 事件
+> **不会级联触发**新 workflow（GitHub 防递归），导致 publish 链从未
+> 跑过（PyPI 停在占位版）。修复=发布并进 release.yml 同一 workflow；
+> publish.yml 保留为 workflow_dispatch 手动重发通道。
 
 前提（一次性）：pypi.org → 项目 `loadn` → Settings → Publishing →
 Add publisher：owner=`loadn-ai`, repository=`loadn`,
-workflow=`publish.yml`。未配置时 publish job 会失败——Release 页不受
-影响。
+workflow=`release.yml`（若此前只登记了 publish.yml 需补这一条）。
+未配置时 publish job 会失败——Release 页不受影响。
 
 补建历史 tag 的 Release：Actions → release → Run workflow，填 tag 名。
 

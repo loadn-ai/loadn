@@ -99,6 +99,12 @@ agent platform**:
 
 ![The loadn-web workbench — sessions, skill teaching cards, approval gates, cost panels](docs/assets/platform-preview.png)
 
+The admin **Security Center** — one page over the whole security stack
+(posture overview, sandbox tiers, approval queue, target policies, egress
+control, credential vault, tamper-evident audit ledger, canary trips):
+
+![Security Center — posture overview with eight sub-panels](docs/assets/security-center.png)
+
 Docs index: [ARCHITECTURE](docs/ARCHITECTURE.md) (planes / data layout /
 test system) · [CONFIG](docs/CONFIG.md) (every config key) ·
 [EXTENDING](docs/EXTENDING.md) (customization seams: engines / providers /

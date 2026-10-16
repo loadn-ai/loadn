@@ -1,6 +1,7 @@
 # GitHub Release 自动化：推 vX.Y.Z tag → 自动建 Release（含自动生成
-# notes）→ 触发 publish.yml（Trusted Publishing/OIDC 发 PyPI）。
-# 事后补建历史 tag 的 Release：Actions → release → Run workflow 填 tag。
+# notes）→ 同链发 PyPI（Trusted Publishing/OIDC）。
+# 事后补建历史 tag 的 Release：Actions → release → Run workflow 填 tag
+# （dispatch 只补 Release 页，不重发 PyPI）。
 name: release
 on:
   push:
@@ -29,5 +30,31 @@ jobs:
           generate_release_notes: true   # 按 commit/PR 自动生成 notes
           draft: false
           prerelease: false
+  publish-pypi:
+    # PyPI 发布并进本 workflow（v0.7.30 教训：此前挂 on: release 触发的
+    # publish.yml 从未跑过——GITHUB_TOKEN 创建的 Release 其 published
+    # 事件不会级联触发新 workflow（GitHub 防递归），total_count=0）。
+    # 前提（一次性）：PyPI → loadn → Publishing 的 Trusted Publisher 须
+    # 包含本文件名 release.yml（此前若只登记 publish.yml 需补一条）。
+    needs: github-release
+    if: github.event_name == 'push'   # 仅 tag push 发版；dispatch 补建不发
+    permissions:
+      id-token: write   # PyPI OIDC 断言
+      contents: read
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.ref }}
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Build sdist + wheel
+        run: |
+          pip install build
+          python -m build
+      - name: Publish to PyPI
+        uses: pypa/gh-action-pypi-publish@release/v1
 # 说明：详细发版流程（本地 release build → upgrade → 回滚）见
-# docs/RELEASE.md；本 workflow 只负责 GitHub 侧 Release 页与 PyPI 触发。
+# docs/RELEASE.md；publish.yml 保留 workflow_dispatch 手动重发通道。

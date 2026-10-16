@@ -93,6 +93,11 @@ flowchart TB
 
 ![loadn-web 工作台——会话管理/技能教学卡/审批门/成本面板](docs/assets/platform-preview.png)
 
+管理面**安全中心**——一页纵览整个安全栈（态势总览/沙箱档位/审批
+队列/目标放行策略/出口管控/凭证保险库/防篡改审计账本/蜜罐诱饵）：
+
+![安全中心——态势总览与八个子面板](docs/assets/security-center.png)
+
 文档索引：[ARCHITECTURE](docs/ARCHITECTURE.md)（三平面/数据布局）·
 [EXTENDING](docs/EXTENDING.md)（定制缝地图：引擎/provider/skill/MCP/hooks）·
 [PROTOCOL](docs/PROTOCOL.md)（引擎方言契约）·
