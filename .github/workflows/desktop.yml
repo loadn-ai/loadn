@@ -35,7 +35,7 @@ jobs:
           curl -fsSL -o vfkit \
             https://github.com/crc-org/vfkit/releases/download/v0.6.4/vfkit
           chmod +x vfkit
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         with:
           name: vm-assets
           path: desktop/image/dist/
@@ -65,7 +65,7 @@ jobs:
         env:
           TAURI_CONFIG: >-
             {"bundle":{"targets":["dmg"],"resources":{"../../image/dist-platform/":"vm-assets/"}}}
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         with:
           name: loadn-macos
           path: desktop/shell/src-tauri/target/aarch64-apple-darwin/release/bundle/dmg/*.dmg
@@ -97,7 +97,7 @@ jobs:
         env:
           TAURI_CONFIG: >-
             {"bundle":{"targets":["msi"],"resources":{"../../image/dist-platform/":"vm-assets/"}}}
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         with:
           name: loadn-windows
           path: desktop/shell/src-tauri/target/x86_64-pc-windows-msvc/release/bundle/msi/*.msi
