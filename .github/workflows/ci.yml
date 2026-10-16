@@ -125,7 +125,7 @@ jobs:
     timeout-minutes: 15
     steps:
       - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@v7
         with:
           node-version: "20"
           cache: npm
@@ -163,7 +163,7 @@ jobs:
       # 先构建前端：e2e_ui 真浏览器用例驱动真 UI——无 dist 时根路由回落
       # api-only JSON，选择器永不出场（run 38163192995 七例 wait_for_selector
       # 超时+覆盖率 81<83 连带的实证）。本 job 的存在意义就是测真 UI。
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@v7
         with:
           node-version: "20"
           cache: npm
