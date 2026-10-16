@@ -1300,15 +1300,60 @@ button.attach-chip:hover { border-color: color-mix(in srgb, var(--accent) 40%, v
 .approval-why { margin-top: 6px; font-size: var(--fs-md); border-top: 1px dashed
   var(--border); padding-top: 6px; }
 
-/* ---- P12 技能建议卡透明化（2026-10-12）：触发引用 / 文件预览 / 生效事实 ---- */
-.suggest-quote { margin: 8px 0 2px; padding: 6px 10px; border-left: 2px solid
-  var(--accent2); color: var(--text-dim); font-size: var(--fs-md);
-  font-style: italic; overflow-wrap: anywhere; }
-.suggest-section { margin-top: 8px; border-top: 1px dashed var(--border);
-  padding-top: 6px; }
+/* ---- P12 技能建议卡 v3（2026-10-17 设计稿语言重构）：hero 左缘渐变色条/
+   图标方块/kind 语义徽章/md 渲染+源码双模。.approval-* 基类被审批卡共用，
+   全部经 .skill-suggest 专属覆盖，不外溢。 ---- */
+.skill-suggest { position: relative; overflow: hidden; padding: 14px 16px 12px;
+  background: var(--bg2); border-color: var(--border); box-shadow: var(--shadow-sm); }
+.skill-suggest::before { content: ''; position: absolute; left: 0; top: 0; bottom: 0;
+  width: 4px; background: var(--grad-accent); }
+.suggest-head { display: flex; align-items: flex-start; gap: 10px; }
+.suggest-hicon { width: 32px; height: 32px; border-radius: var(--radius-sm);
+  flex-shrink: 0; display: inline-flex; align-items: center; justify-content: center;
+  background: var(--accent-soft); color: var(--accent2); }
+.suggest-htitle-row { display: flex; align-items: center; gap: 8px; flex-wrap: wrap;
+  margin-bottom: 2px; }
+.suggest-htitle { font-size: var(--fs-lg); font-weight: 700; letter-spacing: -.01em; }
+.suggest-hbadge { font-size: var(--fs-xs); font-weight: 600; padding: 1px 8px;
+  border-radius: 999px; white-space: nowrap;
+  background: var(--accent-soft); color: var(--accent2);
+  border: 1px solid color-mix(in srgb, var(--accent) 35%, transparent); }
+.suggest-hbadge.correct { background: color-mix(in srgb, var(--yellow) 12%, transparent);
+  color: var(--yellow);
+  border-color: color-mix(in srgb, var(--yellow) 32%, transparent); }
+.suggest-hdesc { font-size: var(--fs-md); color: var(--text-dim); line-height: 1.5; }
+.suggest-quote { margin: 10px 0 2px; padding: 6px 10px; border-left: 2px solid
+  var(--accent2); background: color-mix(in srgb, var(--accent) 6%, transparent);
+  border-radius: 0 var(--radius-xs) var(--radius-xs) 0;
+  color: var(--text-dim); font-size: var(--fs-md); font-style: italic;
+  overflow-wrap: anywhere; }
+.suggest-section { margin-top: 10px; border-top: 1px dashed var(--border);
+  padding-top: 8px; }
+.suggest-sec-head { display: flex; align-items: center; justify-content: space-between;
+  gap: 8px; flex-wrap: wrap; margin-bottom: 6px; }
 .suggest-sec-title { font-size: var(--fs-sm); letter-spacing: .05em;
-  color: var(--text-dim); text-transform: uppercase; margin-bottom: 4px; }
-.suggest-path code { font-size: var(--fs-sm); overflow-wrap: anywhere; }
+  color: var(--text-dim); text-transform: uppercase; margin: 0; }
+.suggest-seg { display: inline-flex; gap: 3px; padding: 2px; background: var(--bg3);
+  border: 1px solid var(--border); border-radius: var(--radius-sm); }
+.suggest-seg-btn { height: 22px; padding: 0 10px; border: none;
+  border-radius: var(--radius-xs); background: transparent; color: var(--text-dim);
+  font-size: var(--fs-xs); font-weight: 600; cursor: pointer; }
+.suggest-seg-btn:hover { color: var(--text); }
+.suggest-seg-btn.on { background: var(--bg2); color: var(--accent2);
+  box-shadow: var(--shadow-sm); }
+.suggest-path { margin-bottom: 6px; }
+.suggest-path code { font-size: var(--fs-xs); overflow-wrap: anywhere;
+  background: var(--bg3); border: 1px solid var(--border);
+  border-radius: var(--radius-xs); padding: 2px 8px; color: var(--text-dim); }
+.suggest-meta { display: flex; flex-direction: column; gap: 3px; margin: 6px 0;
+  font-size: var(--fs-sm); }
+.suggest-meta-item { display: grid; grid-template-columns: 96px minmax(0, 1fr);
+  gap: 8px; align-items: baseline; }
+.suggest-meta-item > span:first-child { color: var(--text-dim);
+  font-family: var(--mono); font-size: var(--fs-xs); }
+.suggest-meta-item code { background: var(--bg3); border-radius: var(--radius-xs);
+  padding: 1px 6px; overflow-wrap: anywhere; color: var(--text); }
+.suggest-md { margin: 6px 0 2px; overflow: auto; }
 .suggest-note-line { font-size: var(--fs-sm); color: var(--text-dim);
   opacity: 0.85; margin-top: 3px; }
 .suggest-preview { white-space: pre-wrap; overflow: auto; font-size: var(--fs-sm);
@@ -1322,7 +1367,13 @@ button.attach-chip:hover { border-color: color-mix(in srgb, var(--accent) 40%, v
 .suggest-edit { display: flex; flex-direction: column; gap: 6px; margin-top: 6px; }
 .suggest-edit label { display: flex; flex-direction: column; gap: 3px;
   font-size: var(--fs-sm); color: var(--text-dim); }
-.suggest-edit input, .suggest-edit textarea { font-size: var(--fs-md); }
+.suggest-edit input, .suggest-edit textarea { font-size: var(--fs-md); width: 100%;
+  min-height: 30px; padding: 6px 10px; background: var(--bg3); color: var(--text);
+  border: 1px solid var(--border); border-radius: var(--radius-sm); }
+.suggest-edit textarea { min-height: 96px; font-family: var(--mono); resize: vertical; }
+.suggest-edit input:focus, .suggest-edit textarea:focus { border-color: var(--accent);
+  outline: none; box-shadow: 0 0 0 2px var(--accent-ring); }
+.skill-suggest .approval-actions { flex-wrap: wrap; }
 
 /* ---- P3-7 压缩时间线：横向刻度条（turn 点 + compact ▼ 标记） ---- */
 .compact-timeline { position: relative; height: 26px; margin: 2px 14px 0;
