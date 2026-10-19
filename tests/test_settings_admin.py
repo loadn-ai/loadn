@@ -301,8 +301,15 @@ def test_custom_service_crud_and_guards(sa, monkeypatch):
         mod.put_custom_service({"name": "jina", "url": "ftp://x.test"})
     out = mod.put_custom_service({"name": "jina-api",
                                   "url": "https://api.jina.test/v1/", "note": "搜索"})
-    assert out["custom_services"] == [{"name": "jina-api",
-                                       "url": "https://api.jina.test/v1", "note": "搜索"}]
+    # v2（资源 Hub 重构批）：老输入归一化为结构化条目（url→config[0]，
+    # env 名按 name 派生；note/desc 双写兼容老读侧）
+    e = out["custom_services"][0]
+    assert e["name"] == "jina-api" and e["url"] == "https://api.jina.test/v1"
+    assert e["note"] == "搜索" and e["desc"] == "搜索"
+    assert e["config"] == [{"key": "endpoint", "label": "端点",
+                             "value": "https://api.jina.test/v1",
+                             "env": "LOADN_SVC_JINA_API_URL"}]
+    assert e["secrets"] == [] and e["enabled"] is True
     assert _yaml(tmp)["resources"]["custom_services"][0]["name"] == "jina-api"
     mod.put_custom_service({"name": "jina-api", "url": "https://api2.jina.test"})
     assert len(cfg.resources.custom_services) == 1          # upsert 不加行
@@ -312,6 +319,44 @@ def test_custom_service_crud_and_guards(sa, monkeypatch):
     mod.delete_custom_service("jina-api")
     assert cfg.resources.custom_services == []
     assert _yaml(tmp)["resources"]["custom_services"] == []
+
+
+def test_custom_service_v2_structured(sa, monkeypatch):
+    """>>> v2 对赌：多 config 自定义 env+secrets vault_ref 绑定落库；
+    非法 env 名/空 vault_ref 拒；纯凭证驱动（无 url）合法。"""
+    import loadn_webui.config as config_mod
+    mod, cfg, tmp = sa
+    monkeypatch.setattr(config_mod, "CONFIG", cfg)
+    out = mod.put_custom_service({
+        "name": "browserless", "category": "自定义服务", "icon": "🕸️",
+        "desc": "无头 Chrome 集群", "enabled": True,
+        "config": [
+            {"key": "endpoint", "label": "端点", "value": "http://127.0.0.1:3000",
+             "env": "LOADN_SVC_BROWSERLESS_URL"},
+            {"key": "concurrency", "label": "并发", "value": "4",
+             "env": "LOADN_SVC_BROWSERLESS_N"}],
+        "secrets": [{"label": "API Key", "env_key": "LOADN_SVC_BROWSERLESS_KEY",
+                      "vault_ref": "svc:browserless"}],
+        "prompt": "## 无头浏览器集群\n用于批量渲染。"})
+    e = out["custom_services"][0]
+    assert len(e["config"]) == 2 and e["config"][1]["env"] == "LOADN_SVC_BROWSERLESS_N"
+    assert e["secrets"][0]["vault_ref"] == "svc:browserless"
+    assert e["prompt"].startswith("## 无头浏览器集群")
+    # 非法 env 名拒绝
+    with pytest.raises(ValueError, match="大写下划线"):
+        mod.put_custom_service({"name": "bad-env", "config": [
+            {"label": "x", "value": "1", "env": "lower-case"}]})
+    # 空 vault_ref 拒绝
+    with pytest.raises(ValueError, match="vault_ref"):
+        mod.put_custom_service({"name": "bad-sec", "config": [
+            {"label": "端", "value": "http://x", "env": "LOADN_A_B"}],
+            "secrets": [{"label": "k", "env_key": "LOADN_K", "vault_ref": ""}]})
+    # 纯凭证驱动（无 url，config 有非 http 值）合法
+    ok = mod.put_custom_service({"name": "pure-cred",
+                                 "config": [{"label": "区域", "value": "cn",
+                                             "env": "LOADN_REGION"}]})
+    assert ok["custom_services"][-1]["name"] == "pure-cred"
+    assert _yaml(tmp)["resources"]["custom_services"][-1]["name"] == "pure-cred"
 
 
 def test_custom_service_vault_whitelist_and_cleanup(sa, monkeypatch):

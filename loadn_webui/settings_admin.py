@@ -476,21 +476,67 @@ def put_resources(body: dict) -> dict:
 def put_custom_service(body: dict) -> dict:
     """新增/更新自定义服务（upsert by name）→ resources.custom_services。
 
-    校验：name 小写 slug（vault 键与 env 变量名都由它派生）、url http(s)。
-    密钥另走 vault svc:<name>（put 不碰）；消费=turn env 注入
-    LOADN_SVC_<NAME>_URL（密钥不注入——凭证不进沙箱的既定边界）。
+    v2（2026-10-19 资源 Hub 重构批）：条目支持结构化字段——category/icon/
+    desc/enabled/config[]（多字段+env 自定义名）/secrets[]（vault_ref 绑定）/
+    prompt（Agent 调用指南）。老条目 {name,url,note} 继续合法（读侧归一化
+    映射 url→config[0]）。密钥仍不注入 env（凭证不进沙箱的既定边界）。
     """
+    import re as _re
+
     from .config import _SVC_NAME_RE
+    _env_re = _re.compile(r"[A-Z_][A-Z0-9_]*")
     name = str(body.get("name") or "").strip()
     url = str(body.get("url") or "").strip().rstrip("/")
     note = str(body.get("note") or "").strip()
     if not _SVC_NAME_RE.fullmatch(name):
         raise ValueError("name 需为小写 slug（字母/数字开头，可含 - _，≤32 位）")
-    if not url.startswith(("http://", "https://")):
-        raise ValueError("url 必须是 http(s) URL")
+    category = str(body.get("category") or "自定义服务").strip() or "自定义服务"
+    icon = str(body.get("icon") or "🔌").strip() or "🔌"
+    desc = str(body.get("desc") or "").strip()
+    enabled = bool(body.get("enabled", True))
+    prompt = str(body.get("prompt") or "").strip()
+    config_raw = body.get("config")
+    if config_raw is not None and not isinstance(config_raw, list):
+        raise ValueError("config 需为列表")
+    config = []
+    for c in (config_raw or []):
+        if not isinstance(c, dict):
+            raise ValueError(f"config 条目需为对象 {c!r}")
+        env = str(c.get("env") or "").strip()
+        if not _env_re.fullmatch(env):
+            raise ValueError(f"config.env 需为大写下划线环境变量名 {env!r}")
+        config.append({"key": str(c.get("key") or env.lower()),
+                       "label": str(c.get("label") or env),
+                       "value": str(c.get("value") or ""), "env": env})
+    secrets_raw = body.get("secrets")
+    if secrets_raw is not None and not isinstance(secrets_raw, list):
+        raise ValueError("secrets 需为列表")
+    secrets = []
+    for s in (secrets_raw or []):
+        if not isinstance(s, dict):
+            raise ValueError(f"secrets 条目需为对象 {s!r}")
+        vr = str(s.get("vault_ref") or "").strip()
+        ek = str(s.get("env_key") or "").strip()
+        if not vr or not ek:
+            raise ValueError("secrets 条目 vault_ref/env_key 不能为空")
+        secrets.append({"label": str(s.get("label") or "密钥"),
+                        "env_key": ek, "vault_ref": vr})
+    # v2 条目：url 或 config 至少一项（纯凭证驱动资源允许无端点）；老客户端
+    # 只传 url 的路径照旧（url 必须合法 http(s)，映射 config[0]）
+    if not config:
+        if not url:
+            raise ValueError("url 与 config 至少提供一项")
+        if not url.startswith(("http://", "https://")):
+            raise ValueError("url 必须是 http(s) URL")
+        config = [{"key": "endpoint", "label": "端点", "value": url,
+                   "env": f"LOADN_SVC_{name.upper().replace('-', '_')}_URL"}]
     entries = [s for s in (CONFIG.resources.custom_services or [])
                if isinstance(s, dict)]
-    entry = {"name": name, "url": url, "note": note}
+    entry = {"name": name, "note": note or desc, "category": category,
+             "icon": icon, "desc": desc or note, "enabled": enabled,
+             "config": config, "secrets": secrets, "prompt": prompt}
+    entry["url"] = next((c["value"] for c in config
+                         if str(c.get("value") or "").startswith(("http://", "https://"))), url)
     for i, s in enumerate(entries):
         if s.get("name") == name:
             entries[i] = entry
@@ -502,8 +548,10 @@ def put_custom_service(body: dict) -> dict:
     _dump_yaml_conf(_conf_path(), data)
     CONFIG.resources.custom_services = entries
     from .security.audit import audit
-    audit("policy_change", {"action": "custom_service_upsert", "name": name})
-    log.info("自定义服务 upsert：%s → %s", name, url)
+    audit("policy_change", {"action": "custom_service_upsert", "name": name,
+                            "v2": bool(len(config) > 1 or secrets)})
+    log.info("自定义服务 upsert：%s（v2 结构化条目，%d 字段 %d 密钥）",
+             name, len(config), len(secrets))
     return {"ok": True, "custom_services": entries}
 
 

@@ -41,15 +41,38 @@ def resources_overview():
         for k, lb, nt in _RES_SERVICE_FIELDS]
     secrets = [{"key": k, "set": states.get(k, False)}
                for k in vault_mod.RES_SECRET_FIELDS]
-    custom = [{"name": s.get("name"), "url": str(s.get("url") or ""),
-               "note": str(s.get("note") or ""),
-               "key_set": states.get(f"svc:{s.get('name')}", False)}
-              for s in (CONFIG.resources.custom_services or [])
+    custom = [_svc_overview(s, states) for s in
+              (CONFIG.resources.custom_services or [])
               if isinstance(s, dict) and s.get("name")]
     return {"services": services, "secrets": secrets, "custom": custom,
             "mcp": mcp_admin.list_servers(),
             "vault": {"platforms": vault_mod.list_platforms(),
                       "verify": vault_mod.verify()}}
+
+
+def _svc_overview(s: dict, states: dict) -> dict:
+    """custom_services 条目 → 前端视图（v2 结构化字段透传+老条目归一化：
+    url→config[0]、secrets 补 svc:<name> 缺省绑定；密钥态只回 set 布尔）。"""
+    name = s.get("name")
+    cfg = s.get("config") if isinstance(s.get("config"), list) else None
+    if not cfg:
+        env = f"LOADN_SVC_{str(name).upper().replace('-', '_')}_URL"
+        cfg = [{"key": "endpoint", "label": "端点",
+                "value": str(s.get("url") or ""), "env": env}]
+    secs = s.get("secrets") if isinstance(s.get("secrets"), list) else None
+    if secs is None:
+        secs = ([{"label": "密钥", "env_key":
+                  f"LOADN_SVC_{str(name).upper().replace('-', '_')}_KEY",
+                  "vault_ref": f"svc:{name}"}]
+                if states.get(f"svc:{name}") or str(s.get("url") or "") else [])
+    return {"name": name, "url": str(s.get("url") or ""),
+            "note": str(s.get("note") or ""),
+            "category": str(s.get("category") or "自定义服务"),
+            "icon": str(s.get("icon") or "🧩"), "desc": str(s.get("desc") or ""),
+            "enabled": bool(s.get("enabled", True)),
+            "config": cfg, "secrets": secs,
+            "prompt": str(s.get("prompt") or ""),
+            "key_set": states.get(f"svc:{name}", False)}
 @router.post("/admin/resources/custom")
 def resources_upsert_custom(body: dict):
     """新增/更新自定义服务（name/url/note；upsert by name）。"""

@@ -276,6 +276,16 @@ def session_env(ws: Path, sid: str) -> dict:
         **{f"LOADN_SVC_{s['name'].upper().replace('-', '_')}_URL": str(s["url"])
            for s in (CONFIG.resources.custom_services or [])
            if isinstance(s, dict) and s.get("name") and s.get("url")},
+        # v2（资源 Hub 重构批）：结构化条目的多 config 字段按自定义 env 名
+        # 注入（enabled=false 跳过；老条目 url 已由上方推导注入——env 重名
+        # 时 v2 显式字段优先，字典合并后者覆盖前者）
+        **{str(c["env"]): str(c.get("value") or "")
+           for s in (CONFIG.resources.custom_services or [])
+           if isinstance(s, dict) and s.get("name")
+           and s.get("enabled", True)
+           and isinstance(s.get("config"), list)
+           for c in s["config"]
+           if isinstance(c, dict) and str(c.get("env") or "").strip()},
         # 跨项目只读数据共享指路（bwrap 档 ro-bind 同路径；off 档无挂载
         # 边界但路径本可读——env 让 agent 知道 sanctioned 的共享面在哪。
         # resolve 与 _shared_binds 挂载点同口径——symlink 路径不悬空）

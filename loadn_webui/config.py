@@ -425,13 +425,33 @@ def load_config() -> Config:
         raise ValueError("resources.custom_services 需为列表"
                          "（config.yaml）——拒绝启动")
     _cs_seen: set[str] = set()
+    _env_name_re = _re.compile(r"[A-Z_][A-Z0-9_]*")
     for s in cs:
+        # v2（资源 Hub 重构批）：结构化条目 url 可缺席（config 非空即可——
+        # 纯凭证驱动资源）；老条目 {name,url,note} 校验不变
         if not isinstance(s, dict) \
-                or not _SVC_NAME_RE.fullmatch(str(s.get("name") or "")) \
-                or not str(s.get("url") or "").startswith(("http://", "https://")):
+                or not _SVC_NAME_RE.fullmatch(str(s.get("name") or "")):
             raise ValueError(f"resources.custom_services 条目非法 {s!r}"
-                             "（需 name=小写 slug、url=http(s)://…，config.yaml）"
+                             "（需 name=小写 slug，config.yaml）——拒绝启动")
+        _cfg2 = s.get("config")
+        has_url = str(s.get("url") or "").startswith(("http://", "https://"))
+        has_cfg = isinstance(_cfg2, list) and len(_cfg2) > 0
+        if not has_url and not has_cfg:
+            raise ValueError(f"resources.custom_services 条目非法 {s!r}"
+                             "（需 url=http(s)://… 或非空 config 列表，config.yaml）"
                              "——拒绝启动")
+        for c in (_cfg2 if isinstance(_cfg2, list) else []):
+            if not isinstance(c, dict) \
+                    or not _env_name_re.fullmatch(str(c.get("env") or "")):
+                raise ValueError(f"custom_services[{s['name']!r}].config 条目非法"
+                                 f" {c!r}（env 需大写下划线名，config.yaml）"
+                                 "——拒绝启动")
+        for sec in (s.get("secrets") if isinstance(s.get("secrets"), list) else []):
+            if not isinstance(sec, dict) or not str(sec.get("vault_ref") or "").strip() \
+                    or not str(sec.get("env_key") or "").strip():
+                raise ValueError(f"custom_services[{s['name']!r}].secrets 条目非法"
+                                 f" {sec!r}（vault_ref/env_key 非空，config.yaml）"
+                                 "——拒绝启动")
         if s["name"] in _cs_seen:
             raise ValueError(f"resources.custom_services 名字重复 {s['name']!r}"
                              "（config.yaml）——拒绝启动")

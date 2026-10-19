@@ -963,11 +963,18 @@ async def _ping_one(name: str) -> dict:
     r = _res()
     try:
         if name.startswith("svc:"):
-            # 自定义服务（资源页配置）：GET 根路径，<500 即算可达
+            # 自定义服务（资源页配置）：GET 根路径，<500 即算可达。
+            # v2 结构化条目：url 缺席时回落 config 里第一个 http(s) 值
             svc = name[4:]
-            url = next((str(s.get("url")) for s in
-                        (CONFIG.resources.custom_services or [])
-                        if isinstance(s, dict) and s.get("name") == svc), "")
+            entry = next((s for s in
+                          (CONFIG.resources.custom_services or [])
+                          if isinstance(s, dict) and s.get("name") == svc), None)
+            url = str(entry.get("url") or "") if entry else ""
+            if not url and entry and isinstance(entry.get("config"), list):
+                url = next((str(c.get("value") or "") for c in entry["config"]
+                            if isinstance(c, dict)
+                            and str(c.get("value") or "").startswith(
+                                ("http://", "https://"))), "")
             if not url:
                 return {"ok": False, "msg": f"未配置自定义服务 {svc}"}
             resp = await _get(url, timeout=8.0)
