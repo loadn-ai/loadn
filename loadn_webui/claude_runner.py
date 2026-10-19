@@ -339,6 +339,15 @@ async def run_turn(call: TurnCall, stop: StopHandle | None = None) -> TurnProcRe
 
     spec = engines_mod.resolve(call.engine)
     cmd, spec_env = spec.build_argv(call)
+    # E2BIG 防线：Linux MAX_ARG_STRLEN=128KB——超长消息（粘贴大日志/长文档）
+    # 作为单个 argv 参数 spawn 必炸 [Errno 7] Argument list too long。
+    # 三引擎契约 argv[-2:]==['--', prompt]；超限时摘掉改走 stdin 管道
+    # （claude CLI 官方 headless stdin 用法；loadn cli main.py 无参非 tty
+    # 即读 stdin；opencode run 同）。阈值 100KB 留余量。
+    prompt_stdin: str | None = None
+    if len(cmd[-1].encode()) > 100_000:
+        prompt_stdin = cmd.pop()
+        cmd.pop()   # '--'
     env = _spawn_env(
         {"LOADN_TURN_ID": str(call.turn_id),
          "WORKDADDY_TURN_ID": str(call.turn_id), **spec_env},
@@ -410,7 +419,8 @@ async def run_turn(call: TurnCall, stop: StopHandle | None = None) -> TurnProcRe
         try:
             proc = await asyncio.create_subprocess_exec(
                 *cmd, cwd=str(call.cwd), stdout=fo, stderr=fe,
-                start_new_session=True, env=env)
+                start_new_session=True, env=env,
+                stdin=asyncio.subprocess.PIPE if prompt_stdin is not None else None)
         except OSError as e:
             return sink.build_result(
                 ok=False, error=f"spawn_failed: {e}", duration_s=0.0,
@@ -418,6 +428,15 @@ async def run_turn(call: TurnCall, stop: StopHandle | None = None) -> TurnProcRe
         finally:
             fo.close()
             fe.close()
+        if prompt_stdin is not None:
+            # 超长 prompt 管道注入：子进程启动即读 stdin，drain 不会死锁；
+            # 子进程早退不读 → BrokenPipe 静默（该进程的 turn 走失败面）
+            try:
+                proc.stdin.write(prompt_stdin.encode())
+                await proc.stdin.drain()
+                proc.stdin.close()
+            except (BrokenPipeError, ConnectionResetError):
+                pass
         _register_pid(proc.pid)
         if call.on_spawned is not None:
             try:
