@@ -13,43 +13,127 @@
 
 **[简体中文](README.zh-CN.md)** | English
 
-**A self-contained coding-agent engine in pure Python.** One `pip install`, any
-Anthropic-form or OpenAI-compatible endpoint, and you get a headless agent with
-tools, MCP, subagents, session persistence, and context compaction — speaking
-the Claude Code `stream-json` dialect, so existing harnesses can drive it as a
-drop-in subprocess engine.
+> ### 天行健，oldman，地势坤，loadn。
+>
+> *As heaven moves with vigor, the oldman strives without rest; as earth lies
+> receptive, loadn bears and carries all.* — the project motto, after the
+> Qian and Kun hexagrams of the *I Ching*.
+
+**A self-contained coding-agent engine in pure Python, grown into a
+self-hostable agent platform.** One `pip install`, any Anthropic-form or
+OpenAI-compatible endpoint, and you get a headless agent with tools, MCP,
+subagents, session persistence, and context compaction — speaking the Claude
+Code `stream-json` dialect, so existing harnesses can drive it as a drop-in
+subprocess engine. Around the engine sits a multi-session web platform:
+organization of digital employees, a resource hub, a seven-layer
+execution-security stack, scheduling, cost accounting, and a tamper-evident
+audit ledger.
 
 > **Status:** `v0.7.x` (beta), actively maintained. The CLI argv contract,
 > `stream-json` dialect, and config keys follow SemVer; breaking changes are
 > announced in [CHANGELOG.md](CHANGELOG.md) with each minor bump.
-
+>
 > Naming: loadn is the engine package of the loadn-ai platform (org:
 > **loadn-ai**). Product forms: `loadn` engine / `loadn-web` platform /
 > `loadn desktop`.
 
-## Companion research
+## The workbench
 
-loadn is the deployed reference system for a family of preprints (2026, to
-appear). Each paper's claims are anchored to this codebase:
+Sessions, live agent process (thinking / tool cards / subagent dispatch /
+steering), queued messages, artifacts — one screen:
 
-- **Defense-in-Depth for Agentic Execution: A Reference Architecture
-  Evaluated by Deterministic Replay of an Online Codebase** — evaluates a
-  frozen snapshot of this repo's platform: a framework-native seven-layer
-  execution-security stack, pre-registered 96-scenario injection suite ×
-  16-configuration ablation, 56 white-box evasion transforms. loadn is the
-  deployed architecture under test; the snapshot manifest ships with the
-  official release.
-- **The Standing Layer: Agent = Model + Harness + Standing** — position
-  paper: the third term of the agent formula is externally adjudicated
-  standing (accounts, reputation, egress, funds, channels, budgets). The
-  platform's resource console is the standing layer in deployed form, and
-  its audit ledger is the paper's field-evidence source.
-- **Toolbelt Richness: A Concept and Measurement Framework for Agent
-  Environments** — defines toolbelt richness (introspectable API surface +
-  version-matched docs + runnable examples; supply quality, not tool count)
-  and measures three supply arms (skills+MCP vs pinned local toolbelt vs
-  hybrid). loadn's local-first tool supply is the rich arm's design
-  philosophy.
+![The loadn-web workbench — chat stream with todo list, thinking cards, subagent dispatch card, steering note, and markdown replies](docs/assets/chat-workspace.png)
+
+Highlights visible in the shot: the **task checklist** synced from
+`TodoWrite`/`TaskCreate` events, **collapsible thinking cards** (per-agent
+attribution, live character counts for subagent thinking), the **dispatch
+card** when a task is delegated to a named digital employee, **steering
+notes** (mid-run interjections that inject before the next LLM call), and
+markdown replies with GFM tables. Reloaded sessions replay byte-identically
+with the live stream — same components, same order, nothing lost.
+
+---
+
+## Three original formulas
+
+The platform is built as the deployed form of three original ideas. Each
+formula names the terms; each screenshot is the formula running in
+production.
+
+### 1 · Agent = Model + Harness + Resource
+
+An agent is not a model. A model is rented; the **harness** is the
+engineering discipline around it (loop control, permission engine, context
+compaction, subagent management, event dialect), and **resources** are what
+the world will actually admit the agent to use: endpoints, credentials,
+sensors, egress paths, headless browsers. loadn makes each term explicit and
+swappable — the model layer is provider-agnostic (any Anthropic-form or
+OpenAI-compatible endpoint), the harness is the engine you are reading
+about, and resources are first-class citizens managed in the **Resource
+Hub**:
+
+![Resource Hub — categorized resource cards with probe status, credential chips, and search](docs/assets/resource-hub.png)
+
+Every resource is defined as a `Resource.md` (structured form ↔ markdown
+source, two-way live sync), binds credentials from the encrypted vault by
+reference, and injects into the task environment as `LOADN_SVC_*` variables
+— the harness preview shows exactly what the agent will see:
+
+![Resource drawer — structured form and Resource.md editing with Harness injection preview](docs/assets/resource-drawer.png)
+
+### 2 · Digital Employee = Agent + Skills + Memory
+
+The platform runs an **organization**, not a single agent. Department trees
+and named employees are defined in the org console (each employee is an
+agent definition: MBTI-flavored persona, skills, duty — hot-injected into
+the subagent registry); **skills** are agentskills.io-standard `SKILL.md`
+packages taught over time (the skill-suggestion loop turns your corrections
+into persistent, reviewable skills); **memory** is partitioned into user /
+project / workspace scopes with snapshot-and-rollback:
+
+![Digital employees — org chart with departments, employee cards, and duty descriptions](docs/assets/org-page.png)
+
+![Skills library — local and marketplace skills with source badges and lifecycle states](docs/assets/skills-page.png)
+
+Dispatch is by name: `Task(subagent_type="小明")` routes work to employee
+小明 with her persona and skill set; results, thinking, and files flow back
+attributed. Temporary workers can be recruited from a pool for burst work —
+the org stays legible while the headcount flexes.
+
+### 3 · Security = Sandbox + Control Points + Vault + Audit
+
+Security is not a checkbox; it is **four terms multiplied together**. The
+**sandbox** fences reversible work (bwrap binds + netns, egress only through
+the allowlist proxy); **control points** gate the irreversible (bash-AST
+policy, egress three-state policy, approval gates with one-time codes bound
+to parameter hashes); the **vault** keeps every credential AES-GCM encrypted
+with plaintext never entering the agent environment; and the **audit**
+ledger chains every adjudication hash-by-hash with daily external anchors.
+No LLM sits on the enforcement path — every layer is deterministic,
+fail-closed:
+
+![Security Center — posture overview with sandbox, approvals, egress, vault, audit, canary, and target-policy panels](docs/assets/security-center.png)
+
+```mermaid
+flowchart LR
+    CALL["agent tool call"] --> L1["L1<br/>credential<br/>vault"] --> L2["L2<br/>bash-AST<br/>policy"] --> L3["L3<br/>egress allowlist<br/>proxy"] --> L4["L4<br/>filesystem<br/>sandbox"] --> L5["L5<br/>irreversible-action<br/>approval gate"] --> L6["L6<br/>canary +<br/>audit chain"] --> L7["L7<br/>supply-chain<br/>trust gate"] --> EXEC["exec"]
+    style CALL fill:#F8FAFC,stroke:#94A3B8
+    style EXEC fill:#FEF3C7,stroke:#F59E0B
+```
+
+| # | Term | Mechanism | Source |
+|---|---|---|---|
+| L1 | Vault | AES-GCM; plaintext never enters the agent env | `loadn_webui/security/vault.py` |
+| L2 | Control point | Bash AST policy: L0 red lines + token-coverage rules, out-of-process PreToolUse | `loadn_webui/security/policy.py` |
+| L3 | Control point | Egress allowlist proxy; CONNECT allowlist, DNS-rebinding & private-net rejection | `loadn_webui/security/egress_proxy.py` |
+| L4 | Sandbox | bwrap same-path binds; netns with proxy socket as sole egress | `loadn_webui/security/sandbox.py` |
+| L5 | Control point | Irreversible-action approval gate: one-time codes bound to parameter hashes | `loadn_webui/security/approve.py` |
+| L6 | Audit | Canary trips + hash-chained ledger with daily anchors | `loadn_webui/security/canary.py` · `audit.py` |
+| L7 | Control point | Supply-chain trust gate: skill sha256 locks, eight-class static scans | `loadn_webui/security/skill_scan.py` |
+
+---
+
+## Architecture
 
 ```mermaid
 flowchart TB
@@ -93,17 +177,11 @@ agent platform**:
 | Component | What it is | Start |
 |---|---|---|
 | `loadn/` | The engine (main subject of this README) | `pip install loadn` |
-| `loadn_webui/` | Web platform: session management / scheduling / cost / sharing, with a framework-native **seven-layer execution-security stack** (credential vault · bash-AST policy · egress allowlist proxy · bwrap sandbox · irreversible-action approval gate · canary+audit chain · supply-chain trust gate) | `pip install -e ".[webui]"` → `loadn-web init` → `loadn-web serve` |
+| `loadn_webui/` | Web platform: sessions / org / resource hub / security / scheduling / cost, with the seven-layer execution-security stack above | `pip install -e ".[webui]"` → `loadn-web init` → `loadn-web serve` |
 | `desktop/` | Desktop form (Tauri shell + Debian rootfs: the whole execution domain runs inside a Linux VM on mac/win) | `desktop/image/` build pipeline |
-| `ui/` | React frontend (admin center with security / traffic / cost panels) | `cd ui && npm run build` |
+| `ui/` | React frontend (admin center with security / resource / org panels) | `cd ui && npm run build` |
 
-![The loadn-web workbench — sessions, skill teaching cards, approval gates, cost panels](docs/assets/platform-preview.png)
-
-The admin **Security Center** — one page over the whole security stack
-(posture overview, sandbox tiers, approval queue, target policies, egress
-control, credential vault, tamper-evident audit ledger, canary trips):
-
-![Security Center — posture overview with eight sub-panels](docs/assets/security-center.png)
+![The loadn-web admin platform — sessions, skill teaching cards, approval gates, cost panels](docs/assets/platform-preview.png)
 
 Docs index: [ARCHITECTURE](docs/ARCHITECTURE.md) (planes / data layout /
 test system) · [CONFIG](docs/CONFIG.md) (every config key) ·
@@ -111,50 +189,6 @@ test system) · [CONFIG](docs/CONFIG.md) (every config key) ·
 skills / MCP / hooks) · [PROTOCOL](docs/PROTOCOL.md) (engine dialect
 contract) · [RELEASE](docs/RELEASE.md) (deploy / upgrade / rollback) ·
 [ATTACK_SURFACE](docs/ATTACK_SURFACE.md) (attack surface + AI-BOM).
-
-## Three ideas this deployment embodies
-
-**1 · Defense-in-depth along an irreversibility boundary.** The platform
-ships a framework-native execution-security stack — seven layers, **no LLM
-on the enforcement path**, fail-closed by default, tiered by action
-reversibility (reversible work is fenced into the sandbox; irreversible
-actions stop at the approval gate — the sandbox is the load-bearing wall):
-
-```mermaid
-flowchart LR
-    CALL["agent tool call"] --> L1["L1<br/>credential<br/>vault"] --> L2["L2<br/>bash-AST<br/>policy"] --> L3["L3<br/>egress allowlist<br/>proxy"] --> L4["L4<br/>filesystem<br/>sandbox"] --> L5["L5<br/>irreversible-action<br/>approval gate"] --> L6["L6<br/>canary +<br/>audit chain"] --> L7["L7<br/>supply-chain<br/>trust gate"] --> EXEC["exec"]
-    style CALL fill:#F8FAFC,stroke:#94A3B8
-    style EXEC fill:#FEF3C7,stroke:#F59E0B
-```
-
-Seven layers, **no LLM on the enforcement path**, fail-closed by default;
-the mechanism and source of each layer:
-
-| # | Layer | Mechanism | Source |
-|---|---|---|---|
-| L1 | Credential vault | AES-GCM; plaintext never enters the agent env | `loadn_webui/security/vault.py` |
-| L2 | Bash AST policy | L0 red lines + token-coverage rules, out-of-process PreToolUse | `loadn_webui/security/policy.py` |
-| L3 | Egress allowlist proxy | CONNECT allowlist, DNS-rebinding & private-net rejection | `loadn_webui/security/egress_proxy.py` |
-| L4 | Filesystem sandbox | bwrap same-path binds; netns with proxy socket as sole egress | `loadn_webui/security/sandbox.py` |
-| L5 | Irreversible-action approval gate | one-time codes bound to parameter hashes | `loadn_webui/security/approve.py` |
-| L6 | Canary trip + audit chain | planted decoy credentials; hash-chained ledger with daily anchors | `loadn_webui/security/canary.py` · `audit.py` |
-| L7 | Supply-chain trust gate | skill sha256 locks, eight-class static scans, untrusted degradation | `loadn_webui/security/skill_scan.py` |
-
-**2 · The standing layer: agent = model + harness + standing.** Beyond
-compute, task completion is conditioned on what the world will admit —
-accounts, egress, funds, channels, rate budgets. The platform's resource
-console manages exactly this admission sub-plane: credentials in the vault,
-domain-level egress policy with session-scoped grants, approval-gated
-irreversible actions, per-role convergence budgets, and custom services
-injected as `LOADN_SVC_<NAME>_URL` endpoints. The operator holds the
-resource-landlord role, and every adjudication lands in the audit ledger.
-
-**3 · Local-first toolbelt over skill/MCP-heavy stacks.** The engine's tools
-are plain Python you can introspect (`dir()` / `help()` / read the source);
-the platform mounts pinned local runtimes and read-only data roots (resource
-bridges) instead of wrapping every capability in prompt packages or RPC
-interfaces. Skills and MCP are supported — as thin wrappers and dynamic
-extensions, not the primary supply channel.
 
 ## Why another agent engine
 
@@ -177,7 +211,8 @@ extensions, not the primary supply channel.
   (soft remind → hard break), dual-signal stall detection for subprocesses,
   and compaction that keeps tool-call pairing intact. Stream interruptions
   and retriable provider errors are retried inside the loop — a turn never
-  ends with a bogus success.
+  ends with a bogus success. Oversized prompts (E2BIG) transparently fall
+  back to stdin injection.
 - **Cheap by default.** Three prompt-cache breakpoints (tools tail / system /
   last message) with a no-cache lane for auxiliary calls, a handoff-style
   compactor that prunes before summarizing (with a file ledger and UPDATE
@@ -287,7 +322,7 @@ spawns `claude -p --output-format stream-json` can spawn `loadn` instead:
 | Hooks (Pre/PostToolUse, Stop, Session*) | `.loadn/settings.json` `hooks` — external commands, stdin JSON, exit 2 blocks |
 | MCP servers | `.mcp.json` in the project (stdio + streamable-HTTP with OAuth); tools appear as `mcp__<server>__<tool>` |
 | Skills | `.agents/skills/` (agentskills.io standard, highest priority) / `.claude/skills/` / `.loadn/skills/` / `$LOADN_HOME/skills` SKILL.md — indexed in the system prompt; body loads on demand via the `Skill` tool (third-party installs go through a supply-chain lock; any skill exports as an agentskills.io-compatible zip) |
-| Custom subagents | `.claude/agents/*.md` / `$LOADN_HOME/agents` — frontmatter `name/description/tools/model`; usable as `Task(subagent_type=…)` |
+| Custom subagents | `.claude/agents/*.md` / `$LOADN_HOME/agents` — frontmatter `name/description/tools/model`; usable as `Task(subagent_type=…)`; org-console employees are hot-injected here |
 | Constitution chain | CLAUDE.md/AGENTS.md from the git root down to cwd, nearest last; `@./file.md` line imports; user-level `$LOADN_HOME/AGENT.md` on top |
 | Platform config (50+ keys) | [docs/CONFIG.md](docs/CONFIG.md) — sandbox tiers, egress allowlist/three-state policy, approval TTLs, resource bridges |
 | Thinking budget | `LOADN_THINKING_BUDGET` env or `extra.thinking_budget` (Anthropic-form `thinking.budget_tokens`; off by default) |
@@ -322,8 +357,10 @@ mutation TARGET_TESTS map).
 - [x] post-0.6.5 — test-quality campaign: 83% coverage, mutation
       verification at 47 files / 4055 mutants (78% kill rate), weekly
       mutation gate in CI
-- [x] v0.7.x — operational hardening: non-idle upgrade guards, skill
-      teaching-suggestion loop, admin-center redesign (see CHANGELOG)
+- [x] v0.7.x — operational hardening: replay-parity chat (reload identical
+      to live), Resource Hub with `Resource.md` two-way editing, digital
+      employees (org / duty / temp pool), non-idle upgrade guards, admin
+      redesign (see CHANGELOG)
 - [ ] PyPI first release (name reserved; tag → build → publish automated)
 - [ ] desktop real-device validation (mac/win)
 - [ ] docs site (GitHub Pages: README/ARCHITECTURE/CONFIG/EXTENDING)
