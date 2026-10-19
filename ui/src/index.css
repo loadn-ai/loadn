@@ -2193,6 +2193,28 @@ button.attach-chip:hover { border-color: color-mix(in srgb, var(--accent) 40%, v
 .org-card-sub { color: var(--text-dim); font-size: var(--fs-xs); }
 .org-traits { display: flex; gap: 4px; flex-wrap: wrap; }
 /* DW-6 职责说明：卡片两行截断，悬停 title 看全文 */
+
+/* DW-7：员工能力绑定——卡片徽章行/编辑器 chip 墙/岗位记忆抽屉 */
+.org-binds { display: flex; gap: 6px; flex-wrap: wrap; margin-top: 6px; }
+.org-binds .chip.bind, .org-bind-pick { font-size: var(--fs-xs, 11px); }
+.org-bind-list { display: flex; flex-wrap: wrap; gap: 6px; max-height: 132px;
+  overflow: auto; padding: 6px; border: 1px solid var(--border, #333);
+  border-radius: 8px; margin-top: 4px; }
+.org-bind-pick { display: inline-flex; align-items: center; gap: 4px;
+  padding: 3px 8px; border-radius: 999px; cursor: pointer; user-select: none;
+  background: var(--bg-dim, #1a1a1a); border: 1px solid var(--border, #333); }
+.org-bind-pick.on { background: var(--accent-dim, #6366f1); color: #fff;
+  border-color: transparent; }
+.org-bind-pick input { display: none; }
+.org-mem { max-width: 560px; }
+.org-mem-list { display: flex; flex-direction: column; gap: 4px;
+  margin-bottom: 10px; }
+.org-mem-row { display: flex; align-items: center; gap: 8px; padding: 6px 8px;
+  border: 1px solid var(--border, #333); border-radius: 8px; }
+.org-mem-open { background: none; border: none; color: var(--text, #eee);
+  cursor: pointer; text-align: left; flex: 1; padding: 0; }
+.org-mem-foot { display: flex; gap: 8px; }
+
 .org-duty { color: var(--text-dim); font-size: var(--fs-xs); line-height: 1.5;
   display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical;
   overflow: hidden; margin-top: 2px; }

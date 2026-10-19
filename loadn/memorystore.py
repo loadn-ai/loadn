@@ -36,6 +36,7 @@ MAX_ENTRIES = 200
 PROJECT_DOMAIN = "project"
 USER_DOMAIN = "user"
 USER_DIR_NAME = "_user"          # $LOADN_HOME/memory/_user/（下划线前缀避让 hex 域键）
+EMPLOYEE_DIR_NAME = "_emp"        # DW-7：员工记忆域根（_emp/<slug>/；域键 e:<员工名>）
 
 
 def user_enabled() -> bool:
@@ -141,6 +142,11 @@ def domain_dir_by_key(key: str, *, create: bool = False) -> Path | None:
     if key == USER_DOMAIN:
         d = memory_root() / USER_DIR_NAME
         return d if (create or d.is_dir()) else None
+    if key.startswith("e:") and len(key[2:].strip()) > 1:
+        # DW-7 员工域：slug 规则与 org._def_filename 一致（路径非法字符替换）
+        slug = re.sub(r"[/\\\s:]+", "_", key[2:])[:64]
+        d = memory_root() / EMPLOYEE_DIR_NAME / slug
+        return d if (create or d.is_dir()) else None
     if key.startswith("p:") and re.fullmatch(r"p:[0-9a-f]{12}", key):
         d = memory_root() / key[2:]
         if create:
@@ -156,12 +162,20 @@ def list_domain_keys() -> list[str]:
     root = memory_root()
     try:
         dirs = sorted(p for p in root.iterdir()
-                      if p.is_dir() and p.name != USER_DIR_NAME)
+                      if p.is_dir() and p.name not in (USER_DIR_NAME,
+                                                       EMPLOYEE_DIR_NAME))
     except OSError:
         return out
     out += [f"p:{d.name}" for d in dirs
             if re.fullmatch(r"[0-9a-f]{12}", d.name)
             and (d / "manifest.json").exists()]
+    # DW-7：员工域（_emp/<slug>/ 有 manifest 才算）
+    emp_root = root / EMPLOYEE_DIR_NAME
+    try:
+        out += [f"e:{d.name}" for d in sorted(emp_root.iterdir())
+                if d.is_dir() and (d / "manifest.json").exists()]
+    except OSError:
+        pass
     return out
 
 

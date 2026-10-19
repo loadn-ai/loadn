@@ -40,6 +40,9 @@ def _guard_domain(domain: str) -> None:
         return
     if domain == "user":
         raise HTTPException(403, "用户记忆域是全局知识库——由管理员维护")
+    if domain.startswith("e:") and len(domain[2:].strip()) > 1:
+        # DW-7：员工记忆域是组织资产（数字员工的岗位知识库）——同 user 域
+        raise HTTPException(403, "员工记忆域是组织资产——由管理员维护")
     if domain.startswith("p:") and len(domain) == 14:
         from loadn import memorystore as _ms
 
@@ -114,6 +117,18 @@ def list_domains():
         es = mstore.entries_of(d) if d else []
         if k == "user":
             label = "用户级（跨项目）"
+        elif k.startswith("e:"):
+            # DW-7 员工域：slug 与 org._def_filename 同规则反查员工名·头衔
+            import re as _re
+            slug = _re.sub(r"[\\\s:]+", "_", k[2:])[:64]
+            emp = None
+            with _db.conn() as _c:
+                for r in _c.execute("SELECT name, title FROM org_employees"):
+                    if _re.sub(r"[\\\s:]+", "_", r["name"])[:64] == slug:
+                        emp = r
+                        break
+            label = ("员工·" + emp["name"] + "（" + emp["title"] + "）"
+                     if emp else "员工域 " + k[2:])
         else:
             label = ws_map.get(k[2:], "")
             if not label:

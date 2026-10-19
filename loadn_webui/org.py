@@ -280,7 +280,27 @@ def init_org(c: sqlite3.Connection) -> int:
 
 
 _EMPLOYEE_COLS = ("name", "title", "duty", "mbti", "traits", "persona",
-                  "tools", "model", "status", "color", "dept_id")
+                  "tools", "skills", "resources", "model", "status",
+                  "color", "dept_id")
+
+
+def _check_skill_names(names: list) -> None:
+    """DW-7：技能绑定名须在技能库（防拼写错绑空技能面）。"""
+    from . import skills as skills_mod
+    known = {s.get("name") for s in skills_mod.available()}
+    unknown = [n for n in names if n not in known]
+    if unknown:
+        raise ValueError("技能不存在: " + ", ".join(unknown))
+
+
+def _check_svc_names(names: list) -> None:
+    """DW-7：资源绑定名须在 custom_services（防绑不存在的服务面）。"""
+    from .config import CONFIG
+    known = {str(s.get("name")) for s in (CONFIG.resources.custom_services or [])
+             if isinstance(s, dict) and s.get("name")}
+    unknown = [n for n in names if n not in known]
+    if unknown:
+        raise ValueError("资源不存在: " + ", ".join(unknown))
 
 
 def upsert_employee(c: sqlite3.Connection, body: dict,
@@ -290,8 +310,17 @@ def upsert_employee(c: sqlite3.Connection, body: dict,
     for k in _EMPLOYEE_COLS:
         if k in body and body[k] is not None:
             v = body[k]
-            if k == "tools" and isinstance(v, list):
-                v = json.dumps([str(x) for x in v], ensure_ascii=False)
+            if k in ("tools", "skills", "resources"):
+                if isinstance(v, list):
+                    items = [str(x).strip() for x in v if str(x).strip()]
+                    v = json.dumps(items, ensure_ascii=False) if items else ""
+                if v in ("", "[]"):
+                    vals[k] = None          # DW-7：空数组=清绑定（回不设限）
+                    continue
+                if k == "skills":
+                    _check_skill_names(json.loads(v))
+                if k == "resources":
+                    _check_svc_names(json.loads(v))
             vals[k] = str(v)[:4000] if k != "dept_id" else int(v)
     if emp_id is None and not vals.get("name"):
         raise ValueError("员工姓名必填")   # 编辑时 name 可缺省（不改名）
@@ -407,6 +436,43 @@ def persona_system_add(emp: dict, dept_name: str) -> str:
     return "\n\n".join(parts)
 
 
+def _json_list(v) -> list:
+    """DB JSON 列 → list（坏 JSON/非列表=空）。"""
+    if isinstance(v, list):
+        return [str(x) for x in v if str(x).strip()]
+    if isinstance(v, str) and v.strip():
+        try:
+            out = json.loads(v)
+            return [str(x) for x in out if str(x).strip()] \
+                if isinstance(out, list) else []
+        except ValueError:
+            return []
+    return []
+
+
+def _svc_env_map() -> dict:
+    """svc 名 → 注入 env 变量名清单（DW-7 resources 键静态映射源）。
+
+    v2 结构化条目按 config[].env 显式名；老条目 url 推导
+    LOADN_SVC_<NAME>_URL。secrets 走 vault 不进 env，不列。"""
+    from .config import CONFIG
+    out: dict = {}
+    for s in (CONFIG.resources.custom_services or []):
+        if not (isinstance(s, dict) and s.get("name")):
+            continue
+        envs = []
+        if s.get("url"):
+            envs.append("LOADN_SVC_"
+                        + str(s["name"]).upper().replace("-", "_") + "_URL")
+        for c in (s.get("config") or []):
+            e = str((c or {}).get("env") or "").strip() if isinstance(c, dict) else ""
+            if e:
+                envs.append(e)
+        if envs:
+            out[str(s["name"])] = envs
+    return out
+
+
 def sync_agent_def(c: sqlite3.Connection, emp_id: int) -> None:
     """员工行 → agent def 文件（disabled=摘除文件不注入）。"""
     emp = c.execute("SELECT * FROM org_employees WHERE id=?",
@@ -445,6 +511,18 @@ def sync_agent_def(c: sqlite3.Connection, emp_id: int) -> None:
             pass
     if emp.get("model"):
         fm.append(f"model: {emp['model']}")
+    # DW-7 能力绑定三键（None/空不写=引擎不设限）
+    skills = _json_list(emp.get("skills"))
+    if skills:
+        fm.append("skills: " + ", ".join(skills))
+    resources = _json_list(emp.get("resources"))
+    if resources:
+        env_map = _svc_env_map()
+        rows = [n + ":" + "+".join(env_map[n]) for n in resources
+                if env_map.get(n)]
+        if rows:
+            fm.append("resources: " + ", ".join(rows))
+    fm.append("memory: " + str(emp['name']))  # 员工记忆域恒绑（e:<名>）
     body = persona_system_add(emp, dept)
     base.mkdir(parents=True, exist_ok=True)
     path.write_text("---\n" + "\n".join(fm) + "\n---\n\n" + body + "\n",

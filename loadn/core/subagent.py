@@ -115,6 +115,54 @@ class SubagentManager:
         except (OSError, ValueError, AttributeError):
             return []
 
+    def _bind_blocks(self, conf: dict) -> str:
+        """DW-7 能力绑定块（skills/resources/memory → system_add 前置）。
+
+        软边界声明：subagent 与主会话同 cwd 同进程——技能目录与资源 env
+        物理上仍全量可见，本块以职责面声明约束模型行为（硬边界=独立
+        workspace，backlog）。任一块为空即整块不注入（零开销）。"""
+        blocks: list[str] = []
+        sk = conf.get("skills")
+        if sk:
+            try:
+                from loadn.core.skills import discover_skills
+                found = discover_skills(self.cwd)
+            except Exception:                       # noqa: BLE001 发现失败=无绑定面
+                found = {}
+            rows = [f"- {found[n].name}：{str(found[n].description)[:120]}"
+                    for n in sk if n in found]
+            if rows:
+                blocks.append("## 你的技能面（只可用下列技能）\n"
+                              + "\n".join(rows)
+                              + "\n未列出的技能不属于你的职责范围，请勿调用。")
+        rs = conf.get("resources")
+        if rs:
+            rows = []
+            for item in rs:
+                name, _, envs = str(item).partition(":")
+                env_list = [e for e in envs.split("+") if e.strip()]
+                if name.strip() and env_list:
+                    rows.append(f"- {name}：环境变量 " + "、".join(env_list))
+            if rows:
+                blocks.append("## 你的资源面（职责内服务，值在环境变量中自取）\n"
+                              + "\n".join(rows)
+                              + "\n未列出的服务不属于你的职责范围。")
+        mem = conf.get("memory")
+        if mem:
+            try:
+                from loadn import memorystore as _ms
+                d = _ms.domain_dir_by_key(f"e:{mem}")
+                es = _ms.entries_of(d) if d else []
+            except Exception:                       # noqa: BLE001 存储缺失=无记忆
+                es = []
+            rows = [f"- {str(e.get('summary') or '')[:120]}" for e in es[-12:]]
+            rows = [r for r in rows if r.strip() != "-"]
+            if rows:
+                blocks.append("## 岗位长期记忆（历次工作沉淀，延续既定惯例）\n"
+                              + "\n".join(rows))
+        return "\n\n".join(blocks)
+
+
     async def task(self, prompt: str, subagent_type: str = "general",
                    description: str = "", emit=None) -> str:
         """跑一个子代理。emit 非空时外发 claude 形 Task 卡片事件（开始/结束）
@@ -157,9 +205,13 @@ class SubagentManager:
                 cwd=self.cwd,
                 settings=LoopSettings(max_turns=50, no_compact=False),
                 ctx=ToolContext(cwd=self.cwd))
-            # 用途 system 附加（ContextAssembler 的宪法之上）
-            core.assembler = _PatchedAssembler(
-                core.assembler, conf["system_add"])
+            # 用途 system 附加（ContextAssembler 的宪法之上）；DW-7
+            # 能力绑定块（技能面/资源面/岗位记忆）置于用途之前
+            extra = conf["system_add"]
+            bind = self._bind_blocks(conf)
+            if bind:
+                extra = bind + "\n\n" + extra
+            core.assembler = _PatchedAssembler(core.assembler, extra)
 
             # 归属转发：把子代理的工具活动（tool_use/tool_result）打上
             # 「子N·」标签转发到主 emit——用户能看到每个子任务在干什么、
@@ -322,9 +374,18 @@ class TaskTool(Tool):
     @staticmethod
     def _type_help(types: dict) -> str:
         base = ("general=通用 | explore=只读搜索 | plan=架构设计")
-        custom = [n for n in types if n not in SUBAGENT_TYPES]
+        custom = sorted(n for n in types if n not in SUBAGENT_TYPES)
         if custom:
-            base += " | 自定义：" + "、".join(sorted(custom))
+            # DW-7 召唤闭环：带职责描述（def description 含「部门·头衔｜
+            # 职责：…」）——模型按活找人，而非只给一串人名猜盲盒
+            lines = []
+            for n in custom:
+                desc = " ".join(str((types.get(n) or {}).get("description")
+                                     or "").split())
+                if len(desc) > 120:
+                    desc = desc[:117] + "..."
+                lines.append(f"{n}={desc}" if desc else n)
+            base += " | 数字员工/自定义（按职责选人）：" + "；".join(lines)
         return base
 
     async def execute(self, args: dict, ctx: ToolContext) -> str:

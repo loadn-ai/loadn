@@ -32,6 +32,7 @@ from .config import PATHS
 # rev13：sessions.size_bytes/size_checked_at（BD-3——磁盘占用落库，排序可下推 SQL）
 # rev14：org_departments/org_employees/temp_pool（DW——数字员工：组织架构+临时工池）
 # rev15：org_employees.duty（DW-6——职责说明：卡片展示+进 agent 提示与选人参考）
+# rev16：org_employees.skills/resources（DW-7——员工技能/资源绑定，JSON 数组；NULL=不设限）
 # rev16：models 表（T10——模型库：多模型 CRUD+默认标记，apply 写引擎 provider 配置）
 # rev17：索引 idx_sess_updated + idx_job_session（PERF-1——列表排序键与
 #        next_wake 下推；旧库首连 executescript 的 IF NOT EXISTS 自愈补上）
@@ -289,6 +290,8 @@ CREATE TABLE IF NOT EXISTS org_employees (        -- DW-1：正式员工=一份 
   traits TEXT DEFAULT '',             -- 性格标签（逗号串）
   persona TEXT DEFAULT '',            -- 人设正文（进 subagent system_add）
   tools TEXT,                         -- 工具白名单 JSON 数组；NULL=通用面
+  skills TEXT,                        -- DW-7 技能绑定 JSON 数组；NULL=随会话全量
+  resources TEXT,                     -- DW-7 资源绑定 JSON 数组（svc 名）；NULL=全量
   model TEXT,                         -- 可选独立模型；NULL=随主
   status TEXT CHECK(status IN ('active','disabled')) DEFAULT 'active',
   color TEXT DEFAULT '',              -- 归属色（Task 卡/思考卡色条）
@@ -472,6 +475,11 @@ def _migrate(c: sqlite3.Connection) -> None:
     ocols = {r["name"] for r in c.execute("PRAGMA table_info(org_employees)")}
     if ocols and "duty" not in ocols:
         c.execute("ALTER TABLE org_employees ADD COLUMN duty TEXT DEFAULT ''")
+    # rev16（DW-7）：skills/resources 绑定列（旧库补列；新表走 SCHEMA）
+    if ocols and "skills" not in ocols:
+        c.execute("ALTER TABLE org_employees ADD COLUMN skills TEXT")
+    if ocols and "resources" not in ocols:
+        c.execute("ALTER TABLE org_employees ADD COLUMN resources TEXT")
 
     # 三轮修（backlog 清）：artifacts (session_id,path) 唯一索引——先清
     # 存量重复行（保最新），建索引后 upsert_artifact 的 ON CONFLICT 原子化。

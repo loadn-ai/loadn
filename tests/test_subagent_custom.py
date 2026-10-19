@@ -93,7 +93,10 @@ async def test_tasktool_enum_includes_custom(tmp_path: Path):
     tool = TaskTool(mgr)
     assert "reviewer" in tool.input_schema["properties"]["subagent_type"]["enum"]
     assert "general" in tool.input_schema["properties"]["subagent_type"]["enum"]
-    assert "自定义：reviewer" in \
+    # DW-7：召唤闭环——自定义类型带职责描述（def description）而非裸名
+    assert "数字员工/自定义（按职责选人）：" in \
+        tool.input_schema["properties"]["subagent_type"]["description"]
+    assert "reviewer" in \
         tool.input_schema["properties"]["subagent_type"]["description"]
 
 

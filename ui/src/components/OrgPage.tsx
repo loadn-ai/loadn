@@ -7,12 +7,13 @@ import { useCallback, useEffect, useState } from 'react';
 import { api } from '../api/client';
 import { toast } from '../stores/toasts';
 import { askConfirm } from '../stores/confirm';
-import { Users, Plus, Pencil, Trash, X, RotateCw, Spinner, ListTasks } from './icons';
+import { Users, Plus, Pencil, Trash, X, RotateCw, Spinner, ListTasks, Brain } from './icons';
 
 interface Employee {
   id: number; dept_id: number | null; name: string; title: string;
   duty: string; mbti: string; traits: string; persona: string;
   tools: string | null; model: string | null; status: string; color: string;
+  skills: string | null; resources: string | null;   // DW-7：JSON 数组或 null（不设限）
 }
 interface Department {
   id: number; name: string; icon: string; sort: number; employees: Employee[];
@@ -41,6 +42,8 @@ export default function OrgPage({ onClose }: { onClose: () => void }) {
   const [deptNew, setDeptNew] = useState(false);
   // 任务记录抽屉（DW-6）：按人名回查（员工与临时工共用）
   const [taskView, setTaskView] = useState<string | null>(null);
+  // DW-7：员工记忆抽屉（domain=e:<名> 岗位知识库）
+  const [memView, setMemView] = useState<string | null>(null);
   // 召集面板（DW-4）
   const [recN, setRecN] = useState(3);
   const [recBrief, setRecBrief] = useState('');
@@ -202,6 +205,15 @@ export default function OrgPage({ onClose }: { onClose: () => void }) {
                 </div>
                 <div className="org-card-sub">{(deptSel === 'all' && (e as any).dept) ? `${(e as any).dept} · ` : ''}{e.title || '员工'}</div>
                 {e.duty && <div className="org-duty" title={e.duty}>{e.duty}</div>}
+                {(() => {
+                  const sk = e.skills ? (JSON.parse(e.skills) as string[]) : null;
+                  const rs = e.resources ? (JSON.parse(e.resources) as string[]) : null;
+                  if (!sk && !rs) return null;
+                  return <div className="org-binds">
+                    {sk && <span className="chip bind" title={"技能面：" + sk.join("、")}>技能 {sk.length}</span>}
+                    {rs && <span className="chip bind" title={"资源面：" + rs.join("、")}>资源 {rs.length}</span>}
+                  </div>;
+                })()}
                 {e.traits && <div className="org-traits">{e.traits.split(/[,，、]/).filter(Boolean).slice(0, 4).map((t, i) => <span key={i} className="chip ghost">{t.trim()}</span>)}</div>}
                 <div className="org-card-foot">
                   <label className="switch" title={e.status === 'active' ? '在岗（可点名）' : '停用（不注入）'}>
@@ -210,6 +222,7 @@ export default function OrgPage({ onClose }: { onClose: () => void }) {
                   </label>
                   <span className="org-card-hint">{e.status === 'active' ? 'Task 点名可用' : '已停用'}</span>
                   <span className="spacer" />
+                  <button className="icon-btn" title="岗位记忆（e:域）" onClick={() => setMemView(e.name)}><Brain size={12} /></button>
                   <button className="icon-btn" title="任务记录" onClick={() => setTaskView(e.name)}><ListTasks size={12} /></button>
                   <button className="icon-btn" title="编辑" onClick={() => setEditor({ mode: 'edit', emp: e })}><Pencil size={12} /></button>
                   <button className="icon-btn" title="解聘" onClick={() => void delEmp(e)}><Trash size={12} /></button>
@@ -266,6 +279,7 @@ export default function OrgPage({ onClose }: { onClose: () => void }) {
       {editor && <EmpEditor depts={org?.departments ?? []} emp={editor.mode === 'edit' ? editor.emp : null}
                             onCancel={() => setEditor(null)} onSave={saveEmp} />}
       {taskView && <TaskHistory name={taskView} onClose={() => setTaskView(null)} />}
+      {memView && <EmpMemory name={memView} onClose={() => setMemView(null)} />}
     </div>
   );
 }
@@ -283,6 +297,21 @@ function EmpEditor({ depts, emp, onCancel, onSave }: {
   const [persona, setPersona] = useState(emp?.persona ?? '');
   const [tools, setTools] = useState((emp?.tools ? JSON.parse(emp.tools).join(', ') : ''));
   const [model, setModel] = useState(emp?.model ?? '');
+  // DW-7 技能/资源绑定（null=不设限随会话全量）
+  const [skillSel, setSkillSel] = useState<Set<string>>(new Set(emp?.skills ? JSON.parse(emp.skills) as string[] : []));
+  const [resSel, setResSel] = useState<Set<string>>(new Set(emp?.resources ? JSON.parse(emp.resources) as string[] : []));
+  const [skillList, setSkillList] = useState<{ name: string }[]>([]);
+  const [svcList, setSvcList] = useState<{ name: string }[] | null>(null);   // null=admin 面不可读→降级文本框
+  const [resText, setResText] = useState('');
+  useEffect(() => {
+    void api<{ skills: { name: string; disabled?: boolean }[] }>('/api/skills')
+      .then(r => setSkillList(r.skills.filter(s => !s.disabled)))
+      .catch(() => setSkillList([]));
+    void api<{ custom: { name: string }[] }>('/api/admin/resources')
+      .then(r => setSvcList(r.custom || []))
+      .catch(() => setSvcList(null));
+  }, []);
+  if (svcList === null && !resText && resSel.size) setResText([...resSel].join(', '));
   const [saving, setSaving] = useState(false);
 
   // UI 巡检批：Esc 关闭（此前只支持点 mask/× ——键盘用户被锁死）
@@ -299,6 +328,8 @@ function EmpEditor({ depts, emp, onCancel, onSave }: {
       traits: traits.trim(), persona: persona.trim(),
       model: model.trim() || null,
       tools: tools.trim() ? tools.split(/[,，]/).map((s: string) => s.trim()).filter(Boolean) : null,
+      skills: skillSel.size ? [...skillSel] : null,
+      resources: svcList === null ? (resText.trim() ? resText.split(/[,，]/).map((s: string) => s.trim()).filter(Boolean) : null) : (resSel.size ? [...resSel] : null),
     };
     if (deptId !== '') data.dept_id = deptId;
     onSave(data, emp?.id);
@@ -335,6 +366,33 @@ function EmpEditor({ depts, emp, onCancel, onSave }: {
           <label>操作空间 · 工具白名单（逗号分隔，空=通用面）
             <input value={tools} onChange={e => setTools(e.target.value)} placeholder="如：Read, Grep, WebSearch"  autoComplete="off"/></label>
           <label>操作空间 · 独立模型（空=随主）<input value={model} onChange={e => setModel(e.target.value)} placeholder="如：glm-5.3-flash"  autoComplete="off"/></label>
+
+          <label>技能面（DW-7；不选=随会话全量，选中=仅列出的技能）
+            <div className="org-bind-list">
+              {skillList.length === 0 && <span className="hint">技能库为空或不可读</span>}
+              {skillList.map(s => (
+                <label key={s.name} className={"org-bind-pick" + (skillSel.has(s.name) ? ' on' : '')}>
+                  <input type="checkbox" checked={skillSel.has(s.name)} autoComplete="off"
+                         onChange={() => { const n = new Set(skillSel); n.has(s.name) ? n.delete(s.name) : n.add(s.name); setSkillSel(n); }} />
+                  {s.name}
+                </label>))}
+            </div>
+          </label>
+          <label>资源面（不选=全量；仅列 custom_services，值走环境变量）
+            {svcList !== null ? (
+              <div className="org-bind-list">
+                {svcList.length === 0 && <span className="hint">暂无自定义服务（资源 Hub 可建）</span>}
+                {svcList.map(s => (
+                  <label key={s.name} className={"org-bind-pick" + (resSel.has(s.name) ? ' on' : '')}>
+                    <input type="checkbox" checked={resSel.has(s.name)} autoComplete="off"
+                           onChange={() => { const n = new Set(resSel); n.has(s.name) ? n.delete(s.name) : n.add(s.name); setResSel(n); }} />
+                    {s.name}
+                  </label>))}
+              </div>
+            ) : (
+              <input value={resText} onChange={e => setResText(e.target.value)} placeholder='服务名逗号分隔（admin 面不可读时手动填）' autoComplete='off' />
+            )}
+          </label>
         </div>
         <footer>
           <span className="hint">保存即同步 agent 定义（$LOADN_HOME/agents/），新子代理立即可点名。</span>
@@ -410,6 +468,84 @@ function TaskHistory({ name, onClose }: { name: string; onClose: () => void }) {
           <span className="hint">归属真源：Task 工具卡（员工=subagent_type 点名；临时工=agent_name 出勤）。</span>
           <button className="btn" onClick={onClose}>关闭</button>
         </footer>
+      </div>
+    </div>
+  );
+}
+
+// DW-7：员工岗位记忆抽屉（domain=e:<名>；org 域名进 def memory 键，
+// 派发该员工的子任务时由引擎注入「岗位长期记忆」块）。
+interface MemEntry { id: string; summary: string; content: string; created_at?: string }
+
+function EmpMemory({ name, onClose }: { name: string; onClose: () => void }) {
+  const domain = 'e:' + name;
+  const [entries, setEntries] = useState<MemEntry[]>([]);
+  const [sel, setSel] = useState<MemEntry | null>(null);
+  const [text, setText] = useState('');
+  const [summary, setSummary] = useState('');
+  const [busy, setBusy] = useState(false);
+  const reload = useCallback(async () => {
+    try {
+      const r = await api<{ entries: MemEntry[] }>('/api/memory/entries?domain=' + encodeURIComponent(domain));
+      setEntries(r.entries);
+    } catch (e) { setEntries([]); }
+  }, [domain]);
+  useEffect(() => { void reload(); }, [reload]);
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => { if (e.key === 'Escape') onClose(); };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, []);
+  const open = (e: MemEntry | null) => { setSel(e); setText(e?.content ?? ''); setSummary(e?.summary ?? ''); };
+  const save = async () => {
+    if (!summary.trim() || !text.trim()) return;
+    setBusy(true);
+    try {
+      if (sel) {
+        await api('/api/memory/file', { method: 'PUT', body: JSON.stringify({ domain, id: sel.id, summary: summary.trim(), content: text }) });
+      } else {
+        await api('/api/memory/file', { method: 'POST', body: JSON.stringify({ domain, summary: summary.trim(), content: text }) });
+      }
+      setSel(null); setText(''); setSummary(''); await reload();
+    } catch (e) { toast(String((e as Error).message || e), false); }
+    setBusy(false);
+  };
+  const del = async (e: MemEntry) => {
+    try {
+      await api('/api/memory/entry?domain=' + encodeURIComponent(domain) + '&id=' + e.id, { method: 'DELETE' });
+      if (sel?.id === e.id) open(null);
+      await reload();
+    } catch (err) { toast(String((err as Error).message || err), false); }
+  };
+  return (
+    <div className="drawer-mask" onClick={onClose}>
+      <div className="drawer org-mem" onClick={e => e.stopPropagation()}>
+        <header>
+          <h3>岗位记忆 · {name}</h3>
+          <button className="icon-btn" onClick={onClose}><X size={14} /></button>
+        </header>
+        <div className="drawer-body">
+          <p className="hint">员工域记忆在 Task 点名 {name} 时注入其子代理提示（岗位长期记忆块）。跨会话沉淀，管理员维护。</p>
+          {sel === null ? (<>
+            <div className="org-mem-list">
+              {entries.map(e => (
+                <div key={e.id} className="org-mem-row">
+                  <button className="org-mem-open" onClick={() => open(e)}>{e.summary}</button>
+                  <span className="hint">{e.created_at?.slice(0, 16)}</span>
+                  <button className="icon-btn" onClick={() => void del(e)}><Trash size={12} /></button>
+                </div>))}
+              {entries.length === 0 && <div className="org-empty small">暂无岗位记忆——点下方「记一条」开写。</div>}
+            </div>
+            <button className="btn" onClick={() => open(null)}>记一条</button>
+          </>) : (<>
+            <label>摘要（单行）<input value={summary} onChange={e => setSummary(e.target.value)} placeholder='如：合同审查走三步流程' autoComplete='off' /></label>
+            <label>正文<textarea rows={5} value={text} onChange={e => setText(e.target.value)} /></label>
+            <div className="org-mem-foot">
+              <button className="btn primary" disabled={busy} onClick={() => void save()}>{busy ? <Spinner /> : null}保存</button>
+              <button className="btn ghost" onClick={() => open(null)}>取消</button>
+            </div>
+          </>)}
+        </div>
       </div>
     </div>
   );

@@ -1,7 +1,10 @@
 """自定义 subagent 定义加载：.claude/agents/*.md（对位 claude CLI）。
 
 frontmatter：name（缺省用文件名）/ description / tools（逗号串或列表，
-缺省 = GENERAL_TOOLS）/ model（可选，经 model_provider_factory 生效）。
+缺省 = GENERAL_TOOLS）/ model（可选，经 model_provider_factory 生效）/
+skills、resources、memory（DW-7 员工能力绑定，均可选——逗号串或列表）：
+skills=该代理可见技能名单（缺省不设限）；resources="名:ENV1+ENV2"
+映射（org 侧渲染 env 名）；memory=员工记忆域名（派发注入岗位记忆块）。
 正文即该类型的 system_add。发现序（项目覆盖全局、同名覆盖内建）：
 $LOADN_HOME/agents < cwd/.loadn/agents（兼容旧 .agent/agents）< cwd/.claude/agents。
 坏文件跳过 + warning（headless 不因单个定义拒启）。
@@ -17,9 +20,20 @@ from loadn.util import get_logger, parse_frontmatter
 log = get_logger(__name__)
 
 
+def _bind_list(v) -> list[str] | None:
+    """绑定键解析（skills/resources）：逗号串或列表 → 去空 list；空→None。"""
+    if isinstance(v, str):
+        v = [t.strip() for t in v.split(",")]
+    if not isinstance(v, list):
+        return None
+    out = [str(t).strip() for t in v if str(t).strip()]
+    return out or None
+
+
 def load_agent_defs(cwd: Path, home: Path | None = None) -> dict[str, dict]:
     """返回 name → {"tools": [...], "system_add": str, "model": str,
-    "description": str}（空表 = 无自定义）。
+    "description": str, "skills": list|None, "resources": list|None,
+    "memory": str|None}（空表 = 无自定义）。
 
     P0-2 信任门：项目级三个根未过信任门即剔除（agents/*.md 的正文会
     注入 subagent system_add——提示注入面）；全局面不受影响。
@@ -63,5 +77,9 @@ def load_agent_defs(cwd: Path, home: Path | None = None) -> dict[str, dict]:
                 "system_add": body.strip()[:AGENT_DEF_MAX_CHARS],
                 "model": str(meta.get("model") or "") or None,
                 "description": str(meta.get("description") or ""),
+                # DW-7 能力绑定（None=不设限/未声明）
+                "skills": _bind_list(meta.get("skills")),
+                "resources": _bind_list(meta.get("resources")),
+                "memory": str(meta.get("memory") or "").strip() or None,
             }
     return out
