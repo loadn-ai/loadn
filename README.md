@@ -15,9 +15,15 @@
 
 > ### 天行健，oldman，地势坤，loadn。
 >
-> *As heaven moves with vigor, the oldman strives without rest; as earth lies
-> receptive, loadn bears and carries all.* — the project motto, after the
-> Qian and Kun hexagrams of the *I Ching*.
+> loadn (read *load-n*) is a homophone of 老登 — Mandarin for "old man" —
+> spliced into the two primal hexagrams of the *I Ching*. Qian, "as heaven
+> moves with vigor, the noble one strives without rest": that is the oldman,
+> still shipping code at his age. Kun, "as earth lies receptive, the noble
+> one carries all things with ample virtue": that is loadN — load *N*
+> things, and bear them all. One name, two hexagrams: the engine strives,
+> the platform bears.
+>
+> Too old, alas, to be called a 君子 — hence: oldman.
 
 **A self-contained coding-agent engine in pure Python, grown into a
 self-hostable agent platform.** One `pip install`, any Anthropic-form or
@@ -34,8 +40,8 @@ audit ledger.
 > announced in [CHANGELOG.md](CHANGELOG.md) with each minor bump.
 >
 > Naming: loadn is the engine package of the loadn-ai platform (org:
-> **loadn-ai**). Product forms: `loadn` engine / `loadn-web` platform /
-> `loadn desktop`.
+> **loadn-ai**); the mascot 老登 ("oldman") is the pun the name is built
+> on. Product forms: `loadn` engine / `loadn-web` platform / `loadn desktop`.
 
 ## The workbench
 

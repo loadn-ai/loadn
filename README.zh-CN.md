@@ -15,8 +15,12 @@
 
 > ### 天行健，oldman，地势坤，loadn。
 >
-> 源出《周易》乾坤二卦——乾者自强不息，坤者厚德载物。oldman 与 loadn，
-> 一动一静，一锋一容：引擎当锐意进取，平台当承载万物。
+> loadn 读 load-n，谐音「老登」，即 oldman。名字取自《周易》乾坤二卦：
+> 乾曰「天行健，君子以自强不息」——是为 oldman，老而弥坚；坤曰
+> 「地势坤，君子以厚德载物」——是为 loadN，load N，载物无算。一名
+> 两卦，一动一静：引擎当锐意进取，平台当承载万物。
+>
+> 只是年纪过大，已经算不上君子了——所以，叫老登。
 
 **纯 Python 自包含的 coding-agent 引擎，长成可自托管的 agent 平台。**
 一次 `pip install`，任选 Anthropic 形态或 OpenAI 兼容端点，即得一个无头
@@ -29,8 +33,9 @@ agent：工具、MCP、子代理、会话持久化、上下文压缩齐备——
 > 方言与配置键遵循 SemVer；破坏性变更随每次 minor bump 在
 > [CHANGELOG.md](CHANGELOG.md) 预告。
 >
-> 命名：loadn 是 loadn-ai 平台的引擎包（org: **loadn-ai**）。吉祥物「老登」，
-> 昵称老 bike，仅作文案。平台产品形态：loadn webui / loadn desktop。
+> 命名：loadn 是 loadn-ai 平台的引擎包（org: **loadn-ai**）。「老登」既是
+> 名字的谐音出处，也是平台吉祥物（昵称老 bike）。产品形态：loadn
+> webui / loadn desktop。
 
 ## 工作台
 
