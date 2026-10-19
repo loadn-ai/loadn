@@ -2,7 +2,7 @@ import { memo, useEffect, useState } from 'react';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import { useStore } from '../stores/sessions';
-import type { StreamItem, TextItem, ThinkItem, ToolEvent, ToolItem } from '../stores/sessions';
+import type { StreamItem, TextItem, ThinkItem, TodosItem, ToolEvent, ToolItem } from '../stores/sessions';
 import { api, fmtTime } from '../api/client';
 import {
   FileImage, Cloud, Tool, CheckSquare, Check, ChevronDown, ChevronRight,
@@ -74,9 +74,10 @@ function parseAttachments(json: string | null | undefined) {
   } catch { return []; }
 }
 
-/** blocks_json → 过程流水（穿插时间线：thinking/tool/text 按真实顺序；
+/** blocks_json → 过程流水（穿插时间线：thinking/tool/text/todos/steer 按真实顺序；
  * 旧格式无 text 块 = 纯过程面板 + 合并正文，由调用方分形态渲染）。
- *  agent 归属字段透传（Task 卡/子N· 转发块，AgentTab/派发卡消费）。 */
+ *  agent 归属字段透传（Task 卡/子N· 转发块，AgentTab/派发卡消费）；
+ *  todos=快照块（回放取最后一块还原清单）、steer=插话块（重载不丢）。 */
 export function parseBlocks(json: string | null | undefined): StreamItem[] {
   if (!json) return [];
   let raw: any[];
@@ -85,11 +86,17 @@ export function parseBlocks(json: string | null | undefined): StreamItem[] {
   return raw.map(b => b?.type === 'thinking'
     ? { kind: 'thinking' as const, text: String(b.text ?? ''),
         agent_id: b?.agent_id ?? null, agent_name: b?.agent_name ?? null,
-        agent_n: b?.agent_n ?? null } as ThinkItem
+        agent_n: b?.agent_n ?? null, cum: b?.cum ?? null } as ThinkItem
     : b?.type === 'text'
     ? { kind: 'text' as const, text: String(b.text ?? ''),
         agent_id: b?.agent_id ?? null, agent_name: b?.agent_name ?? null,
         agent_n: b?.agent_n ?? null } as TextItem
+    : b?.type === 'todos'
+    ? { kind: 'todos' as const,
+        todos: Array.isArray(b?.todos) ? b.todos : [] } as TodosItem
+    : b?.type === 'steer'
+    ? { kind: 'steer' as const, text: String(b.text ?? ''),
+        id: b?.id ?? undefined } as { kind: 'steer'; text: string; id?: string }
     : {
         kind: 'tool' as const,
         id: b?.id ?? null,
@@ -242,9 +249,14 @@ function AssistantMsg({ text, blocks, ts, mid, hits, turnId }:
   const { editMessage } = useStore();
   const [editing, setEditing] = useState(false);
   const shown = text && text !== '（无文本输出）' ? text : '';
-  // 穿插回放：blocks 带正文段（新格式）→ 按真实顺序铺时间线（与 live 同构）；
+  // todos 快照块提到时间线外：取最后一块在消息顶部渲染清单（与 live
+  // TodoList 同位）；块序列里全部跳过（避免中段冒出）。steer 块留在时间
+  // 线原位渲染（与 live 插话卡同位）
+  const lastTodos = [...blocks].reverse().find(b => b.kind === 'todos');
+  const flow = blocks.filter(b => b.kind !== 'todos');
+  // 穿插回放：flow 带正文段（新格式）→ 按真实顺序铺时间线（与 live 同构）；
   // 旧格式（无 text 块）→ 过程面板 + 合并正文，原样保留
-  const interleaved = blocks.some(b => b.kind === 'text');
+  const interleaved = flow.some(b => b.kind === 'text');
   const save = async (t: string) => {
     setEditing(false);
     if (t === shown) return;
@@ -258,12 +270,14 @@ function AssistantMsg({ text, blocks, ts, mid, hits, turnId }:
   return (
     <div className="msg assistant">
       {parsedHits.length > 0 && <MemoryChips mid={mid} hits={parsedHits} />}
-      {blocks.length > 0 && (interleaved ? (
+      {lastTodos && <TodoList todos={lastTodos.todos} />}
+      {flow.length > 0 && (interleaved ? (
         <div className="replay">
-          {blocks.map((b, i) => {
-            if (b.kind === 'thinking') return <ThinkingCard key={i} text={b.text}
+          {flow.map((b, i) => {
+            if (b.kind === 'thinking') return <ThinkingCard key={i} text={b.text} cum={b.cum}
               tag={b.agent_n != null ? `子${b.agent_n}` : undefined} />;
             if (b.kind === 'tool') return <ToolLine key={i} b={b} done turnId={turnId ?? null} />;
+            if (b.kind === 'steer') return <SteerNote key={i} text={b.text} steerId={b.id} done />;
             if (b.kind === 'text' && b.agent_n != null)
               return <SubTextCard key={i} text={b.text}
                 tag={`子${b.agent_n}`} name={b.agent_name} />;
@@ -273,14 +287,15 @@ function AssistantMsg({ text, blocks, ts, mid, hits, turnId }:
       ) : (
         <div className="tools">
           <div className="tools-head" onClick={() => setOpen(!open)}>
-            {blocks.some(b => b.kind === 'thinking') ? <Cloud size={13} /> : <Tool size={13} />}
-            <span>{blocks.length} 步过程</span>
+            {flow.some(b => b.kind === 'thinking') ? <Cloud size={13} /> : <Tool size={13} />}
+            <span>{flow.length} 步过程</span>
             {open ? <ChevronDown size={13} /> : <ChevronRight size={13} />}
           </div>
-          {open && blocks.map((b, i) => {
-            if (b.kind === 'thinking') return <ThinkingCard key={i} text={b.text}
+          {open && flow.map((b, i) => {
+            if (b.kind === 'thinking') return <ThinkingCard key={i} text={b.text} cum={b.cum}
               tag={b.agent_n != null ? `子${b.agent_n}` : undefined} />;
             if (b.kind === 'tool') return <ToolLine key={i} b={b} done turnId={turnId ?? null} />;
+            if (b.kind === 'steer') return <SteerNote key={i} text={b.text} steerId={b.id} done />;
             return null;
           })}
         </div>
@@ -341,6 +356,7 @@ function LiveTurn({ live }: { live: NonNullable<ReturnType<typeof useStore.getSt
           tag={it.agent_n != null ? `子${it.agent_n}` : undefined} cum={it.cum} />;
         if (it.kind === 'tool') return <ToolLine key={hidden + i} b={it} turnId={live.turnId} />;
         if (it.kind === 'steer') return <SteerNote key={hidden + i} text={it.text} steerId={it.id} />;
+        if (it.kind === 'todos') return null;   // 类型完备：live 流不产 todos 项（回放专用）
         if (it.agent_n != null) return <SubTextCard key={hidden + i} text={it.text}
           tag={`子${it.agent_n}`} name={it.agent_name} live />;
         return <MdText key={hidden + i} text={it.text} />;
@@ -355,15 +371,18 @@ const MdText = memo(function MdText({ text }: { text: string }) {
   return <div className="md"><ReactMarkdown remarkPlugins={[remarkGfm]}>{text}</ReactMarkdown></div>;
 });
 
-/** 运行中插话（steering）：accent 边条卡片，与工具/文本流区分 */
-const SteerNote = memo(function SteerNote({ text, steerId }: { text: string; steerId?: string }) {
+/** 运行中插话（steering）：accent 边条卡片，与工具/文本流区分。
+ *  done=历史回放态（turn 已结束）：隐藏撤回钮（注入窗口已过，撤回
+ *  无意义），卡片本身保留——重载不丢插话记录 */
+const SteerNote = memo(function SteerNote({ text, steerId, done }: {
+  text: string; steerId?: string; done?: boolean }) {
   const retractSteer = useStore(s => s.retractSteer);
   const currentSid = useStore(s => s.currentSid);
   return (
     <div className="steer-note">
       <span className="steer-tag">插话</span>
       <span className="steer-text">{text}</span>
-      {steerId && currentSid && (
+      {steerId && !done && currentSid && (
         <button className="mini-btn" title="撤回（下一轮注入前有效）"
                 onClick={() => void retractSteer(currentSid, steerId)}>
           <Undo size={11} />
@@ -408,19 +427,20 @@ function fmtChars(n: number): string {
   return n >= 1000 ? `${(n / 1000).toFixed(1)}k 字` : `${n} 字`;
 }
 
-/** 思考卡：live 默认展开（看过程），历史默认收起（留一行预览）；memo 防整列表重渲染。
- *  子代理聚合块（tag 非空）低频到达——live 也默认收起，收起时显示
- *  「思考中… 已 N 字」累计行（cum），点开看该块全文（视角页有完整时间线） */
+/** 思考卡：默认态 live/回放同构（主代理展开看过程、子代理收起留预览，
+ *  2026-10-19 用户拍板「统一成实时的那种格式」——重载不再一律收起）；
+ *  memo 防整列表重渲染。子代理聚合块（tag 非空）收起时显示累计行
+ *  （cum）：live「思考中… 已 N 字」/回放「已 N 字」 */
 export const ThinkingCard = memo(function ThinkingCard({ text, live, tag, cum }: {
   text: string; live?: boolean; tag?: string; cum?: number | null }) {
-  const [open, setOpen] = useState(!!live && !tag);
+  const [open, setOpen] = useState(!tag);
   return (
     <div className={`think-card ${open ? 'open' : ''} ${tag ? 'sub' : ''}`}>
       <div className="think-head" onClick={() => setOpen(!open)}>
         <span className="think-tag"><Cloud size={12} /> 思考</span>
         {tag && <span className="tool-subtag" title="子代理归属">{tag}</span>}
         {!open && (tag && cum != null
-          ? <span className="think-preview">思考中… 已 {fmtChars(cum)}</span>
+          ? <span className="think-preview">{live ? '思考中… ' : ''}已 {fmtChars(cum)}</span>
           : <span className="think-preview">{text.slice(0, 80).replace(/\s+/g, ' ')}</span>)}
         <span className="chev">{open ? <ChevronDown size={13} /> : <ChevronRight size={13} />}</span>
       </div>

@@ -229,6 +229,14 @@ class Engine:
             return
         self.publish(sid, type_, data, at.turn_id if at is not None else None)
 
+    def _todos_persist(self, at: ActiveTurn, sid: str, tid: int) -> None:
+        """todos 变更落快照块进 blocks 时间线 + SSE todos（quiet 收口同 _emit）。
+        回放端取最后一块还原清单（与 live TodoList 同位）；每项深拷贝防
+        后续变更污染已落快照。"""
+        at.blocks.append({"type": "todos",
+                          "todos": [dict(t) for t in at.todos]})
+        self._emit(at, sid, "todos", {"turn_id": tid, "todos": at.todos})
+
     def steer_if_running(self, sid: str, text: str) -> int | None:
         """该 session 有 running 的 loadn turn → 写 .steer.jsonl + at.steers
         记账 + SSE "steer"，返回 turn_id；否则 None（调用方回落 submit 排队）。
@@ -256,6 +264,7 @@ class Engine:
                     f.write(json.dumps({"id": sid8, "ts": iso(), "text": text},
                                        ensure_ascii=False) + "\n")
                 at.steers.append({"id": sid8, "text": text, "consumed": False})
+                at.blocks.append({"type": "steer", "text": text, "id": sid8})
                 self.publish(sid, "steer", {"turn_id": tid, "text": text, "id": sid8}, tid)
                 return tid
             break      # 每 session 串行，至多一个 running turn
@@ -287,6 +296,9 @@ class Engine:
                             keep.append(ln)
                         path.write_text("".join(x + "\n" for x in keep), encoding="utf-8")
                     at.steers.remove(s)
+                    at.blocks = [b for b in at.blocks
+                                 if not (b.get("type") == "steer"
+                                         and b.get("id") == steer_id)]
                     self.publish(sid, "steer_retracted",
                                  {"turn_id": tid, "id": steer_id}, tid)
                     return True, ""
@@ -679,13 +691,13 @@ class Engine:
                     if name == "TaskCreate":
                         at.todos.append({"subject": inp.get("subject") or "任务",
                                          "status": "pending"})
-                        self._emit(at, sid, "todos", {"turn_id": tid, "todos": at.todos})
+                        self._todos_persist(at, sid, tid)
                     elif name == "TaskUpdate":
                         try:
                             tno = int(inp.get("taskId"))
                             if 1 <= tno <= len(at.todos) and inp.get("status"):
                                 at.todos[tno - 1]["status"] = inp["status"]
-                                self._emit(at, sid, "todos", {"turn_id": tid, "todos": at.todos})
+                                self._todos_persist(at, sid, tid)
                         except (TypeError, ValueError):
                             pass
                     elif name == "TodoWrite" and isinstance(inp.get("todos"), list):
@@ -693,7 +705,7 @@ class Engine:
                         at.todos = [{"subject": t.get("content") or "任务",
                                      "status": t.get("status", "pending")}
                                     for t in inp["todos"] if isinstance(t, dict)]
-                        self._emit(at, sid, "todos", {"turn_id": tid, "todos": at.todos})
+                        self._todos_persist(at, sid, tid)
                     # quiet 收口（与上其余事件一致）：收养静默重放期不重发
                     # tool_use（session_events 已有停机前的事件，重发=双份）
                     self._emit(at, sid, "tool_use",
@@ -734,7 +746,8 @@ class Engine:
             nm = at.agent_names.get(aid)
             if nm:
                 agent["agent_name"] = nm
-            at.blocks.append({"type": "thinking", "text": think, **agent})
+            at.blocks.append({"type": "thinking", "text": think,
+                              "cum": ev.get("cum"), **agent})
             self._emit(at, sid, "thinking",
                        {"turn_id": tid, "text": think, "delta": False,
                         "cum": ev.get("cum"), **agent})

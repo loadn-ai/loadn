@@ -176,9 +176,10 @@ async def test_engine_consume_subagent_thinking():
         assert data["text"] == "我在想" and data["delta"] is False
         assert data["agent_id"] == "sub_1" and data["agent_n"] == 1
         assert data["agent_name"] == "马洛" and data["cum"] == 42
+        # blocks 落块含 cum（2026-10-19 回放对齐批：重载后收起行「已 N 字」）
         assert at.blocks[-1] == {"type": "thinking", "text": "我在想",
                                  "agent_id": "sub_1", "agent_n": 1,
-                                 "agent_name": "马洛"}
+                                 "agent_name": "马洛", "cum": 42}
         # 学习表无人名：照发（agent_name 缺席，不炸）
         await ENGINE._consume(sid, tid, at, {
             "type": "subagent_thinking", "n": 3, "text": "想", "cum": 1})

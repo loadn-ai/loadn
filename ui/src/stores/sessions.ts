@@ -120,10 +120,17 @@ export interface TextItem {
   agent_id?: string | null; agent_name?: string | null;
   agent_n?: number | null;
 }
+/** todos 快照块（blocks_json 回放）：引擎每次 TaskCreate/TaskUpdate/
+ *  TodoWrite 落当前全量快照，回放取最后一块还原清单（与 live TodoList
+ *  同位同源——重载不丢任务清单） */
+export interface TodosItem {
+  kind: 'todos'; todos: { subject: string; status: string }[];
+}
 export type StreamItem =
   | ThinkItem
   | ToolItem
   | TextItem
+  | TodosItem
   | { kind: 'steer'; text: string; id?: string };
 
 interface LiveTurn {

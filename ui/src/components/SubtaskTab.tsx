@@ -106,6 +106,7 @@ export default function SubtaskTab({ subtask, onOpenFile }: {
               ? <DispatchCard key={i} tool={it} turnId={liveHere.turnId} />
               : <ToolCard key={i} tool={it} />;
           if (it.kind === 'steer') return null;
+          if (it.kind === 'todos') return null;   // 类型完备：live 流不产 todos 项
           return <div key={i} className="md"><ReactMarkdown remarkPlugins={[remarkGfm]}>{it.text}</ReactMarkdown></div>;
         })}
         {msgs.length === 0 && !liveHere && (
@@ -123,11 +124,14 @@ export default function SubtaskTab({ subtask, onOpenFile }: {
   );
 }
 
-/** 历史 assistant 消息的块时间线（Task→派发卡；tool→工具卡；text→md） */
+/** 历史 assistant 消息的块时间线（Task→派发卡；tool→工具卡；text→md）。
+ *  todos/steer 块与本视图无关（清单/插话只在会话聊天流渲染）——滤掉，
+ *  且 steer 块无 text 字段防 undefined 渲染进 md */
 function ReplayBlocks({ blocksJson, turnId }: {
   blocksJson?: string | null; turnId: number | null;
 }) {
-  const blocks = parseBlocks(blocksJson);
+  const blocks = parseBlocks(blocksJson)
+    .filter(b => b.kind !== 'todos' && b.kind !== 'steer');
   if (!blocks.length) return null;
   return (
     <div className="replay subtask-replay">
