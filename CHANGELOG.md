@@ -3,6 +3,27 @@
 本项目的全部显著变更记录于此。格式遵循 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/)，
 版本遵循 [SemVer](https://semver.org/lang/zh-CN/)。
 
+## [0.7.32] - 2026-10-20
+
+- **修复：聊天记录重载与实时渲染不一致**（用户报障「重载的样式/结构和
+  实时不一样」）：重载回放此前缺三样（任务清单/插话卡/思考累计行从未
+  落库，blocks_json 只存 text/thinking/tool 三类块）。修复：todos 快照
+  块（TaskCreate/TaskUpdate/TodoWrite 每次变更落全量快照进时间线，回放
+  取最后一块顶部渲染与 live 同位）；steer 块落库原位+撤回同步摘块；
+  subagent_thinking 带 cum（回放收起行「已 Nk 字」）；思考卡默认态
+  live/回放同构（主代理展开、重载不再一律收起）。
+- **资源 Hub 设计稿重构 + custom_services v2**：资源 tab 全量重写
+  （三子视图计数徽章/分类筛选+搜索/展示态卡片墙四态探测徽章/抽屉编辑
+  器：结构化表单 ↔ Resource.md 深色编辑器双向实时同步/四模板预设/
+  Harness 注入预览/导入 .md）；后端自定义资源结构化模型（多 config 字段
+  env 名自定义注入、secrets vault_ref 绑定、prompt/分类/图标/开关），
+  老条目完全向后兼容，纯凭证驱动（无端点）资源合法。
+- **README 全面专业化**：植入 slogan「天行健，oldman，地势坤，loadn」；
+  新增三大原创理念主段（Agent=Model+Harness+Resource / Digital
+  Employee=Agent+Skills+Memory / Security=Sandbox+Control Points+Vault+
+  Audit，每公式配生产级截图）；新构 4 张模拟数据演示截图（工作台/
+  资源 Hub/抽屉/技能页）；移除论文关联段落（专注项目介绍）。
+
 ## [0.7.31] - 2026-10-19
 
 - **修复：搜索框被自动填入账号密码**（Chrome autofill）：搜索框语义化
