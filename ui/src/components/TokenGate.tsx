@@ -100,27 +100,30 @@ export default function TokenGate() {
             归并到这个账号下。
           </div>
         )}
-        <input autoFocus placeholder="用户名" value={user} autoComplete="username"
-               onChange={e => setUser(e.target.value)} style={input} />
-        <input type="password" placeholder="密码" value={pass} style={input}
-               autoComplete={mode === 'setup' ? 'new-password' : 'current-password'}
-               onChange={e => setPass(e.target.value)}
-               onKeyDown={e => { if (e.key === 'Enter' && mode === 'login') void submit(); }} />
-        {mode === 'setup' && (
-          <input type="password" placeholder="确认密码" value={pass2} style={input}
-                 autoComplete="new-password"
-                 onChange={e => setPass2(e.target.value)}
-                 onKeyDown={e => { if (e.key === 'Enter') void submit(); }} />
-        )}
-        {err ? <div style={{ color: '#e5484d', fontSize: 'var(--fs-lg)' }}>{err}</div> : null}
-        <button disabled={!user.trim() || !pass}
-                onClick={() => void submit()} style={{
-                  ...btn, opacity: user.trim() && pass ? 1 : 0.5,
-                  cursor: user.trim() && pass ? 'pointer' : 'default',
-                }}>{mode === 'setup' ? '创建并登录' : '登录'}</button>
+        {/* 真表单边界：Chrome 密码管理器以 <form> 为聚类单位——登录凭据的
+            自动配对/填充被锁进表单内，不再溢出到页面其他 text input
+            （侧栏搜索框曾被当用户名框填账号）。Enter 原生提交顺带生效。 */}
+        <form onSubmit={e => { e.preventDefault(); void submit(); }}
+              style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+          <input autoFocus placeholder="用户名" value={user} autoComplete="username" name="username"
+                 onChange={e => setUser(e.target.value)} style={input} />
+          <input type="password" placeholder="密码" value={pass} style={input} name="password"
+                 autoComplete={mode === 'setup' ? 'new-password' : 'current-password'}
+                 onChange={e => setPass(e.target.value)} />
+          {mode === 'setup' && (
+            <input type="password" placeholder="确认密码" value={pass2} style={input}
+                   autoComplete="new-password" name="password-confirm"
+                   onChange={e => setPass2(e.target.value)} />
+          )}
+          {err ? <div style={{ color: '#e5484d', fontSize: 'var(--fs-lg)' }}>{err}</div> : null}
+          <button type="submit" disabled={!user.trim() || !pass} style={{
+            ...btn, opacity: user.trim() && pass ? 1 : 0.5,
+            cursor: user.trim() && pass ? 'pointer' : 'default',
+          }}>{mode === 'setup' ? '创建并登录' : '登录'}</button>
+        </form>
         {!st?.needs_setup && (
           <>
-            <button className="link" style={{ fontSize: 'var(--fs-md)', border: 'none', background: 'none' }}
+            <button type="button" className="link" style={{ fontSize: 'var(--fs-md)', border: 'none', background: 'none' }}
                     onClick={() => setAdvanced(a => !a)}>
               {advanced ? '收起' : '使用 API token（CLI/旧部署）'}
             </button>
@@ -128,7 +131,7 @@ export default function TokenGate() {
               <>
                 <input placeholder="粘贴 token" value={tok} autoComplete="off"
                        onChange={e => setTok(e.target.value)} style={input} />
-                <button disabled={!tok.trim()} style={{ ...btn, opacity: tok.trim() ? 1 : 0.5 }}
+                <button type="button" disabled={!tok.trim()} style={{ ...btn, opacity: tok.trim() ? 1 : 0.5 }}
                         onClick={() => { setToken(tok.trim()); location.reload(); }}>
                   用 token 连接
                 </button>

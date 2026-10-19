@@ -1,6 +1,6 @@
 // 全局状态（zustand）：会话列表 / 当前会话 / SSE 实时流
 import { create } from 'zustand';
-import { api, apiUpload, connectSse } from '../api/client';
+import { api, apiUpload, connectSse, resetSseCursor } from '../api/client';
 import { applyResult, applyTool, deriveAgents, type AgentInfo } from './agents';
 import { clearDraft, getDraft, setDraft } from './drafts';
 import { toast } from './toasts';
@@ -378,6 +378,9 @@ export const useStore = create<Store>((set, get) => ({
 
   async openSession(sid) {
     get().closeSession();
+    // 游标重置：重进会话 live.items 从空重铺，SSE 需要 fresh 全量尾窗回放
+    // 作单一来源（不重置→增量衔接→叠进空 items 之外还丢尾窗前的内容）
+    resetSseCursor(sid);
     set({ currentSid: sid, messages: [], foldedCount: 0, turns: [], artifacts: [], live: null,
           sessionExtras: null, timeline: [], agents: [], subtasks: [],
           mainTab: 'chat', agentFilter: null, artifactScope: null });
@@ -429,7 +432,15 @@ export const useStore = create<Store>((set, get) => ({
       () => set({ connected: true }),
       () => set({ connected: false }),
       () => get().currentSid === sid,
-    ).then((es) => { if (get().currentSid === sid) set({ es }); else es.close(); });
+    ).then((es) => {
+      // 取票是异步的：快速切页（A→B→A）下同 sid 可能有两条连接先后上岸——
+      // 后到者上岗时必须关掉前任，否则双流双投（每条事件 apply 两遍）
+      if (get().currentSid === sid) {
+        const prev = get().es;
+        set({ es });
+        if (prev && prev !== es) prev.close();
+      } else es.close();
+    });
     void get().loadTimeline();     // P3-7 压缩时间线（turn_done 时增量刷新）
     void get().loadSessions();
   },
@@ -500,6 +511,9 @@ export const useStore = create<Store>((set, get) => ({
           const { es } = get();
           if (es) es.close();
           set({ es: null, connected: false });
+          // 重建是全新 connectSse：游标已持久化（client.ts sseCursors），
+          // 带 last_event_id 增量补发衔接保留的 items——若游标归零会
+          // fresh 全量回放尾窗叠进保留流水 = 切页回来「输出/插话两遍」
           void connectSse(
             sid,
             (type, data) => handleEvent(set, get, sid, type, data),
@@ -507,7 +521,11 @@ export const useStore = create<Store>((set, get) => ({
             () => set({ connected: false }),
             () => get().currentSid === sid,
           ).then((es2) => {
-            if (get().currentSid === sid) set({ es: es2 }); else es2.close();
+            if (get().currentSid === sid) {
+              const prev = get().es;
+              set({ es: es2 });
+              if (prev && prev !== es2) prev.close();   // 同 sid 双连接：上岗关前任
+            } else es2.close();
           });
         }
         void get().loadTimeline();
@@ -1009,6 +1027,10 @@ function handleEvent(
       break;
     case 'tool_use':
       set(s => {
+        // 双连接/回放窗口双投去重：同 id 工具卡已入列则整体跳过
+        // （agents 统计也不重复计）
+        if (s.live && s.live.turnId === data.turn_id
+            && s.live.items.some(it => it.kind === 'tool' && it.id === data.id)) return {};
         const agents = applyTool(s.agents, data.turn_id, data);
         const live = s.live && s.live.turnId === data.turn_id
           ? { live: { ...s.live, items: [...s.live.items, {
@@ -1040,10 +1062,12 @@ function handleEvent(
       break;
     case 'steer':
       // 运行中插话已投递：铺进流水（下一轮 LLM 调用前注入上下文）。
-      // id=撤回凭据（POST /steer/retract，注入前有效）
-      set(s => (s.live && s.live.turnId === data.turn_id
-        ? { live: { ...s.live, items: [...s.live.items, { kind: 'steer', text: data.text, id: data.id }] } }
-        : {}));
+      // id=撤回凭据（POST /steer/retract，注入前有效）+回放/双连接去重键
+      set(s => {
+        if (!s.live || s.live.turnId !== data.turn_id) return {};
+        if (s.live.items.some(it => it.kind === 'steer' && it.id === data.id)) return {};
+        return { live: { ...s.live, items: [...s.live.items, { kind: 'steer', text: data.text, id: data.id }] } };
+      });
       break;
     case 'steer_retracted':
       // 插话已撤回：流水里摘除该条（等同没说过）

@@ -92,6 +92,15 @@ export async function apiUpload<T = any>(path: string, file: File): Promise<T> {
 // ---------------------------------------------------------------- SSE（W0.3）
 // EventSource 带不了自定义头：先 fetch 取一次性 ticket（30s single-use），
 // 再连 ?ticket=。401/断流时由调用方触发重连（每次重连重新取票）。
+// 断点续传游标（sid → 已见最大 eid）跨 connectSse 调用持久：同一闭包内的
+// 重连本来就带游标；**resync() 重建连接（切页面/标签页回来）是全新调用**，
+// 若游标归零→fresh 连接→服务端回放活跃 turn 尾窗→叠进前端保留的
+// items = 「多次输出/插话两遍」根因。openSession 重进会话时调
+// resetSseCursor（items 从空重铺，需要 fresh 尾窗回放作单一来源）。
+const sseCursors: Record<string, number> = {};
+
+export function resetSseCursor(sid: string): void { delete sseCursors[sid]; }
+
 export async function fetchSseTicket(): Promise<string> {
   const d = await api<{ ticket: string; expires_in: number }>('/api/sse-ticket');
   return d.ticket;
@@ -118,7 +127,8 @@ export async function connectSse(
   // 状态——不带上次见到的 eid，服务端每次重连都精准回放活跃 turn 尾部，
   // 叠进已积累的流水=「重复输出四五次」的根因。服务端通道现成：
   // ?last_event_id=（sse.py 读 query），事件 id 全局自增且落库跨重启稳定。
-  let lastId = 0;
+  // 初值取模块级持久游标（resync 重建时增量衔接）；openSession 已重置为 fresh。
+  let lastId = sseCursors[sid] ?? 0;
 
   const open = async (): Promise<EventSource> => {
     let url = `/api/sessions/${encodeURIComponent(sid)}/events`;
@@ -145,7 +155,7 @@ export async function connectSse(
     const handler = (ev: MessageEvent) => {
       const eid = Number(ev.lastEventId || 0);
       if (eid && eid <= lastId) return;      // 双保险：续传窗内的重复帧丢弃
-      if (eid > lastId) lastId = eid;
+      if (eid > lastId) { lastId = eid; sseCursors[sid] = eid; }
       let data: any = {};
       try { data = JSON.parse(ev.data); } catch { /* ignore */ }
       onEvent(ev.type, data);

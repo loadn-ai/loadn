@@ -254,11 +254,14 @@ export default function Sidebar({ onNew, onAdmin, onNav, adminActive }: {
                  }} />
         )}
       </div>
+      {/* type=search+name 语义化：Chrome 凭据填充把 search 框排除在用户名
+          候选外（autocomplete=off 对已保存密码无效——Chromium 既定策略） */}
       <div className="sidebar-search">
-        <input value={q} placeholder="搜索任务…" maxLength={80}
+        <input type="search" name="search" value={q} placeholder="搜索任务…" maxLength={80}
+          autoComplete="off" enterKeyHint="search"
           onChange={e => setQ(e.target.value)}
-          onKeyDown={e => { if (e.key === 'Escape') setQ(''); }}  autoComplete="off"/>
-        {q && <button className="search-clear" title="清空"
+          onKeyDown={e => { if (e.key === 'Escape') setQ(''); }} />
+        {q && <button type="button" className="search-clear" title="清空"
           onClick={() => setQ('')}>×</button>}
       </div>
       <div className="sidebar-list">

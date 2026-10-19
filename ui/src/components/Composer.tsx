@@ -60,6 +60,8 @@ export default function Composer() {
   // 记住选择——临时想法切一下，常用姿势不用每次点
   const [queueMode, setQueueMode] = useState<'steer' | 'queue'>(
     () => localStorage.getItem('wd_send_mode') === 'queue' ? 'queue' : 'steer');
+  // 防双发：上次提交时间戳+文本（同文本 400ms 内去重，见 submit）
+  const lastFire = useRef({ ts: 0, text: '' });
   const pickSendMode = (v: 'steer' | 'queue') => {
     setQueueMode(v);
     localStorage.setItem('wd_send_mode', v);
@@ -156,13 +158,20 @@ export default function Composer() {
     const atts = pending.filter(p => p.status === 'done').map(p => p.remote!);
     const t = text.trim();
     if ((!t && !atts.length) || uploading) return;
+    // Enter 双击/发送钮连点防双发：React 批处理窗口内 text state 仍是旧值，
+    // 两次 submit 读到同一文本各发一次。400ms 内同文本重复提交直接忽略
+    // （正常连发两条不同消息不受影响）
+    const payload = t || '（见附件）';
+    const last = lastFire.current;
+    if (last.text === payload && Date.now() - last.ts < 400) return;
+    lastFire.current = { ts: Date.now(), text: payload };
     changeText('');
     for (const p of pending) URL.revokeObjectURL(p.preview);
     setPending([]);
     // 失败路径：store 已撤乐观消息并回填草稿，这里把文本同步回本地输入框。
     // steerOrSend：运行中的 loadn turn 且发送方式为「插话」时走插话通道
     // （下一轮 LLM 调用前实时注入）；「排队」或无运行任务/带附件 → 正常排队
-    void steerOrSend(t || '（见附件）', 'foreground', atts,
+    void steerOrSend(payload, 'foreground', atts,
                      { queue: queueMode === 'queue' })
       .catch(() => { if (currentSid && getDraft(currentSid)) setText(getDraft(currentSid)); });
   }

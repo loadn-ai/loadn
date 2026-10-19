@@ -138,6 +138,9 @@ button:focus-visible, .tab:focus-visible, .chip:focus-visible {
   transition: border-color .15s, box-shadow .15s; }
 .sidebar-search input:focus { border-color: var(--accent); box-shadow: 0 0 0 3px var(--accent-ring); }
 .sidebar-search input::placeholder { color: var(--text-dim); }
+/* type=search 的 WebKit 原生清除钮隐藏（自绘 .search-clear 已有，避免双钮） */
+.sidebar-search input::-webkit-search-cancel-button,
+.sidebar-search input::-webkit-search-decoration { -webkit-appearance: none; display: none; }
 .search-clear { position: absolute; right: 22px; top: 50%; transform: translateY(-50%);
   border: none; background: none; color: var(--text-dim); cursor: pointer; font-size: var(--fs-lg);
   padding: 2px 5px; border-radius: var(--radius-xs); }
