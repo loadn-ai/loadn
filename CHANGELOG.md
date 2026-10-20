@@ -3,7 +3,7 @@
 本项目的全部显著变更记录于此。格式遵循 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/)，
 版本遵循 [SemVer](https://semver.org/lang/zh-CN/)。
 
-## [Unreleased]
+## [0.7.33] - 2026-10-20
 
 - **数字员工能力三件套：工作职责召唤闭环 + 技能/资源绑定 + 员工记忆域**
   （用户需求「数字员工缺少工作职责、技能/资源绑定、记忆管理」）：
