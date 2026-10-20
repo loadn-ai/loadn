@@ -333,6 +333,11 @@ def _apply_section(cfg_obj: object, section: dict) -> None:
         cur = getattr(cfg_obj, k)
         if is_dataclass(cur) and isinstance(v, dict):
             _apply_section(cur, v)   # 嵌套分节（engines.claude 等）递归覆盖
+        elif is_dataclass(cur) and v is None:
+            # 裸键（如模板「engines.loadn:」子项全注释）解析为 null——
+            # 语义是"未配置"，保留默认实例；直接 setattr 会把 None 打穿
+            # default_factory（新装实例 /api/health 500 实测坑）。
+            continue
         else:
             setattr(cfg_obj, k, v)
 

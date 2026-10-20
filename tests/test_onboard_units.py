@@ -173,3 +173,21 @@ def test_maybe_onboard_respects_marker_and_tty(
     onboard.maybe_onboard()
     assert capsys.readouterr().out == ""
     assert not (isolated_env / ".onsite_done").exists()
+
+
+def test_onboard_stdin_eof_aborts_not_loops(
+        isolated_env: Path, monkeypatch: pytest.MonkeyPatch, capsys):
+    """docker/CI 非 tty：stdin 即 EOF——引导须中止给指引（exit 2），不得死循环。
+
+    实测坑：loadn setup < /dev/null 时选择循环把 EOFError 当无效输入
+    无限重问「选择端点」（EOF 后 input() 恒抛，永不退出）。
+    """
+    def boom(*_a):
+        raise EOFError
+    monkeypatch.setattr("builtins.input", boom)
+    rc = onboard.run_onboarding()
+    assert rc == 2
+    out = capsys.readouterr().out
+    assert "非交互终端" in out
+    assert "loadn setup" in out          # 指引含重试方式
+    assert "无效选择" not in out          # 不得进入重问循环

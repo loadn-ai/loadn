@@ -235,11 +235,13 @@ Python 3.10 or later. The engine has a single runtime dependency
 
 ### Install the engine
 
-Requires Python ≥ 3.10. Two common pitfalls: on Debian 12+/Ubuntu 23.04+
-system Python, `pip` refuses system-wide installs
+Requires Python ≥ 3.10. Three common pitfalls: bare Ubuntu servers and
+containers (24.04+) ship without Python — run `sudo apt-get update &&
+sudo apt-get install -y python3 python3-venv` first; on Debian 12+/
+Ubuntu 23.04+ system Python, `pip` refuses system-wide installs
 (`externally-managed-environment`); and an interpreter older than 3.10
-resolves no versions at all (`No matching distribution found`). Install into
-a virtual environment in both cases:
+resolves no versions at all (`No matching distribution found`). For the
+latter two, install into a virtual environment:
 
 ```bash
 python3 -m venv ~/.venvs/loadn
@@ -263,9 +265,13 @@ order:
    reused as-is
 
 On first run without a configured endpoint, the CLI enters an onboarding
-wizard (preset endpoint menu, masked API-key entry) and writes the result
-to `$LOADN_HOME/config.json`. The `fake` provider used by tests and
-playback never triggers it.
+wizard **on an interactive terminal** (bare `loadn` REPL or `loadn setup`;
+preset endpoint menu, masked API-key entry) and writes the result to
+`$LOADN_HOME/config.json`. Headless (`-p`) and non-tty stdin never enter
+the wizard — the CLI fails fast (exit 2) with environment-variable and
+config-file hints (`loadn setup < /dev/null` likewise aborts cleanly
+instead of looping). The `fake` provider used by tests and playback never
+triggers it.
 
 ### First run
 
@@ -356,9 +362,19 @@ instead:
 ### Deploying the platform
 
 ```bash
+# PyPI package (API-first — the wheel ships no frontend assets)
+pip install "loadn[webui]"
+loadn-web init            # data root + config.yaml template + access token
+loadn-web token show      # read the token (auto-generated, 14-day grace)
+loadn-web serve           # http://127.0.0.1:8792 — api-only build;
+                          # interactive API docs at /docs
+
+# From source (full web UI)
+git clone https://github.com/loadn-ai/loadn && cd loadn
 pip install -e ".[webui]"
+(cd ui && npm ci && npm run build)    # builds ui/dist (served at /)
 loadn-web init --model <model> --base-url <url> --api-key <key>
-loadn-web serve          # loadn-web doctor runs a self-check
+loadn-web serve           # loadn-web doctor runs a self-check
 ```
 
 The administration center (security, resource, and organization panels) is

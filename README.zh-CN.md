@@ -210,9 +210,11 @@ Python 3.10 或更高。引擎运行时依赖仅 `httpx` 一个；可选附加�
 
 ### 安装引擎
 
-要求 Python ≥ 3.10。两个常见坑：Debian 12+/Ubuntu 23.04+ 的系统 Python
-会拒绝全局安装（`externally-managed-environment`）；解释器低于 3.10 时
-则直接解析不到任何版本（`No matching distribution found`）。两种情况都
+要求 Python ≥ 3.10。三个常见坑：裸装的 Ubuntu 服务器/容器（24.04+）
+默认不带 Python，先 `sudo apt-get update && sudo apt-get install -y
+python3 python3-venv`；Debian 12+/Ubuntu 23.04+ 的系统 Python 会拒绝
+全局安装（`externally-managed-environment`）；解释器低于 3.10 时则直接
+解析不到任何版本（`No matching distribution found`）。后两种情况都
 建议装进虚拟环境：
 
 ```bash
@@ -234,8 +236,11 @@ pip install git+https://github.com/loadn-ai/loadn
 3. `~/.claude/settings.json` 的 `env` 块（如存在）——已在用 Claude
    CLI 走网关的安装被原样复用
 
-首次运行且未配置端点时，CLI 进入引导向导（预设端点选单、掩码输入
-API key），结果写入 `$LOADN_HOME/config.json`。测试与回放使用的
+首次运行且未配置端点时，CLI 在**交互终端**（裸 `loadn` REPL 或
+`loadn setup`）进入引导向导（预设端点选单、掩码输入 API key），结果
+写入 `$LOADN_HOME/config.json`。headless（`-p`）与非 tty stdin 下不
+进向导——快速失败（exit 2）并给出环境变量/配置文件指引（`loadn
+setup < /dev/null` 同样优雅中止，不死循环）。测试与回放使用的
 `fake` 供应商不会触发引导。
 
 ### 首次运行
@@ -323,9 +328,19 @@ CLI 镜像 Claude Code 的无头契约，任何 spawn
 ### 部署平台
 
 ```bash
+# PyPI 包（API 优先——wheel 不含前端静态资源）
+pip install "loadn[webui]"
+loadn-web init            # 初始化数据根 + config.yaml 模板 + 访问令牌
+loadn-web token show      # 查看 token（新装自动生成，14 天宽限期）
+loadn-web serve           # http://127.0.0.1:8792 —— api-only 构建，
+                          # 交互式 API 文档见 /docs
+
+# 源码部署（完整 Web 界面）
+git clone https://github.com/loadn-ai/loadn && cd loadn
 pip install -e ".[webui]"
+(cd ui && npm ci && npm run build)    # 构建 ui/dist（/ 由其渲染）
 loadn-web init --model <model> --base-url <url> --api-key <key>
-loadn-web serve          # loadn-web doctor 执行自检
+loadn-web serve           # loadn-web doctor 执行自检
 ```
 
 管理中心（安全 / 资源 / 组织面板）为 `ui/` 下的 React 前端。桌面

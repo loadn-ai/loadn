@@ -116,22 +116,44 @@ def write_marker() -> None:
 
 # ---------------------------------------------------------------- 交互流程
 
+class _StdinClosed(RuntimeError):
+    """stdin 关闭（EOF/Ctrl-C）且无默认值可接受——问答无法继续。"""
+
+
 def _ask(prompt: str, default: str = "") -> str:
-    """带默认值的问询行：回车/EOF=接受默认（空默认则真空）。"""
+    """带默认值的问询行：回车=接受默认（空默认则真空）。
+
+    EOF/Ctrl-C：有默认值时接受默认（管道喂答案场景友好）；无默认值
+    则抛 _StdinClosed 中止引导——否则选择循环会无限重问（docker/CI
+    非 tty 下 stdin 即 EOF，实测死循环坑）。
+    """
     suffix = f" [{default}]" if default else ""
     try:
         ans = input(f"{prompt}{suffix}: ").strip()
     except (EOFError, KeyboardInterrupt):
         print()
-        ans = ""
+        if default:
+            return default
+        raise _StdinClosed() from None
     return ans or default
 
 
 def run_onboarding(*, force: bool = False) -> int:
     """引导主流程（loadn setup 子命令同入口；force=已配置也重问）。
 
-    返回 exit code（0=正常结束——含用户跳过；引导本身无失败态，
+    返回 exit code（0=正常结束——含用户跳过；2=stdin 关闭无法交互；
     写盘异常兜底为提示不炸）。"""
+    try:
+        return _onboarding_flow(force=force)
+    except _StdinClosed:
+        print("\n✗ 输入已关闭（非交互终端）——问答无法继续。")
+        print("  免交互配置：设 ANTHROPIC_BASE_URL/ANTHROPIC_AUTH_TOKEN 环境变量，")
+        print("  或直接编辑 $LOADN_HOME/config.json；交互终端重试：loadn setup")
+        return 2
+
+
+def _onboarding_flow(*, force: bool = False) -> int:
+    """问答主体（run_onboarding 薄壳捕 stdin 中止）。"""
     from loadn.providers import provider_config
 
     cfg = provider_config()
