@@ -62,6 +62,11 @@ class PerEngineConfig:
     provider: str | None = None      # opencode -m <provider>/<model> 的 provider 前缀
     enabled: bool = True
     extra_args: list[str] = field(default_factory=list)
+    # init 批（CLI/TUI 测试）：端点/密钥落 config.yaml，spawn 时经 build_env
+    # 注入 LOADN_BASE_URL/LOADN_API_KEY（引擎 provider_config 环境层消费）——
+    # 此前模板引导用户填 yaml 却无生效路径（填了个寂寞）。
+    base_url: str | None = None
+    api_key: str | None = None
 
 
 @dataclass

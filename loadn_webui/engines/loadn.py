@@ -49,7 +49,16 @@ class LoadnSpec(EngineSpec):
         return [sys.executable, "-m", "loadn"]
 
     def build_env(self) -> dict:
-        return {}          # R1 起 clearenv 白名单的起点：不再注入 PYTHONPATH hack
+        # R1 起 clearenv 白名单的起点：不再注入 PYTHONPATH hack。
+        # init 批：config.yaml engines.loadn 端点/密钥 → 引擎 env（provider_
+        # config 环境层优先级高于进程继承——config.yaml 配置真正生效）。
+        env = {}
+        e = CONFIG.engines.loadn
+        if e.base_url:
+            env["LOADN_BASE_URL"] = e.base_url
+        if e.api_key:
+            env["LOADN_API_KEY"] = e.api_key
+        return env
 
     def build_argv(self, call: TurnCall) -> tuple[list[str], dict]:
         binp = self.resolve_bin()

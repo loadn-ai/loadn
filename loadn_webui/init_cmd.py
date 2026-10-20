@@ -45,7 +45,7 @@ Environment=LOADN_WEBUI_HOME={data_root}
 WantedBy=multi-user.target
 """
 
-CONFIG_TEMPLATE = """\\
+CONFIG_TEMPLATE = """
 # loadn 配置（loadn-web init 生成）——编辑后重启服务生效
 # 完整字段见 config.yaml.example
 
@@ -74,7 +74,8 @@ security:
 """
 
 
-def cmd_init(data_root: str = "", *, force: bool = False) -> int:
+def cmd_init(data_root: str = "", *, force: bool = False,
+              model: str = "", base_url: str = "", api_key: str = "") -> int:
     """初始化数据根。data_root 缺省 ~/.loadn-data。"""
     root = Path(data_root).expanduser().resolve() if data_root else (
         Path(os.environ.get("LOADN_WEBUI_HOME") or Path.home() / ".loadn-data")
@@ -101,10 +102,36 @@ def cmd_init(data_root: str = "", *, force: bool = False) -> int:
     # 2) config.yaml
     cfg = root / "config.yaml"
     if not cfg.exists() or force:
-        cfg.write_text(CONFIG_TEMPLATE)
-        print(f"✓ config.yaml（填 LLM API key 后可用——{cfg}）")
+        text = CONFIG_TEMPLATE
+        if model or base_url or api_key:
+            # init 参数渲染进模板 engines.loadn 注释位（不追加第二段——
+            # YAML 重复顶层键解析行为未定义，实值必须落在模板既有的段内）
+            lines = ["  loadn:"]
+            if base_url:
+                lines.append(f"    base_url: {base_url}")
+            if api_key:
+                lines.append(f"    api_key: {api_key}")
+            if model:
+                lines.append(f"    model: {model}")
+            placeholder = (
+                "  loadn:\n"
+                "    # OpenAI 兼容端点（如 GLM/Doubao/DeepSeek/本地 vLLM）\n"
+                "    # 也支持 Anthropic 原生端点——见 README.md\n"
+                "    # provider: openai_compat\n"
+                "    # model: glm-4.6\n"
+                "    # base_url: https://open.bigmodel.cn/api/paas/v4\n"
+                "    # api_key: YOUR_KEY_HERE")
+            assert placeholder in text
+            text = text.replace(placeholder, "\n".join(lines))
+        cfg.write_text(text)
+        desc = "（含 init 参数）" if (model or base_url or api_key) else ""
+        print(f"✓ config.yaml{desc}（填 LLM API key 后可用——{cfg}）")
     else:
-        print("✓ config.yaml 已存在（跳过）")
+        if model or base_url or api_key:
+            print("⚠ config.yaml 已存在——init 参数未写入（--force 重新生成"
+            " 或手工编辑 engines.loadn 段）")
+        else:
+            print("✓ config.yaml 已存在（跳过）")
 
     # 3) server_token
     token_file = root / "var" / "server_token"

@@ -42,9 +42,11 @@ def usage_line(usage: dict | None, total_tokens: int) -> str:
 # ---- TUI 本体 --------------------------------------------------------------
 
 
-def run_tui(bundle, stop) -> int:
-    """入口（main.py 调）：委托 textual App.run()。"""
-    return LoadnTUI(bundle, stop).run()
+async def run_tui(bundle, stop) -> int:
+    """入口（main.py 调）：run_async——CLI 主协程已在事件循环里，
+    App.run() 内部 asyncio.run() 会炸 RuntimeError（textual 8.x 实测：
+    TUI 通道自 textual 升级起即断，T-e2e 首跑暴露）。"""
+    return await LoadnTUI(bundle, stop).run_async()
 
 
 try:

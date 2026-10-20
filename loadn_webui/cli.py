@@ -772,6 +772,13 @@ def main(argv: list[str] | None = None) -> int:
                         help="数据根路径（缺省 ~/.loadn-data）")
     p_init.add_argument("--force", action="store_true",
                         help="重新生成 config/token（已有目录不删）")
+    p_init.add_argument("--model", default="",
+                        help="默认模型（写入 engines.loadn.model，spawn 经 argv 生效）")
+    p_init.add_argument("--base-url", default="",
+                        help="LLM 端点（engines.loadn.base_url → spawn 注入 LOADN_BASE_URL）")
+    p_init.add_argument("--api-key", default="",
+                        help="LLM 密钥（engines.loadn.api_key → LOADN_API_KEY；"
+                             "仅私有机器使用——config.yaml 为明文）")
 
     p_t = sub.add_parser("token", help="API token 管理（W0）")
     p_t.add_argument("action", choices=["show", "rotate"])
@@ -888,7 +895,10 @@ def main(argv: list[str] | None = None) -> int:
         return ops_mod.cmd_rollback(args.version or None, yes=args.yes)
     if args.cmd == "init":
         from . import init_cmd
-        return init_cmd.cmd_init(args.path, force=args.force)
+        return init_cmd.cmd_init(args.path, force=args.force,
+                                  model=getattr(args, "model", "") or "",
+                                  base_url=getattr(args, "base_url", "") or "",
+                                  api_key=getattr(args, "api_key", "") or "")
     if args.cmd == "backup":
         from . import backup as backup_mod
         if args.bkcmd == "run":

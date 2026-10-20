@@ -219,7 +219,7 @@ async def _run(args, prompt: str | None, cwd: Path, cfg: dict, mode: str) -> int
             if not os.environ.get("LOADN_NO_TUI"):
                 try:
                     from loadn.tui import run_tui
-                    return run_tui(bundle, stop)
+                    return await run_tui(bundle, stop)
                 except ImportError:
                     print("（textual 未安装——回落基础 REPL；"
                           "pip install 'loadn[tui]' 启用全屏 TUI）")
