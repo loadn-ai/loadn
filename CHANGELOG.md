@@ -3,8 +3,22 @@
 本项目的全部显著变更记录于此。格式遵循 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/)，
 版本遵循 [SemVer](https://semver.org/lang/zh-CN/)。
 
-## [Unreleased]
+## [0.7.34] - 2026-10-20
 
+- **修复：TUI 通道自 textual 8.x 升级起全断**：`App.run()` 内部
+  `asyncio.run()` 与 CLI 主事件循环嵌套即炸 RuntimeError——改
+  `run_async()`+await 修复（CLI 真机 e2e 首跑暴露）。
+- **修复：init 生成的 config.yaml 从未生效**：模板首行藏一个反斜杠
+  转义字符，YAML 解析直接炸且被 `except YAMLError` 静默吞掉——新
+  用户填什么配置都是默认值。模板修正。
+- **修复：config.yaml 端点/密钥无生效路径**：`engines.loadn` 段的
+  base_url/api_key 没人读。补全链路：`PerEngineConfig` 加字段 →
+  spawn 注入 `LOADN_BASE_URL/LOADN_API_KEY` → 引擎 provider_config
+  环境层消费。`loadn-web init --model/--base-url/--api-key` 三值
+  落 config.yaml 全链实证（init → yaml → CONFIG → 引擎进程）。
+- **CLI/TUI 真机 e2e 套件**：CLI 14 例（三格式/--model 进 init 事件/
+  stdin 管道/session 锁/--resume/tools 全链/子命令）+TUI/REPL 6 例
+  （pexpect 伪终端），归档 `tests/e2e/`。
 - **CLI/TUI 首跑引导（onboarding）**：裸 `loadn` 交互模式此前零引导——
   未配置模型端点的新用户面对空输入框，发消息才在 build_agent 深处裸
   Traceback。新增 `loadn/cli/onboard.py`（对标 Claude Code 首跑体验）：
