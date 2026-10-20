@@ -44,7 +44,7 @@ OpenAI 兼容端点，即可获得一个无头 agent：内置工具、MCP 支持
 | `desktop/` | 桌面发行版：Tauri 壳 + Debian rootfs，整个执行域运行在 macOS / Windows 内的 Linux 虚拟机中 | `desktop/image/` 构建流水线 |
 | `ui/` | 管理中心 React 前端（安全 / 资源 / 组织面板） | `cd ui && npm run build` |
 
-![loadn-web 管理平台：会话、技能教学卡、审批门与成本面板](docs/assets/platform-preview.png)
+![loadn-web 工作台：虚拟项目实拍——双子代理并行派发、任务清单、工具调用与按子任务/代理分组的产物面板](docs/assets/hero-workbench.png)
 
 ### 架构
 

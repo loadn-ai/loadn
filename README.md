@@ -48,7 +48,7 @@ minor release.
 | `desktop/` | Desktop distribution: Tauri shell with a Debian rootfs; the whole execution domain runs inside a Linux VM on macOS and Windows | `desktop/image/` build pipeline |
 | `ui/` | React frontend for the administration center (security, resource, and organization panels) | `cd ui && npm run build` |
 
-![loadn-web administration platform: sessions, skill-teaching cards, approval gates, and cost panels](docs/assets/platform-preview.png)
+![loadn-web workbench: a full mock project — two subagents dispatched in parallel, todos, tool calls, and the artifacts panel grouped by subtask and agent](docs/assets/hero-workbench.png)
 
 ### Architecture
 
