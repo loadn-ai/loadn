@@ -318,6 +318,8 @@ button:focus-visible, .tab:focus-visible, .chip:focus-visible {
   color: var(--text-dim); min-width: 0; transition: color .15s; }
 .think-head:hover { color: var(--text); }
 .think-tag { display: inline-flex; align-items: center; gap: 5px; flex-shrink: 0; }
+.think-count { margin-left: auto; flex-shrink: 0; color: var(--text-dim);
+  font-size: var(--fs-xs); font-variant-numeric: tabular-nums; opacity: .9; }
 .think-preview { color: var(--text-dim); opacity: .8; overflow: hidden; text-overflow: ellipsis;
   white-space: nowrap; flex: 1; }
 .think-card .chev { flex-shrink: 0; }

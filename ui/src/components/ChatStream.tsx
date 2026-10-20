@@ -1,4 +1,4 @@
-import { memo, useEffect, useState } from 'react';
+import { memo, useEffect, useReducer, useState } from 'react';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import { useStore } from '../stores/sessions';
@@ -329,7 +329,33 @@ function LiveTurn({ live }: { live: NonNullable<ReturnType<typeof useStore.getSt
   // POST 只会吃 404「turn 不存在或已结束」。终态确认（SSE turn_stopped →
   // 清 live）/ 失败 / 30s 轮询超时后恢复，见 stores/sessions.stopTurn
   const stopping = useStore(s => s.stoppingTids[live.turnId] != null);
+  // 运行中秒级自刷新：等待首响应/长思考期间无新事件也要让秒表走字
+  const [, tick] = useReducer((x: number) => x + 1, 0);
+  useEffect(() => {
+    if (live.status !== "running" && live.status !== "queued") return;
+    const iv = setInterval(tick, 1000);
+    return () => clearInterval(iv);
+  }, [live.status]);
   const elapsed = Math.round((Date.now() - live.startedAt) / 1000);
+  // 环节推导（本地信号——盲区显形：无事件=引擎冷启动/planner/LLM 首字延迟）
+  let phase = "";
+  if (live.status === "running") {
+    if (!live.items.length) {
+      phase = "引擎启动 · 等待首响应";
+    } else {
+      const thinkAll = live.items.reduce((a, it) => a +
+        (it.kind === "thinking" && it.agent_n == null ? it.text.length : 0), 0);
+      const last = live.items[live.items.length - 1];
+      if (thinkAll > 0 && last && (last.kind === "thinking" || last.kind === "text"))
+        phase = "LLM 生成中 · 思考 " + fmtChars(thinkAll);
+      else if (last && last.kind === "tool")
+        phase = "工具执行中";
+      else if (live.items.some(it => it.kind === "tool"))
+        phase = "LLM 推理中";
+      else
+        phase = "LLM 推理中";
+    }
+  }
   const hidden = Math.max(0, live.items.length - LIVE_TAIL);
   const shown = hidden ? live.items.slice(-LIVE_TAIL) : live.items;
   return (
@@ -337,7 +363,7 @@ function LiveTurn({ live }: { live: NonNullable<ReturnType<typeof useStore.getSt
       <div className={`turn-bar ${live.status}`}>
         {live.status === 'queued' ? '排队中…'
           : stopping ? `停止中… ${elapsed}s`
-          : `运行中 ${elapsed}s`}
+          : `运行中 ${elapsed}s${phase ? " · " + phase : ""}`}
         {live.status === 'running' && (
           <button className="btn danger sm" disabled={stopping}
                   title={stopping ? '停止请求已发出，等待引擎确认…' : '停止当前任务'}
@@ -353,7 +379,7 @@ function LiveTurn({ live }: { live: NonNullable<ReturnType<typeof useStore.getSt
       {shown.map((it, i) => {
         // key 用绝对索引（hidden+i）：窗口滑动时已有项 key 不变，memo 才能跳过重渲染
         if (it.kind === 'thinking') return <ThinkingCard key={hidden + i} text={it.text} live
-          tag={it.agent_n != null ? `子${it.agent_n}` : undefined} cum={it.cum} />;
+          tag={it.agent_n != null ? `子${it.agent_n}` : undefined} cum={it.agent_n == null ? it.text.length : it.cum} />;
         if (it.kind === 'tool') return <ToolLine key={hidden + i} b={it} turnId={live.turnId} />;
         if (it.kind === 'steer') return <SteerNote key={hidden + i} text={it.text} steerId={it.id} />;
         if (it.kind === 'todos') return null;   // 类型完备：live 流不产 todos 项（回放专用）
@@ -439,6 +465,7 @@ export const ThinkingCard = memo(function ThinkingCard({ text, live, tag, cum }:
       <div className="think-head" onClick={() => setOpen(!open)}>
         <span className="think-tag"><Cloud size={12} /> 思考</span>
         {tag && <span className="tool-subtag" title="子代理归属">{tag}</span>}
+        {live && !tag && <span className="think-count">思考中… 已 {fmtChars(text.length)}</span>}
         {!open && (tag && cum != null
           ? <span className="think-preview">{live ? '思考中… ' : ''}已 {fmtChars(cum)}</span>
           : <span className="think-preview">{text.slice(0, 80).replace(/\s+/g, ' ')}</span>)}
