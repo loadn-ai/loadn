@@ -83,6 +83,9 @@ def main(argv: list[str] | None = None) -> int:
     if raw and raw[0] == "auth":
         from loadn.cli.auth import main as auth_main
         return auth_main(raw[1:])
+    if raw and raw[0] == "setup":
+        from loadn.cli.onboard import run_onboarding
+        return run_onboarding()
     if raw and raw[0] == "daemon":
         from loadn.transport.daemon import main as daemon_main
         return daemon_main()
@@ -102,8 +105,23 @@ def main(argv: list[str] | None = None) -> int:
     mode = (args.permission_mode
             or ("bypassPermissions" if args.yolo else "default"))
 
-    from loadn.providers import provider_config
+    # 首跑引导（交互模式且未引导过才进入；tty 判定在内——脚本/管道零感知）。
+    # 必须在 provider_config 之前：引导写 config.json 即刻生效于本次会话。
+    if not args.print_mode:
+        from loadn.cli.onboard import maybe_onboard
+        maybe_onboard()
+
+    from loadn.providers import EXTRA_PROVIDERS, provider_config
     cfg = provider_config()
+    # 零配置快速失败（原为 build_agent 深处裸 Traceback——首跑跳过引导/
+    # 环境无任何端点时体验最差的炸法）。fake/注册的扩展 provider 不需
+    # base_url，不在此列。
+    _kind = (cfg.get("provider") or "anthropic").strip().lower()
+    if _kind not in EXTRA_PROVIDERS and _kind != "fake" and not cfg.get("base_url"):
+        print("loadn: 未配置模型端点（base_url）——运行 loadn setup 交互配置，\n"
+              "或在环境变量 ANTHROPIC_BASE_URL/$LOADN_HOME/config.json 提供。",
+              file=sys.stderr)
+        return 2
     if args.model:
         cfg["model"] = args.model
     if args.effort:

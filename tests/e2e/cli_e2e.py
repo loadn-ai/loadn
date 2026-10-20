@@ -1,4 +1,8 @@
-import json, subprocess, sys, tempfile, uuid
+import json
+import subprocess
+import sys
+import tempfile
+import uuid
 from pathlib import Path
 
 W = Path("/home/woldy/.loadn-data/workspace/20261010_1040-新任务c0b0/work/cli_e2e")
@@ -55,8 +59,8 @@ with tempfile.TemporaryDirectory() as td:
     check("C8c Bash 真执行 hello-fake", "hello-fake" in r.stdout)
     for sub in ("skills", "memory", "auth"):
         r = run([sub, "--help"])
-        check("C9 %s --help" % sub, r.returncode == 0, (r.returncode, r.stderr[:80]))
+        check(f"C9 {sub} --help", r.returncode == 0, (r.returncode, r.stderr[:80]))
 
 print()
-print("===== CLI e2e: %d/%d passed =====" % (sum(OK), len(OK)))
+print(f"===== CLI e2e: {sum(OK)}/{len(OK)} passed =====")
 sys.exit(0 if all(OK) else 1)

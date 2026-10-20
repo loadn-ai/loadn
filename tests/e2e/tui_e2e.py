@@ -1,5 +1,8 @@
-import os, pexpect, sys, tempfile, time
+import sys
+import tempfile
 from pathlib import Path
+
+import pexpect
 
 W = Path("/home/woldy/.loadn-data/workspace/20261010_1040-新任务c0b0/work/cli_e2e")
 LOADN = "/data/code/loadn/.venv/bin/loadn"
@@ -36,8 +39,10 @@ with tempfile.TemporaryDirectory() as td:
         check("T3 TUI Ctrl-D 退出", True, "exit")
     except Exception as e:
         check("T-suite 异常", False, repr(e)[:80] + " | before=" + repr(getattr(e, "before", None) or (c.before if c else ""))[-700:])
-        try: c.close(force=True)
-        except Exception: pass
+        try:
+            c.close(force=True)
+        except Exception:
+            pass
 
     # ---- REPL（LOADN_NO_TUI=1 回落）
     try:
@@ -53,9 +58,11 @@ with tempfile.TemporaryDirectory() as td:
         check("T6 REPL Ctrl-D 退出", True)
     except Exception as e:
         check("REPL-suite 异常", False, repr(e)[:150])
-        try: c2.close(force=True)
-        except Exception: pass
+        try:
+            c2.close(force=True)
+        except Exception:
+            pass
 
 print()
-print("===== TUI/REPL e2e: %d/%d passed =====" % (sum(OK), len(OK)))
+print(f"===== TUI/REPL e2e: {sum(OK)}/{len(OK)} passed =====")
 sys.exit(0 if all(OK) else 1)

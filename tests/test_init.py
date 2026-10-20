@@ -92,6 +92,7 @@ def test_engine_env_injects_config_endpoints(tmp_path, monkeypatch):
     """engines.loadn.base_url/api_key（config.yaml）→ build_env 注入
     LOADN_BASE_URL/LOADN_API_KEY（引擎 provider_config 环境层消费）。"""
     from dataclasses import replace
+
     from loadn_webui import config as cfg_mod
     from loadn_webui.engines import loadn as eng_mod
     new_cfg = replace(

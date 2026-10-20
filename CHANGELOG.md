@@ -3,6 +3,28 @@
 本项目的全部显著变更记录于此。格式遵循 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/)，
 版本遵循 [SemVer](https://semver.org/lang/zh-CN/)。
 
+## [Unreleased]
+
+- **CLI/TUI 首跑引导（onboarding）**：裸 `loadn` 交互模式此前零引导——
+  未配置模型端点的新用户面对空输入框，发消息才在 build_agent 深处裸
+  Traceback。新增 `loadn/cli/onboard.py`（对标 Claude Code 首跑体验）：
+  - 首跑（无 marker 且端点/密钥有缺口）在 TUI/REPL 之前自动进终端
+    问答：预设端点选单（GLM 开放平台/DeepSeek/Z.AI/Anthropic/Kimi/
+    自定义 OpenAI 兼容），base_url/model 预填默认回车接受，api_key 走
+    getpass 不回显；合并写 `$LOADN_HOME/config.json`（0600 原子写，
+    既有键不碰）即刻生效于本次会话。fake provider（测试/回放通道）
+    不触发。
+  - `loadn setup` 子命令随时重进引导（已配置也重问）；`.onsite_done`
+    marker 幂等——已引导过/已配置零打扰；headless `-p` 与非 tty 不
+    触发（fail-closed 哲学与信任门一致）。
+  - **零配置快速失败**：端点全空时启动即给「运行 loadn setup」指引并
+    exit 2（原为 provider 构造处裸 Traceback；fake/扩展 provider 不受
+    影响）。
+  - TUI/REPL 欢迎行与 `/help` 带 `loadn setup` 指引。
+  - 测试：单测 12 例（判定矩阵含 fake 豁免/合并写/交互全流程）+
+    pexpect 真机 e2e 10 断言（归档 `tests/e2e/onboard_e2e.py`）；
+    顺手清上一批 e2e 遗留 ruff 9 错（CI `ruff check .` 守卫）。
+
 ## [0.7.33] - 2026-10-20
 
 - **数字员工能力三件套：工作职责召唤闭环 + 技能/资源绑定 + 员工记忆域**

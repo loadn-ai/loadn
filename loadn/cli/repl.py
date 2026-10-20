@@ -23,6 +23,7 @@ async def run_repl(bundle, emitter, fmt: str, stop) -> int:
             return 0
         if line == "/help":
             print("/exit /resume <sid> /fork /compact /todos /undo")
+            print("配置引导（模型端点/密钥）：退出后运行 loadn setup")
             continue
         if line == "/undo":
             from loadn.core import autocommit as ac

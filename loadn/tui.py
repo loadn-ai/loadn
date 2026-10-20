@@ -88,6 +88,7 @@ class LoadnTUI(App):  # type: ignore[misc]
         log.write(f"[dim]会话 {self.core.session.session_id} · {model} · "
                   f"{self.core.cwd}[/dim]")
         log.write("[dim]/help 看指令；Ctrl-C 中断当前轮（再按一次如无轮在跑则不退出）[/dim]")
+        log.write("[dim]配置引导（模型端点/密钥）：退出后运行 loadn setup[/dim]")
         self._refresh_status()
 
     # ---- 事件路由
@@ -176,7 +177,8 @@ class LoadnTUI(App):  # type: ignore[misc]
         if cmd in ("/exit", "/quit"):
             self.exit()
         elif cmd == "/help":
-            log.write("[dim]/exit /resume <sid> /fork /compact /todos /undo /clear[/dim]")
+            log.write("[dim]/exit /resume <sid> /fork /compact /todos /undo "
+                      "/clear ｜ 配置引导：终端跑 loadn setup[/dim]")
         elif cmd == "/clear":
             log.clear()
         elif cmd == "/todos":
