@@ -1,4 +1,4 @@
-# loadn（老登，读 **load-n**）
+# loadn
 
 <picture>
   <source media="(prefers-color-scheme: dark)" srcset="docs/assets/logo-dark.svg">
@@ -11,116 +11,40 @@
 [![Python](https://img.shields.io/badge/python-3.10%2B-blue)](pyproject.toml)
 [![Code Style: ruff](https://img.shields.io/badge/code%20style-ruff-261230.svg)](https://github.com/astral-sh/ruff)
 
-简体中文 | **[English](README.md)**
+**[简体中文](README.zh-CN.md)** | English
 
-> ### 天行健，oldman，地势坤，loadn。
->
-> loadn 读 load-n，谐音「老登」，即 oldman。名字取自《周易》乾坤二卦：
-> 乾曰「天行健，君子以自强不息」——是为 oldman，老而弥坚；坤曰
-> 「地势坤，君子以厚德载物」——是为 loadN，load N，载物无算。一名
-> 两卦，一动一静：引擎当锐意进取，平台当承载万物。
->
-> 只是年纪过大，已经算不上君子了——所以，叫老登。
+> **命名。** loadn（读 *load-n*）是 loadn-ai 平台的引擎包。产品形态：
+> `loadn` 引擎 / `loadn-web` 平台 / `loadn desktop` 桌面版。
 
-**纯 Python 自包含的 coding-agent 引擎，长成可自托管的 agent 平台。**
-一次 `pip install`，任选 Anthropic 形态或 OpenAI 兼容端点，即得一个无头
-agent：工具、MCP、子代理、会话持久化、上下文压缩齐备——说 Claude Code
-的 `stream-json` 方言，既有 harness 可把它当可替换的子进程引擎直接驱动。
-引擎之外是多层会话 Web 平台：数字员工组织架构、资源 Hub、七层执行安全
-栈、调度、成本核算与防篡改审计账本。
+## 项目简介
 
-> **状态：** `v0.7.x`（beta）持续演进中。CLI argv 契约、`stream-json`
-> 方言与配置键遵循 SemVer；破坏性变更随每次 minor bump 在
-> [CHANGELOG.md](CHANGELOG.md) 预告。
->
-> 命名：loadn 是 loadn-ai 平台的引擎包（org: **loadn-ai**）。「老登」既是
-> 名字的谐音出处，也是平台吉祥物（昵称老 bike）。产品形态：loadn
-> webui / loadn desktop。
+loadn 是一个纯 Python 实现的自包含 coding-agent 引擎，并已成长为可自
+托管的 agent 平台。一次 `pip install`，配合任选的 Anthropic 形态或
+OpenAI 兼容端点，即可获得一个无头 agent：内置工具、MCP 支持、子代理、
+会话持久化与上下文压缩齐备。CLI 原生使用 Claude Code 的
+`stream-json` 方言，为 Claude CLI 构建的 harness 可以将 loadn 作为
+可替换的子进程引擎直接驱动。
 
-## 工作台
+同一仓库还承载引擎之外的平台部分：`loadn-web`，一个多会话 Web 应用，
+提供数字员工组织架构、资源 Hub、七层执行安全栈、调度、成本核算与防
+篡改审计账本。
 
-会话、agent 过程直播（思考卡 / 工具卡 / 子代理派发 / 插话）、排队消息、
-产物清单——一屏尽览：
+**状态。** v0.7.x（beta），持续维护中。CLI argv 契约、`stream-json`
+方言与配置键遵循语义化版本；破坏性变更随每次 minor 发布在
+[CHANGELOG.md](CHANGELOG.md) 中预告。
 
-![loadn-web 工作台——聊天流含任务清单、思考卡、子代理派发卡、插话卡与 markdown 回复](docs/assets/chat-workspace.png)
+### 仓库布局
 
-截图中可见的平台特性：由 `TodoWrite`/`TaskCreate` 事件同步的**任务清单**、
-**可折叠思考卡**（按代理归属、子代理思考带实时累计字数）、任务委派给具名
-数字员工时的**派发卡**、**插话卡**（运行中插话，下一轮 LLM 调用前注入）、
-带 GFM 表格的 markdown 回复。**重载回放与实时流逐字节同构**——同组件、
-同顺序、内容零丢失。
+| 路径 | 内容 | 启动方式 |
+|---|---|---|
+| `loadn/` | agent 引擎（本文档的主体） | `pip install loadn` |
+| `loadn_webui/` | Web 平台：会话 / 组织架构 / 资源 Hub / 安全 / 调度 / 成本核算 | `pip install -e ".[webui]"` → `loadn-web init` → `loadn-web serve` |
+| `desktop/` | 桌面发行版：Tauri 壳 + Debian rootfs，整个执行域运行在 macOS / Windows 内的 Linux 虚拟机中 | `desktop/image/` 构建流水线 |
+| `ui/` | 管理中心 React 前端（安全 / 资源 / 组织面板） | `cd ui && npm run build` |
 
----
+![loadn-web 管理平台：会话、技能教学卡、审批门与成本面板](docs/assets/platform-preview.png)
 
-## 三大原创理念
-
-平台是三个原创理念的部署形态。每个公式给出名词项；每张截图都是公式
-在运行中的样子。
-
-### 理念一 · Agent = Model + Harness + Resource
-
-Agent 不等于模型。模型是租来的；**Harness** 是包裹它的工程纪律（循环
-控制、权限引擎、上下文压缩、子代理管理、事件方言）；**Resource** 是
-这个世界真正允许 agent 使用的东西——端点、凭证、传感器、出网通道、
-无头浏览器。loadn 把每一项都做成显式且可替换的：模型层与供应商无关
-（任选 Anthropic 形态或 OpenAI 兼容端点），harness 就是你正在读的这个
-引擎，资源则是一等公民，在**资源 Hub** 中统一管理：
-
-![资源 Hub——分类资源卡片墙，探测状态徽章、凭证胶囊与搜索](docs/assets/resource-hub.png)
-
-每个资源以 `Resource.md` 定义（结构化表单 ↔ markdown 源码双向实时同步），
-凭证从加密凭证库按引用绑定，并以 `LOADN_SVC_*` 环境变量注入任务环境——
-注入预览精确展示 agent 将看到的一切：
-
-![资源抽屉——结构化表单与 Resource.md 双向编辑，附 Harness 注入预览](docs/assets/resource-drawer.png)
-
-### 理念二 · Digital Employee = Agent + Skills + Memory
-
-平台运行的是一个**组织**，而非单个 agent。部门树与具名员工在组织架构页
-定义（每位员工即一个 agent 定义：MBTI 人设、技能、职责——热注入子代理
-注册表）；**技能**是 agentskills.io 标准的 `SKILL.md` 包，可随时间教学
-积累（技能建议闭环把你的纠正转成可评审的持久技能）；**记忆**按用户 /
-项目 / 工作区三级分区，支持快照与回滚：
-
-![数字员工——组织架构页：部门树、员工卡与职责说明](docs/assets/org-page.png)
-
-![技能库——本地与市场技能，来源徽章与生命周期状态](docs/assets/skills-page.png)
-
-派发按名点名：`Task(subagent_type="小明")` 把工作连同人设与技能集路由给
-员工小明；结果、思考与文件以归属标记回流。突发工作可从临时工池招募——
-编制弹性伸缩，组织始终可读。
-
-### 理念三 · Security = Sandbox + Control Points + Vault + Audit
-
-安全不是勾选项，是**四项相乘**。**沙箱**圈住可逆工作（bwrap 挂载 +
-netns，出网只走白名单代理）；**控制点**守住不可逆动作（bash-AST 策略、
-出网三态策略、参数哈希绑定一次性确认码的审批门）；**凭证库**让每份凭证
-AES-GCM 加密、明文永不进入 agent 环境；**审计**账本把每次裁决哈希链式
-串联、每日外置锚点。执行路径上没有任何 LLM——每一层都是确定性、
-fail-closed：
-
-![安全中心——态势总览与沙箱、审批、出口、凭证、审计、蜜罐、目标策略七面板](docs/assets/security-center.png)
-
-```mermaid
-flowchart LR
-    CALL["agent tool call"] --> L1["L1<br/>credential<br/>vault"] --> L2["L2<br/>bash-AST<br/>policy"] --> L3["L3<br/>egress allowlist<br/>proxy"] --> L4["L4<br/>filesystem<br/>sandbox"] --> L5["L5<br/>irreversible-action<br/>approval gate"] --> L6["L6<br/>canary +<br/>audit chain"] --> L7["L7<br/>supply-chain<br/>trust gate"] --> EXEC["exec"]
-    style CALL fill:#F8FAFC,stroke:#94A3B8
-    style EXEC fill:#FEF3C7,stroke:#F59E0B
-```
-
-| # | 公式项 | 机制 | 源码 |
-|---|---|---|---|
-| L1 | Vault（凭证库） | AES-GCM；明文永不进入 agent 环境 | `loadn_webui/security/vault.py` |
-| L2 | Control point | bash-AST 策略：L0 红线+token 覆盖规则，进程外 PreToolUse | `loadn_webui/security/policy.py` |
-| L3 | Control point | 出网白名单代理；CONNECT 白名单、DNS-rebinding 与私网拒绝 | `loadn_webui/security/egress_proxy.py` |
-| L4 | Sandbox（沙箱） | bwrap 同路径挂载；netns 内代理 socket 为唯一出口 | `loadn_webui/security/sandbox.py` |
-| L5 | Control point | 不可逆动作审批门：一次性确认码绑定参数哈希 | `loadn_webui/security/approve.py` |
-| L6 | Audit（审计） | 蜜罐绊线+哈希链账本，每日外置锚点 | `loadn_webui/security/canary.py` · `audit.py` |
-| L7 | Control point | 供应链信任门：技能 sha256 锁+八类静态扫描 | `loadn_webui/security/skill_scan.py` |
-
----
-
-## 架构
+### 架构
 
 ```mermaid
 flowchart TB
@@ -139,7 +63,7 @@ flowchart TB
         LOOP --> SUB["SubagentManager"]
         LOOP --> EVT["stream-event synth<br/>(--verbose deltas)"]
     end
-    subgraph TOOLS["Tools — 12 builtin + MCP dynamic"]
+    subgraph TOOLS["Tools — 内置工具集 + MCP 动态工具"]
         BASH["Bash / Read / Write<br/>Edit / MultiEdit / Grep / Glob"]
         SHELL["InteractiveShell (pty) · Task · Skill<br/>WebFetch · WebSearch · TodoWrite"]
         MCP["mcp__server__tool"]
@@ -156,73 +80,156 @@ flowchart TB
     CORE --> PERSIST
 ```
 
-## Monorepo：引擎 + 平台
+## 功能特性
 
-本仓库不止是引擎——一个可完整自托管的**多会话 agent 平台**：
+### Agent 运行时
 
-| 组件 | 是什么 | 启动 |
-|---|---|---|
-| `loadn/` | 引擎（本 README 主体） | `pip install loadn` |
-| `loadn_webui/` | Web 平台：会话 / 组织架构 / 资源 Hub / 安全 / 调度 / 成本，含上述七层执行安全栈 | `pip install -e ".[webui]"` → `loadn-web init` → `loadn-web serve` |
-| `desktop/` | 桌面形态（Tauri 壳+Debian rootfs：整个执行域跑在 mac/win 内的 Linux VM 里） | `desktop/image/` 构建流水线 |
-| `ui/` | React 前端（管理中心：安全 / 资源 / 组织面板） | `cd ui && npm run build` |
+- 带权限引擎、hooks 与两级 loop-guard 的 agent 循环；loop-guard 对
+  重复的相同工具调用先软提醒、后硬打断。
+- 92% 窗口的上下文压缩，且保持工具调用配对完整；流中断与可重试的
+  供应商错误在循环内重试，一个 turn 不会以虚假成功收场。
+- 会话持久化：append-only JSONL transcript 加 SQLite 索引；重放从
+  最近一次压缩点续起。
+- `loadn daemon` 使 AgentCore 跨断连存活（UDS attach），缓存温度与
+  上下文在 UI 重连后保留。
+- 长时任务：前台命令超过 60 秒自动纳入后台任务表（agent 继续工作，
+  稍后读取日志）；交互式程序（REPL、安装向导）使用 pty 支撑的
+  `InteractiveShell` 工具，一次调用即可脚本化多轮 send/expect 交换。
 
-![loadn-web 管理平台——会话、技能教学卡、审批门、成本面板](docs/assets/platform-preview.png)
+### 工具与扩展性
 
-文档索引：[ARCHITECTURE](docs/ARCHITECTURE.md)（平面 / 数据布局 /
-测试体系）· [CONFIG](docs/CONFIG.md)（每个配置键）·
-[EXTENDING](docs/EXTENDING.md)（定制缝：引擎 / 供应商 / 技能 / MCP /
-hooks）· [PROTOCOL](docs/PROTOCOL.md)（引擎方言契约）·
-[RELEASE](docs/RELEASE.md)（部署 / 升级 / 回滚）·
-[ATTACK_SURFACE](docs/ATTACK_SURFACE.md)（攻击面+AI-BOM）。
+- 内置工具集：文件编辑（Read / Write / Edit / MultiEdit）、搜索
+  （Grep / Glob）、shell（Bash、InteractiveShell）、委派（Task）、
+  按需知识（Skill）、网络（WebFetch / WebSearch）与任务跟踪
+  （TodoWrite）。
+- MCP server 在 `.mcp.json` 中声明（stdio 与 streamable HTTP，支持
+  OAuth）；其工具以 `mcp__<server>__<tool>` 形式出现。
+- 技能遵循 agentskills.io 的 `SKILL.md` 标准；第三方安装需通过
+  供应链锁，任意技能可导出为兼容 zip。
+- 自定义子代理以 markdown 文件定义（`name/description/tools/model`
+  frontmatter），经 `Task(subagent_type=...)` 使用。
 
-## 为什么再造一个 agent 引擎
+### 供应商无关的模型层
 
-- **可嵌入、可魔改。** 类型化 Python 3.10+，运行时依赖只有 `httpx`。
-  核心循环（`AgentCore.run_turn`）首先是库；CLI 只是它外面的一层薄壳。
-- **原生说 `stream-json`。** CLI 的 argv 契约与事件流刻意与 Claude Code
-  无头模式同构（`-p --verbose --output-format stream-json`、prompt 即
-  `argv[-1]`、`--session-id`/`--resume`、带 `usage`+按模型 `modelUsage`
-  的 `system/assistant/user/result` 事件，`--verbose` 下另有逐 delta 的
-  `stream_event` 行供打字机渲染）。为 Claude CLI 造的 harness 可以直接
-  改 spawn loadn——监管、记账、UI 全部继续工作。
-- **供应商无关。** Anthropic 形态网关（Z.AI GLM、Anthropic 本尊）与任意
-  OpenAI 兼容端点（DeepSeek、vLLM、LiteLLM……）皆可，思考/推理与工具
-  调用翻译收在一个适配层。
-- **纪律内建。** 输出截断预算、写前读守卫、打断重复同调的两级 loop-guard
-  （软提醒→硬打断）、子进程双信号卡死检测、保工具调用配对的压缩。流中断
-  与可重试供应商错误在循环内重试——一个 turn 永不带着假成功收场。超长
-  prompt（E2BIG）透明回落 stdin 注入。
-- **默认省钱。** 三个 prompt-cache 断点（工具尾/系统/末条消息）+辅助调用
-  无缓存道；先剪枝再摘要的交接式压缩器（带文件账本与 UPDATE 模式）；
-  磨洋工拦截门（口头交付拦截+产物存在性检查）；末次调用记账；上下文
-  溢出自救（强制压缩）。
-- **不会死等 shell。** 前台命令超 60s 自动收养进后台任务表（agent 继续
-  干活、稍后 `tail` 日志）；交互程序（REPL/终端游戏/安装向导）走 pty 支撑
-  的 `InteractiveShell` 工具，一次调用脚本化多轮 send/expect。
-- **上下文工程。** 系统提示由 CLAUDE.md / AGENTS.md 祖先链（git 根界内、
-  近者后置、支持 `@import`）+技能索引+边界驱动后台抽取的长期记忆+repo
-  地图装配——镜像 Claude Code 的分层记忆。
-- **变异测试。** 1600+ 测试（零 token、fake 供应商驱动）83% 行覆盖——
-  覆盖率之外，自研变异测试器已向 47 个核心文件注入 **4055 个缺陷、击杀率
-  78%**，证明断言真的能抓住回归而不是只执行代码路径。见
-  [tests/TEST-PLAN.md](tests/TEST-PLAN.md) §7。
+任意 Anthropic 形态 SSE 端点（Z.AI GLM、Anthropic 本尊）与任意
+OpenAI 兼容端点（DeepSeek、vLLM、LiteLLM 等）均可接入。
+思考/推理内容与工具调用语法在单一适配层内完成翻译。
 
-## 安装
+### Claude Code `stream-json` 兼容
 
-```bash
-pip install loadn          # 或：pip install git+https://github.com/loadn-ai/loadn
+- argv 契约与事件流刻意与 Claude Code 无头模式同构（
+  `-p --verbose --output-format stream-json`、prompt 即 `argv[-1]`、
+  `--session-id` / `--resume`、`system/assistant/user/result` 事件）。
+- 最终 `result` 事件携带 snake_case `usage` 与 camelCase 按模型
+  `modelUsage`，可直接供成本看板使用。
+- 长工具运行期间 CLI 每 30 秒发送一行 `system/heartbeat`，父进程的
+  卡死检测不会误杀健康任务。
+- 活会话锁复现监管器依赖的 `Session ID already in use` 报错
+  （stderr，exit 1）。
+
+### 上下文工程
+
+系统提示由 CLAUDE.md / AGENTS.md 祖先链（git 根界内、近者后置、支持
+`@import`）、技能索引、边界驱动后台抽取的长期记忆与 repo 地图装配而
+成——镜像 Claude Code 的分层记忆。
+
+### 成本纪律
+
+三个 prompt-cache 断点（工具尾 / 系统 / 末条消息），辅助调用走无缓存
+通道；先剪枝再摘要的交接式压缩器（带文件账本与 UPDATE 模式）；磨洋工
+拦截门（口头交付拦截 + 产物存在性检查）；末次调用记账；上下文溢出经
+强制压缩自救。
+
+### 平台（`loadn-web`）
+
+![loadn-web 工作台：聊天流含任务清单、思考卡、子代理派发卡、插话与 markdown 回复](docs/assets/chat-workspace.png)
+
+- 多会话工作台：实时 agent 过程（思考卡、工具卡、子代理派发、插话）
+  与排队消息；重载回放与实时流逐字节一致。
+- 数字员工：部门树与具名员工，每位员工即一个 agent 定义（人设、技能、
+  职责），热注入子代理注册表。派发按名点名——
+  `Task(subagent_type="xiaoming")` 将工作连同该员工的人设与技能集路由；
+  临时工池吸纳突发工作。
+- 技能库：本地与市场技能，带来源徽章与生命周期状态；建议闭环将你的
+  纠正转为可评审的持久技能。
+- 资源 Hub：每个资源是一份 `Resource.md`，结构化表单与 markdown 源码
+  双向编辑；凭证从加密凭证库按引用绑定，以 `LOADN_SVC_*` 变量注入任务
+  环境，并预览 agent 将看到的确切内容。
+- 调度、成本核算，以及带每日外置锚点的哈希链审计账本。
+
+截图：组织架构页（`docs/assets/org-page.png`）、技能库
+（`docs/assets/skills-page.png`）、资源 Hub
+（`docs/assets/resource-hub.png`）、带注入预览的资源抽屉
+（`docs/assets/resource-drawer.png`）。
+
+### 执行安全
+
+安全被视为四项相乘：沙箱、控制点、凭证库、审计。执行路径上没有任何
+LLM；每一层都是确定性的、fail-closed。
+
+![安全中心：态势总览与沙箱、审批、出网、凭证、审计、蜜罐、目标策略面板](docs/assets/security-center.png)
+
+```mermaid
+flowchart LR
+    CALL["agent tool call"] --> L1["L1<br/>credential<br/>vault"] --> L2["L2<br/>bash-AST<br/>policy"] --> L3["L3<br/>egress allowlist<br/>proxy"] --> L4["L4<br/>filesystem<br/>sandbox"] --> L5["L5<br/>irreversible-action<br/>approval gate"] --> L6["L6<br/>canary +<br/>audit chain"] --> L7["L7<br/>supply-chain<br/>trust gate"] --> EXEC["exec"]
+    style CALL fill:#F8FAFC,stroke:#94A3B8
+    style EXEC fill:#FEF3C7,stroke:#F59E0B
 ```
 
-零配置即可用——端点解析顺序：
+| 层 | 公式项 | 机制 | 源码 |
+|---|---|---|---|
+| L1 | 凭证库 | AES-GCM 加密；明文永不进入 agent 环境 | `loadn_webui/security/vault.py` |
+| L2 | 控制点 | Bash AST 策略：红线 + token 覆盖规则，进程外 PreToolUse | `loadn_webui/security/policy.py` |
+| L3 | 控制点 | 出网白名单代理；CONNECT 白名单、DNS-rebinding 与私网拒绝 | `loadn_webui/security/egress_proxy.py` |
+| L4 | 沙箱 | bwrap 同路径挂载；网络命名空间内代理 socket 为唯一出口 | `loadn_webui/security/sandbox.py` |
+| L5 | 控制点 | 不可逆动作审批门：一次性确认码绑定参数哈希 | `loadn_webui/security/approve.py` |
+| L6 | 审计 | 蜜罐绊线 + 哈希链账本，每日外置锚点 | `loadn_webui/security/canary.py` · `audit.py` |
+| L7 | 控制点 | 供应链信任门：技能 sha256 锁 + 八类静态扫描 | `loadn_webui/security/skill_scan.py` |
 
-1. `$LOADN_HOME/config.json`（你的覆盖）
-2. 环境变量：`ANTHROPIC_BASE_URL` / `ANTHROPIC_AUTH_TOKEN` / `LOADN_MODEL`
-   / `LOADN_PROVIDER`（`anthropic` | `openai` | `fake`）
-3. `~/.claude/settings.json` 的 env 块（已在用 Claude CLI 走网关的话，
-   loadn 原样复用）
+### 质量
 
-## 快速上手
+- 1600+ 测试，零 API 调用（fake 供应商驱动），83% 行覆盖率。
+- 变异测试：向 47 个核心文件注入 4055 个缺陷，击杀率 78%，CI 中设
+  每周变异门禁。见 [tests/TEST-PLAN.md](tests/TEST-PLAN.md) §7。
+
+## 安装与快速开始
+
+### 环境要求
+
+Python 3.10 或更高。引擎运行时依赖仅 `httpx` 一个；可选附加项：
+
+| 附加项 | 提供能力 |
+|---|---|
+| `ast` | 权限策略所需的 Bash AST 解析（`bashlex`） |
+| `repomap` | repo 地图符号提取（tree-sitter） |
+| `tui` | 全屏终端 UI（textual）；未安装时回落基础 REPL |
+| `dev` | 测试与 lint 工具链（pytest、ruff、playwright） |
+| `webui` | `loadn-web` 平台依赖（FastAPI、cryptography 等） |
+
+### 安装引擎
+
+```bash
+pip install loadn
+# 或从源码安装：
+pip install git+https://github.com/loadn-ai/loadn
+```
+
+### 配置端点
+
+无需配置文件即可使用；端点按以下顺序解析：
+
+1. `$LOADN_HOME/config.json` —— 用户覆盖（`LOADN_HOME` 默认
+   `~/.loadn`）
+2. 环境变量：`ANTHROPIC_BASE_URL`、`ANTHROPIC_AUTH_TOKEN`、
+   `LOADN_MODEL`、`LOADN_PROVIDER`（`anthropic` | `openai` | `fake`）
+3. `~/.claude/settings.json` 的 `env` 块（如存在）——已在用 Claude
+   CLI 走网关的安装被原样复用
+
+首次运行且未配置端点时，CLI 进入引导向导（预设端点选单、掩码输入
+API key），结果写入 `$LOADN_HOME/config.json`。测试与回放使用的
+`fake` 供应商不会触发引导。
+
+### 首次运行
 
 ```bash
 # 一次性调用，人类可读输出
@@ -238,7 +245,25 @@ loadn -p --output-format json "列出待办"
 loadn                       # REPL：/help /resume /fork /compact /todos
 ```
 
-事件流形状（stdout NDJSON，每行一个 JSON 对象）：
+### 开发环境
+
+```bash
+pip install -e ".[dev]"
+pytest            # 1600+ 测试，零 API 调用
+ruff check .
+```
+
+fake 供应商（`LOADN_PROVIDER=fake`）从 `$LOADN_FAKE_DIR` 回放控制
+文件——与端到端 CLI 测试使用同一协议。pytest 之外，10 个 eval 场景
+每夜门禁发版，`scripts/mutate.py` 度量测试是否真正杀死注入的缺陷。
+新守卫逻辑与变异 TARGET_TESTS 映射的贡献规则见
+[CONTRIBUTING.md](CONTRIBUTING.md)。
+
+## 使用示例
+
+### 事件流形状
+
+stdout 上的 NDJSON，每行一个 JSON 对象：
 
 ```json
 {"type":"system","subtype":"init","session_id":"…","model":"…","tools":[…]}
@@ -248,12 +273,11 @@ loadn                       # REPL：/help /resume /fork /compact /todos
 {"type":"result","subtype":"success","usage":{"input_tokens":…,"output_tokens":…,"cache_read_input_tokens":…,"cache_creation_input_tokens":…},"modelUsage":{…},"num_turns":2,"duration_ms":…}
 ```
 
-`stream_event` 行（Anthropic SSE 形态 delta，仅 `--verbose`）是尽力而为
-的直播传输——装配后的 `assistant` 事件永远是真源。退出码：`0` 成功、
-`1` 任意 `error_*` 结局。长工具运行期间 CLI 每 30s 发一行
-`system/heartbeat`，父进程卡死检测不会误杀健康工作。
+`stream_event` 行（Anthropic SSE 形态 delta，仅 `--verbose` 下输出）
+是尽力而为的直播传输；装配后的 `assistant` 事件永远是事实来源。
+退出码：`0` 成功，`1` 任意 `error_*` 结局。
 
-## 作为库使用
+### 作为 Python 库使用
 
 ```python
 import asyncio
@@ -268,77 +292,115 @@ async def main():
 asyncio.run(main())
 ```
 
-`AgentCore` 也可分件构造（自定义工具注册表、权限模式、hooks、关压缩器
-……）——见 `loadn/core/build.py`。
+`AgentCore` 亦可分件构造（自定义工具注册表、权限模式、hooks、关闭
+压缩器等）——见 `loadn/core/build.py`。
 
-## 嵌入既有 harness
+### 嵌入既有 harness
 
 CLI 镜像 Claude Code 的无头契约，任何 spawn
-`claude -p --output-format stream-json` 的监管器都可以改 spawn `loadn`：
+`claude -p --output-format stream-json` 的监管器都可以改为 spawn
+`loadn`：
 
-- 新会话：`--session-id <uuid>`；续接：`--resume <uuid>`
-- 活会话锁拒绝并发复用，报错措辞同款（`Session ID already in use`，
-  stderr，exit 1）
-- 记账：最终 `result` 事件带 snake_case `usage` 与 camelCase 按模型
-  `modelUsage`，供成本看板直取
-- 每会话 transcript 在 `$LOADN_HOME/sessions/<sid>/`（append-only
-  JSONL；重放从最近压缩点续起）
-- 长驻托管：`loadn daemon` 让 AgentCore 跨断连存活（UDS attach），
-  缓存温度与上下文在 UI 重连后保留
+- 新会话：`--session-id <uuid>`；续接：`--resume <uuid>`；`--fork`
+  将续接的会话复制到新 id
+- 活会话的并发复用被拒绝，报错措辞相同（`Session ID already in
+  use`，stderr，exit 1）
+- 记账：最终 `result` 事件携带 `usage` 与按模型 `modelUsage`，供
+  成本看板直取
+- 每会话 transcript 位于 `$LOADN_HOME/sessions/<sid>/`
+  （append-only JSONL；重放从最近压缩点续起）
+- 长驻托管：`loadn daemon` 使 AgentCore 跨断连存活（UDS attach）
 
-## 配置与扩展点
-
-| 事物 | 位置 |
-|---|---|
-| 引擎旋钮（阈值/预算/上限） | `loadn/constants.py` |
-| 权限规则 | 项目内 `.loadn/settings.json`（deny/allow、`Bash:git push*` 模式；兼容 `.agent/` 旧路径）；模式 `default/acceptEdits/plan/bypassPermissions` |
-| Hooks（Pre/PostToolUse、Stop、Session*） | `.loadn/settings.json` `hooks`——外部命令、stdin JSON、exit 2 阻断 |
-| MCP servers | 项目内 `.mcp.json`（stdio+streamable-HTTP 带 OAuth）；工具以 `mcp__<server>__<tool>` 出现 |
-| 技能 | `.agents/skills/`（agentskills.io 标准，最高优先）/ `.claude/skills/` / `.loadn/skills/` / `$LOADN_HOME/skills` 的 SKILL.md——进系统提示索引；正文按需经 `Skill` 工具加载（第三方安装走供应链锁；任意技能可导出 agentskills.io 兼容 zip） |
-| 自定义子代理 | `.claude/agents/*.md` / `$LOADN_HOME/agents`——frontmatter `name/description/tools/model`；可 `Task(subagent_type=…)` 使用；组织架构页员工热注入于此 |
-| 宪法链 | git 根到 cwd 的 CLAUDE.md/AGENTS.md，近者后置；`@./file.md` 行内导入；用户级 `$LOADN_HOME/AGENT.md` 叠加 |
-| 平台配置（50+ 键） | [docs/CONFIG.md](docs/CONFIG.md)——沙箱分档、出网白名单/三态策略、审批 TTL、资源桥接 |
-| 思考预算 | `LOADN_THINKING_BUDGET` 环境变量或 `extra.thinking_budget`（Anthropic 形态 `thinking.budget_tokens`；默认关） |
-| 提示缓存 | 默认开（3 断点）；`extra.disable_prompt_cache` 关闭 |
-
-## 测试你的改动
+### 部署平台
 
 ```bash
-pip install -e ".[dev]"
-pytest            # 1600+ 测试，零 API 调用
-ruff check .
+pip install -e ".[webui]"
+loadn-web init --model <model> --base-url <url> --api-key <key>
+loadn-web serve          # loadn-web doctor 执行自检
 ```
 
-fake 供应商（`LOADN_PROVIDER=fake`）从 `$LOADN_FAKE_DIR` 回放控制文件——
-与端到端 CLI 测试同一协议。pytest 之外：10 个 eval 场景每夜门禁发版，
-`scripts/mutate.py` 度量你的测试是否真的杀死注入的缺陷（贡献经验法则见
-[CLAUDE.md](CLAUDE.md) §测试同步纪律：新守卫逻辑须配负路径测试；新模块
-须进变异 TARGET_TESTS 映射）。
+管理中心（安全 / 资源 / 组织面板）为 `ui/` 下的 React 前端。桌面
+发行版由 `desktop/image/` 流水线构建。
 
-## 状态与路线图
+## 配置说明
 
-- [x] v0.4.x——开源就绪：可移植默认值、引擎插件入口、社区文件、零 lint 债
-- [x] v0.6.0——按任务隔离工作区、轮换锚点、崩溃恢复记账、供应商思考续传
-- [x] v0.6.3——交互式出网控制：off/warn/enforce+请求审批卡、会话级覆盖、
-      按会话归因
-- [x] v0.6.5——安全机制全部显式可配；宿主资源桥接
-- [x] post-0.6.5——测试质量运动：83% 覆盖、47 文件/4055 变异体（78%
-      击杀率）变异验证、CI 每周变异门禁
-- [x] v0.7.x——运维硬化：回放对齐聊天（重载与实时同构）、Resource Hub
-      双向 `Resource.md` 编辑、数字员工（组织/职责/临时工池）、非空闲
-      升级守卫、管理中心重构（见 CHANGELOG）
-- [ ] PyPI 首发版（名称已预留；tag → build → publish 全自动）
-- [ ] desktop 真机验证（mac/win）
-- [ ] 文档站（GitHub Pages：README/ARCHITECTURE/CONFIG/EXTENDING）
-- [ ] Terminal-Bench 基线数据
-- [ ] Ollama 供应商、DeepSeek 原生；TUI（textual）
-- [ ] MCP server 模式（loadn 作为 MCP server 被驱动）
+| 事项 | 位置 |
+|---|---|
+| 引擎阈值、预算与上限 | `loadn/constants.py` |
+| 权限规则 | 项目内 `.loadn/settings.json`（deny/allow、`Bash:git push*` 模式；兼容旧路径 `.agent/`）；模式：`default` / `acceptEdits` / `plan` / `bypassPermissions` |
+| Hooks（Pre/PostToolUse、Stop、Session*） | `.loadn/settings.json` 的 `hooks` 键——外部命令、stdin JSON、退出码 2 阻断 |
+| MCP server | 项目内 `.mcp.json`（stdio 与 streamable HTTP，支持 OAuth） |
+| 技能 | `.agents/skills/`（agentskills.io 标准，最高优先）/ `.claude/skills/` / `.loadn/skills/` / `$LOADN_HOME/skills`——进系统提示索引，正文经 `Skill` 工具按需加载 |
+| 自定义子代理 | `.claude/agents/*.md` / `$LOADN_HOME/agents`——frontmatter `name/description/tools/model`；平台员工热注入于此 |
+| 宪法链 | git 根到 cwd 的 CLAUDE.md / AGENTS.md，近者后置；`@./file.md` 行内导入；用户级 `$LOADN_HOME/AGENT.md` 叠加 |
+| 平台配置（50+ 键） | 数据根的 `config.yaml`，由 `loadn-web init` 生成（模板：`config.yaml.example`）；全部键见 [docs/CONFIG.md](docs/CONFIG.md) |
+| 思考预算 | `LOADN_THINKING_BUDGET` 环境变量或 `extra.thinking_budget`（Anthropic 形态 `thinking.budget_tokens`；默认关闭） |
+| 提示缓存 | 默认开启（三个断点）；`extra.disable_prompt_cache` 关闭 |
 
-见 [CHANGELOG.md](CHANGELOG.md) 与 [ROADMAP.md](ROADMAP.md)。欢迎贡献——
-[CONTRIBUTING.md](CONTRIBUTING.md) 讲清目录布局、一个文件加一个工具/
-供应商的路径，以及断言强度规则（新守卫配负路径测试；触碰文件配变异
-窄集）。
+## 文档链接
 
-## 许可
+| 文档 | 内容 |
+|---|---|
+| [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) | 平面划分、数据布局、测试体系 |
+| [docs/CONFIG.md](docs/CONFIG.md) | 全部配置键 |
+| [docs/EXTENDING.md](docs/EXTENDING.md) | 定制缝：引擎、供应商、技能、MCP、hooks |
+| [docs/PROTOCOL.md](docs/PROTOCOL.md) | 引擎事件方言契约 |
+| [docs/RELEASE.md](docs/RELEASE.md) | 部署、升级、回滚 |
+| [docs/ATTACK_SURFACE.md](docs/ATTACK_SURFACE.md) | 攻击面与 AI-BOM |
+| [docs/compat.md](docs/compat.md) | 兼容性说明 |
+| [docs/adr/](docs/adr/) | 架构决策记录 |
+| [CHANGELOG.md](CHANGELOG.md) | 发布历史 |
+| [ROADMAP.md](ROADMAP.md) | 路线图与待办里程碑 |
+| [CONTRIBUTING.md](CONTRIBUTING.md) | 目录布局、单文件加工具/供应商的路径、断言强度规则 |
+| [SECURITY.md](SECURITY.md) | 安全策略 |
+| [CODE_OF_CONDUCT.md](CODE_OF_CONDUCT.md) | 行为准则 |
+| [tests/TEST-PLAN.md](tests/TEST-PLAN.md) | 测试计划，含变异测试方法论 |
+| [CITATION.cff](CITATION.cff) | 引用元数据 |
+
+## 常见问题
+
+**支持哪些模型与供应商？**
+模型层与供应商无关：任意 Anthropic 形态 SSE 端点（如 Z.AI GLM、
+Anthropic）与任意 OpenAI 兼容端点（DeepSeek、vLLM、LiteLLM 等）。
+用 `LOADN_PROVIDER` 选择，`ANTHROPIC_BASE_URL` 指向网关。
+
+**首次使用前必须写配置吗？**
+不必。端点解析顺序见「安装与快速开始」；未配置端点的首次运行会进入
+交互式引导向导并写入 `$LOADN_HOME/config.json`。`fake` 供应商不会
+触发引导。
+
+**会话存储在哪里？**
+`$LOADN_HOME/sessions/<session-id>/`（默认 `~/.loadn`）：append-only
+JSONL transcript 加 SQLite 索引。重放从最近一次压缩点续起。
+
+**loadn 能在既有监管器中替代 `claude -p` 吗？**
+可以。argv 契约与事件流刻意同构，且活会话锁复现监管器依赖的
+`Session ID already in use` 报错（stderr，exit 1）。
+
+**CI 中如何关闭权限确认？**
+使用 `--dangerously-skip-permissions`（别名 `--yolo`）或
+`--permission-mode bypassPermissions`。交互使用时建议在
+`.loadn/settings.json` 中配置收窄的 deny/allow 规则。
+
+**退出码含义？**
+`0` 成功；`1` 任意 `error_*` 结局。
+
+**测试会调用付费 API 吗？**
+不会。1600+ 测试全部运行在 fake 供应商上，零 API 调用。
+
+**引擎、平台与桌面版是什么关系？**
+一个 monorepo，三种产品形态：`loadn` 引擎、`loadn-web` 平台（CLI
+入口 `loadn-web`；`wd` 为废弃别名）、以及由 `desktop/` 构建的桌面
+发行版。
+
+**如何新增工具、供应商或技能？**
+见 [docs/EXTENDING.md](docs/EXTENDING.md) 与
+[CONTRIBUTING.md](CONTRIBUTING.md)；多数扩展只需一个文件。
+
+**有桌面应用吗？**
+有。`desktop/` 为 Tauri 发行版（执行域运行在 macOS / Windows 内的
+Linux 虚拟机中）；真机验证正在进行。
+
+## 许可证
 
 Apache-2.0——见 [LICENSE](LICENSE)。
