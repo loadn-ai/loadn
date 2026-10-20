@@ -653,6 +653,9 @@ button:focus-visible, .tab:focus-visible, .chip:focus-visible {
   color: var(--text-dim); opacity: .7; padding: 0 10px 0 14px; margin-left: 6px;
   border-left: 1px solid var(--border); white-space: nowrap; }
 .admin-body { overflow-y: auto; min-height: 0; flex: 1; padding-top: 14px; }
+/* 滚动容器子项禁收缩：矮窗口内容超高时 flex 默认 shrink 会压塌子块（org 页
+   .org-main 被 min-height:0 压扁，员工卡溢出与下方召集面板重叠）——超出应出滚动条。 */
+.admin-body > * { flex-shrink: 0; }
 .admin-toolbar { display: flex; gap: 8px; align-items: center; margin-bottom: 14px; flex-wrap: wrap; }
 /* 定时列表三件套：搜索框吃剩余宽 + 列头排序钮（T7） */
 .admin-toolbar .admin-search { flex: 1; min-width: 160px; max-width: 320px; }
