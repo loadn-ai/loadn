@@ -210,7 +210,14 @@ Python 3.10 或更高。引擎运行时依赖仅 `httpx` 一个；可选附加�
 
 ### 安装引擎
 
+要求 Python ≥ 3.10。两个常见坑：Debian 12+/Ubuntu 23.04+ 的系统 Python
+会拒绝全局安装（`externally-managed-environment`）；解释器低于 3.10 时
+则直接解析不到任何版本（`No matching distribution found`）。两种情况都
+建议装进虚拟环境：
+
 ```bash
+python3 -m venv ~/.venvs/loadn
+source ~/.venvs/loadn/bin/activate
 pip install loadn
 # 或从源码安装：
 pip install git+https://github.com/loadn-ai/loadn

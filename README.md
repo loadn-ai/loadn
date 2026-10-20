@@ -235,7 +235,15 @@ Python 3.10 or later. The engine has a single runtime dependency
 
 ### Install the engine
 
+Requires Python ≥ 3.10. Two common pitfalls: on Debian 12+/Ubuntu 23.04+
+system Python, `pip` refuses system-wide installs
+(`externally-managed-environment`); and an interpreter older than 3.10
+resolves no versions at all (`No matching distribution found`). Install into
+a virtual environment in both cases:
+
 ```bash
+python3 -m venv ~/.venvs/loadn
+source ~/.venvs/loadn/bin/activate
 pip install loadn
 # or from source:
 pip install git+https://github.com/loadn-ai/loadn
