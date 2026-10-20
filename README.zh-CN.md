@@ -13,6 +13,8 @@
 
 **[简体中文](README.zh-CN.md)** | English
 
+> 天行健，OldMan；地势坤，LoadN。
+
 > **命名。** loadn（读 *load-n*）是 loadn-ai 平台的引擎包。产品形态：
 > `loadn` 引擎 / `loadn-web` 平台 / `loadn desktop` 桌面版。
 

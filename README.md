@@ -13,6 +13,8 @@
 
 English | **[简体中文](README.zh-CN.md)**
 
+> As heaven moves with vigor — OldMan; as earth lies receptive — LoadN.
+
 > **Naming.** loadn (read *load-n*) is the engine package of the loadn-ai
 > platform. Product forms: `loadn` engine / `loadn-web` platform /
 > `loadn desktop`.
