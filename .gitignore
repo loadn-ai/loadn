@@ -29,3 +29,6 @@ reports/
 loadn/skills.lock.json
 desktop/image/payload-arm64/
 desktop/image/dist-arm64/
+
+# wheel 打包时的前端拷贝目录（构建产物，release.yml CI 生成）
+loadn_webui/frontend/

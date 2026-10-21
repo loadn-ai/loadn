@@ -42,7 +42,7 @@ jobs:
       id-token: write   # PyPI OIDC 断言
       contents: read
     runs-on: ubuntu-latest
-    timeout-minutes: 10
+    timeout-minutes: 15
     steps:
       - uses: actions/checkout@v4
         with:
@@ -50,6 +50,13 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: '3.12'
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+      - name: Build web UI into wheel data
+        run: |
+          cd ui && npm ci && npm run build && cd ..
+          mkdir -p loadn_webui/frontend && cp -r ui/dist loadn_webui/frontend/dist
       - name: Build sdist + wheel
         run: |
           pip install build

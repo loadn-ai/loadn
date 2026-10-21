@@ -19,6 +19,7 @@ import os
 import secrets
 import time
 from contextlib import asynccontextmanager
+from pathlib import Path
 from urllib.parse import urlsplit
 
 from fastapi import FastAPI, Request
@@ -378,6 +379,15 @@ async def sse_events(sid: str, request: Request):
 
 # ---------------------------------------------------------------- 静态前端（SPA）
 _DIST = PATHS["frontend_dist"]
+# wheel 安装形态（pip install "loadn[webui]"）：前端随包走——源码树
+# CODE_ROOT/ui/dist 优先（开发者 npm run build 的新鲜产物/生产 release
+# 树同此命中，行为不变），包内 loadn_webui/frontend/dist 回落（v0.7.38
+# 起打包，PyPI 用户开箱有 UI）。两处皆无才 api-only。
+if not (_DIST / "index.html").exists():
+    # app.py 位于 loadn_webui/api/ 子包——包根需两级 parent
+    _bundled = Path(__file__).resolve().parent.parent / "frontend" / "dist"
+    if (_bundled / "index.html").exists():
+        _DIST = _bundled
 
 
 @app.get("/")
