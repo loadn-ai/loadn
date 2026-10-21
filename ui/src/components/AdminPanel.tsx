@@ -131,9 +131,13 @@ export default function AdminPanel({ onClose, initialTab, filterSid, onClearFilt
   return (
     <div className="admin-page">
       <div className="admin-head">
-        {/* 风格统一批：kicker+标题层次（同前台 space-kicker 语言）；标题随 tab 走 */}
+        {/* 风格统一批：kicker+标题层次（同前台 space-kicker 语言）；标题随 tab 走。
+            资源 tab 带 Agent 构成徽章（2026-10-21 设计稿批） */}
         <div>
-          <div className="admin-kicker">管理中心 · Control Center</div>
+          <div className="admin-kicker">管理中心 · Control Center
+            {tab === 'resources' && <span className="admin-kicker-badge">
+              Agent = Model + Harness + Resource</span>}
+          </div>
           <h2>{TABS.find(t => t.id === tab)?.label ?? '管理中心'}</h2>
         </div>
         <button className="btn ghost" onClick={onClose}>← 返回</button>

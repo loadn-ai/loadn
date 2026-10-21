@@ -1,14 +1,20 @@
-// 资源 Hub（管理中心「资源」tab，2026-10-19 设计稿重构批）：
-// 三子视图——服务与环境资源（分类分组卡片墙）/ MCP 协议端点 / 凭证库。
-// 核心交互：展示态卡片 + 抽屉编辑器（结构化表单 ↔ Resource.md 双向实时
-// 同步）+ Harness 注入预览 + 导入 .md + 全部/单项探测（ping 历史回看）。
-// 安全语义不变：密钥值永不出后端（只写不读）；凭证不进任务 env（预览中
-// 以 vault decrypt 形式呈现）。后端 custom_services v2 结构化模型同批。
+// 资源 Hub（管理中心「资源」tab；2026-10-19 首建，2026-10-21 设计稿 v2 批重构）：
+// 三子视图——服务与环境资源（分类分组卡片墙）/ MCP 协议端点 / 凭证库（可写）。
+// v2 增量（设计稿对齐）：SVG 图标库彻底取代 emoji（RhIcon，存量 emoji 回退渲染）+
+// 图标选择器 + 名称→ID 智能联动 + label→env 自动推导（LABEL_ENV 映射）+ 快捷
+// 参数胶囊 + 蓝图预设 5 卡（高亮态）+ 内联新建加密密钥面板 + vault 下拉状态
+// 标签 + 凭证库存入/轮换（复用 PUT /admin/vault/{platform} 唯一编辑面端点）。
+// 安全语义不变：密钥值永不出后端（只写不读）；凭证不进任务 env（预览以 vault
+// decrypt 形式呈现）。后端 custom_services v2 结构化模型（icon 自由字符串可存键）。
 // 样式类在 index.css「资源 Hub」段（.rh-* 独立命名空间，双主题令牌）。
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { api } from '../api/client';
 import { toast } from '../stores/toasts';
-import { Lock, Zap, Key, Shield } from './icons';
+import {
+  Lock, Zap, Key, Shield, Plus, Tool,
+  Scan, Box, Globe, Smartphone, MessageSquare, Mail, Phone, Eye,
+  Search, Server, Cpu, Database, Terminal, Cloud,
+} from './icons';
 import { askConfirm } from '../stores/confirm';
 
 interface ServiceItem { key: string; label: string; note: string; value: string; kind: string }
@@ -38,6 +44,20 @@ interface RhResource {
   config: RhCfgItem[]; secrets: RhSecItem[]; ping: string[];
 }
 
+/* ============ SVG 图标库（设计稿 v2：线性 feather 风，彻底取代 emoji） ============ */
+const RH_ICONS = {
+  scan: Scan, box: Box, globe: Globe, smartphone: Smartphone, message: MessageSquare,
+  mail: Mail, phone: Phone, eye: Eye, search: Search, shield: Shield,
+  server: Server, cpu: Cpu, database: Database, terminal: Terminal, cloud: Cloud,
+} as const;
+
+/** 资源图标渲染：注册表键 → SVG；存量 emoji 字符串回退为文字渲染 */
+function RhIcon({ icon, size = 15 }: { icon: string; size?: number }) {
+  const C = (RH_ICONS as Record<string, typeof Server>)[icon];
+  if (C) return <C size={size} />;
+  return <span style={{ fontSize: size + 2, lineHeight: 1 }}>{icon || '🔌'}</span>;
+}
+
 /** 原生资源定义（不可增删；config.value 从 settings services 取，key=存取键） */
 interface NativeCardDef {
   id: string; name: string; icon: string; note: string; ping?: string[];
@@ -47,39 +67,39 @@ interface NativeCardDef {
 const GROUPS: { title: string; cards: NativeCardDef[] }[] = [
   {
     title: '基础设施', cards: [
-      { id: 'ocr', name: 'OCR 识别', icon: '🖨️', note: '图片 / PDF / Office 文本识别', ping: ['ocr'],
+      { id: 'ocr', name: 'OCR 识别', icon: 'scan', note: '图片 / PDF / Office 文本识别', ping: ['ocr'],
         fields: [{ key: 'ocr_url', k: '端点' }], secrets: [] },
-      { id: 'sandbox', name: 'AIO 沙箱', icon: '📦', note: '浏览器 / 命令行 / 文件 操作环境', ping: ['sandbox', 'sandbox_mcp'],
+      { id: 'sandbox', name: 'AIO 沙箱', icon: 'box', note: '浏览器 / 命令行 / 文件 操作环境', ping: ['sandbox', 'sandbox_mcp'],
         fields: [{ key: 'sandbox_url', k: '端点' }, { key: 'cdp_url', k: 'CDP' }],
         secrets: [{ key: 'sandbox_api_key', label: 'API Key' }] },
-      { id: 'proxy', name: '出网代理', icon: '🌐', note: '出海请求经此转发（clash 等）', ping: ['proxy'],
+      { id: 'proxy', name: '出网代理', icon: 'globe', note: '出海请求经此转发（clash 等）', ping: ['proxy'],
         fields: [{ key: 'proxy', k: '地址' }], secrets: [] },
-      { id: 'adb', name: 'Android 真机', icon: '📱', note: 'adb 无线调试',
+      { id: 'adb', name: 'Android 真机', icon: 'smartphone', note: 'adb 无线调试',
         fields: [{ key: 'adb_addr', k: '地址' }], secrets: [] },
     ],
   },
   {
     title: '通信', cards: [
-      { id: 'sms', name: '短信查询', icon: '💬', note: '真机收验证码', ping: ['sms'],
+      { id: 'sms', name: '短信查询', icon: 'message', note: '真机收验证码', ping: ['sms'],
         fields: [{ key: 'sms_url', k: '端点' }, { key: 'sms_phone', k: '手机号' }],
         secrets: [{ key: 'sms_token', label: 'Token' }] },
-      { id: 'mail', name: '主邮箱', icon: '📮', note: '注册 / 登录收验证码（126/163 需授权码）', ping: ['mail'],
+      { id: 'mail', name: '主邮箱', icon: 'mail', note: '注册 / 登录收验证码（126/163 需授权码）', ping: ['mail'],
         fields: [{ key: 'mail_imap', k: 'IMAP' }, { key: 'mail_smtp', k: 'SMTP' }, { key: 'mail_user', k: '账号' }],
         secrets: [{ key: 'mail_auth_code', label: '授权码' }] },
-      { id: 'textr', name: 'Textr 虚拟号', icon: '🇺🇸', note: '美国号码收码',
+      { id: 'textr', name: 'Textr 虚拟号', icon: 'phone', note: '美国号码收码',
         fields: [{ key: 'textr_email', k: '账号' }],
         secrets: [{ key: 'textr_password', label: '密码' }] },
     ],
   },
   {
     title: 'AI 能力', cards: [
-      { id: 'vlm', name: '视觉模型', icon: '👁️', note: '图片理解（截图分析等）', ping: ['vlm'],
+      { id: 'vlm', name: '视觉模型', icon: 'eye', note: '图片理解（截图分析等）', ping: ['vlm'],
         fields: [{ key: 'vlm_api_base', k: 'API' }, { key: 'vlm_model', k: '模型' }],
         secrets: [{ key: 'vlm_api_key', label: 'API Key' }] },
-      { id: 'search', name: '网页搜索', icon: '🔍', note: '博查（中文）/ 智谱（档位计费）', ping: ['bocha', 'zhipu'],
+      { id: 'search', name: '网页搜索', icon: 'search', note: '博查（中文）/ 智谱（档位计费）', ping: ['bocha', 'zhipu'],
         fields: [{ key: 'zhipu_engine', k: '智谱档' }],
         secrets: [{ key: 'bocha_key', label: '博查 Key' }, { key: 'zhipu_key', label: '智谱 Key' }] },
-      { id: 'captcha', name: '过验证码', icon: '🧩', note: '2Captcha（图形码 / reCAPTCHA）', ping: ['twocaptcha'],
+      { id: 'captcha', name: '过验证码', icon: 'shield', note: '2Captcha（图形码 / reCAPTCHA）', ping: ['twocaptcha'],
         fields: [], secrets: [{ key: 'twocaptcha_key', label: 'API Key' }] },
     ],
   },
@@ -90,6 +110,89 @@ const NATIVE_SECRET_KEYS = ['sandbox_api_key', 'sms_token', 'mail_auth_code', 'v
   'twocaptcha_key', 'bocha_key', 'zhipu_key', 'textr_password'];
 const CATEGORIES = ['基础设施', '通信', 'AI 能力', '自定义服务'];
 
+/** label → env 后缀映射（设计稿：改字段类型即重算注入变量名） */
+const LABEL_ENV: Record<string, string> = {
+  '端点': 'ENDPOINT', '地址': 'ADDRESS', '账号': 'USER', '模型': 'MODEL',
+  '代理': 'PROXY', '代理地址': 'PROXY', '手机号': 'PHONE', '超时': 'TIMEOUT',
+  '超时(ms)': 'TIMEOUT_MS', 'IMAP': 'IMAP', 'SMTP': 'SMTP', 'API': 'API', 'CDP': 'CDP',
+};
+/** 由资源 ID + 字段 label 推导注入环境变量名（LOADN_<ID>_<SUFFIX>） */
+const envOf = (id: string, label: string) => {
+  const up = (id || 'SVC').toUpperCase().replace(/[^A-Z0-9]/g, '_');
+  const suf = LABEL_ENV[label.trim()] ?? label.trim().toUpperCase().replace(/[^A-Z0-9]/g, '_');
+  return `LOADN_${up}_${suf || 'FIELD'}`;
+};
+/** 快捷参数胶囊（设计稿：常用字段一键插入） */
+const QUICK_CHIPS: [string, string][] = [
+  ['端点', 'http://127.0.0.1:8080'], ['代理', 'http://127.0.0.1:7890'],
+  ['模型', 'gpt-4o-mini'], ['账号', 'agent@example.com'], ['超时(ms)', '30000'],
+];
+
+/** 架构蓝图预设（设计稿 5 卡；secrets 走 svc:<id> 本资源密钥体系） */
+const PRESETS: {
+  k: string; t: string; s: string; icon: string;
+  apply: Partial<RhResource>;
+}[] = [
+  {
+    k: 'http', t: 'HTTP 微服务', s: 'REST / 内部端点', icon: 'globe',
+    apply: {
+      id: 'jina_reader', name: 'Jina 网页提取', category: '自定义服务', icon: 'globe',
+      desc: '网页 URL 转纯净 Markdown 服务',
+      config: [
+        { key: 'endpoint', label: '端点', value: 'https://r.jina.ai', env: 'LOADN_JINA_READER_ENDPOINT' },
+        { key: 'timeout', label: '超时(ms)', value: '15000', env: 'LOADN_JINA_READER_TIMEOUT_MS' },
+      ],
+      secrets: [],
+      prompt: '## Jina 网页正文提取\n当需要读取外部网页正文时，直接拼接 URL 请求 `$LOADN_JINA_READER_ENDPOINT/<目标网址>`。',
+    },
+  },
+  {
+    k: 'mail', t: '邮箱收发', s: 'IMAP / SMTP', icon: 'mail',
+    apply: {
+      id: 'work_mailbox', name: '工作邮箱节点', category: '通信', icon: 'mail',
+      desc: 'IMAP 收信与 SMTP 发信通道',
+      config: [
+        { key: 'imap', label: 'IMAP', value: 'imap.exmail.qq.com:993', env: 'LOADN_WORK_MAILBOX_IMAP' },
+        { key: 'smtp', label: 'SMTP', value: 'smtp.exmail.qq.com:465', env: 'LOADN_WORK_MAILBOX_SMTP' },
+        { key: 'account', label: '账号', value: 'bot@company.com', env: 'LOADN_WORK_MAILBOX_USER' },
+      ],
+      secrets: [{ label: '授权码', envKey: 'LOADN_WORKMAIL_PASS', vaultRef: 'svc:work_mailbox', set: false }],
+      prompt: '## 企业邮箱收发通道\n支持通过 IMAP 检索最新验证码邮件，或通过 SMTP 发送任务报告。',
+    },
+  },
+  {
+    k: 'llm', t: 'AI 模型网关', s: 'BaseURL + Model', icon: 'cpu',
+    apply: {
+      id: 'rerank_model', name: '语义重排模型', category: 'AI 能力', icon: 'cpu',
+      desc: 'BGE-Reranker 向量检索精排接口',
+      config: [
+        { key: 'api_base', label: 'API', value: 'https://api.siliconflow.cn/v1/rerank', env: 'LOADN_RERANK_MODEL_API' },
+        { key: 'model', label: '模型', value: 'BAAI/bge-reranker-v2-m3', env: 'LOADN_RERANK_MODEL_MODEL' },
+      ],
+      secrets: [{ label: 'API Key', envKey: 'LOADN_RERANK_API_KEY', vaultRef: 'svc:rerank_model', set: false }],
+      prompt: '## 语义重排模型 (Reranker)\n在 RAG 召回候选文档后调用该接口进行相关性精排。',
+    },
+  },
+  {
+    k: 'adb', t: '物理真机节点', s: 'ADB / 串口设备', icon: 'smartphone',
+    apply: {
+      id: 'android_node_02', name: '备用测试真机', category: '基础设施', icon: 'smartphone',
+      desc: '局域网 ADB 自动化测试节点',
+      config: [{ key: 'address', label: '地址', value: '192.168.0.82:5555', env: 'LOADN_ANDROID_NODE_02_ADDRESS' }],
+      secrets: [],
+      prompt: '## 备用 Android 真机\n通过 `adb -s $LOADN_ANDROID_NODE_02_ADDRESS` 执行移动端 UI 自动化指令。',
+    },
+  },
+  {
+    k: 'blank', t: '空白自定义', s: '自由定义键值', icon: 'plus',
+    apply: {
+      id: 'custom_env', name: '', category: '自定义服务', icon: 'server',
+      desc: '', config: [], secrets: [],
+      prompt: '## 自定义环境资源\n在此补充调用说明。',
+    },
+  },
+];
+
 type Section = 'service' | 'mcp' | 'vault';
 type PingRes = Record<string, { ok: boolean; msg: string; ms?: number }>;
 
@@ -98,7 +201,7 @@ function genResourceMd(r: RhResource): string {
   const q = (s: string) => `"${String(s ?? '').replace(/"/g, '\\"')}"`;
   let y = '---\n'
     + `id: ${r.id}\nname: ${q(r.name)}\ncategory: ${q(r.category)}\n`
-    + `icon: ${q(r.icon || '🔌')}\ndescription: ${q(r.desc || r.note || '')}\n`
+    + `icon: ${q(r.icon || 'server')}\ndescription: ${q(r.desc || r.note || '')}\n`
     + `enabled: ${r.enabled}\n`;
   if (r.config.length) {
     y += 'config:\n';
@@ -170,7 +273,7 @@ function parseResourceMd(text: string): RhResource | null {
   return {
     id: scalar.id || scalar.name || 'custom_service',
     native: false, name: scalar.name || scalar.id || '新资源',
-    icon: scalar.icon || '🔌',
+    icon: scalar.icon || 'server',
     category: CATEGORIES.includes(scalar.category) ? scalar.category : '自定义服务',
     desc: scalar.description || '', note: scalar.description || '',
     enabled: scalar.enabled !== 'false',
@@ -198,9 +301,23 @@ export default function ResourcesPanel() {
   const [mdText, setMdText] = useState('');
   const [mdOk, setMdOk] = useState(true);
   const [secretDraft, setSecretDraft] = useState<Record<string, string>>({});
+  const [iconPickerOpen, setIconPickerOpen] = useState(false);
+  const [idTouched, setIdTouched] = useState(false);
+  const [presetSel, setPresetSel] = useState('http');
+  const [inlineVaultOpen, setInlineVaultOpen] = useState(false);
+  const [ivLabel, setIvLabel] = useState('');
+  const [ivEnv, setIvEnv] = useState('');
+  const [ivVal, setIvVal] = useState('');
+  const pickerRef = useRef<HTMLDivElement | null>(null);
   // 导入弹窗
   const [importOpen, setImportOpen] = useState(false);
   const [importText, setImportText] = useState('');
+  // 凭证库写面（设计稿：存入新密钥 + 行内轮换，复用 PUT /admin/vault/{platform}）
+  const [vaultNewOpen, setVaultNewOpen] = useState(false);
+  const [vnName, setVnName] = useState('');
+  const [vnVal, setVnVal] = useState('');
+  const [rotating, setRotating] = useState<string | null>(null);
+  const [rotateVal, setRotateVal] = useState('');
 
   const loadHist = async () => {
     try {
@@ -215,6 +332,15 @@ export default function ResourcesPanel() {
     void loadHist();
   };
   useEffect(() => { void load(); }, []);
+  // 图标选择器：外部点击关闭（capture 阶段，避免先 onBlur 后失灵）
+  useEffect(() => {
+    if (!iconPickerOpen) return;
+    const h = (e: MouseEvent) => {
+      if (pickerRef.current && !pickerRef.current.contains(e.target as Node)) setIconPickerOpen(false);
+    };
+    document.addEventListener('mousedown', h, true);
+    return () => document.removeEventListener('mousedown', h, true);
+  }, [iconPickerOpen]);
 
   if (!data) return loadErr ? (
     <div className="admin-body">
@@ -242,7 +368,7 @@ export default function ResourcesPanel() {
       })),
     })));
     const custom: RhResource[] = data.custom.map(c => ({
-      id: c.name, native: false, name: c.name, icon: c.icon || '🧩',
+      id: c.name, native: false, name: c.name, icon: c.icon || 'server',
       category: CATEGORIES.includes(c.category) ? c.category : '自定义服务',
       desc: c.desc || c.note || '', note: c.note || '',
       enabled: c.enabled !== false, prompt: c.prompt || '',
@@ -308,17 +434,20 @@ export default function ResourcesPanel() {
   // ---- 抽屉 ----
   const openCreate = (preset?: Partial<RhResource>) => {
     setIsNew(true); setMode('form'); setSecretDraft({});
+    setIconPickerOpen(false); setIdTouched(false); setPresetSel('http');
+    setInlineVaultOpen(false);
     setEditing({
-      id: '', native: false, name: '', icon: '🔌', category: '自定义服务',
+      id: '', native: false, name: '', icon: 'server', category: '自定义服务',
       desc: '', note: '', enabled: true, prompt: '', config: [], secrets: [], ping: [],
       ...preset,
     });
   };
   const openEdit = (r: RhResource) => {
     setIsNew(false); setMode('form'); setSecretDraft({});
+    setIconPickerOpen(false); setIdTouched(true); setInlineVaultOpen(false);
     setEditing(JSON.parse(JSON.stringify(r)));
   };
-  const closeDrawer = () => { setEditing(null); setMdText(''); };
+  const closeDrawer = () => { setEditing(null); setMdText(''); setIconPickerOpen(false); };
   const switchMode = (m: 'form' | 'md') => {
     if (!editing) return;
     if (m === 'md') { setMdText(genResourceMd(editing)); setMdOk(true); }
@@ -331,6 +460,84 @@ export default function ResourcesPanel() {
     else setMdOk(false);
   };
   const patch = (p: Partial<RhResource>) => setEditing(e => e ? { ...e, ...p } : e);
+
+  /** 名称输入：新增态且用户未手改 ID 时，ascii 化智能联动生成 slug */
+  const onNameInput = (v: string) => {
+    if (!editing) return;
+    const p: Partial<RhResource> = { name: v };
+    if (isNew && !idTouched) {
+      const a = v.toLowerCase().replace(/[^a-z0-9]+/g, '_').replace(/^_|_$/g, '');
+      if (a.length >= 2) p.id = a;
+    }
+    patch(p);
+  };
+  /** 字段 label 变更：env 为空或仍是旧 label 的推导值时自动重算（手改优先） */
+  const onCfgLabel = (i: number, label: string) => {
+    if (!editing) return;
+    setEditing(e => {
+      if (!e) return e;
+      const cfg = e.config.map((c, j) => {
+        if (j !== i) return c;
+        const wasAuto = !c.env || c.env === envOf(e.id, c.label);
+        const env = wasAuto ? envOf(e.id, label) : c.env;
+        const suf = LABEL_ENV[label.trim()] ?? label.trim().toUpperCase().replace(/[^A-Z0-9]/g, '_');
+        return { ...c, label, env, key: (suf || `field${j + 1}`).toLowerCase() };
+      });
+      return { ...e, config: cfg };
+    });
+  };
+  /** 快捷胶囊/追加字段：按资源 ID 推导 env 名 */
+  const addCfg = (label: string, value: string) => {
+    if (!editing) return;
+    const env = envOf(editing.id, label);
+    const key = env.split('_').slice(2).join('_').toLowerCase() || `field${editing.config.length + 1}`;
+    patch({ config: [...editing.config, { key, label, value, env }] });
+  };
+  const applyPreset = (k: string) => {
+    const p = PRESETS.find(x => x.k === k);
+    if (!p || !editing) return;
+    setPresetSel(k);
+    if (k === 'blank') {
+      patch({ id: 'custom_env', name: '', category: '自定义服务', icon: 'server',
+        desc: '', config: [], secrets: [], prompt: '## 自定义环境资源\n在此补充调用说明。' });
+    } else {
+      patch({ ...p.apply, note: p.apply.desc ?? '' });
+    }
+    toast('已套用架构蓝图，可继续按需微调');
+  };
+  /** 内联新建密钥（设计稿：标签/env 名/明文 → svc:<资源id> 加密绑定，保存时落库） */
+  const openInlineVault = () => {
+    if (!editing) return;
+    setIvLabel('API Key');
+    setIvEnv(`LOADN_${(editing.id || 'SVC').toUpperCase().replace(/[^A-Z0-9]/g, '_')}_API_KEY`);
+    setIvVal('');
+    setInlineVaultOpen(true);
+  };
+  const saveInlineVault = () => {
+    if (!editing) return;
+    const label = ivLabel.trim() || 'API Key';
+    const envKey = (ivEnv.trim() || 'LOADN_API_KEY').toUpperCase();
+    if (!ivVal.trim()) { toast('请输入需要加密存储的密钥明文', false); return; }
+    const ref = `svc:${editing.id || 'custom'}`;
+    setSecretDraft(d => ({ ...d, [ref]: ivVal.trim() }));
+    patch({ secrets: [...editing.secrets, { label, envKey, vaultRef: ref, set: false }] });
+    setInlineVaultOpen(false);
+    toast(`密钥已暂存（AES-GCM，点「保存资源定义」加密落库并绑定）`);
+  };
+
+  /** vault 引用选项与状态标签（svc: 前缀=本资源密钥；原生键=平台密钥） */
+  const vaultOptLabel = (ref: string) => ref.startsWith('svc:')
+    ? `${ref}（本资源密钥）`
+    : `${ref}（${secretSet(ref) ? '已加密' : '未设'}）`;
+  const vaultRefSet = (ref: string, curId: string) => {
+    if (ref.startsWith('svc:')) {
+      const nm = ref.slice(4);
+      return nm === curId
+        ? !!secretDraft[ref].trim() || (data.custom.find(c => c.name === nm)?.key_set ?? false)
+        : data.custom.find(c => c.name === nm)?.key_set ?? false;
+    }
+    return secretSet(ref);
+  };
 
   /** 保存分流：自定义→custom v2 API；原生→逐字段 settings API（+密钥草稿） */
   const saveDrawer = async () => {
@@ -388,6 +595,29 @@ export default function ResourcesPanel() {
     if (!parsed) { toast('frontmatter 解析失败（需 --- 包裹且含 id/name）', false); return; }
     setImportOpen(false); setImportText('');
     openCreate(parsed);
+  };
+
+  // ---- 凭证库写面（PUT /admin/vault/{platform} 唯一编辑面端点，merge 语义） ----
+  const saveVaultNew = async () => {
+    const name = vnName.trim();
+    if (!name || !vnVal.trim()) { toast('请填写凭证名称与密钥明文', false); return; }
+    try {
+      await api(`/api/admin/vault/${encodeURIComponent(name)}`,
+        { method: 'PUT', body: JSON.stringify({ fields: { password: vnVal.trim() } }) });
+      toast(`已加密存入凭证「${name}」`);
+      setVaultNewOpen(false); setVnName(''); setVnVal('');
+      await load();
+    } catch (e) { toast(`存入失败：${String(e)}`, false); }
+  };
+  const saveRotate = async (platform: string) => {
+    if (!rotateVal.trim()) { toast('请输入新密钥值', false); return; }
+    try {
+      await api(`/api/admin/vault/${encodeURIComponent(platform)}`,
+        { method: 'PUT', body: JSON.stringify({ fields: { password: rotateVal.trim() } }) });
+      toast(`已轮换「${platform}」的加密凭证`);
+      setRotating(null); setRotateVal('');
+      await load();
+    } catch (e) { toast(`轮换失败：${String(e)}`, false); }
   };
 
   /** Harness 注入预览（诚实语义：自定义=env 注入；原生=平台集成消费；
@@ -461,10 +691,10 @@ export default function ResourcesPanel() {
                   {cards.length === 0 && cat === '自定义服务' && (
                     <div className="rh-empty" style={{ gridColumn: '1 / -1' }} onClick={() => openCreate()}>
                       <div className="rh-empty-l">
-                        <div className="rh-empty-plus">＋</div>
+                        <div className="rh-empty-plus"><Plus size={16} /></div>
                         <div>
-                          <div className="rh-empty-t">添加自定义资源或导入 Resource.md</div>
-                          <div className="rh-empty-s">支持任意异构参数、绑定加密库密钥</div>
+                          <div className="rh-empty-t">新增自定义外部环境或导入 Resource.md</div>
+                          <div className="rh-empty-s">支持选择架构蓝图、动态配置参数、内联创建并加密绑定 Vault 密钥</div>
                         </div>
                       </div>
                       <span className="rh-empty-go">立即配置 →</span>
@@ -477,7 +707,7 @@ export default function ResourcesPanel() {
                         <div>
                           <div className="rh-card-head">
                             <div className="rh-card-id">
-                              <span className="rh-icon">{r.icon}</span>
+                              <span className="rh-icon"><RhIcon icon={r.icon} /></span>
                               <span className="rh-name">{r.name}</span>
                             </div>
                             {badgeOf(r)}
@@ -493,7 +723,7 @@ export default function ResourcesPanel() {
                           <div className="rh-chips">
                             {r.secrets.length > 0 ? r.secrets.slice(0, 2).map((s, i) => (
                               <span key={i} className={`rh-chip ${s.set ? 'ok' : 'warn'}`}>
-                                🔑 {s.label} {s.set ? '已加密' : '未设'}</span>
+                                <Key size={11} /> {s.label} {s.set ? '已加密' : '未设'}</span>
                             )) : <span className="rh-chip dim">免密</span>}
                             {r.secrets.length > 2 && <span className="rh-chip dim">+{r.secrets.length - 2}</span>}
                             {extra > 0 && <span className="rh-chip dim">+{extra} 项</span>}
@@ -517,25 +747,28 @@ export default function ResourcesPanel() {
       {sec === 'mcp' && (
         <>
           <div className="rh-mcp-hero" style={{ marginTop: 14 }}>
-            <div>
-              <div className="rh-mcp-hero-t">MCP (Model Context Protocol) 与 Resource.md 的协同</div>
-              <div className="rh-mcp-hero-s">
-                MCP 提供标准化的工具 Schema 暴露；「服务与环境资源」通过 <code>Resource.md</code>
-                为 Harness 提供环境变量注入、凭证解耦与非标设施的使用说明书。
+            <div className="rh-mcp-hero-id">
+              <span className="rh-mcp-hero-ico"><Tool size={18} /></span>
+              <div>
+                <div className="rh-mcp-hero-t">MCP (Model Context Protocol) 与 Resource.md 协同工作</div>
+                <div className="rh-mcp-hero-s">
+                  MCP 提供标准化的工具 Schema 暴露；「服务与环境资源」通过 <code>Resource.md</code>
+                  为 Harness 提供环境变量注入、加密凭证绑定与非标基础设施的调用上下文。
+                </div>
               </div>
             </div>
-            <button className="btn" onClick={() => { setSec('service'); openCreate(); }}>＋ 新建 MD 资源</button>
+            <button className="btn" onClick={() => { setSec('service'); openCreate(); }}>新增环境资源</button>
           </div>
           <div className="res-addbar focused" style={{ margin: '10px 0', cursor: 'pointer' }}
             onClick={() => { location.hash = '#/admin/tools'; }}>
-            <span>🧩 MCP server 的增删改收敛在「工具」tab（stdio/http/sse 全类型编辑器 + 会话覆盖计数）</span>
+            <span>MCP server 的增删改收敛在「工具」tab（stdio/http/sse 全类型编辑器 + 会话覆盖计数）</span>
             <button className="btn ghost" style={{ marginLeft: 'auto' }}>前往工具 tab 管理 →</button>
           </div>
           <div className="rh-mcp-grid">
             {data.mcp.servers.length === 0 && (
               <div className="rh-empty" style={{ gridColumn: '1 / -1' }} onClick={() => { location.hash = '#/admin/tools'; }}>
                 <div className="rh-empty-l">
-                  <div className="rh-empty-plus">🧩</div>
+                  <div className="rh-empty-plus"><Tool size={16} /></div>
                   <div>
                     <div className="rh-empty-t">尚无全局 MCP server</div>
                     <div className="rh-empty-s">前往工具 tab 添加 stdio / http / sse 端点</div>
@@ -552,13 +785,13 @@ export default function ResourcesPanel() {
                 <div key={m.name} className="rh-mcp-card">
                   <div className="rh-card-head">
                     <div className="rh-card-id">
-                      <span className="rh-icon">🧩</span>
+                      <span className="rh-icon"><RhIcon icon="terminal" /></span>
                       <span className="rh-name">{m.name}</span>
                     </div>
-                    <span className="rh-chip ok">● 运行中 ({kind})</span>
+                    <span className={`rh-chip ${m.session_only ? 'warn' : 'ok'}`}>
+                      {m.session_only ? '会话级' : '运行中'} ({kind})</span>
                   </div>
-                  <div className="rh-desc">会话覆盖 {m.sessions_overriding || 0} 个
-                    {m.session_only && '（仅会话级）'}</div>
+                  <div className="rh-desc">会话覆盖 {m.sessions_overriding || 0} 个</div>
                   <div className="rh-mcp-cmd" title={cmd}>{cmd}</div>
                 </div>
               );
@@ -567,7 +800,7 @@ export default function ResourcesPanel() {
         </>
       )}
 
-      {/* ============ 子视图 3：凭证库（只读概览，编辑唯一面=安全 tab） ============ */}
+      {/* ============ 子视图 3：凭证库（概览 + 存入/轮换，写走安全面同端点） ============ */}
       {sec === 'vault' && (
         <>
           <div className="rh-toolbar">
@@ -578,9 +811,37 @@ export default function ResourcesPanel() {
                 ? `加密库健康 · ${data.vault.verify.entries} 条 · AES-GCM`
                 : `⚠ 校验失败：${data.vault.verify.error ?? '未知'}`}
             </span>
+            <button className="btn" onClick={() => setVaultNewOpen(v => !v)}><Plus size={13} /> 存入新密钥</button>
             <button className="btn ghost" onClick={() => { location.hash = '#/admin/security'; }}>
               前往安全 tab 管理 →</button>
           </div>
+
+          {vaultNewOpen && (
+            <div className="rh-vault-newpanel">
+              <div className="rh-vault-newpanel-t">
+                <span>新建加密凭证（AES-256-GCM）</span>
+                <button className="rh-linkbtn" onClick={() => setVaultNewOpen(false)}>取消</button>
+              </div>
+              <div className="rh-vault-newpanel-grid">
+                <div>
+                  <label className="rh-label">凭证名称（描述用途）<span className="req">*</span></label>
+                  <input className="admin-input" value={vnName} placeholder="如：OpenAI 生产环境 Key"
+                    onChange={e => setVnName(e.target.value)} autoComplete="off" />
+                </div>
+                <div>
+                  <label className="rh-label">密钥明文（仅写入，不回显）<span className="req">*</span></label>
+                  <input className="admin-input mono" type="password" value={vnVal} placeholder="sk-…"
+                    onChange={e => setVnVal(e.target.value)} autoComplete="new-password" />
+                </div>
+              </div>
+              <div className="rh-vault-newpanel-foot">
+                <span className="rh-vault-newpanel-hint">
+                  平台密钥库统一加密托管；高级字段（恢复码/2FA 等）在安全 tab 编辑</span>
+                <button className="btn" onClick={() => void saveVaultNew()}>加密并存入凭证库</button>
+              </div>
+            </div>
+          )}
+
           <div className="rh-vault-list">
             {vFiltered.length === 0 && <div className="rh-vault-row">
               <span className="rh-rows-empty" style={{ width: '100%' }}>（无匹配条目）</span>
@@ -589,7 +850,7 @@ export default function ResourcesPanel() {
               <div key={p.platform} className="rh-vault-row">
                 <div className="rh-vault-id">
                   <div className={`rh-vault-ico ${p.has_password ? '' : 'warn'}`}>
-                    {p.has_password ? '🔒' : '⚠️'}</div>
+                    {p.has_password ? <Lock size={13} /> : <Key size={13} />}</div>
                   <div>
                     <div className="rh-vault-name">{p.platform}
                       <span className="rh-id-badge" style={{ marginLeft: 8 }}>
@@ -597,8 +858,29 @@ export default function ResourcesPanel() {
                     <div className="rh-vault-sub">更新 {(p.updated_at || '').slice(0, 10)}</div>
                   </div>
                 </div>
-                <span className={`rh-chip ${p.has_password ? 'ok' : 'warn'}`}>
-                  <Key size={11} /> {p.has_password ? '密码已存' : '密码缺失'}</span>
+                {rotating === p.platform ? (
+                  <div className="rh-vault-rotate">
+                    <input className="admin-input mono" type="password" placeholder="输入新密钥值…"
+                      value={rotateVal} onChange={e => setRotateVal(e.target.value)}
+                      onKeyDown={e => {
+                        if (e.key === 'Enter') void saveRotate(p.platform);
+                        if (e.key === 'Escape') { setRotating(null); setRotateVal(''); }
+                      }}
+                      autoFocus autoComplete="new-password" />
+                    <button className="btn sm" disabled={!rotateVal.trim()}
+                      onClick={() => void saveRotate(p.platform)}>保存</button>
+                    <button className="btn ghost sm"
+                      onClick={() => { setRotating(null); setRotateVal(''); }}>取消</button>
+                  </div>
+                ) : (
+                  <div className="rh-vault-ops">
+                    <span className={`rh-chip ${p.has_password ? 'ok' : 'warn'}`}>
+                      <Key size={11} /> {p.has_password ? '密码已存' : '密码缺失'}</span>
+                    <button className="btn ghost sm" onClick={() => {
+                      setRotating(p.platform); setRotateVal('');
+                    }}>{p.has_password ? '轮换密钥' : '立即配置'}</button>
+                  </div>
+                )}
               </div>
             ))}
           </div>
@@ -612,7 +894,8 @@ export default function ResourcesPanel() {
           <div className="rh-drawer" onKeyDown={e => { if (e.key === 'Escape') closeDrawer(); }}>
             <div className="rh-drawer-head">
               <div className="rh-drawer-title">
-                <span className="rh-icon" style={{ width: 36, height: 36, fontSize: 18 }}>{editing.icon || '🔌'}</span>
+                <span className="rh-icon" style={{ width: 36, height: 36 }}>
+                  <RhIcon icon={editing.icon} size={18} /></span>
                 <div>
                   <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
                     <h2>{isNew ? '新增资源' : `配置资源 · ${editing.name}`}</h2>
@@ -624,38 +907,27 @@ export default function ResourcesPanel() {
               <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
                 <div className="rh-mode">
                   <button className={`rh-mode-btn ${mode === 'form' ? 'on' : ''}`}
-                    onClick={() => switchMode('form')}>🎛️ 表单</button>
+                    onClick={() => switchMode('form')}>可视化配置</button>
                   <button className={`rh-mode-btn ${mode === 'md' ? 'on' : ''}`}
-                    onClick={() => switchMode('md')}>📝 MD</button>
+                    onClick={() => switchMode('md')}>Resource.md</button>
                 </div>
                 <button className="btn ghost sm" onClick={closeDrawer}>✕</button>
               </div>
             </div>
 
             {isNew && (
-              <div className="rh-preset" style={{ margin: '12px 20px 0' }}>
-                <span>快速套用异构资源模板：</span>
-                <div className="rh-preset-ops">
-                  <button className="rh-preset-btn" onClick={() => patch({
-                    name: 'Jina 网页提取', id: 'jina', icon: '📄', desc: 'URL 转纯净 Markdown',
-                    config: [{ key: 'endpoint', label: '端点', value: 'https://r.jina.ai', env: 'LOADN_SVC_JINA_URL' }],
-                  })}>🌐 HTTP 微服务</button>
-                  <button className="rh-preset-btn" onClick={() => patch({
-                    name: '追加邮箱', id: 'mail_extra', icon: '📮', desc: '收验证码邮箱（IMAP/SMTP）',
-                    config: [{ key: 'imap', label: 'IMAP', value: 'imap.example.com:993', env: 'LOADN_MAIL2_IMAP' },
-                      { key: 'smtp', label: 'SMTP', value: 'smtp.example.com:465', env: 'LOADN_MAIL2_SMTP' }],
-                    secrets: [{ label: '授权码', envKey: 'LOADN_MAIL2_AUTH', vaultRef: 'svc:mail_extra', set: false }],
-                  })}>📮 邮箱</button>
-                  <button className="rh-preset-btn" onClick={() => patch({
-                    name: '模型端点', id: 'llm_api', icon: '👁️', desc: 'OpenAI 兼容推理端点',
-                    config: [{ key: 'api', label: 'API', value: 'https://api.example.com/v1', env: 'LOADN_LLM2_API' },
-                      { key: 'model', label: '模型', value: 'gpt-4o-mini', env: 'LOADN_LLM2_MODEL' }],
-                    secrets: [{ label: 'API Key', envKey: 'LOADN_LLM2_KEY', vaultRef: 'svc:llm_api', set: false }],
-                  })}>🤖 模型端点</button>
-                  <button className="rh-preset-btn" onClick={() => patch({
-                    name: 'ADB 节点', id: 'adb_node', icon: '📱', desc: '局域网 Android 无线调试节点',
-                    config: [{ key: 'address', label: '地址', value: '192.168.1.100:5555', env: 'LOADN_ADB2_SERIAL' }],
-                  })}>📱 ADB 节点</button>
+              <div className="rh-preset-wrap">
+                <label className="rh-preset-label">选择资源架构蓝图（自动生成标准字段与环境变量映射）</label>
+                <div className="rh-preset-grid">
+                  {PRESETS.map(p => (
+                    <button key={p.k} type="button"
+                      className={`rh-preset-card ${presetSel === p.k ? 'on' : ''}`}
+                      onClick={() => applyPreset(p.k)}>
+                      {p.icon === 'plus' ? <Plus size={16} /> : <RhIcon icon={p.icon} size={16} />}
+                      <span className="rh-preset-t">{p.t}</span>
+                      <span className="rh-preset-s">{p.s}</span>
+                    </button>
+                  ))}
                 </div>
               </div>
             )}
@@ -664,21 +936,41 @@ export default function ResourcesPanel() {
               {mode === 'form' ? (
                 <>
                   <div className="rh-form-grid">
-                    <div>
+                    <div className="rh-iconfield" ref={pickerRef}>
                       <label className="rh-label">图标</label>
-                      <input className="admin-input" value={editing.icon} style={{ textAlign: 'center' }}
-                        onChange={e => patch({ icon: e.target.value })} autoComplete="off" />
+                      <button type="button" className="rh-iconpicker-trigger"
+                        disabled={editing.native} title={editing.native ? '原生资源图标固定' : '选择图标'}
+                        onClick={() => setIconPickerOpen(v => !v)}>
+                        <RhIcon icon={editing.icon} size={16} />
+                      </button>
+                      {iconPickerOpen && !editing.native && (
+                        <div className="rh-iconpicker">
+                          {Object.keys(RH_ICONS).map(k => (
+                            <button key={k} type="button" title={k}
+                              className={`rh-iconpick-btn ${editing.icon === k ? 'on' : ''}`}
+                              onClick={() => { patch({ icon: k }); setIconPickerOpen(false); }}>
+                              <RhIcon icon={k} size={16} />
+                            </button>
+                          ))}
+                        </div>
+                      )}
                     </div>
                     <div>
                       <label className="rh-label">资源名称 <span className="req">*</span></label>
-                      <input className="admin-input" value={editing.name} placeholder="如：AIO 沙箱"
-                        onChange={e => patch({ name: e.target.value })} autoComplete="off" />
+                      <input className="admin-input" value={editing.name} placeholder="如：AIO 沙箱 / 内部知识库"
+                        onChange={e => onNameInput(e.target.value)} autoComplete="off" />
                     </div>
                     <div>
-                      <label className="rh-label">唯一标识 ID <span className="req">*</span></label>
+                      <label className="rh-label">
+                        唯一标识 ID <span className="req">*</span>
+                        <span className="rh-label-hint">小写字母与下划线{isNew && !idTouched ? ' · 输入名称自动生成' : ''}</span>
+                      </label>
                       <input className="admin-input mono" value={editing.id}
                         placeholder="如：aio_sandbox" disabled={editing.native}
-                        onChange={e => patch({ id: e.target.value.toLowerCase().replace(/[^a-z0-9_-]/g, '_') })}
+                        onChange={e => {
+                          setIdTouched(true);
+                          patch({ id: e.target.value.toLowerCase().replace(/[^a-z0-9_-]/g, '_') });
+                        }}
                         autoComplete="off" />
                     </div>
                   </div>
@@ -691,33 +983,46 @@ export default function ResourcesPanel() {
                       </select>
                     </div>
                     <div>
-                      <label className="rh-label">能力简述</label>
-                      <input className="admin-input" value={editing.desc} placeholder="一句话说明用途"
+                      <label className="rh-label">能力简述（显示在卡片副标题）</label>
+                      <input className="admin-input" value={editing.desc} placeholder="一句话说明该外部环境向 Agent 提供的能力…"
                         onChange={e => patch({ desc: e.target.value, note: e.target.value })}
                         autoComplete="off" />
                     </div>
                   </div>
 
                   <div className="rh-fieldbox">
-                    <div className="rh-fieldbox-head">⚙️ 连接与配置参数
-                      <button className="rh-linkbtn" onClick={() => patch({
-                        config: [...editing.config, {
-                          key: `field${editing.config.length + 1}`, label: '新参数', value: '',
-                          env: `LOADN_SVC_${(editing.id || 'SVC').toUpperCase().replace(/-/g, '_')}_${editing.config.length + 1}` }] })}>
-                        ＋ 添加字段</button>
+                    <div className="rh-fieldbox-head">
+                      <span>连接与环境参数（Config Fields）
+                        {!editing.native && <button className="rh-linkbtn" style={{ marginLeft: 10 }}
+                          onClick={() => addCfg('', '')}>＋ 添加字段</button>}</span>
+                      <span className="rh-fieldbox-sub">定义连接地址、端口或模型档位，自动映射为 Harness 环境变量</span>
                     </div>
-                    {editing.config.length === 0 && <div className="rh-rows-empty">暂无连接参数（纯凭证驱动资源可留空）</div>}
+                    {!editing.native && (
+                      <div className="rh-quickrow">
+                        <span className="rh-quick-lb">常用快速插入:</span>
+                        {QUICK_CHIPS.map(([lb, dv]) => (
+                          <button key={lb} type="button" className="rh-quick-chip"
+                            onClick={() => addCfg(lb, dv)}>＋ {lb}</button>
+                        ))}
+                      </div>
+                    )}
+                    {editing.config.length > 0 && (
+                      <div className="rh-rowhead">
+                        <span>显示标签</span><span>参数值</span>
+                        <span>{editing.native ? '存取键' : '注入环境变量名 (Env)'}</span><span />
+                      </div>
+                    )}
+                    {editing.config.length === 0 && <div className="rh-rows-empty">暂无连接参数（可点击上方快捷胶囊或「＋ 添加字段」）</div>}
                     {editing.config.map((c, i) => (
                       <div key={i} className="rh-row">
-                        <input className="admin-input" value={c.label} placeholder="字段名"
-                          onChange={e => patch({ config: editing.config.map((x, j) => j === i ? { ...x, label: e.target.value } : x) })}
-                          autoComplete="off" />
-                        <input className="admin-input mono" value={c.value} placeholder="值"
+                        <input className="admin-input" value={c.label} placeholder="如：端点"
+                          onChange={e => onCfgLabel(i, e.target.value)} autoComplete="off" />
+                        <input className="admin-input mono" value={c.value} placeholder="http://127.0.0.1:8080"
                           onChange={e => patch({ config: editing.config.map((x, j) => j === i ? { ...x, value: e.target.value } : x) })}
                           autoComplete="off" />
                         {editing.native
-                          ? <span className="rh-chip dim" title="原生资源由平台集成消费">平台集成</span>
-                          : <input className="admin-input mono" value={c.env} placeholder="ENV 名"
+                          ? <span className="rh-chip dim" title="原生资源由平台集成消费">{c.svcKey || '—'}</span>
+                          : <input className="admin-input mono env" value={c.env} placeholder="LOADN_SVC_URL"
                             onChange={e => patch({ config: editing.config.map((x, j) => j === i ? { ...x, env: e.target.value.toUpperCase().replace(/[^A-Z0-9_]/g, '_') } : x) })}
                             autoComplete="off" />}
                         <button className="rh-row-x" title="移除"
@@ -727,17 +1032,60 @@ export default function ResourcesPanel() {
                   </div>
 
                   <div className="rh-fieldbox">
-                    <div className="rh-fieldbox-head">🔐 关联加密凭证（Vault）
-                      {!editing.native && <button className="rh-linkbtn" onClick={() => patch({
-                        secrets: [...editing.secrets, {
-                          label: 'API Key', envKey: `LOADN_SVC_${(editing.id || 'SVC').toUpperCase().replace(/-/g, '_')}_KEY`,
-                          vaultRef: `svc:${editing.id || 'x'}`, set: false }] })}>＋ 绑定密钥</button>}
+                    <div className="rh-fieldbox-head">
+                      <span>安全凭证与密钥（Vault Secrets）</span>
+                      {!editing.native && (
+                        <span className="rh-fieldbox-ops">
+                          <button className="rh-linkbtn green" onClick={() => {
+                            if (!inlineVaultOpen) openInlineVault(); else setInlineVaultOpen(false);
+                          }}>＋ 新建加密密钥</button>
+                          <button className="rh-linkbtn" onClick={() => patch({
+                            secrets: [...editing.secrets, {
+                              label: 'API Key', envKey: `LOADN_${(editing.id || 'SVC').toUpperCase().replace(/[^A-Z0-9]/g, '_')}_API_KEY`,
+                              vaultRef: `svc:${editing.id || 'x'}`, set: false }] })}>＋ 绑定已有密钥</button>
+                        </span>
+                      )}
                     </div>
-                    {editing.secrets.length === 0 && <div className="rh-rows-empty">无需密钥</div>}
+
+                    {inlineVaultOpen && !editing.native && (
+                      <div className="rh-inlinevault">
+                        <div className="rh-inlinevault-t">
+                          <span><Shield size={13} /> 创建新密钥并自动绑定到当前资源</span>
+                          <button className="rh-linkbtn" onClick={() => setInlineVaultOpen(false)}>收起</button>
+                        </div>
+                        <div className="rh-inlinevault-grid">
+                          <div>
+                            <label className="rh-label">凭证显示标签</label>
+                            <input className="admin-input" value={ivLabel} placeholder="如：API Key / 授权码"
+                              onChange={e => setIvLabel(e.target.value)} autoComplete="off" />
+                          </div>
+                          <div>
+                            <label className="rh-label">注入环境变量名</label>
+                            <input className="admin-input mono" value={ivEnv} placeholder="LOADN_SVC_API_KEY"
+                              onChange={e => setIvEnv(e.target.value)} autoComplete="off" />
+                          </div>
+                          <div>
+                            <label className="rh-label">密钥明文（AES-GCM 加密）</label>
+                            <input className="admin-input mono" type="password" value={ivVal} placeholder="输入 Token 或密码…"
+                              onChange={e => setIvVal(e.target.value)} autoComplete="new-password" />
+                          </div>
+                        </div>
+                        <div className="rh-inlinevault-foot">
+                          <span className="rh-inlinevault-hint mono">
+                            将以 vault_ref <code>svc:{editing.id || 'custom'}</code> 加密存入凭证库</span>
+                          <button className="btn" onClick={saveInlineVault}>加密存入并绑定</button>
+                        </div>
+                      </div>
+                    )}
+
+                    {editing.secrets.length > 0 && (
+                      <div className="rh-rowhead secret">
+                        <span>凭证标签</span><span>注入环境变量</span><span>引用 Vault 加密项（vault_ref）</span><span />
+                      </div>
+                    )}
+                    {editing.secrets.length === 0 && <div className="rh-rows-empty">当前免密访问，如需鉴权请「＋ 新建加密密钥」或「＋ 绑定已有密钥」</div>}
                     {editing.secrets.map((s, i) => {
                       const draftKey = `${editing.id}#${i}`;
-                      const vaultOpts = editing.native ? NATIVE_SECRET_KEYS : [...new Set([
-                        `svc:${editing.id}`, ...NATIVE_SECRET_KEYS])];
                       return (
                         <div key={i}>
                           <div className="rh-row secret">
@@ -748,33 +1096,46 @@ export default function ResourcesPanel() {
                               placeholder="ENV_KEY" disabled={editing.native}
                               onChange={e => patch({ secrets: editing.secrets.map((x, j) => j === i ? { ...x, envKey: e.target.value.toUpperCase().replace(/[^A-Z0-9_]/g, '_') } : x) })}
                               autoComplete="off" />
-                            <select className="admin-input" value={s.vaultRef} disabled={editing.native}
-                              title={`vault_ref（当前 ${s.set ? '已加密' : '未设'}）`}
-                              onChange={e => patch({ secrets: editing.secrets.map((x, j) => j === i ? { ...x, vaultRef: e.target.value, set: e.target.value.startsWith('svc:') ? false : secretSet(e.target.value) } : x) })}>
-                              {vaultOpts.map(v => <option key={v} value={v}>{v}</option>)}
-                            </select>
-                            {!editing.native && <button className="rh-row-x" title="移除"
+                            {editing.native ? (
+                              <span className="rh-chip dim" title={`vault_ref（${s.set ? '已加密' : '未设'}）`}>{s.vaultRef}</span>
+                            ) : (
+                              <select className="admin-input" value={s.vaultRef}
+                                title={`vault_ref（当前 ${s.set ? '已加密' : '未设'}）`}
+                                onChange={e => patch({ secrets: editing.secrets.map((x, j) => j === i ? {
+                                  ...x, vaultRef: e.target.value,
+                                  set: e.target.value.startsWith('svc:')
+                                    ? vaultRefSet(e.target.value, editing.id)
+                                    : secretSet(e.target.value) } : x) })}>
+                                {[...new Set([`svc:${editing.id || 'x'}`, ...NATIVE_SECRET_KEYS, s.vaultRef])]
+                                  .filter(v => v.startsWith('svc:') || NATIVE_SECRET_KEYS.includes(v))
+                                  .map(v => <option key={v} value={v}>{vaultOptLabel(v)}</option>)}
+                              </select>
+                            )}
+                            {!editing.native && <button className="rh-row-x" title="解绑密钥"
                               onClick={() => patch({ secrets: editing.secrets.filter((_, j) => j !== i) })}>✕</button>}
                           </div>
-                          <div style={{ display: 'flex', gap: 7, alignItems: 'center', marginTop: 4 }}>
-                            <input className="admin-input" type="password" style={{ flex: 1 }}
-                              placeholder={`${s.set ? '输入新值轮换' : '输入密钥值'}（AES-GCM 加密，只写不读）`}
-                              value={secretDraft[draftKey] ?? ''}
-                              onChange={e => setSecretDraft(d => ({ ...d, [draftKey]: e.target.value }))}
-                              autoComplete="new-password" />
-                            <button className="btn sm" disabled={!(secretDraft[draftKey] ?? '').trim()}
-                              onClick={() => {
-                                setSecretDraft(d => ({ ...d, [s.vaultRef]: d[draftKey], [draftKey]: '' }));
-                                toast('密钥待保存（点「保存资源定义」落库）');
-                              }}>暂存</button>
-                          </div>
+                          {editing.native && (
+                            <div style={{ display: 'flex', gap: 7, alignItems: 'center', marginTop: 4 }}>
+                              <input className="admin-input" type="password" style={{ flex: 1 }}
+                                placeholder={`${s.set ? '输入新值轮换' : '输入密钥值'}（AES-GCM 加密，只写不读）`}
+                                value={secretDraft[draftKey] ?? ''}
+                                onChange={e => setSecretDraft(d => ({ ...d, [draftKey]: e.target.value }))}
+                                autoComplete="new-password" />
+                              <button className="btn sm" disabled={!(secretDraft[draftKey] ?? '').trim()}
+                                onClick={() => {
+                                  setSecretDraft(d => ({ ...d, [s.vaultRef]: d[draftKey], [draftKey]: '' }));
+                                  toast('密钥待保存（点「保存资源定义」落库）');
+                                }}>暂存</button>
+                            </div>
+                          )}
                         </div>
                       );
                     })}
                   </div>
 
                   <div>
-                    <label className="rh-label">🧠 Agent 调用指南与上下文（Markdown Prompt）</label>
+                    <label className="rh-label">Agent 调用指南与上下文（Markdown Prompt）
+                      <span className="rh-label-hint">按需注入 Model System Prompt</span></label>
                     <textarea className="admin-input rh-prompt-ta" value={editing.prompt}
                       placeholder={'## 服务调用说明\n在此描述该资源向 Agent 提供的核心能力与注意事项。'}
                       onChange={e => patch({ prompt: e.target.value })} autoComplete="off" />
@@ -787,13 +1148,13 @@ export default function ResourcesPanel() {
                       <span>{(editing.id || 'resource').replace(/[^a-z0-9_-]/g, '_')}.resource.md</span>
                       <button className="rh-mdcopy" onClick={() => {
                         void navigator.clipboard.writeText(mdText).then(() => toast('已复制全文'));
-                      }}>复制全文</button>
+                      }}>复制源码</button>
                     </div>
                     <textarea className="rh-mdta" value={mdText} spellCheck={false}
                       onChange={e => onMdInput(e.target.value)} />
                   </div>
                   <div className={`rh-parse-status ${mdOk ? 'ok' : 'bad'}`}>
-                    {mdOk ? '✓ YAML Frontmatter 有效，已与表单视图实时同步' : '⚠ 解析失败：检查 --- 包裹与缩进（表单保持最后有效内容）'}
+                    {mdOk ? '✓ YAML Frontmatter 有效，已与可视化配置视图实时同步' : '⚠ 解析失败：检查 --- 包裹与缩进（表单保持最后有效内容）'}
                   </div>
                 </>
               )}
@@ -804,7 +1165,7 @@ export default function ResourcesPanel() {
                   <label className="rh-toggle">
                     <input type="checkbox" checked={editing.enabled} disabled={editing.native}
                       onChange={e => patch({ enabled: e.target.checked })} />
-                    注入任务环境
+                    启用并注入任务环境
                   </label>
                 </div>
                 <div className="rh-envterm">{envPreview(editing)}</div>
@@ -817,7 +1178,7 @@ export default function ResourcesPanel() {
                 {!editing.native && editing.ping.length > 0 && (
                   <button className="btn ghost" disabled={pinging === `svc:${editing.id}`}
                     onClick={() => void doPing(editing.ping, `svc:${editing.id}`)}>
-                    {pinging === `svc:${editing.id}` ? '探测中…' : '⚡ 立即探测'}</button>)}
+                    {pinging === `svc:${editing.id}` ? '探测中…' : <><Zap size={13} style={{ verticalAlign: -2 }} /> 连通性探测</>}</button>)}
               </div>
               <div className="rh-foot-r">
                 <button className="btn ghost" onClick={closeDrawer}>取消</button>
@@ -838,8 +1199,8 @@ export default function ResourcesPanel() {
               onChange={e => setImportText(e.target.value)} />
             <div className="rh-import-foot">
               <button className="rh-linkbtn" onClick={() => setImportText(
-                '---\nid: browserless\nname: 并发浏览器池\ncategory: 自定义服务\nicon: "🕸️"\ndescription: "无头 Chrome 集群"\nenabled: true\nconfig:\n  endpoint:\n    label: "端点"\n    value: "http://127.0.0.1:3000"\n    env: "LOADN_SVC_BROWSERLESS_URL"\nsecrets: []\n---\n\n## 无头浏览器集群\n用于批量渲染与截图抓取。')}>
-                填充示例模板</button>
+                '---\nid: browserless\nname: 并发浏览器池\ncategory: 自定义服务\nicon: "cloud"\ndescription: "无头 Chrome 集群"\nenabled: true\nconfig:\n  endpoint:\n    label: "端点"\n    value: "http://127.0.0.1:3000"\n    env: "LOADN_SVC_BROWSERLESS_URL"\nsecrets: []\n---\n\n## 无头浏览器集群\n用于批量渲染与截图抓取。')}>
+                填充标准示例模板</button>
               <div style={{ display: 'flex', gap: 8 }}>
                 <button className="btn ghost" onClick={() => setImportOpen(false)}>取消</button>
                 <button className="btn" disabled={!importText.trim()} onClick={doImport}>解析并导入</button>
@@ -851,3 +1212,4 @@ export default function ResourcesPanel() {
     </div>
   );
 }
+
