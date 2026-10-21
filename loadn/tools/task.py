@@ -28,7 +28,12 @@ class TaskTool(Tool):
             "prompt": {"type": "string",
                        "description": "子代理的完整任务提示词（自包含）"},
             "subagent_type": {"type": "string",
-                              "description": "子代理类型（general-purpose/explore…）"},
+                              "description": "子代理类型。任务涉及专业领域"
+                              "（法务/设计/数据/运营等）时，必须从系统提示的"
+                              "员工清单中点名职责匹配的数字员工（如法律风险"
+                              "审查→法务顾问）；仅在无匹配职责时才用 "
+                              "general/explore 等通用类型（此时系统将随机"
+                              "指派临时工）"},
             "description": {"type": "string",
                             "description": "任务简述（3-6 词，进度展示用，可选）"},
         },

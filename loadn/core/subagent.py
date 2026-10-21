@@ -385,7 +385,10 @@ class TaskTool(Tool):
                 if len(desc) > 120:
                     desc = desc[:117] + "..."
                 lines.append(f"{n}={desc}" if desc else n)
-            base += " | 数字员工/自定义（按职责选人）：" + "；".join(lines)
+            base += (" | 数字员工/自定义（按职责选人）：" + "；".join(lines)
+                     + "。派单规则：任务涉及专业领域（法务/设计/数据/运营…）时"
+                     "必须优先点名职责匹配的员工（subagent_type=该员工名）；"
+                     "临时工仅作通用人力兜底——不点名时系统将随机指派临时工。")
         return base
 
     async def execute(self, args: dict, ctx: ToolContext) -> str:
