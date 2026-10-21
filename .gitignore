@@ -32,3 +32,6 @@ desktop/image/dist-arm64/
 
 # wheel 打包时的前端拷贝目录（构建产物，release.yml CI 生成）
 loadn_webui/frontend/
+loadn_webui/prompts/
+loadn_webui/profiles/
+loadn_webui/scripts/

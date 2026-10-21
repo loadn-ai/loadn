@@ -551,6 +551,10 @@ def behavior_dirs(name: str) -> list[Path]:
     目录级合并，这里按文件级覆盖）。
     """
     dirs = [ROOT / name, CODE_ROOT / name]     # 数据根优先（用户覆盖）
+    # wheel 安装形态（pip install loadn[webui]）：CODE_ROOT=site-packages
+    # 父级，无 prompts/profiles 目录——包内 loadn_webui/<name> 兜底
+    # （v0.7.39 起随包发布；数据根覆盖与源码树语义不变）。
+    dirs.append(Path(__file__).resolve().parent / name)
     seen, out = set(), []
     for d in dirs:                              # 去重（测试 HOME=CODE_ROOT 时同路径）
         if d.exists() and str(d) not in seen:

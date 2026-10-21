@@ -97,11 +97,20 @@ def _exec_env_block() -> str:
         "来回猜路径。")
 
 
+def _fetch_script_path() -> Path:
+    """fetch_page 脚本：源码树 scripts/ 优先，wheel 包内 loadn_webui/scripts/
+    兜底（v0.7.39 起随包发布——CODE_ROOT 在 pip 安装形态下无 scripts 目录）。"""
+    p = CODE_ROOT / "scripts" / "fetch_page.py"
+    if p.exists():
+        return p
+    return Path(__file__).resolve().parent / "scripts" / "fetch_page.py"
+
+
 def render_claude_md(sid: str, title: str, prof: profile_mod.Profile,
                      skills: list[str]) -> str:
     from .config import behavior_file
     tmpl = behavior_file("prompts", "workspace.md.tmpl").read_text()
-    fetch = CODE_ROOT / "scripts" / "fetch_page.py"
+    fetch = _fetch_script_path()
     repl = {
         "{{SESSION_ID}}": sid,
         "{{TITLE}}": title,
@@ -249,7 +258,7 @@ def session_env(ws: Path, sid: str) -> dict:
     项目子任务：artifacts/notes/work 指任务目录，inputs/项目根指路（共享），
     另带 LOADN_PROJECT_ROOT 供 agent 访问项目级材料。
     """
-    fetch = CODE_ROOT / "scripts" / "fetch_page.py"
+    fetch = _fetch_script_path()
     import sys as _sys
     _cli = (shutil.which("wd") or shutil.which("loadn-web")
             or str(Path(_sys.executable).parent / "loadn-web"))

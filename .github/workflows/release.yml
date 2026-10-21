@@ -56,7 +56,10 @@ jobs:
       - name: Build web UI into wheel data
         run: |
           cd ui && npm ci && npm run build && cd ..
-          mkdir -p loadn_webui/frontend && cp -r ui/dist loadn_webui/frontend/dist
+          mkdir -p loadn_webui/frontend loadn_webui/scripts
+          cp -r ui/dist loadn_webui/frontend/dist
+          cp -r prompts profiles loadn_webui/
+          cp scripts/fetch_page.py loadn_webui/scripts/
       - name: Build sdist + wheel
         run: |
           pip install build

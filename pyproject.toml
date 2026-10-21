@@ -85,7 +85,7 @@ include = ["loadn*"]
 # models.json=模型目录（窗口/价格，缺失则全降级 128k+cache economics 关闭）；
 # skills.lock.json=技能内容锁基线；protocol/manifest.json=协议自描述；
 # prompts/=标题生成模板与模型人设。docker 干净环境实测缺包即降级（坑 5）。
-loadn_webui = ["frontend/dist/**/*"]
+loadn_webui = ["frontend/dist/**/*", "prompts/**/*", "profiles/**/*", "scripts/*.py"]
 loadn = ["py.typed", "models.json", "skills.lock.json", "protocol/*.json", "prompts/*.txt", "prompts/models/*.md"]
 
 [tool.pytest.ini_options]
