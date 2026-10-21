@@ -46,7 +46,7 @@ jobs:
     runs-on: macos-15   # arm64：VZ/vfkit 原生环境
     steps:
       - uses: actions/checkout@v4
-      - uses: actions/download-artifact@v4
+      - uses: actions/download-artifact@v8
         with: { name: vm-assets, path: desktop/image/dist }
       - uses: dtolnay/rust-toolchain@stable
         with: { targets: aarch64-apple-darwin }
@@ -76,7 +76,7 @@ jobs:
     runs-on: windows-latest
     steps:
       - uses: actions/checkout@v4
-      - uses: actions/download-artifact@v4
+      - uses: actions/download-artifact@v8
         with: { name: vm-assets, path: desktop/image/dist }
       - uses: dtolnay/rust-toolchain@stable
         with: { targets: x86_64-pc-windows-msvc }
@@ -110,7 +110,7 @@ jobs:
     runs-on: ubuntu-latest
     permissions: { contents: write }
     steps:
-      - uses: actions/download-artifact@v4
+      - uses: actions/download-artifact@v8
         with:
           pattern: loadn-*
           merge-multiple: true
