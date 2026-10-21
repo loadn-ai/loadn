@@ -208,6 +208,11 @@ Python 3.10 或更高。引擎运行时依赖仅 `httpx` 一个；可选附加�
 | `dev` | 测试与 lint 工具链（pytest、ruff、playwright） |
 | `webui` | `loadn-web` 平台依赖（FastAPI、cryptography 等） |
 
+> TUI 注记：已在 Python 3.10/3.11 验证。Python 3.12 下伪终端环境
+> （pexpect、`script(1)`、部分 CI runner）中 textual 8.x 的输入框可能
+> 收不到键事件——基础 REPL（`LOADN_NO_TUI=1`，或不装 `tui` 附加项）
+> 不受影响。
+
 ### 安装引擎
 
 要求 Python ≥ 3.10。三个常见坑：裸装的 Ubuntu 服务器/容器（24.04+）

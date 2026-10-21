@@ -233,6 +233,11 @@ Python 3.10 or later. The engine has a single runtime dependency
 | `dev` | Test and lint toolchain (pytest, ruff, playwright) |
 | `webui` | `loadn-web` platform dependencies (FastAPI, cryptography, and others) |
 
+> TUI note: verified on Python 3.10/3.11. On Python 3.12 under a
+> pseudo-terminal (pexpect, `script(1)`, some CI runners), textual 8.x may
+> not deliver key events to input fields — the plain REPL
+> (`LOADN_NO_TUI=1`, or simply no `tui` extra installed) is unaffected.
+
 ### Install the engine
 
 Requires Python ≥ 3.10. Three common pitfalls: bare Ubuntu servers and

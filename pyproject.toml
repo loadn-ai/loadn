@@ -81,7 +81,11 @@ Changelog = "https://github.com/loadn-ai/loadn/blob/main/CHANGELOG.md"
 include = ["loadn*"]
 
 [tool.setuptools.package-data]
-loadn = ["py.typed"]
+# 数据文件必须随 wheel 走（editable 装直读源码会掩盖遗漏）：
+# models.json=模型目录（窗口/价格，缺失则全降级 128k+cache economics 关闭）；
+# skills.lock.json=技能内容锁基线；protocol/manifest.json=协议自描述；
+# prompts/=标题生成模板与模型人设。docker 干净环境实测缺包即降级（坑 5）。
+loadn = ["py.typed", "models.json", "skills.lock.json", "protocol/*.json", "prompts/*.txt", "prompts/models/*.md"]
 
 [tool.pytest.ini_options]
 markers = [
