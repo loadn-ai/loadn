@@ -3,6 +3,24 @@
 本项目的全部显著变更记录于此。格式遵循 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/)，
 版本遵循 [SemVer](https://semver.org/lang/zh-CN/)。
 
+## [0.7.39] - 2026-10-21
+
+- **修复：pip 安装形态创建会话 500（运行时资产三处遗漏）**：仓库根
+  `prompts/`（会话宪法模板 workspace.md.tmpl）、`profiles/`（档位人设
+  coder/researcher 等 + registry.yaml）、`scripts/fetch_page.py`（宪法
+  与 env 注入引用的抓取脚本）**不属于任何 Python 包**——setuptools
+  从不打它们，源码树/release 树 CODE_ROOT 命中掩盖，wheel 形态
+  CODE_ROOT=site-packages 父级必然落空：`POST /api/sessions` 在
+  `render_claude_md` 处 `FileNotFoundError` 500（用户新装实测现场）。
+  修复：`behavior_dirs` 增加包内搜索位（数据根覆盖 > 源码树 > 包内
+  兜底，语义不变）；fetch 脚本同构回落；打包链扩 prompts/profiles/
+  scripts（CI 构建时拷贝进 `loadn_webui/` + package-data）。
+  验证：wheel 解包 5/5 在包；宿主 Python 3.10 与 3.12 双 throwaway
+  venv：创建会话 200、CLAUDE.md 宪法生成（含包内 fetch 路径）、
+  profiles 正常读取；**docker 干净环境（ubuntu:24.04）全流程终验
+  通过**：UI HTML / 创建会话 200 / 宪法文件 OK；ruff 绿 + 82 passed
+  （admin/init/projects/settings/w0）。
+
 ## [0.7.38] - 2026-10-21
 
 - **功能：PyPI 包内嵌完整 Web UI**（此前 `pip install "loadn[webui]"`
