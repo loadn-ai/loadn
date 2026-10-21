@@ -3,6 +3,17 @@
 本项目的全部显著变更记录于此。格式遵循 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/)，
 版本遵循 [SemVer](https://semver.org/lang/zh-CN/)。
 
+## [0.7.38] - 2026-10-21
+
+- **功能：PyPI 包内嵌完整 Web UI**（此前 `pip install "loadn[webui]"`
+  起服务为 api-only，`/` 仅返回提示 JSON）：前端 dist（约 1MB）打进
+  wheel——package-data 收 `loadn_webui/frontend/dist`，release CI 的
+  PyPI 发布 job 增加 npm build + 拷贝步骤；运行时 `_DIST` 双路解析：
+  源码树 `CODE_ROOT/ui/dist` 优先（开发者与生产 release 树同此命中，
+  行为零变化），包内 `loadn_webui/frontend/dist` 回落。干净 venv 装
+  wheel 实测：`/` 返回完整 SPA HTML、静态资产 200（修复前 api-only）。
+  w0 安全面 49 passed。
+
 ## [0.7.37] - 2026-10-21
 
 - **修复：wheel 打包遗漏数据文件**：`[tool.setuptools.package-data]` 仅
