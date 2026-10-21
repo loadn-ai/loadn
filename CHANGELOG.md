@@ -3,6 +3,17 @@
 本项目的全部显著变更记录于此。格式遵循 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/)，
 版本遵循 [SemVer](https://semver.org/lang/zh-CN/)。
 
+## [0.7.41] - 2026-10-21
+
+- **修复：资源面板输入框裸 UA 样式（方正黑框）**：`admin-input` 类自
+  资源 Hub 首版起在 CSS 中**零定义**——全部 20 处输入框（搜索/抽屉
+  表单/行式参数编辑/内联密钥面板/凭证库存入与轮换）渲染浏览器默认
+  样式（黑色边框、无圆角）。补完整控件基类（语言对齐管理中心
+  `.setting-row input` 统一面）：浅色令牌边框+8px 圆角+focus 光环
+  （`--accent-ring`）+hover 边框加深+disabled 态+mono 变体；
+  select/textarea 同一适用。computedStyle 断言：全部输入框
+  border=令牌渲染色、radius=8、focus 光环 3px 在位（修复前=UA 黑框）。
+
 ## [0.7.40] - 2026-10-21
 
 - **功能：工作区文件管理写面**（用户需求：临时调整内容不再只能靠

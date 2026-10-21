@@ -2304,6 +2304,23 @@ button.attach-chip:hover { border-color: color-mix(in srgb, var(--accent) 40%, v
 /* 独立命名空间：子 tab 徽章/分段筛选/展示态卡片墙/抽屉双向编辑器/MD 深色
    编辑器/注入预览/MCP 端点卡/vault 行式。全走双主题令牌；深色代码面
    （md 编辑器/env 预览）为编辑器语义固定深色（VS Code 风，亮暗一致）。 */
+
+/* 控件基类（2026-10-21 报障修复：此前 admin-input 类零定义——资源面板全部
+   输入框裸 UA 默认样式「方正黑框」）。语言对齐 .setting-row input 控件
+   统一面：浅边框+圆角+focus 光环；select/textarea 同一适用。 */
+.admin-input { width: 100%; box-sizing: border-box; min-height: 31px;
+  background: var(--bg2); color: var(--text); border: 1px solid var(--border);
+  border-radius: var(--radius-sm); padding: 4px 9px; font-size: var(--fs-sm);
+  font-family: inherit; outline: none;
+  transition: border-color .15s, box-shadow .15s, background .15s; }
+.admin-input:hover:not(:disabled) { border-color: color-mix(in srgb, var(--text-dim) 45%, var(--border)); }
+.admin-input:focus { border-color: var(--accent); background: var(--bg);
+  box-shadow: 0 0 0 3px var(--accent-ring); }
+.admin-input::placeholder { color: var(--text-dim); }
+.admin-input:disabled { opacity: .55; cursor: not-allowed; }
+.admin-input.mono { font-family: var(--mono); font-size: var(--fs-xs); }
+select.admin-input { cursor: pointer; }
+textarea.admin-input { min-height: 60px; line-height: 1.6; resize: vertical; }
 .rh-subnav { display: flex; align-items: center; gap: 18px; padding: 10px 2px 0;
   border-bottom: 1px solid var(--border); }
 .rh-subnav-tab { display: inline-flex; align-items: center; gap: 6px; padding: 7px 2px 9px;
