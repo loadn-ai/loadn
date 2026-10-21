@@ -3,6 +3,31 @@
 本项目的全部显著变更记录于此。格式遵循 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/)，
 版本遵循 [SemVer](https://semver.org/lang/zh-CN/)。
 
+## [0.7.36] - 2026-10-21
+
+- **修复：新装实例 `/api/health` 500（config 裸键打穿默认实例）**：
+  `loadn-web init` 模板的 `engines.loadn:` 为裸键（子项全注释、等用户
+  填 key），YAML 解析为显式 null，`_apply_section` 直接 setattr 把
+  dataclass `default_factory` 实例覆盖为 None → `resolve_bin` 取
+  `CONFIG.engines.loadn.bin` 即 `AttributeError`——干净环境（docker/
+  新服务器）按文档从 PyPI 安装后 health 必 500（生产配置完整故从未
+  暴露；Ubuntu 24.04 容器全链实测发现）。修复：裸键（null）作用于
+  嵌套 dataclass 字段时视为"未配置"，保留默认实例；标量字段 None
+  语义不变。对赌 `tests/test_config_barekey.py` 4 例。
+- **修复：`loadn setup` 非 tty stdin EOF 死循环**：docker exec/CI/
+  管道场景下（`loadn setup < /dev/null`），端点选择循环把 EOFError
+  当"无效选择"无限重问。修复：EOF/Ctrl-C 且无默认值可接受时优雅
+  中止——exit 2 + 免交互指引（环境变量 / `$LOADN_HOME/config.json` /
+  交互终端重试）；有默认值的问询保持"EOF=接受默认"（管道喂答案不受
+  影响）。对赌 `test_onboard_stdin_eof_aborts_not_loops`。
+- **文档（README 双语）**：安装节两坑扩三坑——裸 Ubuntu 服务器/容器
+  24.04+ 不带 Python，补 `apt-get install python3 python3-venv`；部署
+  平台节改双路径（PyPI 包 api-only——wheel 不含前端 dist、`loadn-web
+  token show`、交互 API 文档 `/docs`；源码部署 `npm ci && npm run
+  build` 后完整 Web UI）；onboarding 触发条件写准（仅交互终端；
+  headless `-p`/非 tty 快速失败 exit 2）。
+  （测试方法：ubuntu:24.04 干净容器 + PyPI 真源七场景实测）
+
 ## [0.7.35] - 2026-10-20
 
 - **修复：组织架构页矮窗口下员工卡与召集面板重叠**：`.org-page` 复用
