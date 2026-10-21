@@ -3,6 +3,24 @@
 本项目的全部显著变更记录于此。格式遵循 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/)，
 版本遵循 [SemVer](https://semver.org/lang/zh-CN/)。
 
+## [0.7.37] - 2026-10-21
+
+- **修复：wheel 打包遗漏数据文件**：`[tool.setuptools.package-data]` 仅
+  收 `py.typed`——`models.json`（模型目录：窗口/价格/cache economics，
+  缺失则全降级保守 128k）、`skills.lock.json`（技能内容锁基线）、
+  `protocol/manifest.json`（协议自描述）、`prompts/`（标题生成模板
+  title.txt + 模型人设 models/*.md）**从未进过 wheel**——本地 editable
+  安装直读源码完美掩盖，PyPI 用户全部受影响，且 **TUI 首屏整屏空白**
+  （根因同此）。修复：package-data 补全 4 类路径。验证：本地
+  `pip wheel` 解包 5/5 在包；docker 干净容器（ubuntu:24.04 + PyPI）
+  force-reinstall 后文件级告警消失、TUI 首屏原生渲染恢复。
+  （发现方法：v0.7.36 干净环境 CLI/TUI/webui 全流程复测）
+- **文档（README 双语）**：extras 表加 TUI 注记——全屏 TUI 已在
+  Python 3.10/3.11 验证；Python 3.12 伪终端环境（pexpect、`script(1)`、
+  部分 CI runner）中 textual 8.x 输入框可能收不到键事件，基础 REPL
+  （`LOADN_NO_TUI=1`）不受影响（外部依赖组合问题，经 textual 最小
+  Input 世界复现 + 3.10 对照 + 8.x 全系版本排查定性，非本项目代码）。
+
 ## [0.7.36] - 2026-10-21
 
 - **修复：新装实例 `/api/health` 500（config 裸键打穿默认实例）**：
