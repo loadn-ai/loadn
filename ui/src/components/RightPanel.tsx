@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { useStore } from '../stores/sessions';
 import type { ArtifactInfo, TurnInfo } from '../stores/sessions';
 import { api, withToken } from '../api/client';
@@ -48,6 +48,16 @@ export default function RightPanel({ onOpenFile }: { onOpenFile: (path: string) 
   const scope = useStore(s => s.artifactScope);
   const [tree, setTree] = useState<{ path: string; dir: boolean; size: number | null }[]>([]);
 
+  // 文件管理写操作（编辑/新建/删除/重命名/上传）后的即时刷新通道：
+  // 服务端写面已失效树缓存，这里主动重取（不等 8s 轮询）。
+  const refreshTree = useCallback(async () => {
+    if (!currentSid) return;
+    try {
+      const d = await api<{ tree: typeof tree }>(`/api/sessions/${encodeURIComponent(currentSid)}/tree`);
+      setTree(d.tree);
+    } catch { /* 会话切换竞态 */ }
+  }, [currentSid]);
+
   useEffect(() => {
     if (!currentSid) return;
     let stop = false;
@@ -79,7 +89,7 @@ export default function RightPanel({ onOpenFile }: { onOpenFile: (path: string) 
         {tab === 'properties' && <PropertiesPanel />}
         {tab !== 'properties' && <ScopeFilterRow />}
         {tab === 'artifacts' && <ArtifactsTab onOpenFile={onOpenFile} />}
-        {tab === 'files' && <WorkspaceTab tree={tree} onOpenFile={onOpenFile} />}
+        {tab === 'files' && <WorkspaceTab tree={tree} onOpenFile={onOpenFile} refresh={refreshTree} />}
       </div>
     </aside>
   );
@@ -362,9 +372,15 @@ function pruneToPaths(nodes: TreeNode[], visible: Set<string>): TreeNode[] {
   return out;
 }
 
-function FilesTab({ tree, onOpenFile }: {
+/** 在线可编辑的文本后缀（与后端 TEXT_EXTS 对齐的常用子集） */
+const EDITABLE_EXTS = new Set(['md', 'txt', 'json', 'csv', 'tsv', 'py', 'js', 'ts', 'tsx',
+  'jsx', 'css', 'html', 'htm', 'xml', 'yaml', 'yml', 'sh', 'log', 'ini', 'toml',
+  'env', 'conf', 'sql', 'svg', 'lock', 'example']);
+
+function FilesTab({ tree, onOpenFile, refresh }: {
   tree: { path: string; dir: boolean; size: number | null }[];
   onOpenFile: (path: string) => void;
+  refresh: () => void;
 }) {
   const sid = useStore(s2 => s2.currentSid);
   // 联动筛选：产出物（工作区树）与交付物（产物清单）同条件同步过滤——
@@ -375,31 +391,154 @@ function FilesTab({ tree, onOpenFile }: {
   const full = buildTree(tree);
   const nodes = scope == null ? full
     : pruneToPaths(full, new Set(scopeArtifacts(artifacts, turns, scope).map(a => a.path)));
+  // —— 文件管理态：新建行内输入 / 重命名行内输入 / 编辑抽屉 / 上传中 ——
+  const [creating, setCreating] = useState('');
+  const [renaming, setRenaming] = useState<{ path: string; val: string } | null>(null);
+  const [edit, setEdit] = useState<{ path: string; text: string; dirty: boolean } | null>(null);
+  const [busy, setBusy] = useState(false);
+  const upRef = useRef<HTMLInputElement>(null);
+
+  const S = encodeURIComponent(sid ?? '');
+
+  const createFile = async () => {
+    const p = creating.trim();
+    if (!p || !sid) return;
+    setBusy(true);
+    try {
+      const r = await api<{ ok: boolean }>(`/api/sessions/${S}/file`, {
+        method: 'POST', body: JSON.stringify({ path: p }) });
+      if ((r as { ok?: boolean }).ok) { toast(`已新建 ${p}`); setCreating(''); refresh(); }
+    } catch (e) { toast(`新建失败：${(e as Error).message}`, true); }
+    finally { setBusy(false); }
+  };
+
+  const doRename = async () => {
+    if (!renaming || !sid) return;
+    const nv = renaming.val.trim();
+    if (!nv || nv === renaming.path) { setRenaming(null); return; }
+    setBusy(true);
+    try {
+      await api(`/api/sessions/${S}/file`, {
+        method: 'PATCH', body: JSON.stringify({ path: renaming.path, new_path: nv }) });
+      toast(`已重命名为 ${nv}`); setRenaming(null); refresh();
+    } catch (e) { toast(`重命名失败：${(e as Error).message}`, true); }
+    finally { setBusy(false); }
+  };
+
+  const openEditor = async (path: string) => {
+    if (!sid) return;
+    try {
+      const d = await api<{ cat: string; text?: string }>(
+        `/api/sessions/${S}/file?path=${encodeURIComponent(path)}`);
+      if (d.cat === 'text' && typeof d.text === 'string') {
+        setEdit({ path, text: d.text, dirty: false });
+      } else { toast('该文件不是可编辑文本（可下载）', true); }
+    } catch (e) { toast(`读取失败：${(e as Error).message}`, true); }
+  };
+
+  const saveEdit = async () => {
+    if (!edit || !sid) return;
+    setBusy(true);
+    try {
+      await api(`/api/sessions/${S}/file`, {
+        method: 'PUT', body: JSON.stringify({ path: edit.path, content: edit.text }) });
+      toast(`已保存 ${edit.path}`); setEdit(null); refresh();
+    } catch (e) { toast(`保存失败：${(e as Error).message}`, true); }
+    finally { setBusy(false); }
+  };
+
+  const removeNode = async (path: string, isDir: boolean) => {
+    if (!sid) return;
+    if (!await askConfirm({ title: `删除${isDir ? '目录' : '文件'}「${path}」？`
+      + (isDir ? '（仅空目录可删）' : ''), danger: true })) return;
+    setBusy(true);
+    try {
+      await api(`/api/sessions/${S}/file?path=${encodeURIComponent(path)}`, { method: 'DELETE' });
+      toast(`已删除 ${path}`); refresh();
+    } catch (e) { toast(`删除失败：${(e as Error).message}`, true); }
+    finally { setBusy(false); }
+  };
+
+  const doUpload = async (fl: FileList | null) => {
+    if (!fl?.length || !sid) return;
+    setBusy(true);
+    try {
+      for (const f of Array.from(fl)) {
+        const fd = new FormData();
+        fd.append('file', f);
+        const r = await api<{ path: string }>(`/api/sessions/${S}/upload`,
+          { method: 'POST', body: fd });
+        toast(`${f.name} → ${r.path}`);
+      }
+      refresh();
+    } catch (e) { toast(`上传失败：${(e as Error).message}`, true); }
+    finally { setBusy(false); if (upRef.current) upRef.current.value = ''; }
+  };
+
+  const acts = {
+    onEdit: openEditor,
+    startRename: (p: string) => setRenaming({ path: p, val: p }),
+    onRenameChange: (v: string) => setRenaming(r => (r ? { ...r, val: v } : r)),
+    onRenameCommit: () => void doRename(),
+    onRenameCancel: () => setRenaming(null),
+    onDelete: removeNode, renaming,
+  };
+
   return (
     <div className="files-tab">
       {sid && (
-        <div className="pack-bar">
+        <div className="pack-bar ws-toolbar">
+          <button className="btn xs ghost" disabled={busy}
+            onClick={() => upRef.current?.click()}>上传</button>
+          <button className="btn xs ghost" disabled={busy}
+            onClick={() => setCreating(creating ? '' : '新建文件.md')}>＋新建</button>
           <a className="link" href={archiveUrl(sid, '')} download>
-            <Download size={13} /> 打包下载整个工作区（zip）
+            <Download size={13} /> 打包（zip）
           </a>
+          <input ref={upRef} type="file" multiple hidden
+            onChange={e => void doUpload(e.target.files)} />
+        </div>
+      )}
+      {creating !== '' && (
+        <div className="ws-inline-new">
+          <input value={creating} onChange={e => setCreating(e.target.value)}
+            onKeyDown={e => { if (e.key === 'Enter') void createFile();
+                              if (e.key === 'Escape') setCreating(''); }}
+            placeholder="文件名（可含子目录，如 notes/a.md）" autoFocus />
+          <button className="btn xs primary" disabled={busy} onClick={() => void createFile()}>建</button>
         </div>
       )}
       <div className="file-tree">
-        {nodes.map(n => <FileNode key={n.path} node={n} depth={0} onOpen={onOpenFile} />)}
+        {nodes.map(n => <FileNode key={n.path} node={n} depth={0} onOpen={onOpenFile} {...acts} />)}
       </div>
       {nodes.length === 0 && scope != null && (
         <div className="panel-empty">该筛选条件下工作区暂无文件</div>
       )}
-      <div className="files-hint muted">点击文件在主区新 tab 预览（md / html）</div>
+      {edit && (
+        <div className="ws-editor">
+          <div className="ws-editor-head">
+            <span className="mono">{edit.path}{edit.dirty ? ' •' : ''}</span>
+            <span>
+              <button className="btn xs primary" disabled={busy || !edit.dirty}
+                onClick={() => void saveEdit()}>保存</button>
+              <button className="btn xs ghost" onClick={() => setEdit(null)}>收起</button>
+            </span>
+          </div>
+          <textarea className="ws-editor-body" spellCheck={false} value={edit.text}
+            onChange={e => setEdit({ ...edit, text: e.target.value, dirty: true })} />
+        </div>
+      )}
+      <div className="files-hint muted">点击预览；hover 行内编辑/改名/删除；上传落 inputs/</div>
     </div>
   );
 }
 
 /** 工作区 tab：三子 tab（文件/记忆/历史）——记忆=本工作区项目记忆域，
  * 历史=文件快照（可回滚）。子 tab 本地态，切会话不重置（无跨会话一致性风险）。 */
-function WorkspaceTab({ tree, onOpenFile }: {
+function WorkspaceTab({ tree, onOpenFile, refresh }: {
   tree: { path: string; dir: boolean; size: number | null }[];
   onOpenFile: (path: string) => void;
+  refresh: () => void;
 }) {
   const [sub, setSub] = useState<'files' | 'memory' | 'history'>('files');
   return (
@@ -412,7 +551,7 @@ function WorkspaceTab({ tree, onOpenFile }: {
           </button>
         ))}
       </div>
-      {sub === 'files' && <FilesTab tree={tree} onOpenFile={onOpenFile} />}
+      {sub === 'files' && <FilesTab tree={tree} onOpenFile={onOpenFile} refresh={refresh} />}
       {sub === 'memory' && <WorkspaceMemory />}
       {sub === 'history' && <SnapshotList />}
     </div>
@@ -562,7 +701,20 @@ function SnapshotList() {
   );
 }
 
-function FileNode({ node, depth, onOpen }: { node: TreeNode; depth: number; onOpen: (p: string) => void; }) {
+interface FileActs {
+  onEdit: (p: string) => void;
+  startRename: (p: string) => void;
+  onRenameChange: (v: string) => void;
+  onRenameCommit: () => void;
+  onRenameCancel: () => void;
+  onDelete: (p: string, isDir: boolean) => void;
+  renaming: { path: string; val: string } | null;
+}
+
+function FileNode({ node, depth, onOpen, onEdit, startRename, onRenameChange,
+  onRenameCommit, onRenameCancel, onDelete, renaming }: {
+  node: TreeNode; depth: number; onOpen: (p: string) => void;
+} & FileActs) {
   const [open, setOpen] = useState(depth < 1);
   if (node.dir) {
     return (
@@ -570,24 +722,54 @@ function FileNode({ node, depth, onOpen }: { node: TreeNode; depth: number; onOp
         <div className="fn dir" style={{ paddingLeft: depth * 12 }} onClick={() => setOpen(!open)}>
           <span className="fn-chevron">{open ? <ChevronDown size={12} /> : <ChevronRight size={12} />}</span>
           <Folder size={13} /> {node.path.split('/').pop()}
-          <a className="fn-pack" title="打包下载此目录（zip）"
-             href={archiveUrl(useStore.getState().currentSid ?? '', node.path)} download
-             onClick={e => e.stopPropagation()}>
-            <Download size={12} />
-          </a>
+          <span className="fn-acts" onClick={e => e.stopPropagation()}>
+            <button className="fn-act" title="重命名/移动"
+              onClick={() => startRename(node.path)}>✎</button>
+            <button className="fn-act" title="删除（仅空目录）"
+              onClick={() => onDelete(node.path, true)}>✕</button>
+            <a className="fn-act fn-pack" title="打包下载此目录（zip）"
+              href={archiveUrl(useStore.getState().currentSid ?? '', node.path)} download>
+              <Download size={12} />
+            </a>
+          </span>
         </div>
-        {open && node.children!.map(c => <FileNode key={c.path} node={c} depth={depth + 1} onOpen={onOpen} />)}
+        {open && node.children!.map(c => <FileNode key={c.path} node={c} depth={depth + 1} onOpen={onOpen}
+          onEdit={onEdit} startRename={startRename} onRenameChange={onRenameChange}
+          onRenameCommit={onRenameCommit} onRenameCancel={onRenameCancel}
+          onDelete={onDelete} renaming={renaming} />)}
       </div>
     );
   }
+  // 重命名行内态：整行变输入框——Enter 提交 / Esc・失焦取消（保守不误改）
+  if (renaming?.path === node.path) {
+    return (
+      <div className="fn file renaming" style={{ paddingLeft: depth * 12 + 18 }}>
+        <FileDoc size={13} />
+        <input className="fn-rename-input" value={renaming.val} autoFocus
+          onChange={e => onRenameChange(e.target.value)}
+          onKeyDown={e => { if (e.key === 'Enter') onRenameCommit();
+                            if (e.key === 'Escape') onRenameCancel(); }}
+          onBlur={() => onRenameCancel()} />
+      </div>
+    );
+  }
+  const ext = node.path.split('.').pop()?.toLowerCase() ?? '';
+  const editable = EDITABLE_EXTS.has(ext);
   return (
     <div className="fn file" style={{ paddingLeft: depth * 12 + 18 }} onClick={() => onOpen(node.path)}>
       <FileDoc size={13} /> {node.path.split('/').pop()} <span className="fn-size">{node.size ? `${Math.round(node.size / 1024)}K` : ''}</span>
-      <a className="fn-pack" title="下载此文件"
-         href={fileUrl(useStore.getState().currentSid ?? '', node.path)} download
-         onClick={e => e.stopPropagation()}>
-        <Download size={12} />
-      </a>
+      <span className="fn-acts" onClick={e => e.stopPropagation()}>
+        {editable && <button className="fn-act" title="在线编辑"
+          onClick={() => onEdit(node.path)}>✎</button>}
+        <button className="fn-act" title="重命名/移动"
+          onClick={() => startRename(node.path)}>⇄</button>
+        <button className="fn-act" title="删除"
+          onClick={() => onDelete(node.path, false)}>✕</button>
+        <a className="fn-act fn-pack" title="下载此文件"
+          href={fileUrl(useStore.getState().currentSid ?? '', node.path)} download>
+          <Download size={12} />
+        </a>
+      </span>
     </div>
   );
 }

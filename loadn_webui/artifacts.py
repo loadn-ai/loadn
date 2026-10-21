@@ -326,6 +326,12 @@ def tree(sid: str) -> list[dict]:
     return out
 
 
+def invalidate_tree(sid: str) -> None:
+    """失效文件树缓存：写面端点（PUT/POST/DELETE/PATCH /file）落盘后调用，
+    前端下一次轮询立即可见变更（不等 TTL）。"""
+    _tree_cache.pop(sid, None)
+
+
 def export(sid: str, source_path: str, fmt: str) -> dict:
     """md → html/docx，产物落 artifacts/ 并登记。source_path 是工作区相对路径。"""
     ws = ws_of(sid)

@@ -2518,3 +2518,28 @@ button.attach-chip:hover { border-color: color-mix(in srgb, var(--accent) 40%, v
   border-color: color-mix(in srgb, #f59e0b 34%, transparent); }
 .rh-vault-name { font-size: var(--fs-md); font-weight: 700; }
 .rh-vault-sub { font-family: var(--mono); font-size: var(--fs-xs); color: var(--text-dim); margin-top: 2px; }
+
+/* ---------------- 工作区文件管理（写面） ---------------- */
+.ws-toolbar { display: flex; gap: 6px; align-items: center; flex-wrap: wrap; }
+.ws-toolbar .link { margin-left: auto; }
+.ws-inline-new { display: flex; gap: 6px; padding: 4px 8px; }
+.ws-inline-new input {
+  flex: 1; min-width: 0; font-size: 12px; padding: 3px 8px;
+  border: 1px solid var(--border); border-radius: var(--radius); background: var(--bg2); color: var(--fg); }
+.fn-acts { display: none; gap: 2px; margin-left: auto; }
+.fn:hover .fn-acts, .fn:focus-within .fn-acts { display: inline-flex; }
+.fn-act {
+  border: 0; background: transparent; color: var(--muted); cursor: pointer;
+  font-size: 12px; line-height: 1; padding: 2px 4px; border-radius: 4px; }
+.fn-act:hover { color: var(--fg); background: var(--bg3, rgba(128,128,128,.15)); }
+.fn-rename-input {
+  flex: 1; min-width: 0; font-size: 12px; padding: 1px 6px; margin-left: 4px;
+  border: 1px solid var(--accent, #4f6bed); border-radius: 4px; background: var(--bg2); color: var(--fg); }
+.fn.renaming { display: flex; align-items: center; }
+.ws-editor { border-top: 1px solid var(--border); margin-top: 8px; padding-top: 6px; }
+.ws-editor-head { display: flex; justify-content: space-between; align-items: center; gap: 8px; padding: 2px 8px 6px; }
+.ws-editor-head .mono { font-size: 11px; color: var(--muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.ws-editor-body {
+  width: 100%; min-height: 180px; resize: vertical; font-family: var(--mono, monospace);
+  font-size: 12px; line-height: 1.5; padding: 8px; border: 1px solid var(--border);
+  border-radius: var(--radius); background: var(--bg2); color: var(--fg); }

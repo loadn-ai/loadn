@@ -175,3 +175,118 @@ async def ingest_file(sid: str, file: UploadFile = File(...), to: str = "artifac
                                   "files": [{"path": f"{to}{name}", "kb": round(total / 1024, 1)}]})
     return JSONResponse({"ok": True, "path": f"{to}{name}", "name": name,
                          "kb": round(total / 1024, 1)}, headers=_INGEST_CORS)
+
+
+# ---------------------------------------------------------------- 写面（文件管理）
+# 用户反馈：临时调整工作区内容只能靠 prompt 不便——补编辑/新建/删除/重命名。
+# 读取/上传/打包在上方既有端点；写面统一走 _write_target 防穿越 + 失效树缓存。
+
+MAX_TEXT_WRITE_BYTES = 2 * 1024 * 1024   # 在线编辑单文件上限（纯文本）
+
+
+def _write_target(ws: Path, rel: str) -> Path | None:
+    """写面路径校验：resolve 后必须落在 ws 内；目标本身允许不存在
+    （新建/重命名的落点），父链的越界由 resolve+relative_to 拦截。"""
+    rel = (rel or "").strip()
+    if not rel or rel in (".", "..") or rel.startswith(("/", "\\")):
+        return None   # 空/自引用/绝对路径——绝对路径意图明确越界，不静默改写
+    try:
+        p = (ws / rel).resolve()
+        p.relative_to(ws.resolve())
+        return None if p == ws.resolve() else p   # 工作区根本身不可作为写目标
+    except (ValueError, OSError):
+        return None
+
+
+def _publish_files(sid: str, *paths_kb: tuple[str, float]) -> None:
+    art.invalidate_tree(sid)
+    ENGINE.publish(sid, "files", {"turn_id": None,
+                                  "files": [{"path": p, "kb": kb} for p, kb in paths_kb]})
+
+
+@router.put("/sessions/{sid}/file")
+def put_file(sid: str, body: dict):
+    """在线编辑保存：{path, content}——UTF-8 文本整文件写。"""
+    _get_session_or_404(sid)
+    ws = ws_mod.ws_of(sid)
+    rel, content = (body or {}).get("path"), (body or {}).get("content")
+    if not rel or not isinstance(content, str):
+        raise HTTPException(400, "path 与 content 必填")
+    p = _write_target(ws, rel)
+    if p is None:
+        raise HTTPException(403, "路径越界或指向工作区根")
+    if len(content.encode("utf-8")) > MAX_TEXT_WRITE_BYTES:
+        raise HTTPException(413, f"内容超过 {MAX_TEXT_WRITE_BYTES // (1024 * 1024)}MB "
+                                 "文本上限（大文件请走上传）")
+    p.parent.mkdir(parents=True, exist_ok=True)
+    p.write_text(content, encoding="utf-8")
+    kb = round(p.stat().st_size / 1024, 1)
+    _publish_files(sid, (rel, kb))
+    return {"ok": True, "path": rel, "kb": kb}
+
+
+@router.post("/sessions/{sid}/file")
+def create_path(sid: str, body: dict):
+    """新建：{path, kind="file"|"dir"}（默认 file）。已存在 → 409。"""
+    _get_session_or_404(sid)
+    ws = ws_mod.ws_of(sid)
+    body = body or {}
+    rel, kind = body.get("path"), (body.get("kind") or "file").lower()
+    if not rel or kind not in ("file", "dir"):
+        raise HTTPException(400, "path 必填；kind 只能是 file|dir")
+    p = _write_target(ws, rel)
+    if p is None:
+        raise HTTPException(403, "路径越界或指向工作区根")
+    if p.exists():
+        raise HTTPException(409, "已存在同名文件/目录")
+    if kind == "dir":
+        p.mkdir(parents=True)
+        _publish_files(sid)
+        return {"ok": True, "path": rel, "kind": "dir"}
+    p.parent.mkdir(parents=True, exist_ok=True)
+    p.touch()
+    _publish_files(sid, (rel, 0.0))
+    return {"ok": True, "path": rel, "kind": "file"}
+
+
+@router.delete("/sessions/{sid}/file")
+def delete_path(sid: str, path: str):
+    """删除文件；目录仅允许删空目录（防一键误删整棵工作区——整区删除
+    走会话删除流程）。"""
+    _get_session_or_404(sid)
+    ws = ws_mod.ws_of(sid)
+    p = art.safe_resolve(ws, path)   # 必须已存在（读面同款校验）
+    if p is None:
+        raise HTTPException(404, "文件不存在")
+    if p.is_dir():
+        if any(p.iterdir()):
+            raise HTTPException(400, "目录非空——先清空或逐个删除内部文件")
+        p.rmdir()
+    else:
+        p.unlink()
+    _publish_files(sid)
+    return {"ok": True, "path": path}
+
+
+@router.patch("/sessions/{sid}/file")
+def rename_path(sid: str, body: dict):
+    """重命名/移动：{path, new_path}。目标已存在 → 409；源不存在 → 404。"""
+    _get_session_or_404(sid)
+    ws = ws_mod.ws_of(sid)
+    body = body or {}
+    src_rel, dst_rel = body.get("path"), body.get("new_path")
+    if not src_rel or not dst_rel:
+        raise HTTPException(400, "path 与 new_path 必填")
+    src = art.safe_resolve(ws, src_rel)
+    if src is None:
+        raise HTTPException(404, "源文件不存在")
+    dst = _write_target(ws, dst_rel)
+    if dst is None:
+        raise HTTPException(403, "目标路径越界或指向工作区根")
+    if dst.exists():
+        raise HTTPException(409, "目标已存在同名文件/目录")
+    dst.parent.mkdir(parents=True, exist_ok=True)
+    src.rename(dst)
+    kb = round(dst.stat().st_size / 1024, 1) if dst.is_file() else 0.0
+    _publish_files(sid, (dst_rel, kb))
+    return {"ok": True, "path": dst_rel}
