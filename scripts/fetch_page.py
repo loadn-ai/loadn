@@ -4,7 +4,7 @@
 用法: fetch_page.py <url> [--wait 5] [--out <path>] [--html-out <path>]
 
 WebFetch 被反爬拦截/内容截断时使用。结果 markdown 默认落
-$WORKDADDY_HOME/var/pages_cache/<sha1>.md，stdout 打印 JSON（ok/path/title/chars，
+$LOADN_WEBUI_HOME/var/pages_cache/<sha1>.md，stdout 打印 JSON（ok/path/title/chars，
 缓存命中带 cached:true）。--html-out 额外落渲染后完整 HTML（resources.fetch_page
 的 CDP 兜底用它再做主内容提取）。CDP 不可用时返回明确错误（agent 应回退
 WebFetch 或放弃该来源，不要硬编）。
@@ -27,9 +27,9 @@ except ImportError:
     if _py and Path(_py).exists() and _py != sys.executable:
         os.execv(_py, [_py, *sys.argv])
 
-CDP_URL_DEFAULT = os.environ.get("WORKDADDY_CDP_URL", "http://127.0.0.1:9222")
+CDP_URL_DEFAULT = os.environ.get("LOADN_CDP_URL", "http://127.0.0.1:9222")
 # 沙箱 CDP（/cdp）需要 Bearer；本机 9222 不需要——env 留空即无认证
-CDP_TOKEN = os.environ.get("WORKDADDY_CDP_TOKEN", "")
+CDP_TOKEN = os.environ.get("LOADN_CDP_TOKEN", "")
 
 
 def main() -> int:
@@ -41,7 +41,7 @@ def main() -> int:
                     help="渲染后 outerHTML 落盘路径（resources.fetch_page 用）")
     args = ap.parse_args()
 
-    home = Path(os.environ.get("WORKDADDY_HOME", Path(__file__).resolve().parent.parent))
+    home = Path(os.environ.get("LOADN_WEBUI_HOME", Path(__file__).resolve().parent.parent))
     cache_dir = home / "var" / "pages_cache"
     cache_dir.mkdir(parents=True, exist_ok=True)
     key = hashlib.sha1(args.url.encode()).hexdigest()[:16]

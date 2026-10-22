@@ -266,18 +266,18 @@ def session_env(ws: Path, sid: str) -> dict:
     proj = project_root_of(sid)
     inputs = (proj / "inputs") if proj is not None else (ws / "inputs")
     env = {
-        "LOADN_SESSION_ID": sid, "WORKDADDY_SESSION_ID": sid,
-        "LOADN_ARTIFACTS": str(ws / "artifacts"), "WORKDADDY_ARTIFACTS": str(ws / "artifacts"),
-        "LOADN_NOTES": str(ws / "notes"), "WORKDADDY_NOTES": str(ws / "notes"),
-        "LOADN_WORK": str(ws / "work"), "WORKDADDY_WORK": str(ws / "work"),
-        "LOADN_INPUTS": str(inputs), "WORKDADDY_INPUTS": str(inputs),
-        **({"LOADN_PROJECT_ROOT": str(proj), "WORKDADDY_PROJECT_ROOT": str(proj)}
+        "LOADN_SESSION_ID": sid,
+        "LOADN_ARTIFACTS": str(ws / "artifacts"),
+        "LOADN_NOTES": str(ws / "notes"),
+        "LOADN_WORK": str(ws / "work"),
+        "LOADN_INPUTS": str(inputs),
+        **({"LOADN_PROJECT_ROOT": str(proj)}
            if proj is not None else {}),
-        **({"LOADN_FETCH_PAGE": str(fetch), "WORKDADDY_FETCH_PAGE": str(fetch)} if fetch.exists() else {}),
-        **({"LOADN_CLI": str(cli), "WORKDADDY_CLI": str(cli)} if cli.exists() else {}),
-        **({"LOADN_CDP_URL": CONFIG.resources.cdp_url, "WORKDADDY_CDP_URL": CONFIG.resources.cdp_url}
+        **({"LOADN_FETCH_PAGE": str(fetch)} if fetch.exists() else {}),
+        **({"LOADN_CLI": str(cli)} if cli.exists() else {}),
+        **({"LOADN_CDP_URL": CONFIG.resources.cdp_url}
            if CONFIG.resources.cdp_url else {}),
-        **({"LOADN_PROXY": CONFIG.resources.proxy, "WORKDADDY_PROXY": CONFIG.resources.proxy}
+        **({"LOADN_PROXY": CONFIG.resources.proxy}
            if CONFIG.resources.proxy else {}),
         # 自定义服务指路（资源页「＋新增服务」）：LOADN_SVC_<NAME>_URL。
         # 密钥不注入——凭证不进沙箱/引擎 env 的既定边界（vault svc:<name>
@@ -321,15 +321,14 @@ def write_settings(ws: Path, sid: str, prof: profile_mod.Profile,
 
     claude 落 .claude/settings.json；loadn 落 .loadn/settings.json（其
     PermissionEngine 的规则来源）。密钥永远不进 env（Bash 里 env 一打就泄露）；
-    agent 用 `"$LOADN_CLI" r …`（旧 $WORKDADDY_CLI 兼容），CLI 自己读 config.yaml。
-    project=True（项目属主目录）：env 写 WORKDADDY_PROJECT_ID 而非
+    agent 用 `"$LOADN_CLI" r …`，CLI 自己读 config.yaml。
+    project=True（项目属主目录）：env 写 LOADN_PROJECT_ID 而非
     SESSION_ID——共享目录的 settings 不能背某个子任务的 id（子任务的
     per-session 值由 engine 恒注入 spawn env）。
     """
     env = session_env(ws, sid)
     if project:
-        _proj_map = {"LOADN_SESSION_ID": "LOADN_PROJECT_ID",
-                     "WORKDADDY_SESSION_ID": "WORKDADDY_PROJECT_ID"}
+        _proj_map = {"LOADN_SESSION_ID": "LOADN_PROJECT_ID"}
         env = {(_proj_map.get(k, k)): v
                for k, v in env.items()}
     settings = {"env": env}

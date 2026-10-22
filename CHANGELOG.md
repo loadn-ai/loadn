@@ -3,6 +3,23 @@
 本项目的全部显著变更记录于此。格式遵循 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/)，
 版本遵循 [SemVer](https://semver.org/lang/zh-CN/)。
 
+## [Unreleased]
+
+- **品牌清理：产品面 `WORKDADDY_*` 标记全切 `LOADN_*`（用户指令：WORKDADDY
+  是老名字，不应再带任何标记）**。范围 19 文件：①会话 env 注入去双轨
+  （workspace.py 9 组变量 + claude_runner TURN_ID 只注 `LOADN_TURN_ID`）；
+  ②读取端全部只认 `LOADN_*`（cli/config/engines×3/fetch_page×2：SESSION_ID/
+  PROJECT_ID/API_TOKEN/HOME/CLAUDE_BIN/OPENCODE_BIN/ENGINE_BIN/CDP_URL/
+  CDP_TOKEN）；③宪法模板真源 4 处教法改 `"$LOADN_CLI" r …`（顺带发现并修复
+  包内构建副本落后真源的漂移——以真源覆盖对齐）；④resources.py CDP 子进程
+  env 去双设。**有意保留的升级安全垫（注释标注，下个大版本移除）**：收养
+  判活对老 spawn 进程双认 `WORKDADDY_TURN_ID`（否则发版窗口正在跑的 turn
+  全部判死被误收尸）+ env 透传白名单保留 `WORKDADDY_` 前缀（老部署链不断供）
+  + 对应过渡测试。**Breaking（已评估可接受）**：存量会话宪法仍教
+  `$WORKDADDY_CLI`，新 spawn 不再注入该变量——agent 发现变量为空会回落
+  `loadn-ops`（a060 实证自愈路径），且 v0.7.43 起 console script 自举使
+  任意调用形态可用；新会话模板教法已归正。
+
 ## [0.7.43] - 2026-10-22
 
 - **修复：任务 agent 调 CLI 报 `No module named loadn_webui`（多任务连环报障）**：

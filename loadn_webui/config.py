@@ -2,7 +2,7 @@
 
 设计承袭前身/config.py：默认值全在代码里，config.yaml 可选、按
 dataclass 名分节覆盖，不存在的键忽略——升级不破坏用户配置。
-LOADN_WEBUI_HOME 环境变量整体迁移（测试/多实例；旧 WORKDADDY_HOME 兼容一版）。
+LOADN_WEBUI_HOME 环境变量整体迁移（测试/多实例）。
 注意与引擎数据根 LOADN_HOME（=~/.loadn）语义不同：这是 webui 平台自身的根。
 """
 from __future__ import annotations
@@ -15,7 +15,6 @@ from pathlib import Path
 import yaml
 
 ROOT = Path(os.environ.get("LOADN_WEBUI_HOME")
-           or os.environ.get("WORKDADDY_HOME")      # 旧名兼容（迁移期）
            or Path.home() / ".loadn-data")          # 开源默认：用户家目录
 
 # 代码真实所在仓（HOME 重定位后仍指向源码）——历史 hack：曾作为 PYTHONPATH
@@ -466,7 +465,7 @@ def load_config() -> Config:
             raise ValueError(f"resources.custom_services 名字重复 {s['name']!r}"
                              "（config.yaml）——拒绝启动")
         _cs_seen.add(s["name"])
-    env_bin = os.environ.get("LOADN_CLAUDE_BIN") or os.environ.get("WORKDADDY_CLAUDE_BIN")
+    env_bin = os.environ.get("LOADN_CLAUDE_BIN")
     if env_bin:
         cfg.claude.claude_bin = env_bin
     return cfg

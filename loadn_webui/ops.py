@@ -390,7 +390,7 @@ def _patch_entry_scripts(venv_dir: Path) -> None:
     """console script 自举改写（release build venv 构建后调用）。
 
     背景（2026-10-22 生产报障）：workspace 宪法模板历史教法
-    ``python3 "$WORKDADDY_CLI" r search …``——以系统 python3 显式执行
+    ``python3 "$LOADN_CLI" r search …``（历史教法用旧品牌变量名）——以系统 python3 显式执行
     venv console script 时 shebang 被绕过，``from loadn_webui.cli
     import main`` 在系统解释器下必炸 ``No module named loadn_webui``
     （多个任务连环报障；v0.7.30 时段同坑当时仅 agent 侧绕过）。

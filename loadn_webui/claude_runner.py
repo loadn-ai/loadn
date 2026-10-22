@@ -76,7 +76,7 @@ def _parent_is_server(pid: int) -> bool:
 
 
 def pid_alive_for_turn(pid: int, tid: int) -> bool:
-    """收养判活：pid 存在、非僵尸、且 environ 带 WORKDADDY_TURN_ID=<tid>
+    """收养判活：pid 存在、非僵尸、且 environ 带 LOADN_TURN_ID=<tid>
     （spawn 时注入的强匹配，天然防 pid 复用误判）。environ 不可读时回落
     cmdline 引擎标记启发式。"""
     try:
@@ -93,6 +93,8 @@ def pid_alive_for_turn(pid: int, tid: int) -> bool:
         except OSError:
             return False
         return any(m in cmd for m in ("fake_claude", "claude", "loadn", "opencode"))
+    # 升级过渡：老 spawn 注入的是 WORKDADDY_TURN_ID——双认至下个大版本，
+    # 否则发版窗口里正在跑的 turn 全部判死被误收尸
     return (f"LOADN_TURN_ID={tid}\0".encode() in env
             or f"WORKDADDY_TURN_ID={tid}\0".encode() in env)
 
@@ -349,8 +351,7 @@ async def run_turn(call: TurnCall, stop: StopHandle | None = None) -> TurnProcRe
         prompt_stdin = cmd.pop()
         cmd.pop()   # '--'
     env = _spawn_env(
-        {"LOADN_TURN_ID": str(call.turn_id),
-         "WORKDADDY_TURN_ID": str(call.turn_id), **spec_env},
+        {"LOADN_TURN_ID": str(call.turn_id), **spec_env},
         call.env_extra)
     # P5 凭证收回：LLM 引擎只知虚拟网关域+dummy token（真凭证在代理控制域）。
     # off 档也走网关——放开的是「去哪」，不是「凭证在哪」

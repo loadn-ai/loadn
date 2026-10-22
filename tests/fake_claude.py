@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """假 claude CLI（零 token 测试）：遵守与真 CLI 相同的接口契约，输出逐行 stream-json。
 
-用法（conftest 通过 WORKDADDY_CLAUDE_BIN 指向本脚本）：
+用法（conftest 通过 LOADN_CLAUDE_BIN 指向本脚本）：
   - argv 契约：-p --verbose --output-format stream-json ... (--session-id|--resume UUID) PROMPT
   - 每次 argv 追加一行 JSON 到 $LOADN_FAKE_LOG（测试断言 --resume 用）
   - 行为由 cwd（workspace）下的 .fake/ 控制文件驱动：

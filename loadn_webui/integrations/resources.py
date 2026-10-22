@@ -834,9 +834,9 @@ async def _fetch_via_cdp(url: str, *, wait: float, html_out: Path) -> str:
     import os
     env = dict(os.environ)
     r = _res()
-    env["LOADN_CDP_URL"] = env["WORKDADDY_CDP_URL"] = r.cdp_url           # 配置单一真源（沙箱 Chrome）
-    env["LOADN_CDP_TOKEN"] = env["WORKDADDY_CDP_TOKEN"] = _sec("sandbox_api_key")  # /cdp 需 Bearer；9222 留空
-    env["LOADN_WEBUI_HOME"] = env["WORKDADDY_HOME"] = str(PATHS["root"])
+    env["LOADN_CDP_URL"] = r.cdp_url                                     # 配置单一真源（沙箱 Chrome）
+    env["LOADN_CDP_TOKEN"] = _sec("sandbox_api_key")                     # /cdp 需 Bearer；9222 留空
+    env["LOADN_WEBUI_HOME"] = str(PATHS["root"])
     proc = await asyncio.create_subprocess_exec(
         str(Path(__file__).resolve().parent.parent.parent / "scripts" / "fetch_page.py"),
         url, "--wait", str(wait), "--html-out", str(html_out),

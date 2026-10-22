@@ -602,7 +602,7 @@ class Engine:
                 await self._consume(sid, tid, at, ev)
 
             # 恒注入会话 env（spawn 进程级）：共享工作区的 settings.json 不能
-            # 再背 per-session 的 WORKDADDY_SESSION_ID（那是项目的），claude 引擎
+            # 再背 per-session 的 LOADN_SESSION_ID（那是项目的），claude 引擎
             # 也改双通道——子进程 env 与 settings env 同值不漂移
             extra_env = ws_mod.session_env(ws_mod.ws_of(sid), sid)
             call = TurnCall(

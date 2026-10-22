@@ -35,8 +35,7 @@ class LoadnSpec(EngineSpec):
 
     def resolve_bin(self) -> str | list[str]:
         override = (CONFIG.engines.loadn.bin
-                    or os.environ.get("LOADN_ENGINE_BIN")
-                    or os.environ.get("WORKDADDY_HAHANESS_BIN"))
+                    or os.environ.get("LOADN_ENGINE_BIN"))
         if override:
             return override
         which = shutil.which("loadn")

@@ -64,7 +64,7 @@ def test_pid_alive_for_turn_env_marker(_reap):
     legacy = _spawn("claude-worker", env_extra={"WORKDADDY_TURN_ID": "709"})
     _reap.append(legacy)
     time.sleep(0.2)
-    assert pid_alive_for_turn(legacy.pid, 709) is True  # 旧名兼容
+    assert pid_alive_for_turn(legacy.pid, 709) is True  # 升级过渡双认（老 spawn 进程）
     assert pid_alive_for_turn(999_999_999, 707) is False
 
 

@@ -29,7 +29,7 @@ CLAUDE_FALLBACK = _nvm_scan() or str(Path.home() / ".local/bin/claude")
 
 def resolve_claude_bin() -> str:
     override = (CONFIG.engines.claude.bin or CONFIG.claude.claude_bin
-                or os.environ.get("LOADN_CLAUDE_BIN") or os.environ.get("WORKDADDY_CLAUDE_BIN"))
+                or os.environ.get("LOADN_CLAUDE_BIN"))
     if override:
         return override
     return shutil.which("claude") or CLAUDE_FALLBACK

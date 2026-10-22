@@ -38,7 +38,7 @@ def test_claude_argv_snapshot():
     spec = ENGINES["claude"]
     call = _call()
     cmd, env = spec.build_argv(call)
-    assert cmd[0].endswith("fake_claude.py")          # conftest 的 WORKDADDY_CLAUDE_BIN
+    assert cmd[0].endswith("fake_claude.py")          # conftest 的 LOADN_CLAUDE_BIN
     assert cmd[1] == "-p" and "--verbose" in cmd       # stream-json 必需
     assert _flag_value(cmd, "--output-format") == "stream-json"
     assert "--dangerously-skip-permissions" in cmd
@@ -107,7 +107,7 @@ def test_engine_fallback_chain_precedence(monkeypatch, engine_name):
 def test_opencode_argv_flag_face(monkeypatch, tmp_path):
     from loadn_webui.engines import ENGINES
     fake_bin = str(tmp_path / "opencode")
-    monkeypatch.setenv("WORKDADDY_OPENCODE_BIN", fake_bin)
+    monkeypatch.setenv("LOADN_OPENCODE_BIN", fake_bin)
     monkeypatch.setattr("loadn_webui.config.CONFIG.engines.opencode.bin", None)
     spec = ENGINES["opencode"]
     assert spec.resolve_bin() == fake_bin
@@ -132,7 +132,7 @@ def test_opencode_argv_flag_face(monkeypatch, tmp_path):
 
 def test_opencode_model_and_effort_mapping(monkeypatch, tmp_path):
     from loadn_webui.engines import ENGINES
-    monkeypatch.setenv("WORKDADDY_OPENCODE_BIN", str(tmp_path / "oc"))
+    monkeypatch.setenv("LOADN_OPENCODE_BIN", str(tmp_path / "oc"))
     monkeypatch.setattr("loadn_webui.config.CONFIG.engines.opencode.bin", None)
     spec = ENGINES["opencode"]
     # 裸模型名 → opencode_provider 前缀（默认 zai）
@@ -153,7 +153,7 @@ def test_opencode_model_and_effort_mapping(monkeypatch, tmp_path):
 
 def test_opencode_session_flag_semantics(monkeypatch, tmp_path):
     from loadn_webui.engines import ENGINES
-    monkeypatch.setenv("WORKDADDY_OPENCODE_BIN", str(tmp_path / "oc"))
+    monkeypatch.setenv("LOADN_OPENCODE_BIN", str(tmp_path / "oc"))
     monkeypatch.setattr("loadn_webui.config.CONFIG.engines.opencode.bin", None)
     spec = ENGINES["opencode"]
     # fresh（首 turn）：不传任何 session flag，会话由引擎自建
@@ -170,7 +170,7 @@ def test_opencode_session_flag_semantics(monkeypatch, tmp_path):
 def test_opencode_no_max_turns_flag_degrades_with_warning(caplog, monkeypatch, tmp_path):
     import loadn_webui.engines.opencode as oc_mod
     from loadn_webui.engines import ENGINES
-    monkeypatch.setenv("WORKDADDY_OPENCODE_BIN", str(tmp_path / "oc"))
+    monkeypatch.setenv("LOADN_OPENCODE_BIN", str(tmp_path / "oc"))
     monkeypatch.setattr("loadn_webui.config.CONFIG.engines.opencode.bin", None)
     monkeypatch.setattr(oc_mod, "_no_max_turns_warned", False)
     spec = ENGINES["opencode"]
@@ -190,11 +190,11 @@ def test_opencode_bin_resolution_and_capability_bits(monkeypatch):
     spec = ENGINES["opencode"]
     # 配置 bin > env
     monkeypatch.setattr(CONFIG.engines.opencode, "bin", "/opt/oc/opencode")
-    monkeypatch.setenv("WORKDADDY_OPENCODE_BIN", "/usr/local/bin/opencode")
+    monkeypatch.setenv("LOADN_OPENCODE_BIN", "/usr/local/bin/opencode")
     assert spec.resolve_bin() == "/opt/oc/opencode"
     # env > PATH 探测；未安装 → 空串（spawn_failed 路）
     monkeypatch.setattr(CONFIG.engines.opencode, "bin", None)
-    monkeypatch.delenv("WORKDADDY_OPENCODE_BIN", raising=False)
+    monkeypatch.delenv("LOADN_OPENCODE_BIN", raising=False)
     monkeypatch.setattr(oc_mod.shutil, "which", lambda name: None)
     assert spec.resolve_bin() == ""
     cmd, _ = spec.build_argv(_call())

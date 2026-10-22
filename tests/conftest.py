@@ -4,7 +4,7 @@
 - 平台：LOADN_WEBUI_HOME=临时目录 + symlink 资产（profiles/prompts 真实内容、
   skills 借用原 workdaddy 仓存量资产——monorepo skills/ 只收公开包，私有走
   $LOADN_HOME/skills overlay，测试期用 LOADN_SKILLS_EXTRA 挂原仓）
-- LOADN_CLAUDE_BIN=假 CLI；LOADN_FAKE_LOG 记录 argv（旧 WORKDADDY_* 兼容一版）
+- LOADN_CLAUDE_BIN=假 CLI；LOADN_FAKE_LOG 记录 argv
 - 起**真 uvicorn 线程**（随机端口）：httpx ASGITransport 不透传 StreamingResponse
   的并发 chunk，SSE 必须走真 HTTP；顺带覆盖 uvicorn 行为本身。
 
@@ -59,7 +59,7 @@ if _LEGACY_SKILLS.exists():
 os.environ["LOADN_WEBUI_HOME"] = str(_HOME)
 os.environ["LOADN_CLAUDE_BIN"] = str(FAKE)
 os.environ["LOADN_CLAUDE_BIN"] = str(FAKE)
-os.environ["WORKDADDY_CLAUDE_BIN"] = str(FAKE)   # 旧名兼容一版（外部脚本）
+# （旧品牌变量名兼容设置已随品牌清理批移除——统一 LOADN_CLAUDE_BIN）
 _FAKE_LOG = _HOME / "fake_argv.jsonl"
 os.environ["LOADN_FAKE_LOG"] = str(_FAKE_LOG)
 
