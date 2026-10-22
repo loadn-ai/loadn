@@ -802,6 +802,11 @@ def _extract_main(html: str, url: str = "") -> tuple[str, str]:
                         "aside", "svg", "iframe", "form", "template"]):
             el.decompose()
         for el in soup.find_all(True):
+            # 快照列表里可能残留已被中途 decompose 的祖先波及的后代
+            # （bs4>=4.13 decompose 会清空元素属性，attrs 变 None）——
+            # 直接跳过，否则 el.get() 在 None 上炸 AttributeError。
+            if el.attrs is None or getattr(el, "_decomposed", False):
+                continue
             if el.get("hidden") is not None:
                 el.decompose()
                 continue

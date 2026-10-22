@@ -733,3 +733,26 @@ async def test_ping_custom_services(http_log, monkeypatch):
         and "未配置自定义服务" in out["svc:ghost"]["msg"]
     out = await resources.ping_all(["bogus"])
     assert out["bogus"]["ok"] is False and "未知资源" in out["bogus"]["msg"]
+
+
+# ------------------------------------------------------- _extract_main 回归
+def test_extract_main_survives_decomposed_descendants():
+    """bs4>=4.13：循环内 decompose 带 hidden/display:none 的祖先后，
+    find_all(True) 快照里残留的已销毁后代 attrs=None——旧代码 el.get()
+    必炸 AttributeError（生产实证：r fetch github.com 全域崩）。"""
+    from loadn_webui.integrations import resources
+    filler = "正文段落。" * 80            # >200 字符避开 trafilatura 早退路径
+    html = (
+        "<html><head><title>t</title></head><body>"
+        "<div hidden><p>隐藏区</p><span>隐藏后代</span></div>"
+        "<div style='display:none'><ul><li>隐藏列表</li></ul></div>"
+        f"<main>{filler}</main>"
+        "</body></html>"
+    )
+    import importlib.util
+    if importlib.util.find_spec("bs4") is None:   # 无 bs4 走纯正则分支，跳过
+        pytest.skip("bs4 未安装")
+    text, title = resources._extract_main(html, "https://x.example/a")
+    assert title == "t"
+    assert "正文段落" in text
+    assert "隐藏区" not in text and "隐藏列表" not in text
