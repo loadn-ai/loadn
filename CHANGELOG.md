@@ -3,7 +3,7 @@
 本项目的全部显著变更记录于此。格式遵循 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/)，
 版本遵循 [SemVer](https://semver.org/lang/zh-CN/)。
 
-## [Unreleased]
+## [0.7.44] - 2026-10-22
 
 - **品牌清理：产品面 `WORKDADDY_*` 标记全切 `LOADN_*`（用户指令：WORKDADDY
   是老名字，不应再带任何标记）**。范围 19 文件：①会话 env 注入去双轨
