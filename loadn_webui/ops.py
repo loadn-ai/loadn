@@ -352,6 +352,11 @@ def cmd_release_build(tag: str, *, skip_ui: bool = False,
          "--no-build-isolation", "-e", str(build_dir), "-q"],
         check=True, timeout=300)
 
+    # console script 自举改写（见 _patch_entry_scripts docstring：生产
+    # agent 以 `python3 $CLI` 形态调用是宪法模板历史教法，系统解释器
+    # 绕过 shebang 必炸 No module named——自举段让它任意解释器可跑）
+    _patch_entry_scripts(venv_dir)
+
     # 5) RELEASE.json + 冒烟
     from datetime import datetime, timezone
     release_info = {
@@ -379,6 +384,64 @@ def cmd_release_build(tag: str, *, skip_ui: bool = False,
 def _file_hash(p: Path) -> str:
     import hashlib
     return hashlib.sha256(p.read_bytes()).hexdigest()[:8]
+
+
+def _patch_entry_scripts(venv_dir: Path) -> None:
+    """console script 自举改写（release build venv 构建后调用）。
+
+    背景（2026-10-22 生产报障）：workspace 宪法模板历史教法
+    ``python3 "$WORKDADDY_CLI" r search …``——以系统 python3 显式执行
+    venv console script 时 shebang 被绕过，``from loadn_webui.cli
+    import main`` 在系统解释器下必炸 ``No module named loadn_webui``
+    （多个任务连环报障；v0.7.30 时段同坑当时仅 agent 侧绕过）。
+
+    修法：在 pip 生成的 console script（loadn / loadn-web）shebang 之后
+    插入自举段——目标包不可 import 时 re-exec 同目录 venv python
+    （与 shebang 同源），任意解释器调用形态统一收敛到正确解释器；
+    直接执行（shebang 生效）零影响。幂等（标记行已存在则跳过）。"""
+    import re as _re
+    for name in ("loadn", "loadn-web"):
+        f = venv_dir / "bin" / name
+        if not f.exists():
+            continue
+        src = f.read_text()
+        if "_loadn_bootstrap" in src:
+            continue
+        m = _re.search(r"^from (\S+) import", src, _re.M)
+        if not m:
+            continue
+        pkg = m.group(1)
+        boot = (
+            f"# _loadn_bootstrap: 任意解释器调用自举——`python3 <script>` 形态绕过\n"
+            f"# shebang 时（目标包 {pkg} 在系统解释器不可达）re-exec 同目录\n"
+            f"# venv python（与 shebang 同源）；直接执行不受影响。\n"
+            "import os as _bos, sys as _bsys\n"
+            "try:\n"
+            f"    import {pkg}  # noqa: F401  探测包可达\n"
+            "except ModuleNotFoundError:\n"
+            "    # 防死循环哨兵：execv 继承 environ——re-exec 过仍失败=venv 真不可用\n"
+            "    # （argv[0] 不可作判据：CPython 启动时把 sys.argv[0] 重写为脚本\n"
+            "    # 路径，解释器自身的 argv[0] 被丢弃；realpath(executable) 亦不可——\n"
+            "    # venv python 与系统 python3 常解析到同一二进制 symlink 链）\n"
+            "    if _bos.environ.get('_LOADN_ENTRY_BOOT'):\n"
+            "        raise\n"
+            "    _py = _bos.path.join(_bos.path.dirname(_bos.path.abspath(__file__)), 'python')\n"
+            "    if not _bos.path.exists(_py):\n"
+            "        _py = _py + '3'\n"
+            "    if _bos.path.exists(_py):\n"
+            "        _bos.environ['_LOADN_ENTRY_BOOT'] = '1'\n"
+            "        _bos.execv(_py, [_py, _bos.path.abspath(__file__)] + _bsys.argv[1:])\n"
+            "    raise\n"
+        )
+        lines = src.splitlines(keepends=True)
+        insert_at = 0
+        for i, ln in enumerate(lines):
+            if ln.startswith("#!"):
+                insert_at = i + 1
+                break
+        lines.insert(insert_at, "\n" + boot)
+        f.write_text("".join(lines))
+        print(f"    bootstrap → {f.name}")
 
 
 def _smoke_test(release_dir: Path) -> int:

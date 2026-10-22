@@ -3,6 +3,24 @@
 本项目的全部显著变更记录于此。格式遵循 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/)，
 版本遵循 [SemVer](https://semver.org/lang/zh-CN/)。
 
+## [0.7.43] - 2026-10-22
+
+- **修复：任务 agent 调 CLI 报 `No module named loadn_webui`（多任务连环报障）**：
+  根因=工作区宪法模板历史教法 ``python3 "$WORKDADDY_CLI" r search …``
+  ——系统 python3 显式执行 venv console script 绕过 shebang，目标包
+  在系统解释器不可达必炸（v0.7.30 时段同坑当时仅 agent 侧绝对路径
+  绕过，未根治；模板 4 处持续教错误写法）。双层修复：①release
+  build venv 构建后 `_patch_entry_scripts` 给 loadn / loadn-web
+  console script 插入自举段——探测目标包不可达时 re-exec 同目录
+  venv python（与 shebang 同源），任意解释器调用形态统一收敛，直接
+  执行零影响，防死循环走哨兵环境变量（argv[0] 判据不可用：CPython
+  启动把 sys.argv[0] 重写为脚本路径；realpath(executable) 亦不可用：
+  venv 与系统 python3 常解析到同一二进制 symlink 链——均实测）；
+  ②模板 4 处改为直接执行写法（新会话教法归正；fetch_page 纯标准
+  库保留 python3 前缀）。对赌 4 例：改写插入位置+幂等 / 真实
+  re-exec 行为（对照组=生产报障精确复现，实验组=同命令成功出
+  usage）/ 防死循环哨兵 / ops+ws 回归 22 passed。
+
 ## [0.7.42] - 2026-10-22
 
 - **功能：主聊天流 Markdown 排版系统升级**（设计稿 `.loadn-prose` 现代
