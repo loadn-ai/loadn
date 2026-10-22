@@ -12,8 +12,8 @@
 |---|---|---|---|---|---|
 | 已根治 | WORKDADDY_CLI | `python3 $WORKDADDY_CLI` 用系统解释器跑 venv console script → `ModuleNotFoundError: loadn_webui` | v0.7.30（10-17，绕过=绝对路径）；v0.7.42（10-22，a060 任务再中招） | v0.7.43 `16b2cad`：console script 自举 re-exec + 宪法模板改直接执行写法 | 教训：首次就该根治，绕过让 a060 又花 ~2 分钟排障 |
 | 已根治 | r fetch / _extract_main | bs4≥4.13 `decompose()` 清空元素属性 × `find_all(True)` 快照残留已销毁后代 → `el.get()` 崩 `AttributeError`（github.com 全域必现） | v0.7.43 生产实证（10-22，a060 复盘发现） | `333c55d`：循环首跳过 `attrs is None/_decomposed` | 4.10 无此行为故部分环境潜伏；回归测试 + 336KB 真实样本验证 |
-| 外部组件 | sandbox MCP（127.0.0.1:21111） | `browser_get_text` 空页面返回字面 `"(ok)"`——空文档与抓取失败不可区分 | a060 任务（10-22） | 待外部升级：空文档应显式标注（字符数 + empty document） | 不在本仓（AIO 沙箱容器）；升级时复核 |
-| 待观察 | fetch CDP 兜底 | 重页 45s 渲染超时（github.com 实证）；正文过短现已带降级产物（title/meta/短正文） | a060 任务（10-22） | 降级产物已落（本批）；超时参数待评估 | note 带白名单直连提示，agent 可 curl 直连 |
+| 已根治 | MCPTool 空结果占位 | `browser_get_text` 等远端工具成功但零文本时返回无语义 `"(ok)"`——「页面为空/工具无输出/非文本块」不可分辨 | a060 任务（10-22） | 同日本仓修复：`_text_of(res) or "(ok)"` → 三态自解释占位（空页面/无输出、非文本块计数+类型、文本原样） | **定性反转**：非 sandbox 缺陷——mcp-server-browser（字节开源，AIO 容器 21111）对风控空白页如实返回空文本；锅在本仓包装层。外部观察（非必须）：空文档可标注 empty document |
+| 待观察 | fetch CDP 兜底 | 重页 45s 渲染超时（github.com 实证）；正文过短现已带降级产物（title/meta/短正文） | a060 任务（10-22） | 降级产物已落（本批）；超时参数待评估 | note 带白名单直连提示，agent 可 curl 直连。另：宿主 9222（r fetch CDP 用，workdaddy-browser 容器）与 sandbox 容器内 9222 是**两个浏览器实例**——a060「fetch CDP 失败但 sandbox 浏览器成功」即此差异 |
 
 ## 流程约定
 

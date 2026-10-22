@@ -116,3 +116,40 @@ def test_text_of_variants():
     assert _text_of({}) == ""
     assert _text_of({"content": [{"type": "image"}]}) == ""
     assert _text_of({"content": "not-list"}) == ""
+
+
+def test_mcptool_empty_result_self_explaining():
+    """a060 复盘收口：MCP 工具成功但零文本（如 sandbox 浏览器对风控空白页
+    如实返回空）——占位必须自解释，旧 "(ok)" 无语义不可分辨。三态：
+    空页面/无输出、非文本块（截图等）、正常文本不受影响。"""
+    import asyncio
+
+    from loadn.mcp.client import MCPTool
+
+    class _Conn:
+        name = "srv"
+
+        def __init__(self, res):
+            self.res = res
+
+        async def call_tool(self, tool, args):
+            return self.res
+
+    loop = asyncio.new_event_loop()
+    # ① content 为空 → 「未返回任何内容」
+    out = loop.run_until_complete(
+        MCPTool(_Conn({"content": []}), {"name": "get_text"}).execute({}, None))
+    assert "(ok)" not in out and "未返回任何内容" in out and "空页面" in out
+
+    # ② 只有非文本块（如截图）→ 计数 + 类型标注
+    out = loop.run_until_complete(MCPTool(_Conn({
+        "content": [{"type": "image", "data": "..."},
+                    {"type": "resource", "resource": {}}]}),
+        {"name": "shot"}).execute({}, None))
+    assert "2 个非文本块" in out and "image,resource" in out
+
+    # ③ 正常文本原样返回（不进占位分支）
+    out = loop.run_until_complete(MCPTool(_Conn(
+        {"content": [{"type": "text", "text": "正文"}]}),
+        {"name": "get_text"}).execute({}, None))
+    assert out == "正文"

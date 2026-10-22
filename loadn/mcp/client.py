@@ -276,7 +276,20 @@ class MCPTool(Tool):
         res = await self.conn.call_tool(self.remote_name, args or {})
         if res.get("isError"):
             raise ToolError(_text_of(res)[:4000] or "MCP 工具报错")
-        return _text_of(res) or "(ok)"
+        text = _text_of(res)
+        if text:
+            return text
+        # 空文本自解释占位（a060 复盘改进 5 收口）：旧 "(ok)" 无语义——
+        # sandbox 浏览器对风控空白页如实返回空文本，agent 无从区分「页面
+        # 为空 / 工具无输出 / 返回了非文本块」。
+        blocks = [c for c in res.get("content") or [] if isinstance(c, dict)]
+        non_text = [c for c in blocks if c.get("type") != "text"]
+        if non_text:
+            kinds = ",".join(sorted({str(c.get("type")) for c in non_text}))
+            return (f"（工具执行成功；无文本内容，返回 {len(non_text)} 个非文本块"
+                    f"（{kinds}）——如为截图/资源类输出，属预期）")
+        return ("（工具执行成功但未返回任何内容——目标可能为空页面/空数据集，"
+                "或该工具本就无输出；若无预期请换工具或检查目标状态）")
 
 
 def _text_of(res: dict) -> str:
