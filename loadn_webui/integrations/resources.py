@@ -10,6 +10,7 @@ from __future__ import annotations
 import asyncio
 import base64
 import mimetypes
+import re
 import time
 from pathlib import Path
 
@@ -858,6 +859,37 @@ async def _fetch_via_cdp(url: str, *, wait: float, html_out: Path) -> str:
     return str(d.get("title") or "")
 
 
+_META_DESC_RE = re.compile(
+    r"<meta[^>]+(?:name|property)=[\"'](?:description|og:description)[\"']"
+    r"[^>]+content=[\"']([^\"']{10,400})[\"']", re.I)
+
+
+def _meta_description(html: str) -> str:
+    """降级产物用：meta description/og:description 提取（无则空串）。"""
+    m = _META_DESC_RE.search(html or "")
+    return (m.group(1).strip() if m else "")
+
+
+def _egress_hint(url: str) -> str:
+    """失败/降级信息里带白名单提示（a060 复盘改进 1）：目标域在出口
+    直连白名单时提示 agent 可 curl 直连——server 侧 fetch 通道与 agent
+    Bash 白名单直连是两条路，别让 agent 摸索。"""
+    try:
+        host = url.split("//", 1)[-1].split("/", 1)[0].split(":", 1)[0].lower()
+    except Exception:  # noqa: BLE001 - 解析失败给空提示即可
+        return ""
+    if not host:
+        return ""
+    try:
+        allow = getattr(CONFIG.security, "egress_allow", None) or []
+    except Exception:  # noqa: BLE001
+        allow = []
+    for d in allow:
+        if host == d or host.endswith("." + d):
+            return "；该域在出口直连白名单，可用 curl 直连重试"
+    return ""
+
+
 async def fetch_page(url: str, *, force: bool = False, wait: float = 5.0,
                      proxy: bool = False, ocr: str = "auto",
                      max_chars: int = 60000) -> dict:
@@ -926,8 +958,26 @@ async def fetch_page(url: str, *, force: bool = False, wait: float = 5.0,
                 raise RuntimeError(f"CDP 渲染后正文仍过短（{len(text)} 字符）")
         except Exception as e:
             cdp_err = str(e) or type(e).__name__
+            hint = _egress_hint(url)
+            if html:
+                # 降级产物：页面拿得到但正文提取不达标（反爬/JS 空壳）——
+                # title/meta/短正文原样带回而非整单作废，OSINT 场景 meta
+                # 标签即有信息量（a060 复盘改进 3）。不写缓存，下次可重试。
+                short_text, s_title = _extract_main(html, url)
+                title = title or s_title
+                desc = _meta_description(html)
+                parts = [p for p in (title, desc,
+                                     (short_text or "").strip()[:1200]) if p]
+                note = (f"抓取降级：{url}（直接: {err or 'ok'}；"
+                        f"CDP: {cdp_err[:120]}）{hint}")
+                dtext = "\n\n".join(parts)
+                return {"ok": True, "url": url, "title": title,
+                        "text": f"> ⚠ {note}\n\n{dtext}", "chars": len(dtext),
+                        "method": "degraded", "degraded": True, "note": note,
+                        "cached": False, "path": "", "images": []}
             raise RuntimeError(
-                f"抓取失败: {url}（直接: {err or 'ok'}；CDP: {cdp_err[:120]}）") from e
+                f"抓取失败: {url}（直接: {err or 'ok'}；CDP: {cdp_err[:120]}）"
+                f"{hint}") from e
         finally:
             html_path.unlink(missing_ok=True)
 

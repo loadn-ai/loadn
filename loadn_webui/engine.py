@@ -93,6 +93,21 @@ def _is_fast_fail(res) -> bool:
             and (res.exit_code == 1 or (res.subtype or "").startswith("error")))
 
 
+_BASH_EXIT_FAIL_RE = re.compile(r"(?:^|\n)\s*Exit code ([1-9]\d*)")
+_RESULT_FAIL_MARKS = ("Traceback (most recent call last):", "钩子阻止：",
+                      "错误: 抓取失败")
+
+
+def _result_looks_failed(text: str) -> bool:
+    """引擎未标 is_error 的失败启发式——仅宿主可观测层（工具卡标红/SSE）
+    用，不影响模型侧语义。覆盖：Bash 非零退出（Exit code N，0 不算）/
+    Python 崩栈 / 策略钩子拦截 / fetch 通道失败。a060 复盘实证：12 例失败
+    UI 上只有 2 张标红，Bash 与网络类失败全靠正文特征才看得见。"""
+    head = (text or "")[:2000]
+    return bool(_BASH_EXIT_FAIL_RE.search(head)) or \
+        any(m in head for m in _RESULT_FAIL_MARKS)
+
+
 def _tool_brief(name: str, inp: dict) -> str:
     for k in _BRIEF_KEYS:
         v = inp.get(k)
@@ -780,9 +795,13 @@ class Engine:
                     continue
                 result = _content_text(b.get("content"))[:_RESULT_CAP]
                 brief = result.strip().replace("\n", " ")[:110]
-                is_err = bool(b.get("is_error"))
                 tuid = b.get("tool_use_id")
                 name = at.tool_names.get(tuid, "?")
+                # 宿主侧失败启发式补标（仅可观测层）：引擎对 Bash 非零退出等
+                # 不设 is_error，UI 全靠正文特征才看得见失败。只对 Bash 收紧
+                # ——防 Grep/Read 成功命中错误特征文本（如搜 Traceback）误标。
+                is_err = bool(b.get("is_error")) or (
+                    name == "Bash" and _result_looks_failed(result))
                 self._emit(at, sid, "tool_result",
                            {"turn_id": tid, "id": tuid, "name": name,
                             "is_error": is_err, "brief": brief, "result": result})

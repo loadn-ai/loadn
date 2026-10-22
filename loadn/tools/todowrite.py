@@ -31,7 +31,8 @@ class TodoWriteTool(Tool):
                 "items": {
                     "type": "object",
                     "properties": {
-                        "content": {"type": "string", "description": "事项内容"},
+                        "content": {"type": "string",
+                                    "description": "事项内容（别名 subject 亦接受）"},
                         "status": {"type": "string", "enum": list(_VALID_STATUS)},
                         "activeForm": {"type": "string",
                                        "description": "进行时表述（可选）"},
@@ -54,7 +55,9 @@ class TodoWriteTool(Tool):
         for i, item in enumerate(todos):
             if not isinstance(item, dict):
                 raise ToolError(f"todos[{i}] 需为对象，收到 {type(item).__name__}")
-            content = item.get("content")
+            content = item.get("content") or item.get("subject")
+            # subject 是 Anthropic 原生字段名——GLM 系模型稳定幻觉点
+            # （a060 会话实证），作别名接受而非整单拒绝。
             if not content or not isinstance(content, str):
                 raise ToolError(f"todos[{i}].content 缺失（非空字符串）")
             status = item.get("status") or "pending"

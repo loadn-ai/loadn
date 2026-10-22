@@ -475,8 +475,10 @@ async def _run_r(args) -> int:
             print(json_mod.dumps(out, ensure_ascii=False, indent=2))
         else:
             cached = "（缓存）" if out.get("cached") else ""
+            degraded = "（⚠ 降级：正文提取不达标，已带回 title/meta/短正文）" \
+                if out.get("degraded") else ""
             imgs = f" · 图 OCR×{len(out.get('images') or [])}" if out.get("images") else ""
-            print(f"[{out['method']}] {out['title']} · {out['chars']} 字符{imgs}{cached}"
+            print(f"[{out['method']}] {out['title']} · {out['chars']} 字符{imgs}{cached}{degraded}"
                   f" → {out.get('out') or out['path']}")
             print(out["text"][:800])
         return 0

@@ -756,3 +756,37 @@ def test_extract_main_survives_decomposed_descendants():
     assert title == "t"
     assert "正文段落" in text
     assert "隐藏区" not in text and "隐藏列表" not in text
+
+
+# ------------------------------------------------- fetch 降级产物+白名单提示
+async def test_fetch_degraded_payload_and_hint(http_log, monkeypatch, tmp_path):
+    """a060 复盘改进 1+3：直接阶段拿得到页面但正文过短 + CDP 兜底短——
+    不再整单作废，返回降级产物（title/meta/短正文，method=degraded，
+    不写缓存），note 带白名单直连提示（github.com 在 egress_allow）。"""
+    from loadn_webui.integrations import resources
+
+    # meta description 页（正文真短）
+    thin = ("<html><head><title>Thin</title>"
+            "<meta name='description' content='这是页面的元描述信息，够十个字'></head>"
+            "<body><p>短正文</p></body></html>")
+    http_log["routes"]["example.com"] = lambda u, k: FakeResp(
+        200, text=thin, headers={"content-type": "text/html"})
+
+    async def fake_cdp(url, *, wait, html_out):
+        html_out.write_text(thin, encoding="utf-8")
+        return "Thin"
+    monkeypatch.setattr(resources, "_fetch_via_cdp", fake_cdp)
+
+    out = await resources.fetch_page("https://example.com/thin-degraded", force=True)
+    assert out["ok"] is True and out["method"] == "degraded"
+    assert out["degraded"] is True
+    assert "Thin" in out["text"] and "元描述信息" in out["text"]
+    assert out["cached"] is False and out["path"] == ""   # 降级不落缓存
+    from loadn_webui.config import PATHS
+    cache = PATHS["pages_cache"] / f"{__import__('hashlib').sha1(b'https://example.com/thin-degraded').hexdigest()[:16]}.md"
+    assert not cache.exists()
+
+    # 白名单提示：github.com 在 egress_allow → note 带直连提示
+    assert "白名单" in resources._egress_hint("https://github.com/FinHackCN/finhack")
+    assert "白名单" in resources._egress_hint("https://raw.githubusercontent.com/a/b")
+    assert resources._egress_hint("https://example.com/x") == ""
