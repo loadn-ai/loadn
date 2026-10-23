@@ -82,3 +82,22 @@ profiles:
     disallowed_tools:
     - WebSearch
     - WebFetch
+
+  chat:
+    description: 纯聊天——对话窗口，不落盘不执行不开任务
+    profile: chat.md
+    match_keywords: []
+    skills: []
+    effort: low
+    timeout_s: 86400
+    stall_timeout_s: 900
+    rotate:
+      input_tokens: 300000
+    disallowed_tools:
+    - Bash
+    - Task
+    - Write
+    - Edit
+    - MultiEdit
+    - NotebookEdit
+    - TodoWrite
