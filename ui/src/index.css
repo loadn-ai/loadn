@@ -85,7 +85,10 @@ code, pre { font-family: var(--mono); }
 button:focus-visible, .tab:focus-visible, .chip:focus-visible {
   outline: 2px solid var(--accent); outline-offset: 1px; }
 
-.app { display: flex; height: 100vh; height: 100dvh; }  /* dvh：移动端浏览器工具栏伸缩不闪 */
+.app { display: flex; height: 100vh; height: 100dvh;      /* dvh：移动端浏览器工具栏伸缩不闪 */
+  padding-left: env(safe-area-inset-left); padding-right: env(safe-area-inset-right); }
+  /* 左右安全区：iPad/手机横屏摄像头凹口（灵动岛）侧——env 在不支持时为 0 */
+
 
 /* ---------------- 侧栏 ---------------- */
 .sidebar { width: 264px; min-width: 264px; background: var(--bg2); border-right: 1px solid var(--border);
@@ -1099,14 +1102,21 @@ button.attach-chip:hover { border-color: color-mix(in srgb, var(--accent) 40%, v
 
   /* 导航列（rail + 侧栏） → 左抽屉 */
   .nav-col { position: fixed; top: 0; bottom: 0; left: 0; z-index: 50;
-    transform: translateX(-102%); transition: transform .22s ease; }
+    transform: translateX(-102%); transition: transform .22s ease;
+    /* iOS 安全区三向 padding（竖屏顶部灵动岛/横屏左侧岛/底部 Home 条）：
+       fixed 层不受 .app padding 保护——不垫则 rail 顶/底按钮被灵动岛
+       系统区盖住（能看不能点，触摸被岛拦截）。inset=0 的设备零影响 */
+    padding: env(safe-area-inset-top) 0 env(safe-area-inset-bottom)
+             env(safe-area-inset-left); box-sizing: border-box; }
   .app.nav-open .nav-col { transform: none; box-shadow: var(--shadow-lg); }
   .app.nav-open { overflow: hidden; }
   .sidebar { width: min(84vw, 280px); min-width: 0; }
 
   /* 右面板 → 右抽屉（showPanel 即开关；只在渲染时挂载，进场滑动动画） */
   .right-panel { position: fixed; top: 0; right: 0; bottom: 0; z-index: 46; width: min(86vw, 360px);
-    min-width: 0; animation: rpanel-in .2s ease; box-shadow: var(--shadow-lg); }
+    min-width: 0; animation: rpanel-in .2s ease; box-shadow: var(--shadow-lg);
+    padding: env(safe-area-inset-top) env(safe-area-inset-right)
+             env(safe-area-inset-bottom) 0; box-sizing: border-box; }
   @keyframes rpanel-in { from { transform: translateX(60%); opacity: .4; } }
 
   .menu-btn { display: inline-flex; align-items: center; justify-content: center; }

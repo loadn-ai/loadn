@@ -325,6 +325,9 @@ const LIVE_TAIL = 60;
 
 function LiveTurn({ live }: { live: NonNullable<ReturnType<typeof useStore.getState>['live']> }) {
   const { stopTurn } = useStore();
+  // 过程展开量（用户反馈「已折叠前 xx 条想看」）：默认尾窗 60，点击折叠行
+  // 每次 +200 逐步展开——显式要求优先于性能保守，但仍防一次全量卡死
+  const [extra, setExtra] = useState(0);
   // 停止在途（防重复触发）：POST 受理后引擎收尾前禁用按钮转圈——期间重复
   // POST 只会吃 404「turn 不存在或已结束」。终态确认（SSE turn_stopped →
   // 清 live）/ 失败 / 30s 轮询超时后恢复，见 stores/sessions.stopTurn
@@ -356,8 +359,9 @@ function LiveTurn({ live }: { live: NonNullable<ReturnType<typeof useStore.getSt
         phase = "LLM 推理中";
     }
   }
-  const hidden = Math.max(0, live.items.length - LIVE_TAIL);
-  const shown = hidden ? live.items.slice(-LIVE_TAIL) : live.items;
+  const tail = LIVE_TAIL + extra;
+  const hidden = Math.max(0, live.items.length - tail);
+  const shown = hidden ? live.items.slice(-tail) : live.items;
   return (
     <div className="msg assistant live">
       <div className={`turn-bar ${live.status}`}>
@@ -374,7 +378,10 @@ function LiveTurn({ live }: { live: NonNullable<ReturnType<typeof useStore.getSt
       </div>
       {live.todos.length > 0 && <TodoList todos={live.todos} />}
       {hidden > 0 && (
-        <div className="tools-head">⋯ 前面 {hidden} 条过程已折叠（完整过程任务结束后可在消息历史回看）</div>
+        <button className="load-earlier" onClick={() => setExtra(e => e + 200)}
+                title="展开更早的过程项（每次 +200）">
+          ⋯ 前面 {hidden} 条过程已折叠，点击展开
+        </button>
       )}
       {shown.map((it, i) => {
         // key 用绝对索引（hidden+i）：窗口滑动时已有项 key 不变，memo 才能跳过重渲染
