@@ -80,8 +80,10 @@ async def test_auth_kernel_and_owner_isolation(server_url):
 
 
 async def test_browser_auth_gate_renders(server_url):
-    """浏览器层对赌：首访（账号体系已建）自动弹**登录门**（auth_required
-    主动弹——不靠等第一个 401）；输错密码显示真实错误。"""
+    """浏览器层对赌（2026-10-23 非阻断化）：首访（账号体系已建）**不再全屏
+    弹门**——右下角「登录」胶囊提示（聊天区可自由浏览，不再被遮罩挡交互
+    ——此前生产实证：看得见工具卡却点不动，报障「历史详情无法展开」）；
+    点胶囊弹登录卡；输错密码显示真实错误；点遮罩可关闭恢复浏览。"""
     from playwright.async_api import async_playwright
 
     async with httpx.AsyncClient(base_url=server_url, timeout=10) as c:
@@ -95,11 +97,29 @@ async def test_browser_auth_gate_renders(server_url):
             page = await browser.new_page()
             page.set_default_timeout(15000)
             await page.goto(server_url)
-            await page.wait_for_selector("text=登录")
+            # ① 非阻断：无全屏登录卡，只有右下角胶囊
+            await page.wait_for_selector("button.gate-pill")
+            big_gate = await page.evaluate(
+                "() => { for (const el of document.querySelectorAll('body *')) {"
+                "  const cs = getComputedStyle(el);"
+                "  if (cs.position === 'fixed' && parseInt(cs.zIndex||'0') >= 999"
+                "      && el.getBoundingClientRect().height > 400) return true; }"
+                "  return false; }")
+            assert big_gate is False, "auth_required 不应再全屏遮罩"
+            # ② 点胶囊弹卡
+            await page.click("button.gate-pill")
+            await page.wait_for_selector('[placeholder="用户名"]')
+            # ③ 输错密码显示真实错误
             await page.fill('[placeholder="用户名"]', "nobody")
             await page.fill('[placeholder="密码"]', "wrong-pass")
             await page.click('button:has-text("登录")')
             await page.wait_for_selector("text=不正确")
+            # ④ 点遮罩关闭，恢复浏览
+            await page.mouse.click(10, 10)
+            await page.wait_for_selector("button.gate-pill")
+            gone = await page.evaluate(
+                '() => !document.querySelector(\'[placeholder="用户名"]\')')
+            assert gone is True, "遮罩点击后登录卡应关闭"
         finally:
             await browser.close()
 

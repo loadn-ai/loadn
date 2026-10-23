@@ -38,6 +38,7 @@ const btn: React.CSSProperties = {
 export default function TokenGate() {
   const [st, setSt] = useState<AuthStatus | null>(null);
   const [open, setOpen] = useState(false);
+  const [hint, setHint] = useState(false);   // 非阻断：右下角「登录」胶囊
   const [mode, setMode] = useState<'login' | 'setup'>('login');
   const [user, setUser] = useState('');
   const [pass, setPass] = useState('');
@@ -51,10 +52,11 @@ export default function TokenGate() {
       const d = await api<AuthStatus>('/api/auth/status');
       setSt(d);
       if (d.needs_setup) { setMode('setup'); setOpen(true); }
-      else if (d.auth_required) { setMode('login'); setOpen(true); }
-      // UI 巡检批：认证恢复（登录成功/token 配好/宽限生效）自动关框——
-      // 此前一次 401 弹开后 probe 只开不关，token 用户被全屏锁死
-      else setOpen(false);
+      // 未登录不再全屏弹门（宽限期 GET 本就放行只读浏览）——2026-10-23
+      // 生产实证：半透明+blur 遮罩盖住聊天区，用户看得见工具卡却点不动
+      // （报障「历史详情无法展开」）。改右下角胶囊提示，点开才弹且可关。
+      else if (d.auth_required) { setMode('login'); setHint(true); }
+      else { setOpen(false); setHint(false); }
     } catch { /* 探测失败保持沉默（旧版兼容） */ }
   };
   useEffect(() => {
@@ -86,10 +88,29 @@ export default function TokenGate() {
     }
   };
 
-  // 已登录的用户身份展示在侧栏底部（sidebar-foot）——这里只管登录门
-  if (!open) return null;
+  // 已登录的用户身份展示在侧栏底部（sidebar-foot）——这里只管登录门。
+  // 非阻断胶囊：未登录但可只读浏览时，右下角提示（点击弹登录卡）。
+  if (!open) {
+    if (!hint || st?.needs_setup) return null;
+    return (
+      <button type="button" className="gate-pill" title="登录后可发消息与管理"
+              onClick={() => setOpen(true)}
+              style={{
+                position: 'fixed', right: 18, bottom: 76, zIndex: 999,
+                display: 'flex', alignItems: 'center', gap: 6,
+                padding: '8px 14px', borderRadius: 999,
+                border: '1px solid rgba(127,127,127,.4)',
+                background: 'var(--panel,#fff)', color: 'inherit',
+                fontSize: 'var(--fs-md)', cursor: 'pointer',
+                boxShadow: '0 6px 24px rgba(0,0,0,.18)',
+              }}>
+        🔐 登录
+      </button>
+    );
+  }
   return (
-    <div style={box}>
+    <div style={box}
+         onClick={e => { if (e.target === e.currentTarget && mode !== 'setup') setOpen(false); }}>
       <div style={card}>
         <div style={{ fontSize: 16, fontWeight: 600 }}>
           {mode === 'setup' ? '创建管理员账号' : '登录'}
