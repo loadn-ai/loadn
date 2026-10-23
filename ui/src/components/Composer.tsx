@@ -4,21 +4,22 @@ import { useStore } from '../stores/sessions';
 import type { Attachment } from '../stores/sessions';
 import { getDraft, setDraft } from '../stores/drafts';
 import {
-  Paperclip, Sparkles, Flask, Code, Chat, Bot, ChevronDown, Check,
+  Paperclip, Sparkles, Flask, Code, Chat, MessageSquare, Bot, ChevronDown, Check,
   ArrowUp, StopSquare, FileDoc, Spinner, Terminal,
 } from './icons';
 
 const PROFILE_CN: Record<string, string> = {
-  researcher: '研究', coder: '编程', assistant: '助手',
+  researcher: '研究', coder: '编程', assistant: '助手', chat: '聊天',
 };
 const PROFILE_DESC: Record<string, string> = {
   auto: '按消息内容自动匹配角色',
   researcher: '深度调研、检索与成文',
   coder: '写代码、跑任务、改工件',
   assistant: '日常问答与轻量杂务',
+  chat: '纯对话：不落盘不执行不开任务',
 };
 const PROFILE_ICON: Record<string, ComponentType<{ size?: number }>> = {
-  auto: Sparkles, researcher: Flask, coder: Code, assistant: Chat,
+  auto: Sparkles, researcher: Flask, coder: Code, assistant: Chat, chat: MessageSquare,
 };
 
 interface Pending {
