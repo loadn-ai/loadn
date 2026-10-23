@@ -3,6 +3,25 @@
 本项目的全部显著变更记录于此。格式遵循 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/)，
 版本遵循 [SemVer](https://semver.org/lang/zh-CN/)。
 
+## [0.7.45] - 2026-10-23
+
+- **新增：「聊天」纯对话角色**（用户反馈没有纯聊天选项）：effort=low、
+  零技能、禁 Bash/Task/Write/Edit 等七工具（不落盘不执行不开任务）、
+  不参与 auto 路由（显式选择）；前端角色选择器「聊天」项。角色接入
+  仍是零代码：profiles/registry.yaml 一条 + profiles/<name>.md 一份。
+- **修复：默认资产跟随只刷 prompts/ 不刷 profiles/**——数据根旧
+  registry.yaml 遮蔽代码根且从不随版本更新，仓内新增角色永远进不了
+  老部署（chat 上线即被遮蔽实证）。刷新范围扩为 prompts+profiles，
+  并支持数据根缺失的新默认文件直接落地；用户定制（与任一历史版本
+  逐字节不同）仍保留不动。
+- **修复：未登录全屏登录门遮罩挡住聊天区**（用户报障「历史聊天很多
+  详情无法展开 + UI 和实时不一样」根因）：cookie 过期/新环境打开时
+  auth_required 主动弹全屏 rgba+blur 遮罩——内容可见但全部不可点。
+  改非阻断：右下角「🔐 登录」胶囊提示，点开才弹登录卡且点遮罩可关
+  （宽限期 GET 本就放行只读浏览）；needs_setup 安装向导保留全屏阻断；
+  401 写操作弹门同样可关。e2e 四段对赌（无全屏遮罩/胶囊点开/错密码
+  真错误/遮罩关闭恢复浏览）。
+
 ## [0.7.44] - 2026-10-22
 
 - **品牌清理：产品面 `WORKDADDY_*` 标记全切 `LOADN_*`（用户指令：WORKDADDY
