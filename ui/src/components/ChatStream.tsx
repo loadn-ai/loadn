@@ -18,6 +18,8 @@ import { toast } from '../stores/toasts';
 /** 历史消息尾窗：大会话百余条带完整过程块的消息全量渲染，打开要卡好几秒
  *  （2.7MB DOM 一次进页面）；默认只铺尾部，更早的按需「加载更早」展开 */
 const HISTORY_TAIL = 40;
+/** 穿插回放单条消息渲染块数上限（巨消息冻结防护，见 AssistantMsg） */
+const REPLAY_BLK_CAP = 120;
 
 export default function ChatStream({ onOpenFile }: { onOpenFile?: (path: string) => void }) {
   const { messages, live, turns, retractTurn } = useStore();
@@ -175,7 +177,7 @@ function EditBox({ initial, onSave, onCancel }:
   );
 }
 
-function UserMsg({ text, ts, blocks, onOpenFile, retractable, onRetract, mid }:
+const UserMsg = memo(function UserMsg({ text, ts, blocks, onOpenFile, retractable, onRetract, mid }:
   { text: string; ts: string; blocks?: string | null; mid?: number;
     onOpenFile?: (path: string) => void;
     retractable?: boolean; onRetract?: () => void }) {
@@ -213,7 +215,7 @@ function UserMsg({ text, ts, blocks, onOpenFile, retractable, onRetract, mid }:
       <div className="msg-meta">{retractable ? `${fmtTime(ts)} · 排队中` : fmtTime(ts)}</div>
     </div>
   );
-}
+});
 
 /** 历史消息里的附件 chip：小图走文件接口取 base64，点击开预览 tab */
 function AttachChip({ a, onOpenFile }: {
@@ -242,12 +244,16 @@ function AttachChip({ a, onOpenFile }: {
   );
 }
 
-function AssistantMsg({ text, blocks, ts, mid, hits, turnId }:
+const AssistantMsg = memo(function AssistantMsg({ text, blocks, ts, mid, hits, turnId }:
   { text: string; blocks: StreamItem[]; ts: string; mid?: number;
     hits?: string | null; turnId?: number | null }) {
   const [open, setOpen] = useState(blocks.length <= 6);
   const { editMessage } = useStore();
   const [editing, setEditing] = useState(false);
+  // 穿插回放单条块数上限（2026-10-23 生产实证：94c5 会话单条 2216 块
+  // 全量渲染，打开会话长任务 1.5s 主线程冻结，移动端放大数倍=点什么都
+  // 没反应「无法展开过程」）。默认只铺尾部 REPLAY_BLK_CAP，点折叠行 +120
+  const [extraBlk, setExtraBlk] = useState(0);
   const shown = text && text !== '（无文本输出）' ? text : '';
   // todos 快照块提到时间线外：取最后一块在消息顶部渲染清单（与 live
   // TodoList 同位）；块序列里全部跳过（避免中段冒出）。steer 块留在时间
@@ -257,6 +263,9 @@ function AssistantMsg({ text, blocks, ts, mid, hits, turnId }:
   // 穿插回放：flow 带正文段（新格式）→ 按真实顺序铺时间线（与 live 同构）；
   // 旧格式（无 text 块）→ 过程面板 + 合并正文，原样保留
   const interleaved = flow.some(b => b.kind === 'text');
+  const blkCap = REPLAY_BLK_CAP + extraBlk;
+  const hiddenBlk = interleaved ? Math.max(0, flow.length - blkCap) : 0;
+  const flowShown = hiddenBlk ? flow.slice(-blkCap) : flow;
   const save = async (t: string) => {
     setEditing(false);
     if (t === shown) return;
@@ -273,7 +282,13 @@ function AssistantMsg({ text, blocks, ts, mid, hits, turnId }:
       {lastTodos && <TodoList todos={lastTodos.todos} />}
       {flow.length > 0 && (interleaved ? (
         <div className="replay">
-          {flow.map((b, i) => {
+          {hiddenBlk > 0 && (
+            <button className="load-earlier" onClick={() => setExtraBlk(e => e + 120)}
+                    title="展开更早的过程项（每次 +120）">
+              ⋯ 前面 {hiddenBlk} 项过程已折叠，点击展开
+            </button>
+          )}
+          {flowShown.map((b, i) => {
             if (b.kind === 'thinking') return <ThinkingCard key={i} text={b.text} cum={b.cum}
               tag={b.agent_n != null ? `子${b.agent_n}` : undefined} />;
             if (b.kind === 'tool') return <ToolLine key={i} b={b} done turnId={turnId ?? null} />;
@@ -317,7 +332,7 @@ function AssistantMsg({ text, blocks, ts, mid, hits, turnId }:
       <div className="msg-meta">{fmtTime(ts)}</div>
     </div>
   );
-}
+});
 
 /** live 过程只渲染尾部窗口：长任务（深度研究动辄数百节点）全量渲染 +
  *  每 SSE 事件整列表重渲染会打满主线程（真机直接冻结），结束后完整过程在消息历史里 */
