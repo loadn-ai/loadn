@@ -474,27 +474,45 @@ def put_resources(body: dict) -> dict:
 # ---------------- 自定义服务（资源页「＋新增服务」） ----------------
 
 def put_custom_service(body: dict) -> dict:
-    """新增/更新自定义服务（upsert by name）→ resources.custom_services。
+    """新增/更新资源条目（upsert by name）→ resources.custom_services。
 
     v2（2026-10-19 资源 Hub 重构批）：条目支持结构化字段——category/icon/
     desc/enabled/config[]（多字段+env 自定义名）/secrets[]（vault_ref 绑定）/
     prompt（Agent 调用指南）。老条目 {name,url,note} 继续合法（读侧归一化
     映射 url→config[0]）。密钥仍不注入 env（凭证不进沙箱的既定边界）。
+
+    v3（统一资源模型）：原生/自定义双轨合一——预置集成也是普通条目。
+    ① rename_from：改 ID 时迁移旧条目与 vault svc: 密钥（旧名是预置名
+    则 retire，防重启复活）；② ping：探测目标（预置卡带 ['bocha','zhipu']
+    等锚名，自定义卡默认 ['svc:<name>]）；③ 纯凭证条目（仅 secrets）
+    合法；④ 保存后跑锚投影——config[].key 命中平台锚键（zhipu_engine
+    等 14 键）时值同步进 ResourcesConfig，r search/OCR 等集成立即生效。
     """
     import re as _re
 
-    from .config import _SVC_NAME_RE
+    from .config import _SVC_NAME_RE, project_anchor_fields, retire_preset_service
     _env_re = _re.compile(r"[A-Z_][A-Z0-9_]*")
     name = str(body.get("name") or "").strip()
     url = str(body.get("url") or "").strip().rstrip("/")
     note = str(body.get("note") or "").strip()
     if not _SVC_NAME_RE.fullmatch(name):
         raise ValueError("name 需为小写 slug（字母/数字开头，可含 - _，≤32 位）")
+    rename_from = str(body.get("rename_from") or "").strip()
+    if rename_from and not _SVC_NAME_RE.fullmatch(rename_from):
+        raise ValueError("rename_from 需为小写 slug")
+    if rename_from == name:
+        rename_from = ""
     category = str(body.get("category") or "自定义服务").strip() or "自定义服务"
     icon = str(body.get("icon") or "🔌").strip() or "🔌"
+    title = str(body.get("title") or "").strip()[:40]     # 显示名（自由文本；空=用 name）
     desc = str(body.get("desc") or "").strip()
     enabled = bool(body.get("enabled", True))
     prompt = str(body.get("prompt") or "").strip()
+    ping_raw = body.get("ping")
+    if ping_raw is not None and not isinstance(ping_raw, list):
+        raise ValueError("ping 需为字符串列表")
+    ping = [str(t).strip() for t in (ping_raw or [])
+            if str(t).strip()]
     config_raw = body.get("config")
     if config_raw is not None and not isinstance(config_raw, list):
         raise ValueError("config 需为列表")
@@ -521,22 +539,35 @@ def put_custom_service(body: dict) -> dict:
             raise ValueError("secrets 条目 vault_ref/env_key 不能为空")
         secrets.append({"label": str(s.get("label") or "密钥"),
                         "env_key": ek, "vault_ref": vr})
-    # v2 条目：url 或 config 至少一项（纯凭证驱动资源允许无端点）；老客户端
-    # 只传 url 的路径照旧（url 必须合法 http(s)，映射 config[0]）
+    # v3：纯凭证驱动（仅 secrets，如 captcha/任意纯密钥资源）合法
     if not config:
-        if not url:
-            raise ValueError("url 与 config 至少提供一项")
-        if not url.startswith(("http://", "https://")):
+        if not url and not secrets:
+            raise ValueError("url / config / secrets 至少提供一项")
+        if url and not url.startswith(("http://", "https://")):
             raise ValueError("url 必须是 http(s) URL")
-        config = [{"key": "endpoint", "label": "端点", "value": url,
-                   "env": f"LOADN_SVC_{name.upper().replace('-', '_')}_URL"}]
+        if url:
+            config = [{"key": "endpoint", "label": "端点", "value": url,
+                       "env": f"LOADN_SVC_{name.upper().replace('-', '_')}_URL"}]
+    if not ping:
+        ping = [f"svc:{name}"]      # 默认探测自身
     entries = [s for s in (CONFIG.resources.custom_services or [])
                if isinstance(s, dict)]
-    entry = {"name": name, "note": note or desc, "category": category,
+    entry = {"name": name, "title": title, "note": note or desc,
+             "category": category,
              "icon": icon, "desc": desc or note, "enabled": enabled,
-             "config": config, "secrets": secrets, "prompt": prompt}
+             "ping": ping, "config": config, "secrets": secrets,
+             "prompt": prompt}
     entry["url"] = next((c["value"] for c in config
                          if str(c.get("value") or "").startswith(("http://", "https://"))), url)
+    # rename：旧条目摘除 + 预置名 retire（vault svc: 密钥迁移延后——
+    # set 的白名单校验读 CONFIG，需新名条目先在场）
+    _rename_sec_val = ""
+    if rename_from:
+        from .security import vault as _vault
+        _rename_sec_val = _vault.get_res_secret(f"svc:{rename_from}")
+        entries = [s for s in entries if s.get("name") != rename_from]
+        retire_preset_service(rename_from)
+        log.info("资源改名：%s → %s", rename_from, name)
     for i, s in enumerate(entries):
         if s.get("name") == name:
             entries[i] = entry
@@ -547,6 +578,14 @@ def put_custom_service(body: dict) -> dict:
     data.setdefault("resources", {})["custom_services"] = entries
     _dump_yaml_conf(_conf_path(), data)
     CONFIG.resources.custom_services = entries
+    if _rename_sec_val:
+        from .security import vault as _vault
+        _vault.set_res_secret(f"svc:{name}", _rename_sec_val)
+        _vault.del_res_secret(f"svc:{rename_from}")
+        log.info("vault 密钥随行迁移：svc:%s → svc:%s", rename_from, name)
+    # 统一资源模型 v3：锚字段投影（条目 SoT → dataclass，集成立即生效；
+    # 走模块全局 CONFIG——与上方条目写盘同一实例，测试可 monkeypatch 隔离）
+    project_anchor_fields(CONFIG, entries)
     from .security.audit import audit
     audit("policy_change", {"action": "custom_service_upsert", "name": name,
                             "v2": bool(len(config) > 1 or secrets)})
@@ -556,8 +595,12 @@ def put_custom_service(body: dict) -> dict:
 
 
 def delete_custom_service(name: str) -> dict:
-    """删除自定义服务（yaml+CONFIG+vault svc:<name> 密钥一并清）。"""
-    from .config import _SVC_NAME_RE
+    """删除资源条目（yaml+CONFIG+vault svc:<name> 密钥一并清）。
+
+    v3：预置名删除 → retire 记名（重启不复活；锚值/密钥留 settings/vault，
+    平台集成继续可用——重建同名卡即恢复管理面）。
+    """
+    from .config import _SVC_NAME_RE, retire_preset_service
     from .security import vault as vault_mod
     name = str(name or "").strip()
     if not _SVC_NAME_RE.fullmatch(name):
@@ -571,9 +614,10 @@ def delete_custom_service(name: str) -> dict:
     _dump_yaml_conf(_conf_path(), data)
     CONFIG.resources.custom_services = entries
     vault_mod.del_res_secret(f"svc:{name}")      # 密钥随服务清理（无则 no-op）
+    retire_preset_service(name)
     from .security.audit import audit
     audit("policy_change", {"action": "custom_service_delete", "name": name})
-    log.info("自定义服务删除：%s（vault 密钥一并清）", name)
+    log.info("资源条目删除：%s（svc: 密钥一并清；若为预置名已记 retire）", name)
     return {"ok": True, "custom_services": entries}
 
 

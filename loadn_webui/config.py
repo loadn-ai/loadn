@@ -14,6 +14,10 @@ from pathlib import Path
 
 import yaml
 
+from .util import get_logger
+
+log = get_logger(__name__)
+
 ROOT = Path(os.environ.get("LOADN_WEBUI_HOME")
            or Path.home() / ".loadn-data")          # 开源默认：用户家目录
 
@@ -138,6 +142,75 @@ SANDBOX_TIERS = ("off", "bwrap", "vm-bwrap", "seatbelt", "appcontainer", "remote
 
 # 自定义服务的名字语法（resources.custom_services[].name / vault svc:<name>）
 _SVC_NAME_RE = _re.compile(r"[a-z0-9][a-z0-9_-]{0,31}")
+
+# ---------------------------------------------------------------- 统一资源模型 v3
+# 除主 LLM（engines/provider/模型库）外，一切资源一视同仁：预置平台集成
+# （OCR/沙箱/搜索/收码…）降级为 custom_services 种子条目，可自由增删改
+# 结构。平台集成消费锚=锚字段：条目 config[].key 命中下列扁平键时，值
+# 投影回 ResourcesConfig 同名属性（integrations/resources、workspace 注入
+# 等十几个消费点零改动）。密钥锚同理：vault_ref 直接引用原生键
+# （bocha_key 等 8 键），条目名怎么改都不影响消费。
+ANCHOR_SERVICE_KEYS = frozenset({
+    "ocr_url", "sandbox_url", "cdp_url", "proxy", "adb_addr", "sms_url",
+    "sms_phone", "mail_imap", "mail_smtp", "mail_user", "textr_email",
+    "vlm_api_base", "vlm_model", "zhipu_engine"})
+
+# 预置种子（与旧前端 GROUPS 等价；value 首次补种时从存量扁平字段上抬）
+PRESET_SERVICES: list[dict] = [
+    {"name": "ocr", "title": "OCR 识别", "icon": "scan", "category": "基础设施",
+     "desc": "图片 / PDF / Office 文本识别", "ping": ["ocr"],
+     "config": [{"key": "ocr_url", "label": "端点", "env": "LOADN_OCR_ENDPOINT"}],
+     "secrets": []},
+    {"name": "sandbox", "title": "AIO 沙箱", "icon": "box", "category": "基础设施",
+     "desc": "浏览器 / 命令行 / 文件 操作环境", "ping": ["sandbox", "sandbox_mcp"],
+     "config": [{"key": "sandbox_url", "label": "端点", "env": "LOADN_SANDBOX_ENDPOINT"},
+                {"key": "cdp_url", "label": "CDP", "env": "LOADN_CDP_URL"}],
+     "secrets": [{"label": "API Key", "env_key": "LOADN_SANDBOX_API_KEY",
+                  "vault_ref": "sandbox_api_key"}]},
+    {"name": "proxy", "title": "出网代理", "icon": "globe", "category": "基础设施",
+     "desc": "出海请求经此转发（clash 等）", "ping": ["proxy"],
+     "config": [{"key": "proxy", "label": "地址", "env": "LOADN_PROXY"}],
+     "secrets": []},
+    {"name": "adb", "title": "Android 真机", "icon": "smartphone", "category": "基础设施",
+     "desc": "adb 无线调试真机", "ping": ["adb"],
+     "config": [{"key": "adb_addr", "label": "地址", "env": "LOADN_ADB_ADDRESS"}],
+     "secrets": []},
+    {"name": "sms", "title": "短信查询", "icon": "message", "category": "通信",
+     "desc": "真机收验证码", "ping": ["sms"],
+     "config": [{"key": "sms_url", "label": "端点", "env": "LOADN_SMS_ENDPOINT"},
+                {"key": "sms_phone", "label": "手机号", "env": "LOADN_SMS_PHONE"}],
+     "secrets": [{"label": "Token", "env_key": "LOADN_SMS_TOKEN",
+                  "vault_ref": "sms_token"}]},
+    {"name": "mail", "title": "主邮箱", "icon": "mail", "category": "通信",
+     "desc": "注册 / 登录收验证码（126/163 需授权码）", "ping": ["mail"],
+     "config": [{"key": "mail_imap", "label": "IMAP", "env": "LOADN_MAIL_IMAP"},
+                {"key": "mail_smtp", "label": "SMTP", "env": "LOADN_MAIL_SMTP"},
+                {"key": "mail_user", "label": "账号", "env": "LOADN_MAIL_USER"}],
+     "secrets": [{"label": "授权码", "env_key": "LOADN_MAIL_AUTH_CODE",
+                  "vault_ref": "mail_auth_code"}]},
+    {"name": "textr", "title": "Textr 虚拟号", "icon": "phone", "category": "通信",
+     "desc": "美国虚拟号码收码", "ping": [],
+     "config": [{"key": "textr_email", "label": "账号", "env": "LOADN_TEXTR_USER"}],
+     "secrets": [{"label": "密码", "env_key": "LOADN_TEXTR_PASSWORD",
+                  "vault_ref": "textr_password"}]},
+    {"name": "vlm", "title": "视觉模型", "icon": "eye", "category": "AI 能力",
+     "desc": "图片理解（截图分析等）", "ping": ["vlm"],
+     "config": [{"key": "vlm_api_base", "label": "API", "env": "LOADN_VLM_API_BASE"},
+                {"key": "vlm_model", "label": "模型", "env": "LOADN_VLM_MODEL"}],
+     "secrets": [{"label": "API Key", "env_key": "LOADN_VLM_API_KEY",
+                  "vault_ref": "vlm_api_key"}]},
+    {"name": "search", "title": "网页搜索", "icon": "search", "category": "AI 能力",
+     "desc": "博查（中文）/ 智谱（档位计费）", "ping": ["bocha", "zhipu"],
+     "config": [{"key": "zhipu_engine", "label": "智谱档", "env": "LOADN_SEARCH_ZHIPU_ENGINE"}],
+     "secrets": [{"label": "博查 Key", "env_key": "LOADN_SEARCH_BOCHA_KEY",
+                  "vault_ref": "bocha_key"},
+                 {"label": "智谱 Key", "env_key": "LOADN_SEARCH_ZHIPU_KEY",
+                  "vault_ref": "zhipu_key"}]},
+    {"name": "captcha", "title": "过验证码", "icon": "shield", "category": "AI 能力",
+     "desc": "2Captcha（图形码 / reCAPTCHA）", "ping": ["twocaptcha"],
+     "config": [], "secrets": [{"label": "API Key", "env_key": "LOADN_CAPTCHA_API_KEY",
+                                "vault_ref": "twocaptcha_key"}]},
+]
 
 
 @dataclass
@@ -341,6 +414,86 @@ def _apply_section(cfg_obj: object, section: dict) -> None:
             setattr(cfg_obj, k, v)
 
 
+def project_anchor_fields(cfg_obj: Config, entries: list) -> None:
+    """统一资源模型 v3 锚投影：条目锚字段值 → ResourcesConfig 扁平属性。
+
+    条目是 SoT（single source of truth）；扁平属性是消费兼容投影——
+    integrations/resources（r search/OCR/短信）、workspace env 注入等
+    继续读 dataclass，零改动。保存条目后必须重跑（put_custom_service
+    已联动），平台集成立即生效免重启。
+    """
+    for s in entries:
+        if not isinstance(s, dict):
+            continue
+        for c in (s.get("config") or []):
+            if isinstance(c, dict) and c.get("key") in ANCHOR_SERVICE_KEYS:
+                setattr(cfg_obj.resources, c["key"], str(c.get("value") or ""))
+
+
+def ensure_preset_services(cfg_obj: Config) -> None:
+    """预置集成补种（每次启动幂等跑；retire 名单防「删了又复活」）。
+
+    补种只在内存进行（yaml 不动——避免启动期写配置文件）；yaml 里已有
+    的同名条目天然跳过。用户删除/改名预置卡时把旧名写进 retire 名单
+    （delete_custom_service / put_custom_service 的 rename 分支），此后
+    不再自动补。锚值/密钥留在 settings/vault，平台集成（如 r search）
+    继续可用；重建同名卡即恢复管理面。
+    """
+    retired_path = ROOT / ".preset_services_retired"
+    try:
+        retired = {ln.strip() for ln
+                   in retired_path.read_text().splitlines() if ln.strip()}
+    except OSError:
+        retired = set()
+    entries = [s for s in (cfg_obj.resources.custom_services or [])
+               if isinstance(s, dict)]
+    have = {s.get("name") for s in entries}
+    changed = False
+    for seed in PRESET_SERVICES:
+        if seed["name"] in have or seed["name"] in retired:
+            continue
+        item = {
+            "name": seed["name"], "title": seed.get("title", ""),
+            "icon": seed["icon"],
+            "category": seed["category"], "desc": seed["desc"],
+            "note": seed["desc"], "enabled": True,
+            "ping": list(seed.get("ping") or []),
+            "config": [dict(c) for c in seed.get("config") or []],
+            "secrets": [dict(x) for x in seed.get("secrets") or []],
+            "prompt": seed.get("prompt", ""),
+        }
+        # 存量扁平值上抬（老部署锚字段值进条目，条目自此为 SoT）
+        for c in item["config"]:
+            c["value"] = str(getattr(cfg_obj.resources, c["key"], "") or "")
+        item["url"] = next(
+            (c["value"] for c in item["config"]
+             if str(c.get("value") or "").startswith(("http://", "https://"))), "")
+        entries.append(item)
+        changed = True
+    if changed:
+        cfg_obj.resources.custom_services = entries
+    project_anchor_fields(cfg_obj, cfg_obj.resources.custom_services or [])
+
+
+def retire_preset_service(name: str) -> None:
+    """预置卡被删除/改名时记名——此后不再自动补种（真删语义）。"""
+    preset_names = {s["name"] for s in PRESET_SERVICES}
+    if name not in preset_names:
+        return
+    path = ROOT / ".preset_services_retired"
+    try:
+        cur = {ln.strip() for ln in path.read_text().splitlines() if ln.strip()}
+    except OSError:
+        cur = set()
+    if name in cur:
+        return
+    cur.add(name)
+    try:
+        path.write_text("\n".join(sorted(cur)) + "\n")
+    except OSError:
+        log.warning("retire 名单写盘失败：%s（重启后该预置卡会复活）", name)
+
+
 def load_config() -> Config:
     cfg = Config()
     path = ROOT / "config.yaml"
@@ -445,9 +598,18 @@ def load_config() -> Config:
         _cfg2 = s.get("config")
         has_url = str(s.get("url") or "").startswith(("http://", "https://"))
         has_cfg = isinstance(_cfg2, list) and len(_cfg2) > 0
-        if not has_url and not has_cfg:
+        has_sec = isinstance(s.get("secrets"), list) and len(s.get("secrets")) > 0
+        # v3（统一资源模型）：纯凭证驱动（仅 secrets，如 captcha 种子）合法
+        if not has_url and not has_cfg and not has_sec:
             raise ValueError(f"resources.custom_services 条目非法 {s!r}"
-                             "（需 url=http(s)://… 或非空 config 列表，config.yaml）"
+                             "（需 url=http(s)://… 或非空 config/secrets 列表，"
+                             "config.yaml）——拒绝启动")
+        _ping = s.get("ping")
+        if _ping is not None and (
+                not isinstance(_ping, list)
+                or not all(isinstance(t, str) and t.strip() for t in _ping)):
+            raise ValueError(f"custom_services[{s['name']!r}].ping 非法"
+                             f" {_ping!r}（需字符串列表，config.yaml）"
                              "——拒绝启动")
         for c in (_cfg2 if isinstance(_cfg2, list) else []):
             if not isinstance(c, dict) \
@@ -468,6 +630,8 @@ def load_config() -> Config:
     env_bin = os.environ.get("LOADN_CLAUDE_BIN")
     if env_bin:
         cfg.claude.claude_bin = env_bin
+    # 统一资源模型 v3：预置集成补种（一次性）+ 锚字段投影（每次启动）
+    ensure_preset_services(cfg)
     return cfg
 
 

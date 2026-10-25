@@ -4,9 +4,11 @@
 // 图标选择器 + 名称→ID 智能联动 + label→env 自动推导（LABEL_ENV 映射）+ 快捷
 // 参数胶囊 + 蓝图预设 5 卡（高亮态）+ 内联新建加密密钥面板 + vault 下拉状态
 // 标签 + 凭证库存入/轮换（复用 PUT /admin/vault/{platform} 唯一编辑面端点）。
+// v3（统一资源模型）：原生/自定义双轨合一——除主 LLM 外一切资源同构，卡片数据
+// 全量来自 custom_services 条目（预置集成=后端种子条目，可编辑结构/改 ID/删除）。
+// 平台消费锚由后端维持（config[].key 命中锚键时值投影进平台集成，免重启）。
 // 安全语义不变：密钥值永不出后端（只写不读）；凭证不进任务 env（预览以 vault
-// decrypt 形式呈现）。后端 custom_services v2 结构化模型（icon 自由字符串可存键）。
-// 样式类在 index.css「资源 Hub」段（.rh-* 独立命名空间，双主题令牌）。
+// decrypt 形式呈现）。样式类在 index.css「资源 Hub」段（.rh-* 独立命名空间）。
 import { useEffect, useRef, useState } from 'react';
 import { api } from '../api/client';
 import { toast } from '../stores/toasts';
@@ -20,8 +22,8 @@ import { askConfirm } from '../stores/confirm';
 interface ServiceItem { key: string; label: string; note: string; value: string; kind: string }
 interface SecretItem { key: string; set: boolean }
 interface CustomSvc {
-  name: string; url: string; note: string; category: string; icon: string; desc: string;
-  enabled: boolean; prompt: string; key_set: boolean;
+  name: string; title?: string; url: string; note: string; category: string; icon: string; desc: string;
+  enabled: boolean; prompt: string; key_set: boolean; ping: string[];
   config: { key: string; label: string; value: string; env: string }[];
   secrets: { label: string; env_key: string; vault_ref: string }[];
 }
@@ -35,11 +37,11 @@ interface Overview {
   vault: { platforms: VaultPlatform[]; verify: { ok: boolean; entries: number; encrypted: boolean; error?: string } };
 }
 
-/** 统一资源视图模型：原生（GROUPS 定义+settings 扁平存取）与自定义（v2 条目）同构 */
+/** 统一资源视图模型（v3：一切资源同构——预置与自定义无区别） */
 interface RhCfgItem { key: string; label: string; value: string; env: string; svcKey?: string }
 interface RhSecItem { label: string; envKey: string; vaultRef: string; set: boolean }
 interface RhResource {
-  id: string; native: boolean; name: string; icon: string; category: string;
+  id: string; name: string; title?: string; icon: string; category: string;
   desc: string; note: string; enabled: boolean; prompt: string;
   config: RhCfgItem[]; secrets: RhSecItem[]; ping: string[];
 }
@@ -58,55 +60,9 @@ function RhIcon({ icon, size = 15 }: { icon: string; size?: number }) {
   return <span style={{ fontSize: size + 2, lineHeight: 1 }}>{icon || '🔌'}</span>;
 }
 
-/** 原生资源定义（不可增删；config.value 从 settings services 取，key=存取键） */
-interface NativeCardDef {
-  id: string; name: string; icon: string; note: string; ping?: string[];
-  fields: { key: string; k: string }[];
-  secrets: { key: string; label: string }[];
-}
-const GROUPS: { title: string; cards: NativeCardDef[] }[] = [
-  {
-    title: '基础设施', cards: [
-      { id: 'ocr', name: 'OCR 识别', icon: 'scan', note: '图片 / PDF / Office 文本识别', ping: ['ocr'],
-        fields: [{ key: 'ocr_url', k: '端点' }], secrets: [] },
-      { id: 'sandbox', name: 'AIO 沙箱', icon: 'box', note: '浏览器 / 命令行 / 文件 操作环境', ping: ['sandbox', 'sandbox_mcp'],
-        fields: [{ key: 'sandbox_url', k: '端点' }, { key: 'cdp_url', k: 'CDP' }],
-        secrets: [{ key: 'sandbox_api_key', label: 'API Key' }] },
-      { id: 'proxy', name: '出网代理', icon: 'globe', note: '出海请求经此转发（clash 等）', ping: ['proxy'],
-        fields: [{ key: 'proxy', k: '地址' }], secrets: [] },
-      { id: 'adb', name: 'Android 真机', icon: 'smartphone', note: 'adb 无线调试',
-        fields: [{ key: 'adb_addr', k: '地址' }], secrets: [] },
-    ],
-  },
-  {
-    title: '通信', cards: [
-      { id: 'sms', name: '短信查询', icon: 'message', note: '真机收验证码', ping: ['sms'],
-        fields: [{ key: 'sms_url', k: '端点' }, { key: 'sms_phone', k: '手机号' }],
-        secrets: [{ key: 'sms_token', label: 'Token' }] },
-      { id: 'mail', name: '主邮箱', icon: 'mail', note: '注册 / 登录收验证码（126/163 需授权码）', ping: ['mail'],
-        fields: [{ key: 'mail_imap', k: 'IMAP' }, { key: 'mail_smtp', k: 'SMTP' }, { key: 'mail_user', k: '账号' }],
-        secrets: [{ key: 'mail_auth_code', label: '授权码' }] },
-      { id: 'textr', name: 'Textr 虚拟号', icon: 'phone', note: '美国号码收码',
-        fields: [{ key: 'textr_email', k: '账号' }],
-        secrets: [{ key: 'textr_password', label: '密码' }] },
-    ],
-  },
-  {
-    title: 'AI 能力', cards: [
-      { id: 'vlm', name: '视觉模型', icon: 'eye', note: '图片理解（截图分析等）', ping: ['vlm'],
-        fields: [{ key: 'vlm_api_base', k: 'API' }, { key: 'vlm_model', k: '模型' }],
-        secrets: [{ key: 'vlm_api_key', label: 'API Key' }] },
-      { id: 'search', name: '网页搜索', icon: 'search', note: '博查（中文）/ 智谱（档位计费）', ping: ['bocha', 'zhipu'],
-        fields: [{ key: 'zhipu_engine', k: '智谱档' }],
-        secrets: [{ key: 'bocha_key', label: '博查 Key' }, { key: 'zhipu_key', label: '智谱 Key' }] },
-      { id: 'captcha', name: '过验证码', icon: 'shield', note: '2Captcha（图形码 / reCAPTCHA）', ping: ['twocaptcha'],
-        fields: [], secrets: [{ key: 'twocaptcha_key', label: 'API Key' }] },
-    ],
-  },
-];
-
-/** vault 键白名单（后端 set_res_secret 同款）：原生密钥键 + svc:<资源名> */
-const NATIVE_SECRET_KEYS = ['sandbox_api_key', 'sms_token', 'mail_auth_code', 'vlm_api_key',
+/** 平台锚密钥键（后端 set_res_secret 白名单同款）：预置集成的 vault 消费锚
+ *  + svc:<资源名>（本资源密钥）。任何资源都可绑定其中任意一键。 */
+const ANCHOR_SECRET_KEYS = ['sandbox_api_key', 'sms_token', 'mail_auth_code', 'vlm_api_key',
   'twocaptcha_key', 'bocha_key', 'zhipu_key', 'textr_password'];
 const CATEGORIES = ['基础设施', '通信', 'AI 能力', '自定义服务'];
 
@@ -203,6 +159,9 @@ function genResourceMd(r: RhResource): string {
     + `id: ${r.id}\nname: ${q(r.name)}\ncategory: ${q(r.category)}\n`
     + `icon: ${q(r.icon || 'server')}\ndescription: ${q(r.desc || r.note || '')}\n`
     + `enabled: ${r.enabled}\n`;
+  if (r.ping.length && !(r.ping.length === 1 && r.ping[0] === `svc:${r.id}`)) {
+    y += `ping: ${q(r.ping.join(', '))}\n`;      // 探测目标（缺省 svc:自身不写）
+  }
   if (r.config.length) {
     y += 'config:\n';
     for (const c of r.config) {
@@ -272,12 +231,13 @@ function parseResourceMd(text: string): RhResource | null {
   if (!scalar.id && !scalar.name) return null;
   return {
     id: scalar.id || scalar.name || 'custom_service',
-    native: false, name: scalar.name || scalar.id || '新资源',
+    name: scalar.name || scalar.id || '新资源',
     icon: scalar.icon || 'server',
-    category: CATEGORIES.includes(scalar.category) ? scalar.category : '自定义服务',
+    category: CATEGORIES.includes(scalar.category) ? scalar.category : (scalar.category || '自定义服务'),
     desc: scalar.description || '', note: scalar.description || '',
     enabled: scalar.enabled !== 'false',
-    prompt: m[2].trim(), config, secrets, ping: [],
+    ping: (scalar.ping || '').split(',').map(s => s.trim()).filter(Boolean),
+    prompt: m[2].trim(), config, secrets,
   };
 }
 
@@ -294,7 +254,8 @@ export default function ResourcesPanel() {
   }>>({});
   const [vSearch, setVSearch] = useState('');
   const [loadErr, setLoadErr] = useState('');
-  // 抽屉态
+  // 抽屉态（origId：编辑前的条目名——保存时 id 变化走 rename 迁移）
+  const [origId, setOrigId] = useState('');
   const [editing, setEditing] = useState<RhResource | null>(null);
   const [isNew, setIsNew] = useState(false);
   const [mode, setMode] = useState<'form' | 'md'>('form');
@@ -350,37 +311,24 @@ export default function ResourcesPanel() {
     </div>
   ) : <div className="admin-body muted">加载中…</div>;
 
-  const valOf = (k: string) => data.services.find(s => s.key === k)?.value ?? '';
   const secretSet = (k: string) => data.secrets.find(s => s.key === k)?.set ?? false;
 
-  /** 原生+自定义 → 统一资源合集（量级 ~20，直接算不需 memo；且须在早退
-   *  返回之后——原 useMemo 写法被早退分支条件化，违反 hooks 规则） */
-  const all: RhResource[] = (() => {
-    const native: RhResource[] = GROUPS.flatMap(g => g.cards.map(c => ({
-      id: c.id, native: true, name: c.name, icon: c.icon, category: g.title,
-      desc: c.note, note: c.note, enabled: true, prompt: '', ping: c.ping || [],
-      config: c.fields.map(f => ({
-        key: f.key, label: f.k, value: valOf(f.key),
-        env: '', svcKey: f.key,
-      })),
-      secrets: (c.secrets || []).map(s => ({
-        label: s.label, envKey: '', vaultRef: s.key, set: secretSet(s.key),
-      })),
-    })));
-    const custom: RhResource[] = data.custom.map(c => ({
-      id: c.name, native: false, name: c.name, icon: c.icon || 'server',
-      category: CATEGORIES.includes(c.category) ? c.category : '自定义服务',
-      desc: c.desc || c.note || '', note: c.note || '',
-      enabled: c.enabled !== false, prompt: c.prompt || '',
-      ping: [`svc:${c.name}`],
-      config: (c.config || []).map(x => ({ ...x })),
-      secrets: (c.secrets || []).map(s => ({
-        label: s.label, envKey: s.env_key, vaultRef: s.vault_ref,
-        set: s.vault_ref.startsWith('svc:') ? c.key_set : secretSet(s.vault_ref),
-      })),
-    }));
-    return [...native, ...custom];
-  })();
+  /** 全部资源 → 统一视图合集（v3：预置+自定义同为 custom 条目，量级 ~20 直接算） */
+  const all: RhResource[] = data.custom.map(c => ({
+    id: c.name, name: c.title || c.name, title: c.title || '', icon: c.icon || 'server',
+    category: CATEGORIES.includes(c.category) ? c.category : (c.category || '自定义服务'),
+    desc: c.desc || c.note || '', note: c.note || '',
+    enabled: c.enabled !== false, prompt: c.prompt || '',
+    ping: (c.ping && c.ping.length) ? c.ping : [`svc:${c.name}`],
+    config: (c.config || []).map(x => ({ ...x })),
+    secrets: (c.secrets || []).map(s => ({
+      label: s.label, envKey: s.env_key, vaultRef: s.vault_ref,
+      set: s.vault_ref.startsWith('svc:')
+        ? (s.vault_ref === `svc:${c.name}` ? c.key_set
+           : (data.custom.find(o => o.name === s.vault_ref.slice(4))?.key_set ?? false))
+        : secretSet(s.vault_ref),
+    })),
+  }));
 
   const matchSearch = (r: RhResource) => {
     const q = search.trim().toLowerCase();
@@ -409,16 +357,13 @@ export default function ResourcesPanel() {
     } catch (e) { toast(`探测失败：${String(e)}`, false); }
     finally { setPinging(null); }
   };
-  const pingCard = (r: RhResource) => {
-    if (r.native) { void doPing(r.ping, r.id); return; }
-    void doPing(r.ping, `svc:${r.id}`);
-  };
+  const pingCard = (r: RhResource) => void doPing(r.ping, r.id);
   const pingAll = () => void doPing(all.flatMap(r => r.ping), '__all__');
 
   /** 卡片状态徽章（本次探测优先→历史回退；附 24h 败数） */
   const badgeOf = (r: RhResource) => {
     if (!r.ping.length) return <span className="rh-badge untested">—</span>;
-    if (pinging === r.id || pinging === `svc:${r.id}`) return <span className="rh-badge testing">探测中…</span>;
+    if (pinging === r.id) return <span className="rh-badge testing">探测中…</span>;
     const rs = r.ping.map(p => stOf(p)).filter(Boolean) as { ok: boolean; msg?: string; ms?: number }[];
     if (!rs.length) return <span className="rh-badge untested">未测</span>;
     const ok = rs.every(x => x.ok);
@@ -435,9 +380,9 @@ export default function ResourcesPanel() {
   const openCreate = (preset?: Partial<RhResource>) => {
     setIsNew(true); setMode('form'); setSecretDraft({});
     setIconPickerOpen(false); setIdTouched(false); setPresetSel('http');
-    setInlineVaultOpen(false);
+    setInlineVaultOpen(false); setOrigId('');
     setEditing({
-      id: '', native: false, name: '', icon: 'server', category: '自定义服务',
+      id: '', name: '', icon: 'server', category: '自定义服务',
       desc: '', note: '', enabled: true, prompt: '', config: [], secrets: [], ping: [],
       ...preset,
     });
@@ -445,6 +390,7 @@ export default function ResourcesPanel() {
   const openEdit = (r: RhResource) => {
     setIsNew(false); setMode('form'); setSecretDraft({});
     setIconPickerOpen(false); setIdTouched(true); setInlineVaultOpen(false);
+    setOrigId(r.id);
     setEditing(JSON.parse(JSON.stringify(r)));
   };
   const closeDrawer = () => { setEditing(null); setMdText(''); setIconPickerOpen(false); };
@@ -456,7 +402,7 @@ export default function ResourcesPanel() {
   const onMdInput = (text: string) => {
     setMdText(text);
     const parsed = parseResourceMd(text);
-    if (parsed) { setEditing({ ...parsed, native: false }); setMdOk(true); }
+    if (parsed) { setEditing(parsed); setMdOk(true); }
     else setMdOk(false);
   };
   const patch = (p: Partial<RhResource>) => setEditing(e => e ? { ...e, ...p } : e);
@@ -539,37 +485,35 @@ export default function ResourcesPanel() {
     return secretSet(ref);
   };
 
-  /** 保存分流：自定义→custom v2 API；原生→逐字段 settings API（+密钥草稿） */
+  /** 保存（统一走 custom v3 API）：所有资源同构；ID 变化走 rename_from
+   *  （后端迁移条目+vault svc: 密钥）；密钥草稿按 vault_ref 落库 */
   const saveDrawer = async () => {
     if (!editing) return;
     if (!editing.id.trim() || !editing.name.trim()) { toast('资源名称与唯一 ID 必填', false); return; }
-    if (!editing.native && !/^[a-z0-9][a-z0-9_-]{0,31}$/.test(editing.id)) {
+    if (!/^[a-z0-9][a-z0-9_-]{0,31}$/.test(editing.id)) {
       toast('ID 需为小写 slug（字母/数字开头，可含 - _，≤32 位）', false); return;
     }
     try {
-      if (editing.native) {
-        for (const c of editing.config) {
-          if (c.svcKey && c.value !== valOf(c.svcKey)) {
-            await api('/api/admin/resources/service',
-              { method: 'POST', body: JSON.stringify({ key: c.svcKey, value: c.value }) });
-          }
-        }
-      } else {
-        await api('/api/admin/resources/custom', {
-          method: 'POST',
-          body: JSON.stringify({
-            name: editing.id, url: editing.config.find(c =>
-              c.value.startsWith('http://') || c.value.startsWith('https://'))?.value || '',
-            note: editing.note || editing.desc, category: editing.category,
-            icon: editing.icon, desc: editing.desc, enabled: editing.enabled,
-            prompt: editing.prompt,
-            config: editing.config.map(c => ({
-              key: c.key || c.env.toLowerCase(), label: c.label, value: c.value, env: c.env })),
-            secrets: editing.secrets.map(s => ({
-              label: s.label, env_key: s.envKey, vault_ref: s.vaultRef })),
-          }),
-        });
-      }
+      const renamed = !isNew && origId && origId !== editing.id;
+      if (renamed && !await askConfirm({
+        title: `资源 ID 「${origId}」→「${editing.id}」？`, body: '条目与其 svc: 密钥将随行迁移。', danger: true,
+      })) return;
+      await api('/api/admin/resources/custom', {
+        method: 'POST',
+        body: JSON.stringify({
+          name: editing.id, title: editing.name,
+          ...(renamed ? { rename_from: origId } : {}),
+          url: editing.config.find(c =>
+            c.value.startsWith('http://') || c.value.startsWith('https://'))?.value || '',
+          note: editing.note || editing.desc, category: editing.category,
+          icon: editing.icon, desc: editing.desc, enabled: editing.enabled,
+          prompt: editing.prompt, ping: editing.ping,
+          config: editing.config.map(c => ({
+            key: c.key || c.env.toLowerCase(), label: c.label, value: c.value, env: c.env })),
+          secrets: editing.secrets.map(s => ({
+            label: s.label, env_key: s.envKey, vault_ref: s.vaultRef })),
+        }),
+      });
       for (const [k, v] of Object.entries(secretDraft)) {
         if (v.trim()) {
           await api('/api/admin/resources/secret',
@@ -581,8 +525,11 @@ export default function ResourcesPanel() {
     } catch (e) { toast(`保存失败：${String(e)}`, false); }
   };
   const delDrawer = async () => {
-    if (!editing || editing.native) return;
-    if (!await askConfirm({ title: `删除资源「${editing.name}」？（vault 中的密钥一并清除）`, danger: true })) return;
+    if (!editing) return;
+    if (!await askConfirm({
+      title: `删除资源「${editing.name}」？（svc: 密钥一并清除）`,
+      body: '若是预置集成卡：平台集成（如搜索/OCR）继续用既有配置运行，卡片可随时重建恢复管理面。',
+      danger: true })) return;
     try {
       await api(`/api/admin/resources/custom?name=${encodeURIComponent(editing.id)}`, { method: 'DELETE' });
       toast('已删除资源'); closeDrawer(); await load();
@@ -620,21 +567,17 @@ export default function ResourcesPanel() {
     } catch (e) { toast(`轮换失败：${String(e)}`, false); }
   };
 
-  /** Harness 注入预览（诚实语义：自定义=env 注入；原生=平台集成消费；
-   *  密钥恒为 vault 解密形式，不进任务 env） */
+  /** Harness 注入预览（统一语义：config→env 注入；密钥恒为 vault 解密形式，
+   *  不进任务 env——预置集成的锚字段同样按 env 注入，参数对 agent 可见） */
   const envPreview = (r: RhResource) => {
     if (!r.enabled) return <><span className="c"># 该资源当前已停用（不注入）</span></>;
-    if (r.native) return <>
-      <span className="c"># 原生资源：由平台内置集成消费（OCR/搜索/收码等 skill 通道）</span><br />
-      <span className="c"># 不直接注入任务 env</span>
-    </>;
     if (!r.config.length && !r.secrets.length) return <><span className="c"># 暂无可注入字段</span></>;
     return <>
-      <span className="c"># 1. Harness 注入的环境变量（下一 turn 起）</span><br />
+      {r.config.length > 0 && <><span className="c"># 1. Harness 注入的环境变量（下一 turn 起）</span><br /></>}
       {r.config.map((c, i) => (<span key={i}>
         <span className="k">export</span> <span className="v">{c.env}</span>=&quot;{c.value}&quot;<br />
       </span>))}
-      {r.secrets.length > 0 && <><span className="c"># 2. 密钥：平台侧解密后供集成调用（不进任务 env）</span><br /></>}
+      {r.secrets.length > 0 && <><span className="c"># 2. 密钥：平台保险库解密供集成调用（不进任务 env；agent 经 vault 命令现取）</span><br /></>}
       {r.secrets.map((s, i) => (<span key={i}>
         <span className="k">export</span> <span className="s">{s.envKey}</span>=<span className="s">&quot;$(vault decrypt {s.vaultRef})&quot;</span><br />
       </span>))}
@@ -663,7 +606,8 @@ export default function ResourcesPanel() {
         <>
           <div className="rh-toolbar">
             <div className="rh-seg">
-              {['all', ...CATEGORIES].map(c => (
+              {[...new Set(['all', ...CATEGORIES,
+                ...all.map(r => r.category).filter(c => !CATEGORIES.includes(c))])].map(c => (
                 <button key={c} className={`rh-seg-btn ${catFilter === c ? 'on' : ''}`}
                   onClick={() => setCatFilter(c)}>{c === 'all' ? '全部' : c.replace('服务', '')}</button>
               ))}
@@ -680,10 +624,12 @@ export default function ResourcesPanel() {
             <button className="btn" onClick={() => openCreate()}>＋ 新增资源</button>
           </div>
 
-          {CATEGORIES.map(cat => {
+          {/* 动态分类集合：预置分类顺序优先，自由输入的自定义分类追尾 */}
+          {[...new Set([...CATEGORIES.filter(c => all.some(r => r.category === c)),
+            ...all.map(r => r.category).filter(c => !CATEGORIES.includes(c))])].map(cat => {
             if (catFilter !== 'all' && catFilter !== cat) return null;
             const cards = shown.filter(r => r.category === cat);
-            if (!cards.length && cat !== '自定义服务') return null;
+            if (!cards.length) return null;
             return (
               <div key={cat}>
                 <div className="rh-group-title">{cat}<span className="rh-count">({cards.length})</span></div>
@@ -939,11 +885,11 @@ export default function ResourcesPanel() {
                     <div className="rh-iconfield" ref={pickerRef}>
                       <label className="rh-label">图标</label>
                       <button type="button" className="rh-iconpicker-trigger"
-                        disabled={editing.native} title={editing.native ? '原生资源图标固定' : '选择图标'}
+                        title="选择图标"
                         onClick={() => setIconPickerOpen(v => !v)}>
                         <RhIcon icon={editing.icon} size={16} />
                       </button>
-                      {iconPickerOpen && !editing.native && (
+                      {iconPickerOpen && (
                         <div className="rh-iconpicker">
                           {Object.keys(RH_ICONS).map(k => (
                             <button key={k} type="button" title={k}
@@ -963,10 +909,10 @@ export default function ResourcesPanel() {
                     <div>
                       <label className="rh-label">
                         唯一标识 ID <span className="req">*</span>
-                        <span className="rh-label-hint">小写字母与下划线{isNew && !idTouched ? ' · 输入名称自动生成' : ''}</span>
+                        <span className="rh-label-hint">小写字母与下划线{isNew && !idTouched ? ' · 输入名称自动生成' : ''}{!isNew && origId ? ' · 修改即改名（svc: 密钥随行迁移）' : ''}</span>
                       </label>
                       <input className="admin-input mono" value={editing.id}
-                        placeholder="如：aio_sandbox" disabled={editing.native}
+                        placeholder="如：aio_sandbox"
                         onChange={e => {
                           setIdTouched(true);
                           patch({ id: e.target.value.toLowerCase().replace(/[^a-z0-9_-]/g, '_') });
@@ -976,11 +922,14 @@ export default function ResourcesPanel() {
                   </div>
                   <div className="rh-form-grid2">
                     <div>
-                      <label className="rh-label">所属分类</label>
-                      <select className="admin-input" value={editing.category} disabled={editing.native}
-                        onChange={e => patch({ category: e.target.value })}>
-                        {CATEGORIES.map(c => <option key={c} value={c}>{c}</option>)}
-                      </select>
+                      <label className="rh-label">所属分类（可自由输入）</label>
+                      <input className="admin-input" value={editing.category} list="rh-cat-list"
+                        placeholder="基础设施 / 通信 / AI 能力 / 自定义服务…"
+                        onChange={e => patch({ category: e.target.value })}
+                        autoComplete="off" />
+                      <datalist id="rh-cat-list">
+                        {CATEGORIES.map(c => <option key={c} value={c} />)}
+                      </datalist>
                     </div>
                     <div>
                       <label className="rh-label">能力简述（显示在卡片副标题）</label>
@@ -993,23 +942,21 @@ export default function ResourcesPanel() {
                   <div className="rh-fieldbox">
                     <div className="rh-fieldbox-head">
                       <span>连接与环境参数（Config Fields）
-                        {!editing.native && <button className="rh-linkbtn" style={{ marginLeft: 10 }}
-                          onClick={() => addCfg('', '')}>＋ 添加字段</button>}</span>
-                      <span className="rh-fieldbox-sub">定义连接地址、端口或模型档位，自动映射为 Harness 环境变量</span>
+                        <button className="rh-linkbtn" style={{ marginLeft: 10 }}
+                          onClick={() => addCfg('', '')}>＋ 添加字段</button></span>
+                      <span className="rh-fieldbox-sub">定义连接地址、端口或模型档位，自动映射为 Harness 环境变量；字段存取键命中平台锚键时同步驱动平台集成</span>
                     </div>
-                    {!editing.native && (
-                      <div className="rh-quickrow">
-                        <span className="rh-quick-lb">常用快速插入:</span>
-                        {QUICK_CHIPS.map(([lb, dv]) => (
-                          <button key={lb} type="button" className="rh-quick-chip"
-                            onClick={() => addCfg(lb, dv)}>＋ {lb}</button>
-                        ))}
-                      </div>
-                    )}
+                    <div className="rh-quickrow">
+                      <span className="rh-quick-lb">常用快速插入:</span>
+                      {QUICK_CHIPS.map(([lb, dv]) => (
+                        <button key={lb} type="button" className="rh-quick-chip"
+                          onClick={() => addCfg(lb, dv)}>＋ {lb}</button>
+                      ))}
+                    </div>
                     {editing.config.length > 0 && (
                       <div className="rh-rowhead">
                         <span>显示标签</span><span>参数值</span>
-                        <span>{editing.native ? '存取键' : '注入环境变量名 (Env)'}</span><span />
+                        <span>注入环境变量名 (Env)</span><span />
                       </div>
                     )}
                     {editing.config.length === 0 && <div className="rh-rows-empty">暂无连接参数（可点击上方快捷胶囊或「＋ 添加字段」）</div>}
@@ -1020,11 +967,10 @@ export default function ResourcesPanel() {
                         <input className="admin-input mono" value={c.value} placeholder="http://127.0.0.1:8080"
                           onChange={e => patch({ config: editing.config.map((x, j) => j === i ? { ...x, value: e.target.value } : x) })}
                           autoComplete="off" />
-                        {editing.native
-                          ? <span className="rh-chip dim" title="原生资源由平台集成消费">{c.svcKey || '—'}</span>
-                          : <input className="admin-input mono env" value={c.env} placeholder="LOADN_SVC_URL"
-                            onChange={e => patch({ config: editing.config.map((x, j) => j === i ? { ...x, env: e.target.value.toUpperCase().replace(/[^A-Z0-9_]/g, '_') } : x) })}
-                            autoComplete="off" />}
+                        <input className="admin-input mono env" value={c.env} placeholder="LOADN_SVC_URL"
+                          title={c.key ? `存取键：${c.key}` : undefined}
+                          onChange={e => patch({ config: editing.config.map((x, j) => j === i ? { ...x, env: e.target.value.toUpperCase().replace(/[^A-Z0-9_]/g, '_') } : x) })}
+                          autoComplete="off" />
                         <button className="rh-row-x" title="移除"
                           onClick={() => patch({ config: editing.config.filter((_, j) => j !== i) })}>✕</button>
                       </div>
@@ -1034,20 +980,18 @@ export default function ResourcesPanel() {
                   <div className="rh-fieldbox">
                     <div className="rh-fieldbox-head">
                       <span>安全凭证与密钥（Vault Secrets）</span>
-                      {!editing.native && (
-                        <span className="rh-fieldbox-ops">
-                          <button className="rh-linkbtn green" onClick={() => {
-                            if (!inlineVaultOpen) openInlineVault(); else setInlineVaultOpen(false);
-                          }}>＋ 新建加密密钥</button>
-                          <button className="rh-linkbtn" onClick={() => patch({
-                            secrets: [...editing.secrets, {
-                              label: 'API Key', envKey: `LOADN_${(editing.id || 'SVC').toUpperCase().replace(/[^A-Z0-9]/g, '_')}_API_KEY`,
-                              vaultRef: `svc:${editing.id || 'x'}`, set: false }] })}>＋ 绑定已有密钥</button>
-                        </span>
-                      )}
+                      <span className="rh-fieldbox-ops">
+                        <button className="rh-linkbtn green" onClick={() => {
+                          if (!inlineVaultOpen) openInlineVault(); else setInlineVaultOpen(false);
+                        }}>＋ 新建加密密钥</button>
+                        <button className="rh-linkbtn" onClick={() => patch({
+                          secrets: [...editing.secrets, {
+                            label: 'API Key', envKey: `LOADN_${(editing.id || 'SVC').toUpperCase().replace(/[^A-Z0-9]/g, '_')}_API_KEY`,
+                            vaultRef: `svc:${editing.id || 'x'}`, set: false }] })}>＋ 绑定已有密钥</button>
+                      </span>
                     </div>
 
-                    {inlineVaultOpen && !editing.native && (
+                    {inlineVaultOpen && (
                       <div className="rh-inlinevault">
                         <div className="rh-inlinevault-t">
                           <span><Shield size={13} /> 创建新密钥并自动绑定到当前资源</span>
@@ -1084,53 +1028,49 @@ export default function ResourcesPanel() {
                       </div>
                     )}
                     {editing.secrets.length === 0 && <div className="rh-rows-empty">当前免密访问，如需鉴权请「＋ 新建加密密钥」或「＋ 绑定已有密钥」</div>}
-                    {editing.secrets.map((s, i) => {
-                      const draftKey = `${editing.id}#${i}`;
-                      return (
-                        <div key={i}>
-                          <div className="rh-row secret">
-                            <input className="admin-input" value={s.label} placeholder="名称"
-                              onChange={e => patch({ secrets: editing.secrets.map((x, j) => j === i ? { ...x, label: e.target.value } : x) })}
-                              autoComplete="off" />
-                            <input className="admin-input mono" value={s.envKey}
-                              placeholder="ENV_KEY" disabled={editing.native}
-                              onChange={e => patch({ secrets: editing.secrets.map((x, j) => j === i ? { ...x, envKey: e.target.value.toUpperCase().replace(/[^A-Z0-9_]/g, '_') } : x) })}
-                              autoComplete="off" />
-                            {editing.native ? (
-                              <span className="rh-chip dim" title={`vault_ref（${s.set ? '已加密' : '未设'}）`}>{s.vaultRef}</span>
-                            ) : (
-                              <select className="admin-input" value={s.vaultRef}
-                                title={`vault_ref（当前 ${s.set ? '已加密' : '未设'}）`}
-                                onChange={e => patch({ secrets: editing.secrets.map((x, j) => j === i ? {
-                                  ...x, vaultRef: e.target.value,
-                                  set: e.target.value.startsWith('svc:')
-                                    ? vaultRefSet(e.target.value, editing.id)
-                                    : secretSet(e.target.value) } : x) })}>
-                                {[...new Set([`svc:${editing.id || 'x'}`, ...NATIVE_SECRET_KEYS, s.vaultRef])]
-                                  .filter(v => v.startsWith('svc:') || NATIVE_SECRET_KEYS.includes(v))
-                                  .map(v => <option key={v} value={v}>{vaultOptLabel(v)}</option>)}
-                              </select>
-                            )}
-                            {!editing.native && <button className="rh-row-x" title="解绑密钥"
-                              onClick={() => patch({ secrets: editing.secrets.filter((_, j) => j !== i) })}>✕</button>}
-                          </div>
-                          {editing.native && (
-                            <div style={{ display: 'flex', gap: 7, alignItems: 'center', marginTop: 4 }}>
-                              <input className="admin-input" type="password" style={{ flex: 1 }}
-                                placeholder={`${s.set ? '输入新值轮换' : '输入密钥值'}（AES-GCM 加密，只写不读）`}
-                                value={secretDraft[draftKey] ?? ''}
-                                onChange={e => setSecretDraft(d => ({ ...d, [draftKey]: e.target.value }))}
-                                autoComplete="new-password" />
-                              <button className="btn sm" disabled={!(secretDraft[draftKey] ?? '').trim()}
-                                onClick={() => {
-                                  setSecretDraft(d => ({ ...d, [s.vaultRef]: d[draftKey], [draftKey]: '' }));
-                                  toast('密钥待保存（点「保存资源定义」落库）');
-                                }}>暂存</button>
-                            </div>
-                          )}
+                    {editing.secrets.map((s, i) => (
+                      <div key={i}>
+                        <div className="rh-row secret">
+                          <input className="admin-input" value={s.label} placeholder="名称"
+                            onChange={e => patch({ secrets: editing.secrets.map((x, j) => j === i ? { ...x, label: e.target.value } : x) })}
+                            autoComplete="off" />
+                          <input className="admin-input mono" value={s.envKey}
+                            placeholder="ENV_KEY"
+                            onChange={e => patch({ secrets: editing.secrets.map((x, j) => j === i ? { ...x, envKey: e.target.value.toUpperCase().replace(/[^A-Z0-9_]/g, '_') } : x) })}
+                            autoComplete="off" />
+                          <select className="admin-input" value={s.vaultRef}
+                            title={`vault_ref（当前 ${s.set ? '已加密' : '未设'}）`}
+                            onChange={e => patch({ secrets: editing.secrets.map((x, j) => j === i ? {
+                              ...x, vaultRef: e.target.value,
+                              set: e.target.value.startsWith('svc:')
+                                ? vaultRefSet(e.target.value, editing.id)
+                                : secretSet(e.target.value) } : x) })}>
+                            {[...new Set([`svc:${editing.id || 'x'}`, ...ANCHOR_SECRET_KEYS, s.vaultRef])]
+                              .filter(v => v.startsWith('svc:') || ANCHOR_SECRET_KEYS.includes(v))
+                              .map(v => <option key={v} value={v}>{vaultOptLabel(v)}</option>)}
+                          </select>
+                          <button className="rh-row-x" title="解绑密钥"
+                            onClick={() => patch({ secrets: editing.secrets.filter((_, j) => j !== i) })}>✕</button>
                         </div>
-                      );
-                    })}
+                        <div style={{ display: 'flex', gap: 7, alignItems: 'center', marginTop: 4 }}>
+                          <input className="admin-input" type="password" style={{ flex: 1 }}
+                            placeholder={`${s.set ? '输入新值轮换' : '输入密钥值'}（AES-GCM 加密，只写不读；点「保存资源定义」落库）`}
+                            value={secretDraft[s.vaultRef] ?? ''}
+                            onChange={e => setSecretDraft(d => ({ ...d, [s.vaultRef]: e.target.value }))}
+                            autoComplete="new-password" />
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+
+                  <div>
+                    <label className="rh-label">连通性探测目标（可选）
+                      <span className="rh-label-hint">逗号分隔；预置锚名（ocr / bocha / zhipu / sms…）或 svc:资源名，留空=探测自身</span></label>
+                    <input className="admin-input mono" value={editing.ping.join(', ')}
+                      placeholder="如：bocha, zhipu（留空=svc:自身）"
+                      onChange={e => patch({
+                        ping: e.target.value.split(',').map(t => t.trim()).filter(Boolean) })}
+                      autoComplete="off" />
                   </div>
 
                   <div>
@@ -1163,7 +1103,7 @@ export default function ResourcesPanel() {
               <div className="rh-envbox">
                 <div className="rh-envbox-head">Harness 运行时注入预览
                   <label className="rh-toggle">
-                    <input type="checkbox" checked={editing.enabled} disabled={editing.native}
+                    <input type="checkbox" checked={editing.enabled}
                       onChange={e => patch({ enabled: e.target.checked })} />
                     启用并注入任务环境
                   </label>
@@ -1174,11 +1114,11 @@ export default function ResourcesPanel() {
 
             <div className="rh-drawer-foot">
               <div className="rh-foot-l">
-                {!editing.native && !isNew && <button className="btn ghost danger" onClick={() => void delDrawer()}>删除资源</button>}
-                {!editing.native && editing.ping.length > 0 && (
-                  <button className="btn ghost" disabled={pinging === `svc:${editing.id}`}
-                    onClick={() => void doPing(editing.ping, `svc:${editing.id}`)}>
-                    {pinging === `svc:${editing.id}` ? '探测中…' : <><Zap size={13} style={{ verticalAlign: -2 }} /> 连通性探测</>}</button>)}
+                {!isNew && <button className="btn ghost danger" onClick={() => void delDrawer()}>删除资源</button>}
+                {editing.ping.length > 0 && (
+                  <button className="btn ghost" disabled={pinging === editing.id}
+                    onClick={() => void doPing(editing.ping, editing.id)}>
+                    {pinging === editing.id ? '探测中…' : <><Zap size={13} style={{ verticalAlign: -2 }} /> 连通性探测</>}</button>)}
               </div>
               <div className="rh-foot-r">
                 <button className="btn ghost" onClick={closeDrawer}>取消</button>

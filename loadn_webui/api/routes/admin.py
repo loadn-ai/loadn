@@ -52,10 +52,14 @@ def resources_overview():
 
 def _svc_overview(s: dict, states: dict) -> dict:
     """custom_services 条目 → 前端视图（v2 结构化字段透传+老条目归一化：
-    url→config[0]、secrets 补 svc:<name> 缺省绑定；密钥态只回 set 布尔）。"""
+    url→config[0]、secrets 补 svc:<name> 缺省绑定；密钥态只回 set 布尔）。
+
+    v3（统一资源模型）：ping 探测目标透传（缺省 svc:<name>）；纯凭证条目
+    （config=[]，如 captcha）不再造 endpoint 兜底——仅老条目（无 config 键）
+    才归一化。"""
     name = s.get("name")
     cfg = s.get("config") if isinstance(s.get("config"), list) else None
-    if not cfg:
+    if cfg is None:
         env = f"LOADN_SVC_{str(name).upper().replace('-', '_')}_URL"
         cfg = [{"key": "endpoint", "label": "端点",
                 "value": str(s.get("url") or ""), "env": env}]
@@ -65,11 +69,16 @@ def _svc_overview(s: dict, states: dict) -> dict:
                   f"LOADN_SVC_{str(name).upper().replace('-', '_')}_KEY",
                   "vault_ref": f"svc:{name}"}]
                 if states.get(f"svc:{name}") or str(s.get("url") or "") else [])
-    return {"name": name, "url": str(s.get("url") or ""),
+    ping = s.get("ping") if isinstance(s.get("ping"), list) else None
+    if not ping:
+        ping = [f"svc:{name}"]
+    return {"name": name, "title": str(s.get("title") or ""),
+            "url": str(s.get("url") or ""),
             "note": str(s.get("note") or ""),
             "category": str(s.get("category") or "自定义服务"),
             "icon": str(s.get("icon") or "🧩"), "desc": str(s.get("desc") or ""),
             "enabled": bool(s.get("enabled", True)),
+            "ping": ping,
             "config": cfg, "secrets": secs,
             "prompt": str(s.get("prompt") or ""),
             "key_set": states.get(f"svc:{name}", False)}
