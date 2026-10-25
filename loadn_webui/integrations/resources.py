@@ -60,10 +60,14 @@ def _ssrf_deny_suffixes() -> tuple[str, ...]:
     return tuple(CONFIG.security.ssrf_deny_hosts or ())
 
 
-async def _ssrf_check(url: str) -> None:
+async def _ssrf_check(url: str, *, proxied: bool = False) -> None:
     """agent 可控 URL 的出网前校验：scheme/敏感域后缀/解析 IP 段。
 
     DNS 失败不拦（留给 _get 自然报错）；命中即抛 SsrfBlocked。
+    proxied=True（平台代理模式）：域名解析在代理远端发生，本地 getaddrinfo
+    的结果（墙外域常被污染成保留段 IPv6）不代表真实目标——跳过 IP 段
+    检查，scheme+敏感域后缀仍全查（2026-10-23 研究模式出海实证：
+    www.google.com 本地解析 2001::1 被误拦，proxy fetch 全断）。
     """
     import ipaddress
     import socket
@@ -77,6 +81,8 @@ async def _ssrf_check(url: str) -> None:
     for d in _ssrf_deny_suffixes():
         if host == d or host.endswith("." + d):
             raise SsrfBlocked(f"目标域在平台敏感域清单: {host}")
+    if proxied:
+        return                              # 代理远端解析，本地结果不代表目标
     try:                                   # 字面 IP 免解析
         ips = [ipaddress.ip_address(host)]
     except ValueError:
@@ -97,7 +103,7 @@ async def _guarded_get(url: str, *, headers=None, timeout: float = 20.0,
     一把梭会绕过中间跳的校验：公网页 302 → 169.254 是经典逃逸）。"""
     from urllib.parse import urljoin
     for hop in range(max_hops + 1):
-        await _ssrf_check(url)
+        await _ssrf_check(url, proxied=proxy is not None)
         resp = await _get(url, headers=headers, timeout=timeout,
                           follow_redirects=False, proxy=proxy)
         if resp.status_code not in (301, 302, 303, 307, 308):
@@ -916,7 +922,7 @@ async def fetch_page(url: str, *, force: bool = False, wait: float = 5.0,
     # 入口即过 SSRF 校验（CDP 兜底与直接 GET 同一目标——命中内网/敏感域
     # 直接失败，绝不允许「直接 GET 被拦 → 换浏览器再去」的绕行）
     try:
-        await _ssrf_check(url)
+        await _ssrf_check(url, proxied=proxy)
     except SsrfBlocked as e:
         raise RuntimeError(f"SSRF 拦截：{url}（{e}）") from e
 
