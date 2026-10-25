@@ -34,7 +34,11 @@ def promote_session(sid: str):
             c, id=sid, title=sess["title"], workspace=sess["workspace"],
             profile=sess["profile"], skills_json=sess["skills_json"] or "[]",
             mcp_json=sess["mcp_json"] or "{}")
-        db_mod.update_session(c, sid, project_id=sid)
+        # 升级即归组：清原任务的分类/置顶/收藏标记——否则侧栏分桶把它
+        # 「抽出」到分类空间，项目组显示 0 子任务+空态（实测坑：带分类的
+        # 任务升级后项目看着是空的，像坏了）
+        db_mod.update_session(c, sid, touch=False, project_id=sid,
+                              category_id=None, pinned=0, starred=0)
     from ... import profile as _prof
     ws_mod.render_project_constitution(
         sid, sess["title"], _prof.get(sess["profile"]),

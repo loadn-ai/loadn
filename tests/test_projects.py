@@ -195,12 +195,20 @@ async def test_promote_session_to_project(client, ws_root):
     r = await client.post("/api/sessions", json={"title": "旧任务"})
     sid = r.json()["session"]["id"]
     old_ws = str(ws_root / sid)
+    # 带分类/置顶标记的任务升级（实测坑：标记位不清→侧栏分桶把首任务
+    # 抽出分类空间，项目组显示 0 子任务+空态，像坏了）
+    with db_mod.conn() as c:
+        cat_id = db_mod.create_category(c, "标记分类")
+        db_mod.update_session(c, sid, touch=False,
+                              category_id=cat_id, pinned=1, starred=1)
     r = await client.post(f"/api/sessions/{sid}/promote")
     assert r.status_code == 200 and r.json()["project_id"] == sid
     with db_mod.conn() as c:
         sess = db_mod.get_session(c, sid)
         proj = db_mod.get_project(c, sid)
     assert sess["project_id"] == sid and proj["workspace"] == old_ws   # 目录没搬
+    assert sess["category_id"] is None and not sess["pinned"] and not sess["starred"], \
+        "升级即归组：三标记必须清零（否则首任务被侧栏抽出，项目组显示空）"
     env = j.load(open(ws_root / sid / ".claude/settings.json"))["env"]
     assert "LOADN_SESSION_ID" not in env and env["LOADN_PROJECT_ID"] == sid
     # 升级后 + 子任务：落项目根 tasks/ 下（v0.6 独立任务目录）
