@@ -25,6 +25,8 @@ def _sec(name: str) -> str:
 BOCHA_API_BASE = "https://api.bochaai.com"
 ZHIPU_WEB_SEARCH_API = "https://open.bigmodel.cn/api/paas/v4/web_search"
 TWOCAPTCHA_API = "https://2captcha.com"
+# 搜索基址运行时读资源卡（bocha_base/zhipu_base 锚字段，改地址免重启）；
+# 上方常量仅作缺省回落与文档锚。
 
 
 def _res():
@@ -232,7 +234,7 @@ async def bocha_search(query: str, *, n: int = 10, freshness: str | None = None
     body: dict = {"query": query, "count": n, "summary": True}
     if freshness:
         body["freshness"] = freshness
-    resp = await _post(f"{BOCHA_API_BASE}/v1/web-search",
+    resp = await _post(f"{_res().bocha_base or BOCHA_API_BASE}/v1/web-search",
                        headers={"Authorization": f"Bearer {_sec('bocha_key')}"},
                        json=body, timeout=20.0)
     d = resp.json()
@@ -267,7 +269,7 @@ async def zhipu_search(query: str, *, n: int = 10, engine: str | None = None,
         body["search_recency_filter"] = recency
     if domain:
         body["search_domain_filter"] = domain
-    resp = await _post(ZHIPU_WEB_SEARCH_API,
+    resp = await _post(_res().zhipu_base or ZHIPU_WEB_SEARCH_API,
                        headers={"Authorization": f"Bearer {_sec('zhipu_key')}"},
                        json=body, timeout=20.0)
     d = resp.json()

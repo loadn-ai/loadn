@@ -153,7 +153,7 @@ _SVC_NAME_RE = _re.compile(r"[a-z0-9][a-z0-9_-]{0,31}")
 ANCHOR_SERVICE_KEYS = frozenset({
     "ocr_url", "sandbox_url", "cdp_url", "proxy", "adb_addr", "sms_url",
     "sms_phone", "mail_imap", "mail_smtp", "mail_user", "textr_email",
-    "vlm_api_base", "vlm_model", "zhipu_engine"})
+    "vlm_api_base", "vlm_model", "zhipu_engine", "bocha_base", "zhipu_base"})
 
 # 预置种子（与旧前端 GROUPS 等价；value 首次补种时从存量扁平字段上抬）
 PRESET_SERVICES: list[dict] = [
@@ -199,13 +199,38 @@ PRESET_SERVICES: list[dict] = [
                 {"key": "vlm_model", "label": "模型", "env": "LOADN_VLM_MODEL"}],
      "secrets": [{"label": "API Key", "env_key": "LOADN_VLM_API_KEY",
                   "vault_ref": "vlm_api_key"}]},
-    {"name": "search", "title": "网页搜索", "icon": "search", "category": "AI 能力",
-     "desc": "博查（中文）/ 智谱（档位计费）", "ping": ["bocha", "zhipu"],
-     "config": [{"key": "zhipu_engine", "label": "智谱档", "env": "LOADN_SEARCH_ZHIPU_ENGINE"}],
-     "secrets": [{"label": "博查 Key", "env_key": "LOADN_SEARCH_BOCHA_KEY",
-                  "vault_ref": "bocha_key"},
-                 {"label": "智谱 Key", "env_key": "LOADN_SEARCH_ZHIPU_KEY",
-                  "vault_ref": "zhipu_key"}]},
+    # 搜索=分类而非单卡：一供应商一资源（独立 url/key/文档），后续接
+    # 必应/Google/Tavily 等按同构自助新建即可
+    {"name": "bocha", "title": "博查搜索", "icon": "search", "category": "搜索",
+     "desc": "中文网页搜索 API（博查）——中文时事/公众号生态质量好",
+     "ping": ["bocha"],
+     "config": [{"key": "bocha_base", "label": "API 地址",
+                 "env": "LOADN_BOCHA_BASE"}],
+     "secrets": [{"label": "API Key", "env_key": "LOADN_BOCHA_API_KEY",
+                  "vault_ref": "bocha_key"}],
+     "prompt": "## 博查搜索（Bocha Web Search）\n\n中文网页搜索首选通道。\n\n"
+               "- 端点：`$LOADN_BOCHA_BASE/v1/web-search`（POST，Bearer 鉴权）\n"
+               "- 场景：中文时事、公众号文章、国内技术社区——腾讯/知乎系内容"
+               "覆盖优于通用引擎\n- 按次计费，单次查询建议 count≤10\n"
+               "- 平台通道：`r search --via bocha \"查询词\"`（密钥平台代管，"
+               "优先走这条）"},
+    {"name": "zhipu", "title": "智谱搜索", "icon": "search", "category": "搜索",
+     "desc": "智谱 Web Search（std/pro/sogou 腾讯系/quark 垂直 四档）",
+     "ping": ["zhipu"],
+     "config": [{"key": "zhipu_base", "label": "API 地址",
+                 "env": "LOADN_ZHIPU_BASE"},
+                {"key": "zhipu_engine", "label": "引擎档位",
+                 "env": "LOADN_ZHIPU_ENGINE"}],
+     "secrets": [{"label": "API Key", "env_key": "LOADN_ZHIPU_API_KEY",
+                  "vault_ref": "zhipu_key"}],
+     "prompt": "## 智谱 Web Search\n\n多档位搜索通道（智谱 BigModel）。\n\n"
+               "- 端点：`$LOADN_ZHIPU_BASE`（POST，Bearer 鉴权）\n"
+               "- 档位（引擎档位字段）：`search_std` 0.01 元（内容全但常无 URL）"
+               "/ `search_pro` 0.03 元（默认，带 URL）/ `search_pro_sogou` 0.05 元"
+               "（腾讯/知乎生态）/ `search_pro_quark` 0.05 元（垂直领域）\n"
+               "- 支持 recency（oneHour/oneDay/oneWeek…）与 domain 过滤\n"
+               "- 平台通道：`r search --via zhipu --engine <档位> \"查询词\"`"
+               "（密钥平台代管，优先走这条）"},
     {"name": "captcha", "title": "过验证码", "icon": "shield", "category": "AI 能力",
      "desc": "2Captcha（图形码 / reCAPTCHA）", "ping": ["twocaptcha"],
      "config": [], "secrets": [{"label": "API Key", "env_key": "LOADN_CAPTCHA_API_KEY",
@@ -372,6 +397,8 @@ class ResourcesConfig:
     twocaptcha_key: str = ""
     bocha_key: str = ""                             # 博查中文网页搜索
     zhipu_key: str = ""                             # 智谱 Web Search API
+    bocha_base: str = "https://api.bochaai.com"     # 博查 API 地址（资源卡可改）
+    zhipu_base: str = "https://open.bigmodel.cn/api/paas/v4/web_search"
     zhipu_engine: str = "search_pro"                # std 0.01 / pro 0.03 / pro_sogou|quark 0.05 元/次
     adb_addr: str = ""       # android 真机（如 192.168.x.x:5555）
     textr_email: str = ""                           # Textr Go 美国虚拟号码（收验证码）
@@ -449,6 +476,38 @@ def ensure_preset_services(cfg_obj: Config) -> None:
                if isinstance(s, dict)]
     have = {s.get("name") for s in entries}
     changed = False
+    # v3.1 一次性迁移：旧「search 聚合卡」→ 拆「bocha」「zhipu」独立卡
+    # （一供应商一资源）。旧卡锚值（zhipu_engine）经 dataclass 上抬保留。
+    # yaml 落盘防重启复活旧卡（罕见路径，写一次）。
+    if "search" in have and "bocha" not in have and "zhipu" not in have:
+        old = next((s for s in entries if s.get("name") == "search"), None)
+        if old:
+            project_anchor_fields(cfg_obj, [old])   # 旧卡锚值先上抬（zhipu_engine）
+        entries = [s for s in entries if s.get("name") != "search"]
+        have = {s.get("name") for s in entries}
+        changed = True
+        try:
+            conf = ROOT / "config.yaml"
+            if conf.exists():
+                data = yaml.safe_load(conf.read_text()) or {}
+                svc = [s for s in (data.get("resources", {})
+                                   .get("custom_services") or [])
+                       if isinstance(s, dict) and s.get("name") != "search"]
+                res = data.setdefault("resources", {})
+                res["custom_services"] = svc
+                # 旧卡锚值同步落扁平键（补种只在内存——重启后上抬靠这里）
+                for k in ("zhipu_engine", "zhipu_base", "bocha_base"):
+                    if old and isinstance(old.get("config"), list):
+                        v = next((str(c.get("value") or "")
+                                  for c in old["config"]
+                                  if isinstance(c, dict) and c.get("key") == k), "")
+                        if v:
+                            res[k] = v
+                conf.write_text(yaml.safe_dump(data, allow_unicode=True,
+                                               sort_keys=False))
+                log.info("旧 search 聚合卡已从 yaml 移除（拆分迁移落盘+锚值保全）")
+        except OSError as e:
+            log.warning("search 拆分迁移落盘失败：%s（内存已拆，下次启动重试）", e)
     for seed in PRESET_SERVICES:
         if seed["name"] in have or seed["name"] in retired:
             continue

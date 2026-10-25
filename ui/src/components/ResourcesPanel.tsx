@@ -64,7 +64,7 @@ function RhIcon({ icon, size = 15 }: { icon: string; size?: number }) {
  *  + svc:<资源名>（本资源密钥）。任何资源都可绑定其中任意一键。 */
 const ANCHOR_SECRET_KEYS = ['sandbox_api_key', 'sms_token', 'mail_auth_code', 'vlm_api_key',
   'twocaptcha_key', 'bocha_key', 'zhipu_key', 'textr_password'];
-const CATEGORIES = ['基础设施', '通信', 'AI 能力', '自定义服务'];
+const CATEGORIES = ['基础设施', '通信', 'AI 能力', '搜索', '自定义服务'];
 
 /** label → env 后缀映射（设计稿：改字段类型即重算注入变量名） */
 const LABEL_ENV: Record<string, string> = {
