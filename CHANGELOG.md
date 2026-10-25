@@ -3,8 +3,26 @@
 本项目的全部显著变更记录于此。格式遵循 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/)，
 版本遵循 [SemVer](https://semver.org/lang/zh-CN/)。
 
-## [Unreleased]
+## [0.7.47] - 2026-10-26
 
+- **修复：巨消息回放冻结根治**（用户二报「仍然无法展开过程细节」）：根因
+  定谳到第三层——研究会话单条消息最多 2216 个过程块，新格式穿插回放
+  无折叠机制全量渲染（打开会话 1498ms、单次交互 1106ms 冻结；iPhone
+  放大数倍=「点啥都没响应」），且消息组件非 memo——SSE 每帧重渲染反复
+  parse 3MB JSON。三刀：REPLAY_BLK_CAP=120 分批渲染（「展开更多」每次
+  +120 块）+消息组件 memo 化+展开动作增量渲染秒开。长任务打开耗时
+  -85% 重渲染（剩余为多 MB JSON.parse 硬成本）。
+- **新增：研究模式全通道搜索矩阵**（用户指令「启用所有搜索服务+尽可能
+  翻墙+尽量多搜集」）：researcher 角色扇出搜索节重写——每个子问题至少
+  2-3 条通道：中文 r search 多引擎轮换（智谱 pro/sogou 腾讯系/quark
+  垂直，无 URL 时博查补）/墙外英文=真浏览器+代理直开 Google·Bing·
+  DuckDuckGo/arXiv 白名单直连+Scholar 浏览器/被拦=2captcha 打码+出口
+  拉黑切节点重试。单通道命中≠搜全。deep-research skill 同步。
+- **修复：SSRF×代理冲突（出海链路断点）**：_ssrf_check 用本地 DNS 解析
+  目标做 IP 段检查——墙外域常被污染解析成保留段 IPv6（实测 google.com
+  →2001::1 Teredo），proxy fetch 对墙外站全断。proxied=True 时解析发生在
+  代理远端，本地结果不代表目标：跳过 IP 段检查（协议与敏感域黑名单仍
+  全查），出海抓取恢复。
 - **重构：统一资源模型 v3——原生/自定义双轨合一**（用户拍板「不要区分
   原生资源和自定义资源，除主 LLM 外一切资源自由组合」）：预置平台集成
   （OCR/沙箱/搜索/短信/邮箱/VLM/打码/ADB/代理/Textr 十卡）从代码写死
@@ -13,26 +31,19 @@
   平台集成零改动续命靠两层锚：① 锚字段投影——条目 config[].key 命中
   14 个平台键（zhipu_engine/ocr_url 等）时值同步进 ResourcesConfig
   （r search/OCR/短信等消费点免重启）；② 密钥锚——vault_ref 直接引用
-  8 个原生 vault 键，条目怎么改名不影响消费。
-- **rename**：资源改 ID 时条目与 vault svc: 密钥随行迁移（旧名是预置名
-  则 retire 记名，防重启复活）；删除预置卡=真删（retire 名单落盘，锚值/
-  密钥留 settings/vault，平台集成继续可用，重建同名卡即恢复管理面）。
-- **补种与迁移**：启动幂等补种（yaml 不动，已有同名条目天然跳过），
-  老部署存量扁平值（config.yaml resources: 节）无损上抬进种子条目，
-  条目自此为 SoT；纯凭证条目（仅 secrets，如 captcha）合法化。
-- **title 显示名**：条目新增 title（自由文本 ≤40 字）——预置卡中文名
-  （网页搜索/AIO 沙箱…）回归；同时修复 v2 遗留缺陷（抽屉「资源名称」
-  填了从不持久化，保存只发 name=slug）。
-- **前端 ResourcesPanel**：删 GROUPS/native 双轨（-46 行常量），卡片墙
-  数据全量来自统一条目；抽屉全开放（ID 可改+rename 确认、自由分类
-  input+datalist、ping 探测目标可编辑行、密钥轮换输入全卡统一、vault
-  下拉全卡可换绑）；注入预览统一语义（锚字段也按 env 注入，参数对
-  agent 可见；无「原生资源」特殊注释）；分类分组与筛选改动态集合
-  （自由输入分类不再丢卡）。
-- 验证：新增 tests/test_resources_unify.py 12 例（补种/上抬/幂等/锚投影/
-  rename 迁移/retire/纯凭证/ping/title）全过；资源面+契约 76 passed；
-  playwright mock 25 断言 ALL-PASS（统一渲染/预置卡可编辑/rename_from
-  请求体/锚 key 透传/溢出 0）；ruff/tsc/build/oxlint 全绿。
+  8 个原生 vault 键，条目怎么改名不影响消费。rename 改 ID 时条目与
+  vault svc: 密钥随行迁移（旧名是预置名则 retire 记名，防重启复活）；
+  删除预置卡=真删（retire 名单落盘，锚值/密钥留 settings/vault，平台
+  集成继续可用，重建同名卡即恢复管理面）；启动幂等补种（yaml 不动，
+  已有同名条目天然跳过），老部署存量扁平值无损上抬进条目（SoT 转移）；
+  纯凭证条目（仅 secrets，如 captcha）合法化；ping 探测目标可编辑
+  （默认 svc:自身）；title 显示名（预置卡中文名「网页搜索/AIO 沙箱…」
+  回归，同时修复 v2 遗留「资源名称填了从不持久化」）。前端 ResourcesPanel
+  删 GROUPS/native 双轨，抽屉全开放（ID 可改+rename 确认、自由分类
+  input+datalist、密钥轮换输入全卡统一、vault 下拉全卡可换绑）；注入
+  预览统一语义（锚字段也按 env 注入，参数对 agent 可见；无「原生资源」
+  特殊注释）；分类分组与筛选改动态集合（自由输入分类不再丢卡）。新增
+  tests/test_resources_unify 12 例+playwright mock 25 断言全过。
 
 ## [0.7.46] - 2026-10-23
 
