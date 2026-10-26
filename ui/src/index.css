@@ -2542,7 +2542,7 @@ textarea.admin-input { min-height: 60px; line-height: 1.6; resize: vertical; }
   font-size: var(--fs-md); padding: 2px 4px; border-radius: 4px; }
 .rh-row-x:hover { color: var(--danger); background: color-mix(in srgb, var(--danger) 10%, transparent); }
 .rh-rows-empty { text-align: center; color: var(--text-dim); font-size: var(--fs-sm); padding: 6px 0; }
-.rh-prompt-ta { width: 100%; min-height: 110px; resize: vertical; font-family: var(--mono);
+.rh-prompt-ta { width: 100%; min-height: 240px; resize: vertical; font-family: var(--mono);
   font-size: var(--fs-xs); line-height: 1.6; }
 .rh-mdwrap { border-radius: var(--radius); overflow: hidden; border: 1px solid #1e293b; }
 .rh-mdbar { display: flex; align-items: center; justify-content: space-between;

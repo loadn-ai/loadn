@@ -3,6 +3,14 @@
 本项目的全部显著变更记录于此。格式遵循 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/)，
 版本遵循 [SemVer](https://semver.org/lang/zh-CN/)。
 
+## [Unreleased]
+
+- **优化：资源 Hub「Agent 调用指南与上下文」编辑框加高**（用户反馈
+  「默认的高度再高一点吧，因为要写的东西挺多的」）：资源编辑抽屉里
+  Markdown Prompt 输入区默认高度 110px → 240px（约 12 行），与同抽屉
+  Resource.md 源码编辑器（320px）形成合理的编辑层级；仍可手动拖拽
+  调整（resize: vertical）。
+
 ## [0.7.50] - 2026-10-26
 
 - **修复：前端偶发「吞消息」根治**（用户报障「刚发完消息有时会被前端
