@@ -3,7 +3,7 @@
 本项目的全部显著变更记录于此。格式遵循 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/)，
 版本遵循 [SemVer](https://semver.org/lang/zh-CN/)。
 
-## [Unreleased]
+## [0.7.52] - 2026-10-26
 
 - **优化：侧栏「最近」改跨分类时间线+分页 40 条**（用户定调「点最近不区分
   分类把最近的全部列出，默认 40 条，点更多每次展开 40 条」）：「最近」空间
