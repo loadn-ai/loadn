@@ -18,8 +18,9 @@ const PROFILE_ICON: Record<string, ComponentType<{ size?: number }>> = {
   researcher: Flask, coder: Code, assistant: Chat,
 };
 
-/** 「最近」分区默认展开条数（「更多」每次再加一页） */
-const PAGE = 20;
+/** 「最近」分区默认展开条数（「更多」每次再加一页）。
+ *  2026-10-26 用户定调：40/页（时间线全量列出，「更多」渐进展开类似分页） */
+const PAGE = 40;
 
 /** 分区桶：置顶 > 收藏 > 自定义分类 > 最近（归档走 status 单列） */
 type RowBucket = 'pinned' | 'starred' | 'recent' | number;
@@ -158,12 +159,21 @@ export default function Sidebar({ onNew, onAdmin, onNav, adminActive }: {
   ].sort((a, b) => rowTs(b) - rowTs(a));
 
   // ---- 当前空间的行（单桶渲染） ----
+  // 「最近」= 跨分类时间线（2026-10-26 用户定调：点最近不区分分类，全部按
+  // 最近列出）：全部独立会话（含置顶/收藏/带分类的——不再被桶抽走）+ 活跃
+  // 项目组；项目子任务仍收组内（时间线不展开分类维度，避免组内外双份）。
+  // 其余空间维持单桶视图（置顶/收藏/分类各自过滤）。
+  const timelineRows: TopRow[] = [
+    ...activeSessions.filter(s => !s.project_id)
+      .map(s => ({ kind: 'session', s }) as TopRow),
+    ...activeProjects.map(p => ({ kind: 'project', p }) as TopRow),
+  ].sort(mkRowOrder(kidsRunning));
   const cat = categories.find(c => `cat:${c.id}` === activeSpace);
   const spaceRows: TopRow[] = activeSpace === 'archive' ? archivedTop
     : activeSpace === 'pinned' ? rowsIn(topRows, 'pinned')
     : activeSpace === 'starred' ? rowsIn(topRows, 'starred')
     : cat ? rowsIn(topRows, cat.id)
-    : rowsIn(topRows, 'recent');
+    : timelineRows;
   const shownRows = activeSpace === 'recent'
     ? spaceRows.slice(0, limit) : spaceRows;
   const meta = spaceMeta(activeSpace, categories);
