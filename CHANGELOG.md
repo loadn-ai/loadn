@@ -3,7 +3,7 @@
 本项目的全部显著变更记录于此。格式遵循 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/)，
 版本遵循 [SemVer](https://semver.org/lang/zh-CN/)。
 
-## [Unreleased]
+## [0.7.51] - 2026-10-26
 
 - **重构：凭证库统一管理面（分类+备注+跨页收敛）**（用户反馈「安全里面的
   凭证库和资源里面的凭证库定到一个页面，太隔离；要有分类不然多了太乱；
