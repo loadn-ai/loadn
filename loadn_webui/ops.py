@@ -625,14 +625,27 @@ def cmd_upgrade(version: str | None = None, *, wait_idle: int = 1800,
             ok = _wait_idle(wait_idle, yes=yes)
             if not ok:
                 return EXIT_PRECONDITION
-        elif not yes:   # 跳过等待仍有活跃 turn：非 --yes 时给强可见性（历史 18 例
-            #   server_restart 中断——多数源自 --wait-idle 0 静默强切）
+        else:
+            # 强切可见性（--yes 也打印——2026-10-26 v0.7.51 教训：静默强切
+            # 打断两个生产任务且被标 done 假完成；历史 18 例同源）：先走
+            # stop 优雅停（见 3.5），未能停的将被 restart 强制中断
             active = _active_turns()
             if active:
-                print(f"  ⚠ 跳过等待：{len(active)} 个活跃 turn——沙箱任务将被打断"
-                      f"（需事后手动「继续」），直跑任务收养续跑", file=sys.stderr)
+                print(f"  ⚠ 跳过等待：{len(active)} 个活跃 turn——将先走 stop 优雅停"
+                      f"（stopped 可续），未能停的将被 restart 强制中断", file=sys.stderr)
                 for t in active[:5]:
                     print(f"     · turn {t['id']}  {t['session_id']}", file=sys.stderr)
+
+        # 3.5) 活跃 turn 优雅停（无条件——等 idle 通过后也可能有新 turn 竞态
+        #      进场；无活跃时零成本直接过）：restart 裸停机会让引擎收 SIGTERM
+        #      把半程 turn 收尾成 done（假完成，2026-10-26 v0.7.51 生产实证）。
+        #      走平台 stop 通道 = 引擎正常停轮，turn 标 stopped（前端明示可续）
+        lingering = _graceful_stop_active()
+        if lingering:
+            print(f"  ⚠ {len(lingering)} 个 turn 未能优雅停止（restart 将强制中断）：",
+                  file=sys.stderr)
+            for t in lingering[:5]:
+                print(f"     · turn {t['id']}  {t['session_id']}", file=sys.stderr)
 
         # 4) 换指针 + restart
         print(f"[4/5] 切换 current: {cur} → {target}")
@@ -791,6 +804,62 @@ def _active_turns() -> list[dict]:
         return [{"id": r[0], "session_id": r[1]} for r in rows]
     except sqlite3.Error:
         return []
+
+
+def _graceful_stop_active(timeout_s: int = 30) -> list[dict]:
+    """restart 前对活跃 turn 走平台 stop 通道（优雅收尾=stopped 可续）。
+
+    生产实证（2026-10-26 v0.7.51）：--wait-idle 0 --yes 强切后裸 restart，
+    直跑档引擎收 SIGTERM 把半程 turn 收尾成 done（假完成）——用户以为任务
+    正常结束，实际工作断在半路。stop 事件让引擎走正常停轮：turn 标 stopped
+    （前端明示、可手动「继续」）。语义：
+      - HTTP 200 → 已受理，轮询等优雅收尾（默认 30s）
+      - HTTP 404 → turn 已结束（无需停，视为成功）
+      - 其他错误/超时 → 记入返回值（restart 兜底强制中断，调用方打印可见）
+    幂等：无活跃 turn 时直接返回空。
+    """
+    import urllib.error
+
+    active = _active_turns()
+    if not active:
+        return []
+    tok = _health_token()
+    base = _health_url().rsplit("/api/health", 1)[0]
+    accepted: list[dict] = []
+    lingering: list[dict] = []
+    for t in active:
+        try:
+            req = urllib.request.Request(
+                f"{base}/api/turns/{t['id']}/stop", method="POST")
+            if tok:
+                req.add_header("Authorization", f"Bearer {tok}")
+            urllib.request.urlopen(req, timeout=5)
+            accepted.append(t)
+        except urllib.error.HTTPError as e:
+            if e.code == 404:                  # 已结束——无需停
+                accepted.append(t)
+            else:
+                print(f"  ⚠ stop turn {t['id']} 请求失败（HTTP {e.code}）",
+                      file=sys.stderr)
+                lingering.append(t)
+        except Exception as e:                  # noqa: BLE001 网络层失败——restart 兜底
+            print(f"  ⚠ stop turn {t['id']} 请求失败：{e}", file=sys.stderr)
+            lingering.append(t)
+    if not accepted:
+        return lingering
+    # 等优雅收尾（stop 事件 → 引擎停轮收尾要一点时间；DB 状态翻 done/stopped
+    # 即离场）。超时仍在 queued/running 的如实上报。
+    t0 = time.monotonic()
+    acc_ids = {t["id"] for t in accepted}
+    while time.monotonic() - t0 < timeout_s:
+        still = {t["id"] for t in _active_turns()} & acc_ids
+        if not still:
+            return lingering
+        time.sleep(2)
+    for t in accepted:
+        if t["id"] in {x["id"] for x in _active_turns()}:
+            lingering.append(t)
+    return lingering
 
 
 def _health_token() -> str:

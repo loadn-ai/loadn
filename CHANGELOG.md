@@ -3,6 +3,20 @@
 本项目的全部显著变更记录于此。格式遵循 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/)，
 版本遵循 [SemVer](https://semver.org/lang/zh-CN/)。
 
+## [Unreleased]
+
+- **修复：升级不再假完成——restart 前对活跃 turn 走 stop 优雅停**（生产
+  实证 2026-10-26 v0.7.51：`--wait-idle 0 --yes` 强切后裸 restart，直跑档
+  引擎收 SIGTERM 把半程 turn 收尾成 done——用户以为任务正常结束，实际
+  断在半路）：①upgrade 新增 3.5 步 `_graceful_stop_active`——restart 前
+  对全部活跃 turn 走平台 stop 通道（POST /api/turns/{tid}/stop，Bearer
+  凭证复用 healthcheck token），引擎正常停轮→turn 标 **stopped**（前端
+  明示、可手动「继续」）；200 受理轮询等收尾（30s）、404=已结束视为成功、
+  超时/失败如实上报（restart 兜底强制中断+点名清单）。无活跃 turn 零成本。
+  ②**强切可见性不随 --yes 丢失**：`--wait-idle 0` 跳过等待时无论是否
+  --yes 都打印「N 个活跃 turn」清单与处置语义（历史 18 例静默强切同源）。
+  对赌测试 +4（--yes 也警告/stop 先于换指针/200+404 双态/超时+5xx 上报）。
+
 ## [0.7.51] - 2026-10-26
 
 - **重构：凭证库统一管理面（分类+备注+跨页收敛）**（用户反馈「安全里面的
