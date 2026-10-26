@@ -159,7 +159,21 @@ export default function SecurityPanel() {
   const [armed, setArmed] = useState(false);
   const [busy, setBusy] = useState('');
   const [open, setOpen] = useState<CardKey | null>(null);   // 卡片展开态（overview 内）
-  const [tab, setTab] = useState<SecTab>('overview');       // 子 tab 导航（T9）
+  // 子 tab 导航（T9）；初始读深链 #/admin/security/<sub>（凭证库统一批：
+  // 资源页「管理凭证」等跨页跳转直达子 tab，省一次手动点）
+  const [tab, setTabState] = useState<SecTab>(() => {
+    const m = location.hash.match(/^#\/admin\/security\/(\w+)/);
+    return m && SEC_TABS.some(([k]) => k === m[1]) ? (m[1] as SecTab) : 'overview';
+  });
+  // 切子 tab 同步 hash（replaceState 不触发 hashchange；AdminPanel 只解析
+  // 第一段 security，第二段归本组件——两个监听互不干扰）
+  const setTab = (t: SecTab) => {
+    setTabState(t);
+    const q = location.hash.split('?')[1];
+    history.replaceState(null, '', t === 'overview'
+      ? `#/admin/security${q ? '?' + q : ''}`
+      : `#/admin/security/${t}${q ? '?' + q : ''}`);
+  };
   const [approveN, setApproveN] = useState(-1);              // tab 徽章：待审数（-1=未拉到不显示）
   const [targetN, setTargetN] = useState(-1);                // tab 徽章：策略数
   const armTimer = useRef<number | null>(null);
@@ -1035,7 +1049,8 @@ function EgressDetail() {
   );
 }
 
-/** vault 编辑器的字段布局（与后端 vault.FIELDS 对齐；secret 类掩码输入） */
+/** vault 编辑器的字段布局（与后端 vault.FIELDS 对齐；secret 类掩码输入）。
+ *  category（凭证库统一批）：自定义分类，datalist 建议由 VaultDetail 渲染 */
 const VAULT_ROWS: { k: string; label: string; secret?: boolean }[] = [
   { k: 'username', label: '用户名' },
   { k: 'password', label: '密码', secret: true },
@@ -1044,13 +1059,21 @@ const VAULT_ROWS: { k: string; label: string; secret?: boolean }[] = [
   { k: 'phone', label: '手机' },
   { k: 'twofa', label: '2FA' },
   { k: 'status', label: '状态' },
+  { k: 'category', label: '分类' },
   { k: 'notes', label: '备注' },
 ];
 
 function VaultDetail() {
-  const [data, setData] = useState<{ platforms: { platform: string; user?: string; email?: string; has_password: boolean; updated_at: string }[]; verify: { ok: boolean; entries: number; encrypted: boolean; error?: string } } | null>(null);
+  type Plat = { platform: string; user?: string; email?: string;
+    category?: string; notes?: string; has_password: boolean; updated_at: string };
+  type ResSecret = { key: string; set: boolean; bound: boolean;
+    source: string; category?: string; desc?: string };
+  const [data, setData] = useState<{ platforms: Plat[];
+    resource_secrets?: ResSecret[];
+    verify: { ok: boolean; entries: number; encrypted: boolean; error?: string } } | null>(null);
   const [editing, setEditing] = useState<string>('');
-  const [q, setQ] = useState('');   // 本地搜索（平台/账号）
+  const [q, setQ] = useState('');   // 本地搜索（平台/账号/备注）
+  const [cat, setCat] = useState('');   // 分类筛选（''=全部；'__none'=未分类）
   const [creating, setCreating] = useState(false);   // 新增条目输入行开关
   const [newName, setNewName] = useState('');
   const load = () => {
@@ -1058,11 +1081,21 @@ function VaultDetail() {
   };
   useEffect(load, []);
   if (!data) return <div className="muted">读取中…</div>;
-  const shown = q.trim()
-    ? data.platforms.filter(p =>
-        p.platform.toLowerCase().includes(q.trim().toLowerCase()) ||
-        (p.user || p.email || '').toLowerCase().includes(q.trim().toLowerCase()))
-    : data.platforms;
+  const kw = q.trim().toLowerCase();
+  const shownAll = data.platforms.filter(p =>
+    !kw || p.platform.toLowerCase().includes(kw)
+    || (p.user || p.email || '').toLowerCase().includes(kw)
+    || (p.notes || '').toLowerCase().includes(kw));
+  // 分类筛选 chips：动态集合（全部/未分类/各分类），按条数排序
+  const catCount = new Map<string, number>();
+  for (const p of data.platforms) {
+    const c = (p.category || '').trim() || '__none';
+    catCount.set(c, (catCount.get(c) ?? 0) + 1);
+  }
+  const cats = [...catCount.entries()].sort((a, b) => b[1] - a[1]);
+  const shown = !cat ? shownAll
+    : shownAll.filter(p => ((p.category || '').trim() || '__none') === cat);
+  const resSecrets = data.resource_secrets ?? [];
   // 新增条目：保存前不在 platforms 里——合成临时行+编辑器（后端 put
   // 为 upsert，首次保存即建条目；重名前置校验避免误覆盖）
   const isNew = !!editing && !data.platforms.some(p => p.platform === editing);
@@ -1077,19 +1110,33 @@ function VaultDetail() {
   };
   return (
     <div className="sh-card">
+      <datalist id="vault-cat-suggest">
+        {cats.filter(([c]) => c !== '__none').map(([c]) => <option key={c} value={c} />)}
+      </datalist>
       <div className="sh-card-head">
         <div className="sh-card-titlewrap">
-          <span className="sh-card-title">入库凭证（{data.platforms.length} 组）</span>
+          <span className="sh-card-title">入库凭证（{data.platforms.length} 组）· 唯一管理面</span>
           <span className={`sh-badge ${data.verify.ok ? 'ok' : 'danger'}`}>
             {data.verify.ok ? '✓ 加密格式校验通过' : `⚠ 校验失败：${data.verify.error ?? '未知'}`}
           </span>
           <span className="sh-card-sub">点条目直接编辑；密钥字段留空=不改、输入即覆盖。agent 取用仍走审批门。</span>
         </div>
-        <input value={q} onChange={e => setQ(e.target.value)} placeholder="搜索平台或账号…"
+        <input value={q} onChange={e => setQ(e.target.value)} placeholder="搜索平台 / 账号 / 备注…"
           autoComplete="off" style={{ width: 180 }} />
         <button className="mini-btn" onClick={() => { setCreating(c => !c); setNewName(''); }}>
           {creating ? '取消新增' : '+ 新增凭证'}</button>
       </div>
+      {cats.length > 1 && (
+        <div className="sh-catrow">
+          <button className={`sh-catchip ${!cat ? 'on' : ''}`} onClick={() => setCat('')}>
+            全部 {data.platforms.length}</button>
+          {cats.map(([c, n]) => (
+            <button key={c} className={`sh-catchip ${cat === c ? 'on' : ''}`}
+              onClick={() => setCat(cat === c ? '' : c)}>
+              {c === '__none' ? '未分类' : c} {n}</button>
+          ))}
+        </div>
+      )}
       {creating && (
         <div className="sh-pool">
           <span className="sh-ops-hint" style={{ fontWeight: 600 }}>新条目平台名：</span>
@@ -1103,14 +1150,16 @@ function VaultDetail() {
       )}
       <div className="sh-card-body flush">
         <table className="sh-table">
-          <thead><tr><th>平台</th><th>账号</th><th style={{ width: 100 }}>密码状态</th><th style={{ width: 120 }}>更新日期</th><th style={{ width: 72, textAlign: 'right' }}>操作</th></tr></thead>
+          <thead><tr><th>平台</th><th style={{ width: 90 }}>分类</th><th>账号</th><th>备注</th><th style={{ width: 90 }}>密码状态</th><th style={{ width: 110 }}>更新日期</th><th style={{ width: 72, textAlign: 'right' }}>操作</th></tr></thead>
           <tbody>
-            {shown.length === 0 && <tr><td colSpan={5} className="muted" style={{ textAlign: 'center', padding: 24 }}>（无匹配凭证）</td></tr>}
+            {shown.length === 0 && <tr><td colSpan={7} className="muted" style={{ textAlign: 'center', padding: 24 }}>（无匹配凭证）</td></tr>}
             {isNew && (
               <Fragment>
                 <tr>
                   <td style={{ fontFamily: 'var(--mono)', fontWeight: 600 }}>{editing}</td>
+                  <td className="muted">—</td>
                   <td className="muted num">—</td>
+                  <td className="muted">—</td>
                   <td><span className="sh-badge">新建</span></td>
                   <td className="muted num">—</td>
                   <td style={{ textAlign: 'right' }}><button className="mini-btn" onClick={() => setEditing('')}>收起</button></td>
@@ -1122,7 +1171,12 @@ function VaultDetail() {
               <Fragment key={p.platform}>
                 <tr>
                   <td style={{ fontFamily: 'var(--mono)', fontWeight: 600 }}>{p.platform}</td>
+                  <td>{p.category?.trim()
+                    ? <span className="sh-badge">{p.category}</span>
+                    : <span className="muted">—</span>}</td>
                   <td className="muted num">{p.user || p.email || '—'}</td>
+                  <td style={{ maxWidth: 220, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}
+                    title={p.notes || ''}>{p.notes || <span className="muted">—</span>}</td>
                   <td>{p.has_password ? <span className="sh-badge ok">已存</span> : <span className="sh-badge danger">缺</span>}</td>
                   <td className="num">{(p.updated_at || '').slice(0, 10)}</td>
                   <td style={{ textAlign: 'right' }}><button className="mini-btn" onClick={() => setEditing(editing === p.platform ? '' : p.platform)}>
@@ -1136,6 +1190,27 @@ function VaultDetail() {
           </tbody>
         </table>
       </div>
+      {resSecrets.length > 0 && (
+        <div className="sh-ressec">
+          <div className="sh-ressec-head">
+            <span className="sh-card-title" style={{ fontSize: 'inherit' }}>资源密钥（{resSecrets.length}）</span>
+            <span className="sh-card-sub">资源卡绑定消费的平台集成密钥——在资源 Hub 的资源卡里轮换/管理</span>
+            <button className="mini-btn" onClick={() => { location.hash = '#/admin/resources'; }}>前往资源 Hub →</button>
+          </div>
+          <div className="sh-ressec-body">
+            {resSecrets.map(r => (
+              <div key={r.key} className="sh-resrow">
+                <span className="mono" style={{ fontSize: 'var(--fs-xs)' }}>{r.key}</span>
+                <span>{r.source}{r.bound ? '' : <span className="sh-badge danger" style={{ marginLeft: 6 }}>源卡已删</span>}</span>
+                {r.category?.trim() ? <span className="sh-badge">{r.category}</span> : <span className="muted">—</span>}
+                {r.set
+                  ? <span className="sh-badge ok">已加密</span>
+                  : <span className="sh-badge warn">未设置</span>}
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
     </div>
   );
 }
@@ -1185,7 +1260,7 @@ function VaultEditor({ platform, onDone, isNew = false }: { platform: string; on
       .finally(() => setBusy(false));
   };
   return (
-    <tr className="sh-vrow"><td colSpan={5}>
+    <tr className="sh-vrow"><td colSpan={7}>
       <div className="sh-vdrawer">
         <div className="sh-vgrid">
           {VAULT_ROWS.map(r => (
@@ -1193,11 +1268,12 @@ function VaultEditor({ platform, onDone, isNew = false }: { platform: string; on
               <label>{r.label}{r.secret ? '（留空=不改）' : ''}</label>
               <input style={{ width: '100%' }}
                 type={r.secret ? 'password' : 'text'} autoComplete="off"
-                value={draft[r.k] ?? ''}
-                placeholder={r.secret
+                list={r.k === 'category' ? 'vault-cat-suggest' : undefined}
+                placeholder={r.k === 'category' ? '如 邮箱 / 模型 / 搜索 / 支付' : r.secret
                   ? (meta?.[r.k] ? `已设置（${String(meta[r.k]).includes('位') ? meta[r.k] : '留空不改，输入即覆盖'}）` : '未设置')
                   : ''}
-                onChange={e => setDraft(d => ({ ...d, [r.k]: e.target.value }))} />
+                onChange={e => setDraft(d => ({ ...d, [r.k]: e.target.value }))}
+                value={draft[r.k] ?? ''} />
             </div>
           ))}
         </div>

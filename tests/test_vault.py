@@ -122,3 +122,42 @@ def test_decrypt_min_frame_boundary():
     assert len(blob) == 34
     with _pytest.raises(InvalidTag):
         _decrypt(blob)                    # 过门后 GCM 校验失败（非 LDV1 错）
+
+
+# ----------------------------------------------------- 凭证库统一批（分类+资源密钥区）
+async def test_admin_vault_category_roundtrip(client):
+    """category 进白名单：put/列表概览/PUT 端点 merge 全链放行。"""
+    from loadn_webui.security import vault as v
+    v.put("cat-test", username="u@x.com", password="p",
+          category="邮箱", notes="工作主邮箱")
+    row = [r for r in v.list_platforms() if r["platform"] == "cat-test"]
+    assert row and row[0]["category"] == "邮箱" and row[0]["notes"] == "工作主邮箱"
+
+    r = await client.put("/api/admin/vault/cat-test",
+                         json={"fields": {"category": "模型"}})
+    assert r.status_code == 200 and "category" in r.json()["set"]
+    assert v.get("cat-test")["category"] == "模型"
+    assert v.delete("cat-test")
+
+
+async def test_admin_vault_resource_secrets_view(client):
+    """资源密钥区推导：svc: 键带来源卡 title/category，值不出 HTTP。"""
+    from loadn_webui.config import CONFIG
+    from loadn_webui.security import vault as v
+    svcs = list(CONFIG.resources.custom_services or []) + [
+        {"name": "cat-svc", "title": "测试搜索服务", "category": "搜索", "desc": "供测试"}]
+    old = CONFIG.resources.custom_services
+    try:
+        CONFIG.resources.custom_services = svcs
+        v.set_res_secret("svc:cat-svc", "k-secret-1")
+        d = (await client.get("/api/admin/vault")).json()
+        rs = {r["key"]: r for r in d["resource_secrets"]}
+        assert rs["svc:cat-svc"]["bound"] is True
+        assert rs["svc:cat-svc"]["source"] == "测试搜索服务"
+        assert rs["svc:cat-svc"]["category"] == "搜索"
+        assert rs["svc:cat-svc"]["set"] is True
+        assert "k-secret-1" not in json.dumps(d)            # 明文不出 HTTP
+        assert "bocha_key" in rs and "svc:bocha" in rs       # 锚键全集+预置卡恒在场
+    finally:
+        CONFIG.resources.custom_services = old
+        v.del_res_secret("svc:cat-svc")

@@ -273,12 +273,31 @@ def approvals_sweep():
     return {"ok": True, "expired": n}
 @router.get("/admin/vault")
 def vault_overview():
-    """凭证库概览（安全中心卡明细）：条目名/安全字段+完整性校验。
+    """凭证库概览（安全中心=唯一完整管理面）：账号条目（含 category/notes）
+    + 资源密钥区（svc:/锚键→来源资源卡的分类/描述推导）+ 完整性校验。
 
     list_platforms 本就不含 password/recovery 明文——明文永不走 HTTP。
+    resource_secrets 元数据从 custom_services 资源卡推导（单一真源），
+    只回 set 布尔不回值；锚键的源资源卡被删（retire）→ bound=false。
     """
+    from ...config import CONFIG
     from ...security import vault as vault_mod
+    states = vault_mod.res_secret_states()
+    cards = {s.get("name"): s for s in (CONFIG.resources.custom_services or [])
+             if isinstance(s, dict)}
+    res_secrets = []
+    for key, is_set in states.items():
+        name = key[4:] if key.startswith("svc:") else key
+        card = cards.get(name)
+        res_secrets.append({
+            "key": key, "set": is_set, "bound": card is not None,
+            "source": str(card.get("title") or name) if card else name,
+            "category": str((card or {}).get("category") or ""),
+            "desc": str((card or {}).get("desc") or "")[:120],
+        })
+    res_secrets.sort(key=lambda r: (not r["bound"], r["key"]))
     return {"platforms": vault_mod.list_platforms(),
+            "resource_secrets": res_secrets,
             "verify": vault_mod.verify()}
 @router.get("/admin/vault/{platform}")
 def vault_entry(platform: str):

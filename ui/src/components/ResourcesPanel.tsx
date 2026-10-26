@@ -1,9 +1,10 @@
 // 资源 Hub（管理中心「资源」tab；2026-10-19 首建，2026-10-21 设计稿 v2 批重构）：
-// 三子视图——服务与环境资源（分类分组卡片墙）/ MCP 协议端点 / 凭证库（可写）。
+// 三子视图——服务与环境资源（分类分组卡片墙）/ MCP 协议端点 / 凭证库（只读概览）。
 // v2 增量（设计稿对齐）：SVG 图标库彻底取代 emoji（RhIcon，存量 emoji 回退渲染）+
 // 图标选择器 + 名称→ID 智能联动 + label→env 自动推导（LABEL_ENV 映射）+ 快捷
-// 参数胶囊 + 蓝图预设 5 卡（高亮态）+ 内联新建加密密钥面板 + vault 下拉状态
-// 标签 + 凭证库存入/轮换（复用 PUT /admin/vault/{platform} 唯一编辑面端点）。
+// 参数胶囊 + 蓝图预设 5 卡（高亮态）+ 内联新建加密密钥面板 + vault 下拉状态标签。
+// 凭证库统一批（2026-10-26）：凭证子视图收敛只读概览（分类/备注展示+深链跳转），
+// 存入/轮换写面退役——唯一管理面=安全中心凭证保险库（#/admin/security/vault）。
 // v3（统一资源模型）：原生/自定义双轨合一——除主 LLM 外一切资源同构，卡片数据
 // 全量来自 custom_services 条目（预置集成=后端种子条目，可编辑结构/改 ID/删除）。
 // 平台消费锚由后端维持（config[].key 命中锚键时值投影进平台集成，免重启）。
@@ -28,7 +29,8 @@ interface CustomSvc {
   secrets: { label: string; env_key: string; vault_ref: string }[];
 }
 interface McpServer { name: string; spec: Record<string, any>; sessions_overriding: number; session_only?: boolean }
-interface VaultPlatform { platform: string; user?: string; email?: string; has_password: boolean; updated_at: string }
+interface VaultPlatform { platform: string; user?: string; email?: string;
+  category?: string; notes?: string; has_password: boolean; updated_at: string }
 interface Overview {
   services: ServiceItem[];
   secrets: SecretItem[];
@@ -273,12 +275,6 @@ export default function ResourcesPanel() {
   // 导入弹窗
   const [importOpen, setImportOpen] = useState(false);
   const [importText, setImportText] = useState('');
-  // 凭证库写面（设计稿：存入新密钥 + 行内轮换，复用 PUT /admin/vault/{platform}）
-  const [vaultNewOpen, setVaultNewOpen] = useState(false);
-  const [vnName, setVnName] = useState('');
-  const [vnVal, setVnVal] = useState('');
-  const [rotating, setRotating] = useState<string | null>(null);
-  const [rotateVal, setRotateVal] = useState('');
 
   const loadHist = async () => {
     try {
@@ -544,29 +540,6 @@ export default function ResourcesPanel() {
     openCreate(parsed);
   };
 
-  // ---- 凭证库写面（PUT /admin/vault/{platform} 唯一编辑面端点，merge 语义） ----
-  const saveVaultNew = async () => {
-    const name = vnName.trim();
-    if (!name || !vnVal.trim()) { toast('请填写凭证名称与密钥明文', false); return; }
-    try {
-      await api(`/api/admin/vault/${encodeURIComponent(name)}`,
-        { method: 'PUT', body: JSON.stringify({ fields: { password: vnVal.trim() } }) });
-      toast(`已加密存入凭证「${name}」`);
-      setVaultNewOpen(false); setVnName(''); setVnVal('');
-      await load();
-    } catch (e) { toast(`存入失败：${String(e)}`, false); }
-  };
-  const saveRotate = async (platform: string) => {
-    if (!rotateVal.trim()) { toast('请输入新密钥值', false); return; }
-    try {
-      await api(`/api/admin/vault/${encodeURIComponent(platform)}`,
-        { method: 'PUT', body: JSON.stringify({ fields: { password: rotateVal.trim() } }) });
-      toast(`已轮换「${platform}」的加密凭证`);
-      setRotating(null); setRotateVal('');
-      await load();
-    } catch (e) { toast(`轮换失败：${String(e)}`, false); }
-  };
-
   /** Harness 注入预览（统一语义：config→env 注入；密钥恒为 vault 解密形式，
    *  不进任务 env——预置集成的锚字段同样按 env 注入，参数对 agent 可见） */
   const envPreview = (r: RhResource) => {
@@ -587,7 +560,9 @@ export default function ResourcesPanel() {
   const vFiltered = data.vault.platforms.filter(p =>
     !vSearch || p.platform.toLowerCase().includes(vSearch.toLowerCase())
     || (p.user || '').toLowerCase().includes(vSearch.toLowerCase())
-    || (p.email || '').toLowerCase().includes(vSearch.toLowerCase()));
+    || (p.email || '').toLowerCase().includes(vSearch.toLowerCase())
+    || (p.category || '').toLowerCase().includes(vSearch.toLowerCase())
+    || (p.notes || '').toLowerCase().includes(vSearch.toLowerCase()));
 
   return (
     <div className="admin-body">
@@ -746,47 +721,23 @@ export default function ResourcesPanel() {
         </>
       )}
 
-      {/* ============ 子视图 3：凭证库（概览 + 存入/轮换，写走安全面同端点） ============ */}
+      {/* ============ 子视图 3：凭证库（只读概览；唯一管理面=安全 tab 凭证保险库） ============ */}
       {sec === 'vault' && (
         <>
           <div className="rh-toolbar">
-            <input className="rh-search admin-input" placeholder="搜索平台 / 账号…"
+            <input className="rh-search admin-input" placeholder="搜索平台 / 账号 / 备注…"
               value={vSearch} onChange={e => setVSearch(e.target.value)} autoComplete="off" />
             <span className="rh-subnav-note" style={{ marginLeft: 'auto' }}>
               <Shield size={13} /> {data.vault.verify.ok
                 ? `加密库健康 · ${data.vault.verify.entries} 条 · AES-GCM`
                 : `⚠ 校验失败：${data.vault.verify.error ?? '未知'}`}
             </span>
-            <button className="btn" onClick={() => setVaultNewOpen(v => !v)}><Plus size={13} /> 存入新密钥</button>
-            <button className="btn ghost" onClick={() => { location.hash = '#/admin/security'; }}>
-              前往安全 tab 管理 →</button>
+            <button className="btn" onClick={() => { location.hash = '#/admin/security/vault'; }}>
+              <Plus size={13} /> 新增 / 编辑凭证</button>
           </div>
-
-          {vaultNewOpen && (
-            <div className="rh-vault-newpanel">
-              <div className="rh-vault-newpanel-t">
-                <span>新建加密凭证（AES-256-GCM）</span>
-                <button className="rh-linkbtn" onClick={() => setVaultNewOpen(false)}>取消</button>
-              </div>
-              <div className="rh-vault-newpanel-grid">
-                <div>
-                  <label className="rh-label">凭证名称（描述用途）<span className="req">*</span></label>
-                  <input className="admin-input" value={vnName} placeholder="如：OpenAI 生产环境 Key"
-                    onChange={e => setVnName(e.target.value)} autoComplete="off" />
-                </div>
-                <div>
-                  <label className="rh-label">密钥明文（仅写入，不回显）<span className="req">*</span></label>
-                  <input className="admin-input mono" type="password" value={vnVal} placeholder="sk-…"
-                    onChange={e => setVnVal(e.target.value)} autoComplete="new-password" />
-                </div>
-              </div>
-              <div className="rh-vault-newpanel-foot">
-                <span className="rh-vault-newpanel-hint">
-                  平台密钥库统一加密托管；高级字段（恢复码/2FA 等）在安全 tab 编辑</span>
-                <button className="btn" onClick={() => void saveVaultNew()}>加密并存入凭证库</button>
-              </div>
-            </div>
-          )}
+          <div className="rh-subnav-note" style={{ marginBottom: 10 }}>
+            凭证库唯一管理面在安全中心（新增/编辑/分类/备注/删除都在那里）；此处为绑定视角概览，
+            资源卡抽屉里仍可内联创建并加密绑定 svc: 密钥。</div>
 
           <div className="rh-vault-list">
             {vFiltered.length === 0 && <div className="rh-vault-row">
@@ -799,34 +750,20 @@ export default function ResourcesPanel() {
                     {p.has_password ? <Lock size={13} /> : <Key size={13} />}</div>
                   <div>
                     <div className="rh-vault-name">{p.platform}
+                      {p.category?.trim() && <span className="rh-id-badge" style={{ marginLeft: 8 }}>
+                        {p.category}</span>}
                       <span className="rh-id-badge" style={{ marginLeft: 8 }}>
                         {p.user || p.email || '—'}</span></div>
-                    <div className="rh-vault-sub">更新 {(p.updated_at || '').slice(0, 10)}</div>
+                    <div className="rh-vault-sub">
+                      {p.notes?.trim() ? `${p.notes} · ` : ''}更新 {(p.updated_at || '').slice(0, 10)}</div>
                   </div>
                 </div>
-                {rotating === p.platform ? (
-                  <div className="rh-vault-rotate">
-                    <input className="admin-input mono" type="password" placeholder="输入新密钥值…"
-                      value={rotateVal} onChange={e => setRotateVal(e.target.value)}
-                      onKeyDown={e => {
-                        if (e.key === 'Enter') void saveRotate(p.platform);
-                        if (e.key === 'Escape') { setRotating(null); setRotateVal(''); }
-                      }}
-                      autoFocus autoComplete="new-password" />
-                    <button className="btn sm" disabled={!rotateVal.trim()}
-                      onClick={() => void saveRotate(p.platform)}>保存</button>
-                    <button className="btn ghost sm"
-                      onClick={() => { setRotating(null); setRotateVal(''); }}>取消</button>
-                  </div>
-                ) : (
-                  <div className="rh-vault-ops">
-                    <span className={`rh-chip ${p.has_password ? 'ok' : 'warn'}`}>
-                      <Key size={11} /> {p.has_password ? '密码已存' : '密码缺失'}</span>
-                    <button className="btn ghost sm" onClick={() => {
-                      setRotating(p.platform); setRotateVal('');
-                    }}>{p.has_password ? '轮换密钥' : '立即配置'}</button>
-                  </div>
-                )}
+                <div className="rh-vault-ops">
+                  <span className={`rh-chip ${p.has_password ? 'ok' : 'warn'}`}>
+                    <Key size={11} /> {p.has_password ? '密码已存' : '密码缺失'}</span>
+                  <button className="btn ghost sm"
+                    onClick={() => { location.hash = '#/admin/security/vault'; }}>管理 →</button>
+                </div>
               </div>
             ))}
           </div>

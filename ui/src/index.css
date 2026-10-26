@@ -1746,6 +1746,24 @@ button.attach-chip:hover { border-color: color-mix(in srgb, var(--accent) 40%, v
 .sh-pill { font-family: var(--mono); font-size: var(--fs-xs); background: var(--bg3);
   color: var(--text); padding: 2px 6px; border-radius: 5px; border: 1px solid var(--border); }
 
+/* -- 凭证库统一批：分类筛选胶囊行 + 资源密钥区（安全 tab 唯一管理面） -- */
+.sh-catrow { display: flex; align-items: center; gap: 6px; flex-wrap: wrap;
+  padding: 8px 14px 2px; border-bottom: 1px solid var(--border); }
+.sh-catchip { border: 1px solid var(--border); background: var(--bg2); color: var(--text-dim);
+  font-size: var(--fs-xs); padding: 3px 10px; border-radius: 999px; cursor: pointer;
+  transition: all .15s ease; }
+.sh-catchip:hover { color: var(--text); border-color: var(--accent-ring); }
+.sh-catchip.on { background: var(--accent-soft); color: var(--accent2);
+  border-color: var(--accent-ring); font-weight: 600; }
+.sh-ressec { border-top: 1px solid var(--border); }
+.sh-ressec-head { display: flex; align-items: center; gap: 10px; flex-wrap: wrap;
+  padding: 10px 14px; background: var(--bg2); }
+.sh-ressec-body { padding: 6px 14px 10px; display: flex; flex-direction: column; }
+.sh-resrow { display: grid; grid-template-columns: minmax(180px, 1.1fr) 2fr 90px 80px;
+  gap: 10px; align-items: center; padding: 6px 8px; border-radius: 6px; }
+.sh-resrow:hover { background: var(--bg2); }
+.sh-resrow > .mono { font-family: var(--mono); }
+
 /* -- 总览 ov 大卡（hover 上浮+光晕） -- */
 .sh-ovgrid { display: grid; grid-template-columns: repeat(auto-fill, minmax(min(290px, 100%), 1fr));
   gap: 14px; margin-bottom: 20px; }
@@ -2618,16 +2636,7 @@ textarea.admin-input { min-height: 60px; line-height: 1.6; resize: vertical; }
 .rh-vault-name { font-size: var(--fs-md); font-weight: 700; }
 .rh-vault-sub { font-family: var(--mono); font-size: var(--fs-xs); color: var(--text-dim); margin-top: 2px; }
 .rh-vault-ops { display: flex; align-items: center; gap: 8px; flex: none; }
-.rh-vault-rotate { display: flex; align-items: center; gap: 6px; flex: none; }
-.rh-vault-rotate .admin-input { width: 210px; }
-.rh-vault-newpanel { border: 1px solid color-mix(in srgb, var(--accent2) 30%, var(--border));
-  background: color-mix(in srgb, var(--accent2) 5%, transparent); border-radius: var(--radius);
-  padding: 13px 15px; display: flex; flex-direction: column; gap: 11px; margin-bottom: 12px; }
-.rh-vault-newpanel-t { display: flex; align-items: center; justify-content: space-between;
-  font-size: var(--fs-sm); font-weight: 700; }
-.rh-vault-newpanel-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
-.rh-vault-newpanel-foot { display: flex; align-items: center; justify-content: space-between; gap: 10px; }
-.rh-vault-newpanel-hint { font-size: var(--fs-xs); color: var(--text-dim); }
+/* ---- 凭证库统一批：写面（newpanel/rotate）已退役——管理面收敛到安全中心 ---- */
 
 /* ---- 抽屉图标选择器（设计稿 v2：SVG 库取代 emoji 输入） ---- */
 .rh-iconfield { position: relative; }

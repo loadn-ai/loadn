@@ -31,10 +31,13 @@ _MAGIC = b"LDV1"          # 加密文件头（W3.1：vault.json → vault.enc AE
 _VERSION = 1
 
 # 可写字段白名单（platform 自身是键）；frozenset 防拼错静默丢字段
+# category（2026-10 凭证库统一批）：条目自定义分类（如 邮箱/模型/搜索/支付），
+# 多了不乱；空串=未分类。
 FIELDS = ("username", "password", "recovery", "email", "phone", "twofa",
-          "status", "notes")
+          "status", "notes", "category")
 # 非敏感字段：--list / 默认展示可见；password/recovery 只在显式 --field 或全量视图
-SAFE_FIELDS = ("username", "email", "phone", "twofa", "status", "notes")
+SAFE_FIELDS = ("username", "email", "phone", "twofa", "status", "notes",
+               "category")
 
 
 def vault_path() -> Path:
