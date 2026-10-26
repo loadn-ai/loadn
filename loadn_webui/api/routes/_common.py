@@ -17,6 +17,8 @@ def _http_err(e: Exception) -> HTTPException:
             return HTTPException(code, str(e))
     return HTTPException(500, str(e))
 _PARTITION_KEYS = ("pinned", "starred", "category_id")
+MSG_PAGE = 100           # PERF-4 历史消息页大小：详情首屏尾窗/「加载更多」
+                        # 翻页共用（会话详情 + /messages/page + sse resync 快照）
 def _apply_partition_mutex(body: dict, updates: dict) -> None:
     """分区互斥：本次落位某个桶时，未显式给出的另两位清零（置顶/收藏/分类
     三桶独占，归档走 status 不在此列）。纯标记请求不 touch updated_at。"""

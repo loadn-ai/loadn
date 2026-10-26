@@ -25,6 +25,9 @@ export default function ChatStream({ onOpenFile }: { onOpenFile?: (path: string)
   const { messages, live, turns, retractTurn } = useStore();
   const foldedCount = useStore(s => s.foldedCount);
   const loadArchived = useStore(s => s.loadArchived);
+  const earlierCount = useStore(s => s.earlierCount);
+  const loadingEarlier = useStore(s => s.loadingEarlier);
+  const loadEarlier = useStore(s => s.loadEarlier);
   const ref = useAutoScroll(messages.length + (live?.items.length ?? 0));
   const [histLimit, setHistLimit] = useState(HISTORY_TAIL);
   const hiddenMsgs = Math.max(0, messages.length - histLimit);
@@ -38,6 +41,13 @@ export default function ChatStream({ onOpenFile }: { onOpenFile?: (path: string)
 
   return (
     <div className="chat-stream" ref={ref}>
+      {earlierCount > 0 && (
+        <button className="load-earlier" disabled={loadingEarlier}
+                onClick={() => void loadEarlier()}>
+          {loadingEarlier ? '⋯ 加载中…'
+            : `⋯ 加载更早的 ${earlierCount} 条历史`}
+        </button>
+      )}
       {foldedCount > 0 && (
         <button className="load-earlier" onClick={() => void loadArchived()}>
           ⋯ {foldedCount} 条历史已归档，点击展开

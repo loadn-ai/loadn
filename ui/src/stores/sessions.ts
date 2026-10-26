@@ -178,6 +178,11 @@ interface Store {
   /** PERF-2：已冷归档的消息条数（详情 messages_folded；0=无折叠/已展开） */
   foldedCount: number;
   loadArchived: () => Promise<void>;
+  /** PERF-4：详情尾窗之前还有多少条更早历史（0=已到底；「加载更早」
+   *  按钮的数据源。分页回源每次精确更新——服务端 earlier 相对新页首） */
+  earlierCount: number;
+  loadingEarlier: boolean;
+  loadEarlier: () => Promise<void>;
   turns: TurnInfo[];
   artifacts: ArtifactInfo[];
   /** 当前会话的子代理注册表（turn 域复合键，见 stores/agents.ts） */
@@ -292,7 +297,8 @@ function initialSpace(): string {
 export const useStore = create<Store>((set, get) => ({
   sessions: [], projects: [], categories: [], profiles: [], skills: [], engines: {},
   defaultEngine: 'claude',
-  currentSid: null, messages: [], foldedCount: 0, turns: [], artifacts: [],
+  currentSid: null, messages: [], foldedCount: 0, earlierCount: 0,
+  loadingEarlier: false, turns: [], artifacts: [],
   agents: [], subtasks: [],
   live: null,
   stoppingTids: {},
@@ -388,18 +394,23 @@ export const useStore = create<Store>((set, get) => ({
     // 游标重置：重进会话 live.items 从空重铺，SSE 需要 fresh 全量尾窗回放
     // 作单一来源（不重置→增量衔接→叠进空 items 之外还丢尾窗前的内容）
     resetSseCursor(sid);
-    set({ currentSid: sid, messages: [], foldedCount: 0, turns: [], artifacts: [], live: null,
+    set({ currentSid: sid, messages: [], foldedCount: 0,
+          earlierCount: 0, loadingEarlier: false,
+          turns: [], artifacts: [], live: null,
           sessionExtras: null, timeline: [], agents: [], subtasks: [],
           mainTab: 'chat', agentFilter: null, artifactScope: null });
     localStorage.setItem('loadn_sid', sid);   // 刷新/重开恢复
     localStorage.removeItem('wd_sid');        // 旧键清理（迁移遗留）
     const d = await api<{ messages: MessageInfo[]; turns: TurnInfo[];
                         artifacts: ArtifactInfo[]; subtasks: SubtaskInfo[] } & SessionExtras & {
-                        messages_folded?: number }>(
+                        messages_folded?: number; messages_earlier?: number }>(
       `/api/sessions/${encodeURIComponent(sid)}`);
-    set({ messages: d.messages, turns: d.turns, artifacts: d.artifacts,
+    set({ messages: applyServerWindow(sid, d.messages, d.turns),
+          turns: mergeServerTurns(sid, d.turns),
+          artifacts: d.artifacts,
           agents: deriveAgents(d.messages, d.turns),
-          subtasks: d.subtasks ?? [], foldedCount: d.messages_folded ?? 0 });
+          subtasks: d.subtasks ?? [], foldedCount: d.messages_folded ?? 0,
+          earlierCount: d.messages_earlier ?? 0 });
     fillExtras(set, sid, d);
     // 进行中 turn：凭 /live 重建元信息（turnId/status/startedAt/todos——计时与停止按钮）。
     // 过程节点（items）不播种：SSE 新连接会精准回放本 turn 尾部事件（sse.py：
@@ -463,6 +474,31 @@ export const useStore = create<Store>((set, get) => ({
     set({ messages: [...d.messages, ...get().messages], foldedCount: 0 });
   },
 
+  /** PERF-4：加载更早一页历史（ChatStream「⋯ 加载更早的 N 条」按钮）。
+   *  before_id=当前最早已加载消息 id；响应 id 升序、严格更早且连续——
+   *  前插天然有序。earlier 由服务端相对新页首精确给出（0=到底收按钮）。 */
+  async loadEarlier() {
+    const sid = get().currentSid;
+    const msgs = get().messages;
+    if (!sid || !msgs.length || get().loadingEarlier) return;
+    set({ loadingEarlier: true });
+    try {
+      const d = await api<{ messages: MessageInfo[]; earlier: number }>(
+        `/api/sessions/${encodeURIComponent(sid)}/messages/page?before_id=${msgs[0].id}`);
+      if (get().currentSid !== sid) {         // 竞态：用户已切走
+        set({ loadingEarlier: false });       // 残留 true 会卡死按钮（重进兜底前）
+        return;
+      }
+      set(s => s.messages[0]?.id === msgs[0].id   // 首条未被并发刷新变更
+        ? { messages: [...d.messages, ...s.messages],
+            earlierCount: d.earlier, loadingEarlier: false }
+        : { earlierCount: d.earlier, loadingEarlier: false });
+    } catch (e) {
+      set({ loadingEarlier: false });
+      throw e;
+    }
+  },
+
   closeSession() {
     const { es } = get();
     if (es) { es.close(); }
@@ -489,12 +525,17 @@ export const useStore = create<Store>((set, get) => ({
       try {
         const d = await api<{ messages: MessageInfo[]; turns: TurnInfo[];
                               artifacts: ArtifactInfo[]; subtasks: SubtaskInfo[];
-                              messages_folded?: number }>(
+                              messages_folded?: number; messages_earlier?: number }>(
           `/api/sessions/${encodeURIComponent(sid)}`);
         if (get().currentSid !== sid) return;
-        set({ messages: d.messages, turns: d.turns, artifacts: d.artifacts,
+        set({ messages: applyServerWindow(sid, d.messages, d.turns),
+              turns: mergeServerTurns(sid, d.turns),
+              artifacts: d.artifacts,
               agents: deriveAgents(d.messages, d.turns),
               subtasks: d.subtasks ?? [], foldedCount: d.messages_folded ?? 0 });
+        // earlierCount 不在此更新：服务端 earlier 相对其尾窗首条，本地
+        // 若已前插更早页则口径不同——分页状态只由 openSession 初始化+
+        // loadEarlier 精确维护（本次打开会话内一致）
         // 停止在途标志对账：重拉后已终态的 turn 清标志（SSE 掉线时回前台的
         // resync 就是「引擎已停止」确认通道，不用等 pollStopConfirmed 超时）
         for (const st of Object.keys(get().stoppingTids).map(Number)) {
@@ -695,33 +736,61 @@ export const useStore = create<Store>((set, get) => ({
   async sendMessage(text, mode = 'foreground', attachments = []) {
     const sid = get().currentSid;
     if (!sid) return;
-    // 乐观插入用户消息（附件进 blocks_json，与后端一致）
-    const optimisticId = -Date.now();
-    set(s => ({
-      messages: [...s.messages, {
-        id: optimisticId, turn_id: null, role: 'user' as const, content: text,
-        blocks_json: attachments.length
-          ? JSON.stringify(attachments.map(a => ({ type: 'attachment', ...a }))) : null,
-        created_at: new Date().toISOString(),
-      }],
-    }));
+    // 乐观插入用户消息（附件进 blocks_json，与后端一致）。id 走页内发号器
+    // （-1,-2,… 单调递减）：原 -Date.now() 同毫秒连续发送会撞 id。
+    // 除进数组外同步登记 inflightSends——POST 落定前任何 messages 全量
+    // 覆盖（resync/终态回填等）都会经 mergeServerMsgs 把它合回，不再被吞
+    const optimisticId = -(++_optSeq);
+    const optMsg: MessageInfo = {
+      id: optimisticId, turn_id: null, role: 'user' as const, content: text,
+      blocks_json: attachments.length
+        ? JSON.stringify(attachments.map(a => ({ type: 'attachment', ...a }))) : null,
+      created_at: new Date().toISOString(),
+    };
+    registerInflight(sid, optMsg);
+    set(s => ({ messages: [...s.messages, optMsg] }));
     try {
       const d = await api<{ turn: TurnInfo }>(
         `/api/sessions/${encodeURIComponent(sid)}/messages`, {
           method: 'POST', body: JSON.stringify({ text, mode, attachments }) });
+      const tid = d?.turn?.id;
       // 回填 turn_id + turns 行：排队消息凭 turns.status==='queued' 被
       // ChatStream 识别进「输入框上方排队区」（不再插在聊天历史中间）
-      if (d?.turn?.id) {
-        set(s => ({
-          messages: s.messages.map(m => m.id === optimisticId
-            ? { ...m, turn_id: d.turn.id } : m),
-          turns: [...s.turns, d.turn],
-        }));
+      if (tid) {
+        if (retractedTurns.has(tid)) {
+          // 落定前已被撤回（别处撤了刚排队的消息，撤回事件早于本响应）：
+          // 不回填、不铺 turns，乐观项一并撤除——等同没发过
+          retractedTurns.delete(tid);
+          dropInflight(sid, optimisticId);
+          set(s => (s.currentSid === sid
+            ? { messages: s.messages.filter(m => m.id !== optimisticId) } : {}));
+        } else {
+          settleInflight(sid, optimisticId, tid, d.turn);
+          set(s => {
+            // 发送期间已切走：不许把 A 会话的消息/turn 写进正开着的 B 会话
+            // （A 的登记留着 turn_id，切回 A 时 openSession 快照自会对账）
+            if (s.currentSid !== sid) return {};
+            // 全量覆盖先落地且快照已含服务端副本（POST 响应后到）：撤掉
+            // 乐观项防双条；否则给乐观项回填 turn_id（或被覆盖后补插回）
+            const serverCopy = s.messages.some(
+              m => m.turn_id === tid && m.id !== optimisticId);
+            return {
+              messages: serverCopy
+                ? s.messages.filter(m => m.id !== optimisticId)
+                : s.messages.map(m => m.id === optimisticId ? { ...m, turn_id: tid } : m),
+              // turn_queued SSE 的 turns 重拉可能先到（引擎在响应前同步发布）：
+              // 按 id 去重，不重复追加
+              turns: s.turns.some(t => t.id === tid) ? s.turns : [...s.turns, d.turn],
+            };
+          });
+        }
       }
     } catch (e) {
       // 发送失败（server 掉线等）：乐观消息必须撤掉，否则看起来已发出、
       // 刷新即消失——像"消息被吞"。空草稿则回填文本供改后重发。
-      set(s => ({ messages: s.messages.filter(m => m.id !== optimisticId) }));
+      dropInflight(sid, optimisticId);
+      set(s => (s.currentSid === sid
+        ? { messages: s.messages.filter(m => m.id !== optimisticId) } : {}));
       if (!getDraft(sid)) setDraft(sid, text);
       alert(`发送失败：${e instanceof Error ? e.message : e}\n消息未发出${attachments.length ? '，附件需重新添加' : ''}，已放回输入框`);
       throw e;
@@ -741,7 +810,18 @@ export const useStore = create<Store>((set, get) => ({
         const d = await api<{ ok: boolean; steered: boolean }>(
           `/api/sessions/${encodeURIComponent(sid)}/steer`,
           { method: 'POST', body: JSON.stringify({ text }) });
-        if (d.steered) return;   // SSE "steer" 事件会把插话铺进流水
+        if (d.steered) {
+          // 插话回显原先完全依赖 SSE "steer" 事件铺卡片——SSE 掉线窗口内
+          // 插话无任何本地显示（看起来被吞）。这里收到受理回执即乐观铺进
+          // 流水；SSE 事件先到（引擎在响应前同步发布）则查重跳过，后到则
+          // 由 handleEvent 给无 id 的同文本项补 id 收编
+          set(s => (s.live
+            && !s.live.items.some(it => it.kind === 'steer' && it.text === text)
+            ? { live: { ...s.live,
+                        items: [...s.live.items, { kind: 'steer', text } as StreamItem] } }
+            : {}));
+          return;   // SSE "steer" 事件负责补 id / 回放去重
+        }
       } catch { /* steer 通道挂了回落正常发送 */ }
     }
     await get().sendMessage(text, mode, attachments);
@@ -791,7 +871,9 @@ export const useStore = create<Store>((set, get) => ({
                           artifacts: ArtifactInfo[]; subtasks: SubtaskInfo[] }>(
       `/api/sessions/${encodeURIComponent(sid)}`);
     if (get().currentSid === sid) {
-      set({ messages: d.messages, turns: d.turns, artifacts: d.artifacts,
+      set({ messages: applyServerWindow(sid, d.messages, d.turns),
+            turns: mergeServerTurns(sid, d.turns),
+            artifacts: d.artifacts,
             agents: deriveAgents(d.messages, d.turns),
             subtasks: d.subtasks ?? [] });
     }
@@ -815,9 +897,11 @@ export const useStore = create<Store>((set, get) => ({
     await api(`/api/messages/${mid}`, { method: 'DELETE' });
     const sid = get().currentSid;
     if (!sid) return;
-    const d = await api<{ messages: MessageInfo[] }>(
+    const d = await api<{ messages: MessageInfo[]; turns: TurnInfo[] }>(
       `/api/sessions/${encodeURIComponent(sid)}`);
-    if (get().currentSid === sid) set({ messages: d.messages });
+    if (get().currentSid === sid) {
+      set({ messages: applyServerWindow(sid, d.messages, d.turns) });
+    }
   },
 
   async editMessage(mid, text) {
@@ -826,9 +910,11 @@ export const useStore = create<Store>((set, get) => ({
       method: 'PUT', body: JSON.stringify({ text }) });
     const sid = get().currentSid;
     if (!sid) return;
-    const d = await api<{ messages: MessageInfo[] }>(
+    const d = await api<{ messages: MessageInfo[]; turns: TurnInfo[] }>(
       `/api/sessions/${encodeURIComponent(sid)}`);
-    if (get().currentSid === sid) set({ messages: d.messages });
+    if (get().currentSid === sid) {
+      set({ messages: applyServerWindow(sid, d.messages, d.turns) });
+    }
   },
 
   async renameSession(sid, title) {
@@ -871,6 +957,141 @@ function destFlags(dest: Exclude<MoveDest, 'archive'>):
        : dest === 'starred' ? { pinned: 0, starred: 1, category_id: null }
        : dest === 'recent'  ? { pinned: 0, starred: 0, category_id: null }
        :                      { pinned: 0, starred: 0, category_id: dest.cat };
+}
+
+// ============ 在途乐观发送登记（「吞消息」修复核心） ============
+// 根因：sendMessage 的乐观消息只活在 messages 数组里，而 POST 落库前后
+// 有多路「服务端快照全量覆盖 messages」会落地（resync 前台恢复 /
+// turn 终态 300ms 后回填 / turn_deleted 回填 / openSession 重进 / SSE
+// resync 事件 / 撤回·删改气泡回填）。快照在服务端落库**前**读出时，
+// 覆盖落地即把乐观消息抹掉；POST 成功回调再按 optimisticId map 找不
+// 到目标 → 消息从 UI 消失，直到该 turn 终态才被下次全量拉回——长任务
+// 期间用户看到的就是「刚发的消息被吞了」。
+// 修复：乐观消息同时登记到本表（按 sid），所有全量覆盖路径统一经
+// mergeServerMsgs 合并——未落定（POST 在途）无条件合回；落定后凭
+// turn_id 与快照对账，服务端副本出现即清除。
+
+/** 乐观消息 id 发号器：页内单调递减（-1,-2,…）。原 -Date.now() 同毫秒
+ *  连续发送会撞 id——成功回调 map 回填错条目 + React key 冲突 */
+let _optSeq = 0;
+
+interface InflightSend {
+  msg: MessageInfo;        // 乐观消息（负 id；落定后同步回填 turn_id）
+  turnId: number | null;   // POST 落定后回填；null=响应未回
+  turn?: TurnInfo | null;  // POST 回执的 turn 行（陈旧快照替换 turns 时合回）
+  settledAt: number;       // 登记回填时刻（老化清理锚点）
+}
+
+const inflightSends = new Map<string, InflightSend[]>();
+
+function registerInflight(sid: string, msg: MessageInfo): void {
+  const arr = inflightSends.get(sid) ?? [];
+  arr.push({ msg, turnId: null, settledAt: Date.now() });
+  inflightSends.set(sid, arr);
+}
+
+/** POST 落定：回填 turnId 与 turn 行（后续全量覆盖按 turn 对账） */
+function settleInflight(sid: string, optimisticId: number, turnId: number,
+                        turn?: TurnInfo | null): void {
+  for (const it of inflightSends.get(sid) ?? []) {
+    if (it.msg.id === optimisticId) {
+      it.turnId = turnId;
+      it.turn = turn ?? null;
+      it.settledAt = Date.now();
+      if (it.msg.turn_id == null) it.msg = { ...it.msg, turn_id: turnId };
+    }
+  }
+}
+
+/** 发送失败 / 排队消息被撤回：登记清除 */
+function dropInflight(sid: string, optimisticId: number): void {
+  const arr = inflightSends.get(sid);
+  if (!arr) return;
+  const next = arr.filter(it => it.msg.id !== optimisticId);
+  if (next.length) inflightSends.set(sid, next);
+  else inflightSends.delete(sid);
+}
+
+/** turn_deleted（本 tab 或别处撤回）：按 turn 清登记，防乐观项复活成鬼条 */
+function dropInflightByTurn(sid: string, turnId: number): void {
+  const arr = inflightSends.get(sid);
+  if (!arr) return;
+  const next = arr.filter(it => it.turnId !== turnId);
+  if (next.length) inflightSends.set(sid, next);
+  else inflightSends.delete(sid);
+}
+
+/** 最近被撤回的 turn id。撤回事件可能先于 POST 响应到达——登记项尚未
+ *  回填 turnId，dropInflightByTurn 杀不掉它；等 sendMessage 落定时凭
+ *  此表补杀（POST 回执里的 turn 已被删除 → 不回填、不复活）。
+ *  有界：超限先出（撤回后 POST 失败不落定的残余自然淘汰） */
+const retractedTurns = new Set<number>();
+function rememberRetractedTurn(tid: number): void {
+  retractedTurns.add(tid);
+  if (retractedTurns.size > 512) {
+    const first = retractedTurns.values().next();
+    if (!first.done) retractedTurns.delete(first.value);
+  }
+}
+
+/** PERF-4 窗口合并：服务端快照只有尾窗（详情/resync/终态回填 100 条），
+ *  本地已「加载更早」前插的段（id < 快照首条）不属快照管辖——原样保留
+ *  拼接，防刷新路径把已加载历史截断回尾窗。所有同 sid 快照落地点统一
+ *  走这里（再交 mergeServerMsgs 做乐观合并）。head 与快照 id 严格不交
+ *  （< 快照首条），无重复；乐观消息恒在尾部，不受影响。 */
+function applyServerWindow(sid: string, incoming: MessageInfo[],
+                           turns?: TurnInfo[]): MessageInfo[] {
+  const st = useStore.getState();
+  if (st.currentSid !== sid || !st.messages.length || !incoming.length)
+    return mergeServerMsgs(sid, incoming, turns);
+  const firstId = incoming[0].id;
+  const head = st.messages.filter(m => m.id < firstId);
+  return head.length
+    ? mergeServerMsgs(sid, [...head, ...incoming], turns)
+    : mergeServerMsgs(sid, incoming, turns);
+}
+
+/** messages 全量替换的统一入口：服务端快照 + 仍无着落的乐观消息合并。
+ *  - 未落定（POST 在途）：无条件合回——任何快照都不可能已含它
+ *  - 已落定：快照含同 turn_id 消息 → 服务端副本接管（登记对账清除）；
+ *    快照 turns 里出现比它新的 turn 却没有它 → 已被撤回（快照读取晚于
+ *    本 turn 创建，不可能是陈旧快照漏读——turn id 全局自增），不复活；
+ *    超过 10 分钟 → 老化清除（任何后续快照必然已含服务端副本）
+ *  合回项追加在快照尾部：它们都是刚发出的最新消息，天然有序 */
+function mergeServerMsgs(sid: string, incoming: MessageInfo[],
+                         turns?: TurnInfo[]): MessageInfo[] {
+  const pend = inflightSends.get(sid);
+  if (!pend?.length) return incoming;
+  const seenTurns = new Set(incoming.map(m => m.turn_id)
+    .filter((x): x is number => x != null));
+  const keep: InflightSend[] = [];
+  const tail: MessageInfo[] = [];
+  for (const it of pend) {
+    const tid = it.turnId;
+    if (tid != null && (seenTurns.has(tid)
+        || (turns != null && turns.some(t => t.id > tid))
+        || Date.now() - it.settledAt > 600_000)) continue;
+    keep.push(it);
+    tail.push(it.msg);
+  }
+  if (keep.length !== pend.length) {
+    if (keep.length) inflightSends.set(sid, keep);
+    else inflightSends.delete(sid);
+  }
+  return tail.length ? [...incoming, ...tail] : incoming;
+}
+
+/** turns 全量替换的统一入口（与 mergeServerMsgs 成对使用，先调它清登记）：
+ *  陈旧快照（读取早于本 turn 落库）不含刚发出的 turn 行 → 排队区靠
+ *  `messages.turn_id + turns 行` 双条件识别会失配——把登记里已落定、
+ *  快照缺席的 turn 行合回尾部 */
+function mergeServerTurns(sid: string, incoming: TurnInfo[]): TurnInfo[] {
+  const pend = inflightSends.get(sid);
+  if (!pend?.length) return incoming;
+  const ids = new Set(incoming.map(t => t.id));
+  const tail = pend.filter(it => it.turnId != null && it.turn && !ids.has(it.turnId))
+    .map(it => it.turn!);
+  return tail.length ? [...incoming, ...tail] : incoming;
 }
 
 type SetFn = (partial: Partial<Store> | ((s: Store) => Partial<Store>)) => void;
@@ -1069,10 +1290,20 @@ function handleEvent(
       break;
     case 'steer':
       // 运行中插话已投递：铺进流水（下一轮 LLM 调用前注入上下文）。
-      // id=撤回凭据（POST /steer/retract，注入前有效）+回放/双连接去重键
+      // id=撤回凭据（POST /steer/retract，注入前有效）+回放/双连接去重键。
+      // steerOrSend 收到受理回执会先乐观铺一条无 id 的同文本项（SSE 掉线
+      // 时插话才有本地回显）——事件后到则给它补 id 收编，不另起一条
       set(s => {
         if (!s.live || s.live.turnId !== data.turn_id) return {};
         if (s.live.items.some(it => it.kind === 'steer' && it.id === data.id)) return {};
+        const idx = s.live.items.findIndex(
+          it => it.kind === 'steer' && it.id == null && it.text === data.text);
+        if (idx >= 0) {
+          const items = [...s.live.items];
+          const twin = items[idx] as { kind: 'steer'; text: string; id?: string };
+          items[idx] = { ...twin, id: data.id };
+          return { live: { ...s.live, items } };
+        }
         return { live: { ...s.live, items: [...s.live.items, { kind: 'steer', text: data.text, id: data.id }] } };
       });
       break;
@@ -1100,7 +1331,8 @@ function handleEvent(
           `/api/sessions/${encodeURIComponent(sid)}`);
         const cur = get().live;
         // 旧 turn 的终态：不清当前活跃 turn 的 live；自己的终态：清（消息已落库渲染）
-        set(() => ({ messages: d.messages, turns: d.turns, artifacts: d.artifacts,
+        set(() => ({ messages: applyServerWindow(sid, d.messages, d.turns),
+                     turns: mergeServerTurns(sid, d.turns), artifacts: d.artifacts,
                      agents: deriveAgents(d.messages, d.turns),
                      subtasks: d.subtasks ?? [],
                      live: cur && cur.turnId !== data.turn_id ? cur : null }));
@@ -1127,7 +1359,12 @@ function handleEvent(
       break;
     }
     case 'turn_deleted':
-      // 排队消息被撤回（本标签页或别处操作）→ 拉全量同步，乐观消息一并消失
+      // 排队消息被撤回（本标签页或别处操作）→ 拉全量同步，乐观消息一并消失。
+      // 先同步清在途登记：被撤回的正是刚发出的消息时，防 merge 把乐观项复活；
+      // 撤回早于 POST 响应（登记未回填 turnId）的情形由 rememberRetractedTurn
+      // 记下，sendMessage 落定时补杀
+      rememberRetractedTurn(data.turn_id);
+      dropInflightByTurn(sid, data.turn_id);
       (async () => {
         const sid2 = get().currentSid;
         if (sid2 !== sid) return;
@@ -1135,7 +1372,8 @@ function handleEvent(
                               artifacts: ArtifactInfo[]; subtasks: SubtaskInfo[] }>(
           `/api/sessions/${encodeURIComponent(sid)}`);
         if (get().currentSid === sid) {
-          set(() => ({ messages: d.messages, turns: d.turns, artifacts: d.artifacts }));
+          set(() => ({ messages: applyServerWindow(sid, d.messages, d.turns),
+                       turns: mergeServerTurns(sid, d.turns), artifacts: d.artifacts }));
         }
         void get().loadSessions();
       })();
@@ -1147,7 +1385,8 @@ function handleEvent(
       }
       break;
     case 'resync':
-      set(() => ({ messages: data.messages ?? [], turns: data.turns ?? [], artifacts: [],
+      set(() => ({ messages: mergeServerMsgs(sid, data.messages ?? [], data.turns),
+                   turns: mergeServerTurns(sid, data.turns ?? []), artifacts: [],
                    agents: deriveAgents(data.messages ?? [], data.turns ?? []),
                    subtasks: data.subtasks ?? [] }));
       break;

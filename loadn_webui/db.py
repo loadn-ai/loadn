@@ -763,6 +763,30 @@ def list_messages(c: sqlite3.Connection, sid: str) -> list[sqlite3.Row]:
     return c.execute("SELECT * FROM messages WHERE session_id=? ORDER BY id", (sid,)).fetchall()
 
 
+def list_messages_tail(c: sqlite3.Connection, sid: str, limit: int) -> list[sqlite3.Row]:
+    """尾窗（PERF-4 历史分页）：最新 limit 条，id 升序返回。会话详情首屏
+    只铺尾窗，更早的走 list_messages_before 按 before_id 翻页回源。"""
+    return c.execute(
+        "SELECT * FROM (SELECT * FROM messages WHERE session_id=?"
+        " ORDER BY id DESC LIMIT ?) ORDER BY id", (sid, limit)).fetchall()
+
+
+def list_messages_before(c: sqlite3.Connection, sid: str, before_id: int,
+                         limit: int) -> list[sqlite3.Row]:
+    """向前翻页（PERF-4）：id < before_id 的最新 limit 条，id 升序返回——
+    与已加载尾窗严格衔接（无重复、无跳号），前端「加载更多」回源用。"""
+    return c.execute(
+        "SELECT * FROM (SELECT * FROM messages WHERE session_id=? AND id<?"
+        " ORDER BY id DESC LIMIT ?) ORDER BY id", (sid, before_id, limit)).fetchall()
+
+
+def count_messages_before(c: sqlite3.Connection, sid: str, before_id: int) -> int:
+    """id < before_id 的剩余条数（「加载更多」徽标/到底判定）。"""
+    return int(c.execute(
+        "SELECT COUNT(*) FROM messages WHERE session_id=? AND id<?",
+        (sid, before_id)).fetchone()[0])
+
+
 def add_event(c: sqlite3.Connection, sid: str, turn_id: int | None, type_: str, data: dict) -> int:
     from loadn.util import sanitize_text  # 三轮修：lone surrogate 清洗
     cur = c.execute(

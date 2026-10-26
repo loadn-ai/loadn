@@ -15,7 +15,13 @@ from ...engine import ENGINE
 
 router = APIRouter(prefix="/api")
 
-from ._common import _apply_partition_mutex, _fold_blocks, _get_session_or_404, _job_fields
+from ._common import (
+    MSG_PAGE,
+    _apply_partition_mutex,
+    _fold_blocks,
+    _get_session_or_404,
+    _job_fields,
+)
 
 
 @router.post("/sessions")
@@ -143,7 +149,14 @@ def session_detail(sid: str, request: Request):
     sess = _get_session_or_404(sid)
     from ... import archive as archive_mod
     with db_mod.conn() as c:
-        sess["messages"] = [db_mod.to_dict(r) for r in db_mod.list_messages(c, sid)]
+        # PERF-4 历史分页：首屏只铺最新 MSG_PAGE 条尾窗，更早的由前端
+        # 「加载更多」按 before_id 走 /messages/page 回源（此前全量下发，
+        # 历史任务多的会话详情响应动辄数 MB，打开要卡数秒）
+        sess["messages"] = [db_mod.to_dict(r) for r in
+                            db_mod.list_messages_tail(c, sid, MSG_PAGE)]
+        sess["messages_earlier"] = (
+            db_mod.count_messages_before(c, sid, sess["messages"][0]["id"])
+            if sess["messages"] else 0)
         # PERF-2：冷归档折叠计数（前端渲染「⋯ N 条已归档」提示行）
         sess["messages_folded"] = archive_mod.folded_count(c, sid)
         for m in sess["messages"]:
@@ -349,6 +362,24 @@ def delete_session(sid: str, purge: bool = False):
         shutil.rmtree(ws, ignore_errors=True)
     archive_mod.purge_archive(sid)   # PERF-2：归档分片随会话同生命周期
     return {"ok": True, "deleted": sid}
+@router.get("/sessions/{sid}/messages/page")
+def get_messages_page(sid: str, before_id: int, limit: int = MSG_PAGE):
+    """历史分页回源（PERF-4）：id < before_id 的最新 limit 条（id 升序），
+    与前端已加载尾窗严格衔接（无重复/无跳号——before_id=当前最早已加载
+    消息 id，页内全部更早且连续）。earlier=本页之前还剩多少条（0=到底，
+    前端收起「加载更多」）。assistant 块折叠口径与详情一致。属主门随
+    _get_session_or_404（他人会话=404 不暴露存在性）。"""
+    _get_session_or_404(sid)
+    limit = max(1, min(500, limit))
+    with db_mod.conn() as c:
+        msgs = [db_mod.to_dict(r) for r in
+                db_mod.list_messages_before(c, sid, before_id, limit)]
+        earlier = (db_mod.count_messages_before(c, sid, msgs[0]["id"])
+                   if msgs else 0)
+    for m in msgs:
+        if m.get("role") == "assistant":          # 附件块在 user 消息里，不动
+            m["blocks_json"] = _fold_blocks(m.get("blocks_json"))
+    return {"messages": msgs, "earlier": earlier}
 @router.get("/sessions/{sid}/messages/archived")
 def get_archived_messages(sid: str):
     """回源折叠段（PERF-2）：id 升序返回归档分片全文。属主门随

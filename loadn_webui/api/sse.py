@@ -24,11 +24,19 @@ def _fmt(eid: int, type_: str, data: dict) -> str:
 
 
 def _resync_snapshot(sid: str) -> dict:
-    """整包快照：DB messages + turns + subtasks + todos + 最近文件（transcript 兜底）。"""
+    """整包快照：messages 尾窗 + turns + subtasks + todos + 最近文件
+    （transcript 兜底）。PERF-4：messages 同详情口径只带最新 MSG_PAGE 条
+    尾窗 + messages_earlier 计数——删/改消息触发的 resync 在大会话上原本
+    全量下发数 MB，与首屏全量同病；前端消费端按窗口合并（保留已展开的
+    更早页），不整替。"""
     from .. import transcript as ts
+    from .routes._common import MSG_PAGE
     with db_mod.conn() as c:
         sess = db_mod.get_session(c, sid)
-        msgs = [db_mod.to_dict(r) for r in db_mod.list_messages(c, sid)]
+        msgs = [db_mod.to_dict(r) for r in
+                db_mod.list_messages_tail(c, sid, MSG_PAGE)]
+        earlier = (db_mod.count_messages_before(c, sid, msgs[0]["id"])
+                   if msgs else 0)
         turns = [db_mod.to_dict(r) for r in c.execute(
             "SELECT * FROM turns WHERE session_id=? ORDER BY id", (sid,)).fetchall()]
         subtasks = [db_mod.to_dict(r) for r in db_mod.list_subtasks(c, sid)]
@@ -39,7 +47,8 @@ def _resync_snapshot(sid: str) -> dict:
         files = ts.recent_ws_files(ws_mod.ws_of(sid))
     except OSError:
         files = []
-    return {"session": db_mod.to_dict(sess), "messages": msgs, "turns": turns,
+    return {"session": db_mod.to_dict(sess), "messages": msgs,
+            "messages_earlier": earlier, "turns": turns,
             "subtasks": subtasks, "todos": todos, "recent_files": files}
 
 
