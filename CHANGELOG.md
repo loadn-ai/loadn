@@ -3,6 +3,32 @@
 本项目的全部显著变更记录于此。格式遵循 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/)，
 版本遵循 [SemVer](https://semver.org/lang/zh-CN/)。
 
+## [Unreleased]
+
+- **新功能：Kimi 联网搜索双档 + Tavily 搜索 + ScraperAPI 抓取（三资源同批）**
+  （用户需求：接入 Kimi 开放平台联网搜索 Basic/Pro、Tavily Search、
+  ScraperAPI 抓取代理）：①**Kimi 双档**——种子卡 kimi_search（vault
+  svc:kimi_search，端点锚字段 kimi_search_base）：Basic（/v1/tools/search，
+  标题/链接/摘要+可选整页正文）与 **Pro 推荐**（/v1/tools/search_pro——
+  模型先读正文再挑与查询最相关的内容片段 chunks 按相关性排序，附带
+  authority 来源权威性；sites ≤5 站点限定+time_window 时间过滤；问答/
+  RAG/报告场景 token 降一个量级）+kimi_fetch（单页→Markdown）；CLI
+  `r search --via kimi`（Basic）与 `--via kimi_pro --sites a.com,b.com
+  --tw 2025-10,2025-12`（Pro）；②**Tavily**——种子卡 tavily（svc:tavily）：
+  英文/技术调研友好，search_depth advanced（默认）/basic，score 相关性分
+  复用展示位；CLI `--via tavily`；③**ScraperAPI**——种子卡 scraperapi
+  （svc:scraperapi）：硬反爬站点兜底抓取（住宅 IP 池+渲染→HTML 原文，
+  r fetch 主链拿不到时的最后一路），平台函数 scraperapi_fetch。三卡
+  全带 ping 专支。对赌 12 例（kimi 8+tavily 2+scraperapi 2）。
+- **优化：heredoc 拦截根治——引号定界 heredoc 剥体放行**（用户反馈
+  「总这样太浪费时间」；根因=bashlex 解析器不支持 <<'EOF' 形态，fail-closed
+  兜住而非有意禁）：policy 新增 _strip_heredoc_bodies——解析失败先剥
+  heredoc 体（到首个整行==定界符止，与 bash 语义一致）再重解析，成功则
+  继续常规 L0/L1 全量分析（与裸 <<EOF 可解析放行**对齐同权，无新增
+  绕过面**：L0 文本层仍查原串、未闭合/怪嵌套仍 fail-closed block）。
+  台账追加场景（cat >> file <<'EOF'）实测从 6 次弹射改道归零。安全面
+  254 passed+对赌升级（闭合放行/未闭合拦/体内 rm-rf 仍拦）。
+
 ## [0.7.54] - 2026-10-27
 
 - **新功能：DeepSeek Search/Fetch 搜索资源通道**（用户需求：接入 DeepSeek

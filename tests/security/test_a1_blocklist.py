@@ -87,16 +87,20 @@ def test_a1_parse_failure_blocks():
 
 
 def test_a1_heredoc_block_message_names_redirect():
-    """A1 补：引号定界 heredoc（<<'EOF'，模型实际最爱形态）bashlex 解析
-    失败——block 文案点名改道目标（Write/Edit），模型一次弹射改道不靠
-    撞墙悟（2026-10-10 生产实证：glm 撞多次后自悟并在旁白复述「heredoc
-    必被拦」）。"""
+    """A1 补（2026-10-27 语义升级）：引号定界 heredoc 剥体后可解析=放行
+    （与裸 <<EOF 可解析放行对齐同权——heredoc 体是数据不是命令；台账
+    追加场景实测 6 次弹射改道的时间成本）。剥不了的形态（未闭合/怪嵌套）
+    仍 block+定向文案；非 heredoc 解析失败保持通用文案。"""
+    # 主场景：闭合的引号定界 heredoc → 剥体可解析 → allow
     for cmd in ("cat > /tmp/x.md <<'EOF'\nhi\nEOF",
                 "cat >> app.py <<'PYEOF'\nimport os\nPYEOF"):
         d = policy.check_command(cmd, source="a1-test")
-        assert d.action == ACTION_BLOCK
-        assert d.matched == "heredoc"
-        assert "Write/Edit" in d.reason and "heredoc" in d.reason
+        assert d.action == ACTION_ALLOW, (cmd, d.reason)
+    # 未闭合（无终止行）：不剥 → fail-closed block+定向文案
+    d1 = policy.check_command("cat >> /tmp/x.md <<'EOF'\nhi", source="a1-test")
+    assert d1.action == ACTION_BLOCK
+    assert d1.matched == "heredoc"
+    assert "Write/Edit" in d1.reason and "heredoc" in d1.reason
     # 否定路径：非 heredoc 的解析失败保持通用文案（定向文案不得扩散）
     d2 = policy.check_command("echo $(( `", source="a1-test")
     assert d2.action == ACTION_BLOCK and d2.matched == "parse"
@@ -106,8 +110,13 @@ def test_a1_heredoc_block_message_names_redirect():
     d3 = policy.check_command("echo $((1<<3))", source="a1-test")
     assert d3.action == ACTION_BLOCK and d3.matched == "parse"
     assert "Write/Edit" not in d3.reason
+    # heredoc 体内的 L0 文本红线仍在（剥体放行不豁免文本层——原串先查）
+    d4 = policy.check_command(
+        "cat >> /tmp/x.sh <<'EOF'\nrm -rf / --no-preserve-root\nEOF",
+        source="a1-test")
+    assert d4.action == ACTION_BLOCK and d4.matched == "rm-rf"
     # 裸 <<EOF 可解析——走正常 L0/L1 判定，不到解析失败分支
-    # （裸 heredoc 喂解释器的绕过面记 backlog）
+    # （裸/引号 heredoc 喂解释器的绕过面记 backlog——与剥体放行同权）
     assert policy.check_command("cat >> a.py <<EOF\nx\nEOF",
                                 source="a1-test").matched != "heredoc"
 

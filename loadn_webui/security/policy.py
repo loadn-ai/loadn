@@ -189,6 +189,41 @@ def _first_literal(node) -> str:
     return ""
 
 
+# ---------------------------------------------------------------- heredoc 剥体
+
+_HEREDOC_OPEN = re.compile(r"<<-?\s*(['\"]?)([A-Za-z_]\w*)\1\s*$")
+
+
+def _strip_heredoc_bodies(cmd: str) -> str:
+    """把「起始符在行尾」的 heredoc 体（含终止行）替换为空串占位。
+
+    语义对齐 bash：体到首个「整行==定界符」止（体内出现定界行即结束，
+    非贪婪恰好等价）。剥体后命令可交给 bashlex 常规解析——heredoc 体
+    是数据不是命令（裸 <<EOF 本就可解析放行，此处引号定界对齐同权）。
+    起始符不在行尾（行内还有 && 等复合形态）不剥——保守留给 fail-closed。
+    多个 heredoc 顺序处理；未闭合（无终止行）=不剥（整体返回原串）。
+    """
+    lines = cmd.split("\n")
+    out: list[str] = []
+    i = 0
+    while i < len(lines):
+        m = _HEREDOC_OPEN.search(lines[i])
+        if m:
+            delim = m.group(2)
+            head = lines[i][:m.start()].rstrip() + " ''"
+            j = i + 1
+            while j < len(lines) and lines[j].strip() != delim:
+                j += 1
+            if j >= len(lines):
+                return cmd           # 未闭合：整体不剥（fail-closed 兜底）
+            out.append(head)
+            i = j + 1
+            continue
+        out.append(lines[i])
+        i += 1
+    return "\n".join(out)
+
+
 # ---------------------------------------------------------------- 主判定
 
 def check_command(cmd: str, *, source: str = "cli") -> Decision:
@@ -232,24 +267,41 @@ def check_command(cmd: str, *, source: str = "cli") -> Decision:
         import bashlex
         trees = bashlex.parse(cmd)
     except Exception:                                  # noqa: BLE001
-        # 引号定界 heredoc（<<'EOF'，模型实际最爱形态）bashlex 解析失败
-        # ——定向文案让模型一次弹射改道 Write/Edit（受治理的文件写路径：
-        # diff/审计/LSP 回注），不靠撞墙悟（2026-10-10 生产实证：glm 撞
-        # 多次后自悟并在旁白复述「heredoc 必被拦」——文案点名改道目标省掉
-        # 整个试错段）。只在解析失败后做形态判定：定界符形态（引号/标识符）
-        # 才认 heredoc，$((1<<3)) 这类算术位移同样解析失败但不是 heredoc、
-        # 吃通用文案；裸 <<EOF 可解析（到不了这）——喂解释器绕过面见
-        # backlog（heredoc-as-stdin 不经命令词分析）。
-        if re.search(r"<<-?\s*['\"A-Za-z_]", cmd):
-            d = Decision(ACTION_BLOCK,
-                         "命令含 heredoc（<<），bash 解析器不可解析"
-                         "（fail-closed 已拦）——写文件请改用 Write/Edit "
-                         "工具（受治理路径，先 Read 再写）",
-                         matched="heredoc")
+        # 引号定界 heredoc（<<'EOF'）bashlex 不支持——先尝试剥体重解析：
+        # heredoc 体=纯数据（与裸 <<EOF 可解析放行的既有语义对齐：命令词
+        # 分析照常跑在剥体后的命令上，无新增绕过面；裸定界本就到不了这）。
+        # 剥后仍不可解析 → 保持 fail-closed block。
+        stripped = _strip_heredoc_bodies(cmd)
+        if stripped != cmd:
+            try:
+                trees = bashlex.parse(stripped)
+            except Exception:                          # noqa: BLE001
+                trees = None
+            if trees is not None:
+                audit("permission_decision", {
+                    "action": "allow", "matched": "heredoc_stripped_reparse",
+                    "subject": stripped[:200], "source": source})
+                cmd = stripped        # 后续 L1+/L0 全量分析作用于剥体命令
+            else:
+                d = Decision(ACTION_BLOCK, "bash 解析失败（fail-closed）",
+                             matched="parse")
+                _audit_decision(d, cmd, source)
+                return d
         else:
-            d = Decision(ACTION_BLOCK, "bash 解析失败（fail-closed）", matched="parse")
-        _audit_decision(d, cmd, source)
-        return d
+            # 非 heredoc 形态（$((1<<3)) 算术位移等）：通用 fail-closed
+            # 文案；真 heredoc 剥不了（起始符不在行尾/嵌套怪形态）定向改道
+            # Write/Edit（受治理的文件写路径：diff/审计/LSP 回注）。
+            if re.search(r"<<-?\s*['\"A-Za-z_]", cmd):
+                d = Decision(ACTION_BLOCK,
+                             "命令含 heredoc（<<），bash 解析器不可解析"
+                             "（fail-closed 已拦）——写文件请改用 Write/Edit "
+                             "工具（受治理路径，先 Read 再写）",
+                             matched="heredoc")
+            else:
+                d = Decision(ACTION_BLOCK, "bash 解析失败（fail-closed）",
+                             matched="parse")
+            _audit_decision(d, cmd, source)
+            return d
 
     # L1 网络门与 proxy._gate 同面（两道门语义对齐）：off/warn 档不在这里
     # 拦网络命令——warn 由 proxy 层记事件放行，off 全放；只有 enforce 才

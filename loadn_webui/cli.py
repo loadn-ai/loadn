@@ -179,19 +179,22 @@ def _build_r_parser(sub) -> None:
     p.add_argument("--model", default=None)
     p.add_argument("--max-tokens", type=int, default=512)
 
-    p = rsub.add_parser("search", help="网页搜索（默认 auto：智谱→博查→DeepSeek 兜底）")
+    p = rsub.add_parser("search", help="网页搜索（auto：智谱→博查→DeepSeek；手动 kimi/kimi_pro）")
     p.add_argument("query")
     p.add_argument("--n", type=int, default=10)
     p.add_argument("--via", default="auto",
-                   choices=["auto", "zhipu", "bocha", "deepseek"],
-                   help="auto=智谱优先，博查→DeepSeek 依次兜底")
+                   choices=["auto", "zhipu", "bocha", "deepseek", "kimi",
+                            "kimi_pro", "tavily"],
+                   help="auto=智谱优先，博查→DeepSeek 兜底；kimi=Basic，kimi_pro=Pro（正文片段），tavily=英文/技术")
     p.add_argument("--se", default="", choices=["", "search_std", "search_pro",
                                                 "search_pro_sogou", "search_pro_quark"],
                    help="智谱引擎（默认配置 resources.zhipu_engine）")
     p.add_argument("--fresh", default="", help="时间范围，如 oneDay/oneWeek/oneYear")
     p.add_argument("--domain", default="", help="限定域名（智谱，如 www.sohu.com）")
     p.add_argument("--content", action="store_true",
-                   help="DeepSeek：附带网页正文（need_content）")
+                   help="DeepSeek/Kimi Basic：附带网页正文")
+    p.add_argument("--sites", default="", help="Kimi Pro：限定站点（逗号分隔，≤5）")
+    p.add_argument("--tw", default="", help="Kimi Pro：时间窗 start,end（YYYY[-MM[-DD]]）")
     p.add_argument("--json", action="store_true")
 
     p = rsub.add_parser("fetch", help="抓网页正文（主内容提取+关键图 OCR，CDP 兜底）")
@@ -441,7 +444,7 @@ async def _run_r(args) -> int:
                    else "zhipu")      # 全无 key：走智谱报「未配置」（含指引）
         if via == "zhipu":
             if args.content:
-                print("注意: --content 仅 DeepSeek 生效，已忽略", file=sys.stderr)
+                print("注意: --content 仅 DeepSeek/Kimi 生效，已忽略", file=sys.stderr)
             hits = await resources.zhipu_search(
                 args.query, n=args.n, engine=args.se or None,
                 recency=args.fresh or None, domain=args.domain or None)
@@ -450,11 +453,34 @@ async def _run_r(args) -> int:
                 print("注意: --se/--domain 仅智谱生效，已忽略", file=sys.stderr)
             hits = await resources.deepseek_search(
                 args.query, n=args.n, need_content=args.content)
+        elif via == "kimi":
+            if args.se or args.domain:
+                print("注意: --se/--domain 仅智谱生效，已忽略", file=sys.stderr)
+            hits = await resources.kimi_search(
+                args.query, n=args.n, include_content=args.content)
+        elif via == "kimi_pro":
+            if args.se or args.domain or args.content:
+                print("注意: --se/--domain/--content 对 kimi_pro 不生效，已忽略",
+                      file=sys.stderr)
+            tw = [x for x in args.tw.split(",") if x] if args.tw else []
+            hits = await resources.kimi_search_pro(
+                args.query, n=args.n,
+                sites=[s for s in args.sites.split(",") if s] or None,
+                time_start=tw[0] if len(tw) > 0 else None,
+                time_end=tw[1] if len(tw) > 1 else None)
+        elif via == "tavily":
+            if args.se or args.domain or args.sites or args.tw:
+                print("注意: --se/--domain/--sites/--tw 对 tavily 不生效，已忽略",
+                      file=sys.stderr)
+            hits = await resources.tavily_search(
+                args.query, n=args.n,
+                advanced=not args.content)   # --content 位复用：切 basic 深度档
         else:
             if args.se or args.domain:
                 print("注意: --se/--domain 仅智谱生效，已忽略", file=sys.stderr)
             if args.content:
-                print("注意: --content 仅 DeepSeek 生效，已忽略", file=sys.stderr)
+                print("注意: --content 仅 DeepSeek/Kimi/tavily 生效，已忽略",
+                      file=sys.stderr)
             hits = await resources.bocha_search(args.query, n=args.n,
                                                 freshness=args.fresh or None)
         if args.json:
@@ -465,7 +491,12 @@ async def _run_r(args) -> int:
                 print(f"   {h['url']}")
                 if h.get("rerank_score") is not None:
                     print(f"   [相关性 {h['rerank_score']}]")
-                if h["snippet"]:
+                if h.get("authority") is not None:
+                    print(f"   [权威性 {h['authority']}]")
+                if h.get("chunks"):
+                    first = h["chunks"][0]
+                    print(f"   [片段 {first.get('score')}] {first.get('text','')[:140]}")
+                elif h["snippet"]:
                     print(f"   {h['snippet'][:160]}")
                 elif h.get("summary"):
                     print(f"   {h['summary'][:160]}")

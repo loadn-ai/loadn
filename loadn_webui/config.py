@@ -152,7 +152,8 @@ ANCHOR_SERVICE_KEYS = frozenset({
     "ocr_url", "sandbox_url", "cdp_url", "proxy", "adb_addr", "sms_url",
     "sms_phone", "mail_imap", "mail_smtp", "mail_user", "textr_email",
     "vlm_api_base", "vlm_model", "zhipu_engine", "bocha_base", "zhipu_base",
-    "deepseek_search_base"})
+    "deepseek_search_base", "kimi_search_base", "tavily_base",
+    "scraperapi_base"})
 
 # 预置种子（与旧前端 GROUPS 等价；value 首次补种时从存量扁平字段上抬）
 PRESET_SERVICES: list[dict] = [
@@ -247,6 +248,55 @@ PRESET_SERVICES: list[dict] = [
                "- 按次计费 5 元/千次（Search 100 QPS / Fetch 25 QPS）\n"
                "- 平台通道：`r search --via deepseek \"查询词\"`（密钥平台代管，"
                "优先走这条）"},
+    {"name": "kimi_search", "title": "Kimi 搜索", "icon": "search",
+     "category": "搜索",
+     "desc": "Kimi 开放平台联网搜索（Basic/Pro 双档+网页抓取，Pro 正文片段+权威性分）",
+     "ping": ["kimi_search"],
+     "config": [{"key": "kimi_search_base", "label": "API 地址",
+                 "env": "LOADN_KIMI_SEARCH_BASE"}],
+     "secrets": [{"label": "API Key", "env_key": "LOADN_KIMI_API_KEY",
+                  "vault_ref": "svc:kimi_search"}],
+     "prompt": "## Kimi 联网搜索（Moonshot 开放平台）\n\n双档搜索+抓取通道"
+               "（与 Kimi API 同 key，api.moonshot.cn）。\n\n- 端点：`$LOADN_KIMI_SEARCH_BASE"
+               "/v1/tools/search`（Basic：标题/链接/摘要+可选正文）与 "
+               "`/v1/tools/search_pro`（**Pro 推荐**：模型先读正文再挑与查询最相关的"
+               "内容片段 chunks 按相关性排序——问答/RAG/报告场景 token 省一个量级，"
+               "附带 authority 来源权威性）与 `/v1/tools/fetch`（单页→Markdown）\n"
+               "- 查询词写具体（实体+时间+限定词，如「2026 Q2 财报 营收 官方公告」）；"
+               "一次调用只表达一个信息需求；近似改写重发=重复付费\n"
+               "- Pro 支持 sites（≤5 站点限定）与 time_window（起止日期过滤）；"
+               "limit 1-20，timeout 1-60s\n"
+               "- 按次计费（价格见平台价目页）；搜索取不到正文时仍返回标题/链接/摘要"
+               "\n- 平台通道：`r search --via kimi \"查询词\"`（Basic）或 `--via kimi_pro`"
+               "（Pro，推荐）——密钥平台代管，优先走这条"},
+    {"name": "tavily", "title": "Tavily 搜索", "icon": "search",
+     "category": "搜索",
+     "desc": "Tavily Search API（英文/技术研究友好，advanced 深度档）",
+     "ping": ["tavily"],
+     "config": [{"key": "tavily_base", "label": "API 地址",
+                 "env": "LOADN_TAVILY_BASE"}],
+     "secrets": [{"label": "API Key", "env_key": "LOADN_TAVILY_API_KEY",
+                  "vault_ref": "svc:tavily"}],
+     "prompt": "## Tavily Search\n\n面向 AI 应用的搜索 API（英文/技术调研"
+               "质量好）。\n\n- 端点：`$LOADN_TAVILY_BASE/search`（POST，Bearer 鉴权；"
+               "search_depth=basic/advanced，advanced 更深更准但更慢）\n"
+               "- 返回 title/url/content（正文片段）+score 相关性分；"
+               "include_answer=true 可附 LLM 合成答案\n- 平台通道："
+               "`r search --via tavily \"查询词\"`（密钥平台代管，优先走这条）"},
+    {"name": "scraperapi", "title": "ScraperAPI 抓取", "icon": "globe",
+     "category": "搜索",
+     "desc": "ScraperAPI 网页抓取代理（反爬站点渲染后 HTML，住宅 IP 池）",
+     "ping": ["scraperapi"],
+     "config": [{"key": "scraperapi_base", "label": "API 地址",
+                 "env": "LOADN_SCRAPERAPI_BASE"}],
+     "secrets": [{"label": "API Key", "env_key": "LOADN_SCRAPERAPI_API_KEY",
+                  "vault_ref": "svc:scraperapi"}],
+     "prompt": "## ScraperAPI（网页抓取代理）\n\n反爬站点的兜底抓取通道"
+               "（住宅 IP 池+渲染，按次计费）。\n\n- 用法："
+               "`GET $LOADN_SCRAPERAPI_BASE/?api_key=<key>&url=<目标>` → 渲染后"
+               " HTML（平台函数 scraperapi_fetch 已封装，key 平台代管）\n"
+               "- 场景：r fetch 主链（正文提取+CDP 兜底）都拿不到的硬反爬站点\n"
+               "- 注意：返回的是 HTML 原文，需自行提取正文；不要用于高频批量"},
     {"name": "captcha", "title": "过验证码", "icon": "shield", "category": "AI 能力",
      "desc": "2Captcha（图形码 / reCAPTCHA）", "ping": ["twocaptcha"],
      "config": [], "secrets": [{"label": "API Key", "env_key": "LOADN_CAPTCHA_API_KEY",
@@ -417,6 +467,9 @@ class ResourcesConfig:
     zhipu_base: str = "https://open.bigmodel.cn/api/paas/v4/web_search"
     zhipu_engine: str = "search_pro"                # std 0.01 / pro 0.03 / pro_sogou|quark 0.05 元/次
     deepseek_search_base: str = "https://api.deepseek.com"   # DeepSeek Search/Fetch（密钥走 svc:deepseek_search）
+    kimi_search_base: str = "https://api.moonshot.cn"   # Kimi 联网搜索 Basic/Pro/Fetch（密钥走 svc:kimi_search）
+    tavily_base: str = "https://api.tavily.com"   # Tavily Search（密钥走 svc:tavily）
+    scraperapi_base: str = "https://api.scraperapi.com"   # ScraperAPI 抓取代理（密钥走 svc:scraperapi）
     adb_addr: str = ""       # android 真机（如 192.168.x.x:5555）
     textr_email: str = ""                           # Textr Go 美国虚拟号码（收验证码）
     textr_password: str = ""

@@ -26,8 +26,12 @@ BOCHA_API_BASE = "https://api.bochaai.com"
 ZHIPU_WEB_SEARCH_API = "https://open.bigmodel.cn/api/paas/v4/web_search"
 TWOCAPTCHA_API = "https://2captcha.com"
 DEEPSEEK_API_BASE = "https://api.deepseek.com"
-# 搜索基址运行时读资源卡（bocha_base/zhipu_base/deepseek_search_base 锚字段，
-# 改地址免重启）；上方常量仅作缺省回落与文档锚。
+KIMI_API_BASE = "https://api.moonshot.cn"
+TAVILY_API_BASE = "https://api.tavily.com"
+SCRAPERAPI_API_BASE = "https://api.scraperapi.com"
+# 搜索基址运行时读资源卡（bocha_base/zhipu_base/deepseek_search_base/
+# kimi_search_base/tavily_base/scraperapi_base 锚字段，改地址免重启）；
+# 上方常量仅作缺省回落与文档锚。
 
 
 def _res():
@@ -341,6 +345,153 @@ async def deepseek_fetch(url: str) -> dict:
         err = (d.get("error") or {}).get("message") or str(d)[:150]
         raise RuntimeError(f"DeepSeek fetch 失败 ({resp.status_code}): {err}")
     return {"title": d.get("title") or "", "content": d.get("content") or ""}
+
+
+# ---------------------------------------------------------------- Kimi 搜索
+async def kimi_search(query: str, *, n: int = 5,
+                      include_content: bool = False) -> list[dict]:
+    """Kimi 联网搜索 Basic（/v1/tools/search）→ 同构 [{name,url,snippet,...}]。
+
+    include_content=True 附整页正文（全文入库场景）；默认只回标题/链接/
+    摘要（最快最便宜）。limit 官方上限 20。
+    """
+    if not _sec("svc:kimi_search"):
+        raise RuntimeError("未配置 Kimi key（vault svc:kimi_search）")
+    resp = await _post(
+        f"{(_res().kimi_search_base or KIMI_API_BASE).rstrip('/')}"
+        "/v1/tools/search",
+        headers={"Authorization": f"Bearer {_sec('svc:kimi_search')}"},
+        json={"text_query": query, "limit": min(max(n, 1), 20),
+              "include_content": bool(include_content)},
+        timeout=30.0)
+    d = resp.json()
+    if resp.status_code != 200:
+        err = (d.get("error") or {}).get("message") or str(d)[:150]
+        raise RuntimeError(f"Kimi 搜索失败 ({resp.status_code}): {err}")
+    out = []
+    for it in d.get("search_results") or []:
+        hit = {"name": it.get("title") or "", "url": it.get("url") or "",
+               "snippet": it.get("snippet") or "",
+               "siteName": it.get("site_name") or "",
+               "date": it.get("date") or ""}
+        if include_content and it.get("content"):
+            hit["content"] = it["content"]
+        out.append(hit)
+    return out
+
+
+async def kimi_search_pro(query: str, *, n: int = 5, sites: list[str] | None = None,
+                          time_start: str | None = None,
+                          time_end: str | None = None) -> list[dict]:
+    """Kimi 联网搜索 Pro（/v1/tools/search_pro）——问答/RAG/报告推荐档。
+
+    模型先读正文再挑与查询最相关的内容片段（chunks 按相关性排序）——
+    相比整页原文 token 降一个量级。附加键：chunks[{text,score}]（片段+
+    相关性分，仅同查询内可比）、authority（来源权威性）。
+    sites ≤5 站点限定（OR）；time_start/end YYYY[-MM[-DD]] 时间过滤。
+    """
+    if not _sec("svc:kimi_search"):
+        raise RuntimeError("未配置 Kimi key（vault svc:kimi_search）")
+    body: dict = {"text_query": query, "limit": min(max(n, 1), 20),
+                  "timeout_seconds": 30}
+    if sites:
+        body["sites"] = [s for s in sites if s][:5]
+    if time_start or time_end:
+        body["time_window"] = {"start": time_start or "",
+                               "end": time_end or ""}
+    resp = await _post(
+        f"{(_res().kimi_search_base or KIMI_API_BASE).rstrip('/')}"
+        "/v1/tools/search_pro",
+        headers={"Authorization": f"Bearer {_sec('svc:kimi_search')}"},
+        json=body, timeout=40.0)
+    d = resp.json()
+    if resp.status_code != 200:
+        err = (d.get("error") or {}).get("message") or str(d)[:150]
+        raise RuntimeError(f"Kimi Pro 搜索失败 ({resp.status_code}): {err}")
+    out = []
+    for it in d.get("search_results") or []:
+        hit = {"name": it.get("title") or "", "url": it.get("url") or "",
+               "snippet": it.get("snippet") or "",
+               "siteName": it.get("site_name") or "",
+               "date": it.get("date") or ""}
+        if it.get("authority") is not None:
+            hit["authority"] = it["authority"]      # 来源权威性等级
+        if it.get("chunks"):
+            hit["chunks"] = [{"text": c.get("text") or "",
+                              "score": c.get("score")}
+                             for c in it["chunks"]]
+        out.append(hit)
+    return out
+
+
+async def kimi_fetch(url: str) -> dict:
+    """Kimi 网页抓取（/v1/tools/fetch）→ {"title","content"}（Markdown 正文）。
+
+    正文提取结果，不含图片/视频等多媒体。
+    """
+    if not _sec("svc:kimi_search"):
+        raise RuntimeError("未配置 Kimi key（vault svc:kimi_search）")
+    resp = await _post(
+        f"{(_res().kimi_search_base or KIMI_API_BASE).rstrip('/')}"
+        "/v1/tools/fetch",
+        headers={"Authorization": f"Bearer {_sec('svc:kimi_search')}"},
+        json={"url": url}, timeout=30.0)
+    d = resp.json()
+    if resp.status_code != 200:
+        err = (d.get("error") or {}).get("message") or str(d)[:150]
+        raise RuntimeError(f"Kimi fetch 失败 ({resp.status_code}): {err}")
+    return {"title": d.get("title") or "", "content": d.get("content") or ""}
+
+
+# ---------------------------------------------------------------- Tavily 搜索
+async def tavily_search(query: str, *, n: int = 10,
+                        advanced: bool = True) -> list[dict]:
+    """Tavily Search → 同构归一化（content 正文片段进 snippet，score 附加）。
+
+    advanced=True 走 search_depth=advanced（更深更准，稍慢）。
+    """
+    if not _sec("svc:tavily"):
+        raise RuntimeError("未配置 Tavily key（vault svc:tavily）")
+    resp = await _post(
+        f"{(_res().tavily_base or TAVILY_API_BASE).rstrip('/')}/search",
+        headers={"Authorization": f"Bearer {_sec('svc:tavily')}"},
+        json={"query": query, "search_depth": "advanced" if advanced else "basic",
+              "max_results": min(max(n, 1), 20)},
+        timeout=30.0)
+    d = resp.json()
+    if resp.status_code != 200:
+        err = d.get("detail") or d.get("message") or str(d)[:150]
+        raise RuntimeError(f"Tavily 搜索失败 ({resp.status_code}): {err}")
+    out = []
+    for it in d.get("results") or []:
+        hit = {"name": it.get("title") or "", "url": it.get("url") or "",
+               "snippet": it.get("content") or "",
+               "siteName": "", "date": ""}
+        if it.get("score") is not None:
+            hit["rerank_score"] = it["score"]     # 0-1 相关性（复用展示位）
+        if it.get("published_date"):
+            hit["date"] = it["published_date"]
+        out.append(hit)
+    return out
+
+
+# ---------------------------------------------------------------- ScraperAPI
+async def scraperapi_fetch(url: str) -> str:
+    """ScraperAPI 抓取代理 → 渲染后 HTML 原文（硬反爬站点兜底）。
+
+    key 经 query 参数传递（该 API 形态；密钥不进日志——_get 不记参数）。
+    返回原始 HTML，正文提取由调用方负责。
+    """
+    if not _sec("svc:scraperapi"):
+        raise RuntimeError("未配置 ScraperAPI key（vault svc:scraperapi）")
+    resp = await _get(
+        f"{(_res().scraperapi_base or SCRAPERAPI_API_BASE).rstrip('/')}/",
+        params={"api_key": _sec("svc:scraperapi"), "url": url},
+        timeout=60.0, follow_redirects=True)
+    if resp.status_code != 200:
+        raise RuntimeError(f"ScraperAPI 抓取失败 ({resp.status_code}): "
+                           f"{resp.text[:150]}")
+    return resp.text
 
 
 # ---------------------------------------------------------------- 短信
@@ -1189,6 +1340,21 @@ async def _ping_one(name: str) -> dict:
                 return {"ok": False, "msg": "未配置"}
             hits = await deepseek_search("connectivity", n=1)
             msg, ok = f"ok（探测 {len(hits)} 条）", True
+        elif name == "kimi_search":
+            if not _sec("svc:kimi_search"):
+                return {"ok": False, "msg": "未配置"}
+            hits = await kimi_search("connectivity", n=1)
+            msg, ok = f"ok（探测 Basic {len(hits)} 条）", True
+        elif name == "tavily":
+            if not _sec("svc:tavily"):
+                return {"ok": False, "msg": "未配置"}
+            hits = await tavily_search("connectivity", n=1, advanced=False)
+            msg, ok = f"ok（探测 {len(hits)} 条）", True
+        elif name == "scraperapi":
+            if not _sec("svc:scraperapi"):
+                return {"ok": False, "msg": "未配置"}
+            html = await scraperapi_fetch("https://example.com")
+            msg, ok = f"ok（{len(html)}B HTML）", True
         elif name == "adb":
             import subprocess
             addr = r.adb_addr
