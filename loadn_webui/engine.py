@@ -251,9 +251,21 @@ class Engine:
     def _todos_persist(self, at: ActiveTurn, sid: str, tid: int) -> None:
         """todos 变更落快照块进 blocks 时间线 + SSE todos（quiet 收口同 _emit）。
         回放端取最后一块还原清单（与 live TodoList 同位）；每项深拷贝防
-        后续变更污染已落快照。"""
+        后续变更污染已落快照。
+        持久层（v0.7.56）：快照同步写 kv todos:{sid}（清单完成即清）——
+        自动续跑跨 turn 判定的数据源：清单往往是早前 turn 建的，续跑的
+        turn 里模型不重发 TodoWrite，宿主侧 at.todos 为空会误判「无未完成」。
+        """
         at.blocks.append({"type": "todos",
                           "todos": [dict(t) for t in at.todos]})
+        done = all(str(t.get("status")) in ("completed", "cancelled")
+                   for t in at.todos) if at.todos else True
+        with db_mod.conn() as c:
+            if done:
+                db_mod.kv_del(c, f"todos:{sid}")
+            else:
+                db_mod.kv_set(c, f"todos:{sid}",
+                              json.dumps(at.todos, ensure_ascii=False))
         self._emit(at, sid, "todos", {"turn_id": tid, "todos": at.todos})
 
     def steer_if_running(self, sid: str, text: str) -> int | None:
@@ -918,19 +930,30 @@ class Engine:
 
         只对显式开启的会话生效（sessions.auto_continue=1，默认关）。判定口径=
         本 turn 维护的最新 todos 快照（TodoWrite 全量覆盖 / TaskCreate·TaskUpdate
-        增量），未完成 = status 不在 completed/cancelled。连续续跑计数
-        （kv autocont:{sid}）达上限即停；用户手动发消息清零重新计
-        （post_message）。上下文轮换场景天然兼容：rotate 在收尾前段已把
-        claude_session_id 换新+pending_anchor 暂存，续跑消息落在新引擎
-        session 且注入 anchor 摘要——任务上下文无缝衔接。
+        增量）；**本 turn 未动清单时回落 kv todos:{sid} 持久快照**（v0.7.56：
+        清单常是早前 turn 建的，续跑 turn 模型不重发 TodoWrite——at.todos
+        空会误判「无未完成」，生产实证 20261026_0253 会话首续即断）。未完成 =
+        status 不在 completed/cancelled。连续续跑计数（kv autocont:{sid}）达
+        上限即停；用户手动发消息清零重新计（post_message）。上下文轮换场景
+        天然兼容：rotate 在收尾前段已把 claude_session_id 换新+pending_anchor
+        暂存，续跑消息落在新引擎 session 且注入 anchor 摘要——任务上下文
+        无缝衔接。
         """
-        pending = [t for t in at.todos
-                   if str(t.get("status")) not in ("completed", "cancelled")]
-        if not pending:
-            return
         with db_mod.conn() as c:
             sess = db_mod.get_session(c, sid)
             if not sess or not sess["auto_continue"]:
+                return
+            todos = list(at.todos)
+            if not todos:            # 跨 turn：回落持久快照（_todos_persist 维护）
+                raw = db_mod.kv_get(c, f"todos:{sid}")
+                if raw:
+                    try:
+                        todos = json.loads(raw)
+                    except ValueError:
+                        todos = []
+            pending = [t for t in todos
+                       if str(t.get("status")) not in ("completed", "cancelled")]
+            if not pending:
                 return
             n = int(db_mod.kv_get(c, f"autocont:{sid}") or 0)
             if n >= AUTO_CONT_MAX:

@@ -3,6 +3,17 @@
 本项目的全部显著变更记录于此。格式遵循 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/)，
 版本遵循 [SemVer](https://semver.org/lang/zh-CN/)。
 
+## [Unreleased]
+
+- **修复：自动续跑跨 turn 断链——todos 快照持久化**（生产实证 20261026_0253
+  finhack 会话：开了自动续跑首续即断，kv autocont 零痕迹）：根因=清单往往
+  是早前 turn 建的，续跑 turn 里模型不重发 TodoWrite——宿主侧 at.todos
+  为空，_maybe_auto_continue 误判「无未完成」不投递（todos 状态此前只在
+  turn 内存，不跨 turn）。修复：①_todos_persist 同步写 kv todos:{sid}
+  持久快照（清单全 completed/cancelled 即清，防陈旧快照未来误触发）；
+  ②_maybe_auto_continue 本 turn 未动清单时回落持久快照判定。对赌 +2
+  （kv 回落续/无快照绝不续）+生命周期 2 例；引擎面全家桶 97 passed。
+
 ## [0.7.55] - 2026-10-27
 
 - **新功能：Kimi 联网搜索双档 + Tavily 搜索 + ScraperAPI 抓取（三资源同批）**

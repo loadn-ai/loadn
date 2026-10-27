@@ -149,3 +149,67 @@ async def test_auto_continue_manual_reset(client, ws_root, loadn_engine, monkeyp
     n1 = sum(1 for m in marks if "【自动续跑 1/2】" in m)
     assert n1 >= 2, f"清零重计实证失败（1/2 标记应≥2 次）: {marks}"
     assert len(rows) >= 4, "接管后应有新链（手动 turn+续跑）"
+
+
+async def test_auto_continue_cross_turn_kv_fallback(client, loadn_engine, monkeypatch):
+    """>>> 跨 turn 回落（v0.7.56）：清单是早前 turn 建的（kv todos:{sid}
+    持久快照在场），本 turn 模型不重发 TodoWrite（at.todos 空）——仍应续。
+    生产实证根因：20261026_0253 会话首续即断（清单昨日建，今日 turn
+    blocks 无 todos 块 → at.todos 空 → 误判无未完成不投递）。
+    """
+    import json as _json
+    from types import SimpleNamespace
+
+    from loadn_webui import engine as engine_mod
+
+    r = await client.post("/api/sessions", json={"title": "ac 跨turn"})
+    sid = r.json()["session"]["id"]
+    await client.patch(f"/api/sessions/{sid}", json={"auto_continue": 1})
+    # 早前 turn 的持久快照：2 项未完成（_todos_persist 写入形态）
+    with db_mod.conn() as c:
+        db_mod.kv_set(c, f"todos:{sid}", _json.dumps(
+            [{"subject": "回测实验 A", "status": "in_progress"},
+             {"subject": "论文写作", "status": "pending"}],
+            ensure_ascii=False))
+
+    submitted: list[str] = []
+
+    async def fake_submit(s, text):
+        submitted.append(text)
+        return None
+
+    monkeypatch.setattr(engine_mod.ENGINE, "submit", fake_submit)
+    at = SimpleNamespace(todos=[])          # 本 turn 未动清单
+    await engine_mod.ENGINE._maybe_auto_continue(sid, at)
+    assert len(submitted) == 1, "kv 快照有未完成项，at.todos 空也必须续"
+    assert "回测实验 A" in submitted[0] and "【自动续跑 1/25】" in submitted[0]
+
+    # 快照全完成 → 不续（清单完成即清 kv 的对赌在 _todos_persist 侧）
+    with db_mod.conn() as c:
+        db_mod.kv_del(c, f"todos:{sid}")
+    submitted.clear()
+    await engine_mod.ENGINE._maybe_auto_continue(sid, at)
+    assert not submitted, "无快照且 at.todos 空=无未完成证据，绝不续"
+
+
+async def test_todos_persist_kv_lifecycle(client, ws_root, loadn_engine):
+    """>>> _todos_persist 持久层生命周期：未完成写 kv / 全完成清 kv。"""
+    import json as _json
+    from types import SimpleNamespace
+
+    from loadn_webui import engine as engine_mod
+
+    r = await client.post("/api/sessions", json={"title": "kv 生命周期"})
+    sid = r.json()["session"]["id"]
+    at = SimpleNamespace(
+        todos=[{"subject": "任务一", "status": "in_progress"}],
+        blocks=[], quiet=True)
+    engine_mod.ENGINE._todos_persist(at, sid, 1)
+    with db_mod.conn() as c:
+        raw = db_mod.kv_get(c, f"todos:{sid}")
+    assert raw and "任务一" in _json.loads(raw)[0]["subject"]
+
+    at.todos = [{"subject": "任务一", "status": "completed"}]
+    engine_mod.ENGINE._todos_persist(at, sid, 1)
+    with db_mod.conn() as c:
+        assert db_mod.kv_get(c, f"todos:{sid}") is None, "全完成必须清 kv"
