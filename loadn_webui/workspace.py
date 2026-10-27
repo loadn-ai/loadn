@@ -106,6 +106,19 @@ def _fetch_script_path() -> Path:
     return Path(__file__).resolve().parent / "scripts" / "fetch_page.py"
 
 
+def _skills_unmounted_hint(mounted: list[str]) -> str:
+    """库内有但本会话未挂载的 skill 名单（v0.7.57：让 agent 能主动提示
+    用户补挂——否则 agent 只见挂载清单，库里明明有匹配 skill 也会如实
+    说「没有」，生产实证 20261027_1450 会话 deep-person-recon 未被识别）。
+
+    挂载=授权面：agent 不能自挂（只提示用户在属性面板/PATCH 补挂）。
+    """
+    have = set(mounted)
+    names = [s["name"] for s in skills_mod.available()
+             if not s.get("disabled") and s["name"] not in have]
+    return "、".join(f"`{n}`" for n in sorted(names)) or "无（库内 skill 已全挂载）"
+
+
 def render_claude_md(sid: str, title: str, prof: profile_mod.Profile,
                      skills: list[str]) -> str:
     from .config import behavior_file
@@ -117,6 +130,7 @@ def render_claude_md(sid: str, title: str, prof: profile_mod.Profile,
         "{{PROFILE_NAME}}": prof.name,
         "{{PROFILE_MD}}": prof.render_context(),
         "{{SKILLS_LIST}}": ", ".join(f"`{s}`" for s in skills) or "（本会话未挂载 skill）",
+        "{{SKILLS_UNMOUNTED}}": _skills_unmounted_hint(skills),
         "{{FETCH_PAGE}}": str(fetch) if fetch.exists() else "（未部署）",
         "{{EXEC_ENV}}": _exec_env_block(),
     }
