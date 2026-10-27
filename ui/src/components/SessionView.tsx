@@ -110,6 +110,15 @@ export default function SessionView({ onMenu }: { onMenu: () => void }) {
           )}
         </div>
         <div className="head-right">
+          <button
+            className={`btn ghost ${s.auto_continue ? 'on' : ''}`}
+            title={s.auto_continue
+              ? '自动续跑已开：turn 完成后若任务清单未完成，自动投「继续」接力推进（连续上限 25 次；你发任意消息即接管，随时可停/可关）'
+              : '开启自动续跑：turn 完成后任务清单未完时自动继续，直到清单完成（连续上限 25 次防失控）'}
+            onClick={() => void useStore.getState().patchSession(
+              s.id, { auto_continue: s.auto_continue ? 0 : 1 })}>
+            ⟳ 自动续跑{s.auto_continue ? '·开' : ''}
+          </button>
           <span className="usage" title="累计 tokens / 成本">
             {fmtTokens(s.usage?.total)} tok · ${(s.usage?.cost_usd ?? 0).toFixed(2)}
           </span>

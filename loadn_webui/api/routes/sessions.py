@@ -275,6 +275,10 @@ async def patch_session(sid: str, body: dict):
         updates["starred"] = 1 if bool(body["starred"]) else 0
     if "pinned" in body:
         updates["pinned"] = 1 if bool(body["pinned"]) else 0
+    if "auto_continue" in body:
+        # 自动续跑（rev18）：纯行为开关不扰动 updated_at——1=turn 完成后
+        # todo 未完自动投「继续」开新 turn（上限/清零见 engine._maybe_auto_continue）
+        updates["auto_continue"] = 1 if bool(body["auto_continue"]) else 0
     if "category_id" in body:
         # 移动到自定义分类（null = 回「最近」）；纯分区操作同样不 touch
         cid = body.get("category_id")

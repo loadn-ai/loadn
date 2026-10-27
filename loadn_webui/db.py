@@ -36,7 +36,9 @@ from .config import PATHS
 # rev16：models 表（T10——模型库：多模型 CRUD+默认标记，apply 写引擎 provider 配置）
 # rev17：索引 idx_sess_updated + idx_job_session（PERF-1——列表排序键与
 #        next_wake 下推；旧库首连 executescript 的 IF NOT EXISTS 自愈补上）
-SCHEMA_REV = 17
+# rev18：sessions.auto_continue（自动续跑：turn 完成后 todo 未完则自动投递
+#        「继续」开新 turn，直到清单完成/连续上限/用户手动消息；默认关）
+SCHEMA_REV = 18
 from .util import iso
 
 # PERF-1：已完成 executescript+_migrate 的库路径（进程内短路，见 conn()）
@@ -46,6 +48,7 @@ SCHEMA = """
 CREATE TABLE IF NOT EXISTS sessions (
   size_bytes INTEGER,                    -- BD-3：workspace 占用缓存（后台/惰性重算）
   size_checked_at TEXT,                  -- BD-3：最近一次占用统计时刻（iso）
+  auto_continue INTEGER DEFAULT 0,       -- 自动续跑（rev18：1=todo 未完自动续 turn）
   id TEXT PRIMARY KEY,              -- 形如 20260902_1430-a1b2
   title TEXT,
   profile TEXT,                     -- researcher|coder|assistant|...
@@ -470,6 +473,10 @@ def _migrate(c: sqlite3.Connection) -> None:
         c.execute("ALTER TABLE sessions ADD COLUMN size_bytes INTEGER")
     if "size_checked_at" not in scols:
         c.execute("ALTER TABLE sessions ADD COLUMN size_checked_at TEXT")
+
+    # rev18（自动续跑）：sessions.auto_continue 开关列（旧库补列；新表走 SCHEMA）
+    if "auto_continue" not in scols:
+        c.execute("ALTER TABLE sessions ADD COLUMN auto_continue INTEGER DEFAULT 0")
 
     # rev15（DW-6）：org_employees.duty 职责说明列（旧库补列；新表走 SCHEMA）
     ocols = {r["name"] for r in c.execute("PRAGMA table_info(org_employees)")}

@@ -3,6 +3,22 @@
 本项目的全部显著变更记录于此。格式遵循 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/)，
 版本遵循 [SemVer](https://semver.org/lang/zh-CN/)。
 
+## [Unreleased]
+
+- **新功能：自动续跑（auto-continue）——复杂任务清单式推进不再手动「继续」**
+  （用户需求：构建了 todo 的复杂任务一步步完成后总要手动继续，期望持续
+  自动推进直到完成）：①会话级开关（默认关）——会话头「⟳ 自动续跑」按钮
+  或 PATCH /api/sessions/{sid} {auto_continue:1}；②引擎 turn 完成时若
+  任务清单有未完成项（status 不在 completed/cancelled）自动投递
+  「【自动续跑 N/25】继续执行任务清单——剩余 N 项：…」开新 turn 接力，
+  消息里点名剩余项帮模型聚焦；③安全阀：连续续跑上限 25 次（每次都是
+  真实 LLM 调用，防失控烧钱），用户手动发消息即接管+计数清零，随时
+  stop/关开关；④上下文轮换（context_inflation）天然兼容——rotate 在
+  收尾前已换引擎 session+暂存 anchor 摘要，续跑消息无缝落新 session；
+  熔断态静默停。db rev18（sessions.auto_continue 列）。对赌 4 例
+  （hahaness fake todos 集成：开关 roundtrip/链式续跑到上限停+消息标记/
+  默认关不续/手动接管计数重开）。
+
 ## [0.7.52] - 2026-10-26
 
 - **优化：侧栏「最近」改跨分类时间线+分页 40 条**（用户定调「点最近不区分

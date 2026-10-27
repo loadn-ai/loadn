@@ -68,6 +68,8 @@ async def post_message(sid: str, body: dict):
     except PermissionError as e:      # W6.4 熔断（kill switch/canary 命中）
         raise HTTPException(403, str(e))
     with db_mod.conn() as c:
+        # 自动续跑计数清零（rev18）：手动消息=用户重新接管，连续续跑链断开
+        db_mod.kv_del(c, f"autocont:{sid}")
         turn = db_mod.to_dict(db_mod.get_turn(c, tid))
     return {"turn": turn}
 @router.post("/turns/{tid}/stop")

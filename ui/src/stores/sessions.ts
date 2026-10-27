@@ -14,6 +14,7 @@ export interface SessionInfo {
   id: string; title: string; profile: string; status: string;
   project_id?: string | null; project_title?: string | null;
   starred?: number; pinned?: number; category_id?: number | null;
+  auto_continue?: number;   // rev18 自动续跑：1=turn 完成后 todo 未完自动续
   session_fresh: number; claude_session_id: string | null;
   skills_json?: string; mcp_json?: string | null;
   params_json?: string | null; workspace?: string;

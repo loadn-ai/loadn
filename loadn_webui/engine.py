@@ -27,6 +27,10 @@ from .util import get_logger, iso
 
 log = get_logger(__name__)
 
+# 自动续跑连续上限（rev18）：每个续跑 turn 都是一次真实 LLM 调用——上限
+# 防失控烧钱；上限内用户可随时 stop / 关开关；手动发消息清零重新计。
+AUTO_CONT_MAX = 25
+
 
 def _msg_attachments(blocks_json: str | None) -> list[dict]:
     """用户消息 blocks_json 里的附件条目（历史消息无 blocks → 空）。"""
@@ -909,6 +913,41 @@ class Engine:
                      "无损续作当前请求，不要重做已完成步骤。）")
         return "\n\n".join(parts)
 
+    async def _maybe_auto_continue(self, sid: str, at: ActiveTurn) -> None:
+        """自动续跑（rev18）：turn done 且 todos 未完成 → 自动投「继续」开新 turn。
+
+        只对显式开启的会话生效（sessions.auto_continue=1，默认关）。判定口径=
+        本 turn 维护的最新 todos 快照（TodoWrite 全量覆盖 / TaskCreate·TaskUpdate
+        增量），未完成 = status 不在 completed/cancelled。连续续跑计数
+        （kv autocont:{sid}）达上限即停；用户手动发消息清零重新计
+        （post_message）。上下文轮换场景天然兼容：rotate 在收尾前段已把
+        claude_session_id 换新+pending_anchor 暂存，续跑消息落在新引擎
+        session 且注入 anchor 摘要——任务上下文无缝衔接。
+        """
+        pending = [t for t in at.todos
+                   if str(t.get("status")) not in ("completed", "cancelled")]
+        if not pending:
+            return
+        with db_mod.conn() as c:
+            sess = db_mod.get_session(c, sid)
+            if not sess or not sess["auto_continue"]:
+                return
+            n = int(db_mod.kv_get(c, f"autocont:{sid}") or 0)
+            if n >= AUTO_CONT_MAX:
+                log.info("自动续跑达上限 %s 次，停（sid=%s；手动发消息清零重新计）",
+                         AUTO_CONT_MAX, sid)
+                return
+            db_mod.kv_set(c, f"autocont:{sid}", str(n + 1))
+        names = "、".join(f"「{str(t.get('subject', '?'))[:30]}」" for t in pending[:5])
+        more = f" 等 {len(pending)} 项" if len(pending) > 5 else ""
+        log.info("自动续跑 %s/%s（sid=%s，剩 %s 项）", n + 1, AUTO_CONT_MAX,
+                 sid, len(pending))
+        await self.submit(
+            sid,
+            f"【自动续跑 {n + 1}/{AUTO_CONT_MAX}】继续执行任务清单——剩余 "
+            f"{len(pending)} 项未完成：{names}{more}。请继续按清单推进，"
+            f"完成一项更新一项状态，直到全部完成后收束输出。")
+
     async def _finish(self, sid: str, tid: int, at: ActiveTurn, sess, res, anchor: str) -> None:
         at.closing = True     # 三轮修：收尾中拒新 steer（见 steer_if_running）
         status = "done"
@@ -1065,6 +1104,16 @@ class Engine:
                     missing_ok=True)
             except Exception:                              # noqa: BLE001
                 log.info("steer 文件清理失败（无碍）sid=%s", sid)
+
+            # ---- 自动续跑（rev18）：todo 未完成 → 自动投递「继续」开新 turn。
+            # 复杂任务清单式推进，免去用户逐条手动「继续」。只对显式开启的
+            # 会话生效（sessions.auto_continue，默认关）；连续续跑计数（kv
+            # autocont:{sid}）达上限即停——用户手动发消息清零（post_message）。
+            # 熔断态 submit 抛 PermissionError 静默停（kill switch 语义优先）。
+            try:
+                await self._maybe_auto_continue(sid, at)
+            except Exception:                              # noqa: BLE001
+                log.exception("自动续跑判定失败（无碍收尾）sid=%s", sid)
 
         # ---- 运维通知（fire-and-forget，永不拖垮主流程）
         try:
