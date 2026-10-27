@@ -3,7 +3,7 @@
 本项目的全部显著变更记录于此。格式遵循 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/)，
 版本遵循 [SemVer](https://semver.org/lang/zh-CN/)。
 
-## [Unreleased]
+## [0.7.54] - 2026-10-27
 
 - **新功能：DeepSeek Search/Fetch 搜索资源通道**（用户需求：接入 DeepSeek
   网页搜索/抓取 API 作为平台搜索资源）：①资源 Hub 预置种子卡「DeepSeek
