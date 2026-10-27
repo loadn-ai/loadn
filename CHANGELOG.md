@@ -3,7 +3,7 @@
 本项目的全部显著变更记录于此。格式遵循 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/)，
 版本遵循 [SemVer](https://semver.org/lang/zh-CN/)。
 
-## [Unreleased]
+## [0.7.55] - 2026-10-27
 
 - **新功能：Kimi 联网搜索双档 + Tavily 搜索 + ScraperAPI 抓取（三资源同批）**
   （用户需求：接入 Kimi 开放平台联网搜索 Basic/Pro、Tavily Search、
