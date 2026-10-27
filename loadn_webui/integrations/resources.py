@@ -25,8 +25,9 @@ def _sec(name: str) -> str:
 BOCHA_API_BASE = "https://api.bochaai.com"
 ZHIPU_WEB_SEARCH_API = "https://open.bigmodel.cn/api/paas/v4/web_search"
 TWOCAPTCHA_API = "https://2captcha.com"
-# 搜索基址运行时读资源卡（bocha_base/zhipu_base 锚字段，改地址免重启）；
-# 上方常量仅作缺省回落与文档锚。
+DEEPSEEK_API_BASE = "https://api.deepseek.com"
+# 搜索基址运行时读资源卡（bocha_base/zhipu_base/deepseek_search_base 锚字段，
+# 改地址免重启）；上方常量仅作缺省回落与文档锚。
 
 
 def _res():
@@ -284,6 +285,62 @@ async def zhipu_search(query: str, *, n: int = 10, engine: str | None = None,
                     "siteName": it.get("media") or "",
                     "date": it.get("publish_date") or ""})
     return out
+
+
+# ---------------------------------------------------------------- DeepSeek 搜索
+async def deepseek_search(query: str, *, n: int = 10,
+                          need_content: bool = False) -> list[dict]:
+    """DeepSeek Search API → 与 bocha/zhipu_search 同构，附加 summary/rerank。
+
+    主键 [{name,url,snippet,siteName,date}]；额外带 summary（600-800 字长摘要，
+    给模型读）与 rerank_score（0-3，≥1.5 优质）。need_content=True 时附 content
+    网页正文（按次计费不变）。失败/无结果不计费（平台侧如实抛错）。
+    """
+    if not _sec("svc:deepseek_search"):
+        raise RuntimeError("未配置 DeepSeek key（vault svc:deepseek_search）")
+    resp = await _post(
+        f"{(_res().deepseek_search_base or DEEPSEEK_API_BASE).rstrip('/')}"
+        "/v1/tools/search",
+        headers={"Authorization": f"Bearer {_sec('svc:deepseek_search')}"},
+        json={"query": query, "count": min(max(n, 1), 50),
+              "need_content": bool(need_content)},
+        timeout=25.0)
+    d = resp.json()
+    if resp.status_code != 200:
+        err = (d.get("error") or {}).get("message") or str(d)[:150]
+        raise RuntimeError(f"DeepSeek 搜索失败 ({resp.status_code}): {err}")
+    out = []
+    for it in d.get("results") or []:
+        hit = {"name": it.get("title") or "", "url": it.get("url") or "",
+               "snippet": it.get("snippet") or "", "siteName": it.get("site_name") or "",
+               "date": it.get("date") or ""}
+        if it.get("summary"):
+            hit["summary"] = it["summary"]          # 长摘要（模型阅读向）
+        if it.get("rerank_score") is not None:
+            hit["rerank_score"] = it["rerank_score"]  # 0-3 相关性分（≥1.5 优质）
+        if need_content and it.get("content"):
+            hit["content"] = it["content"]
+        out.append(hit)
+    return out
+
+
+async def deepseek_fetch(url: str) -> dict:
+    """DeepSeek Fetch API → {"title","content"}（Markdown 正文）。
+
+    供宿主抓取链做补充通道（正文 Markdown 化质量好的站点）；403/404 如实抛错。
+    """
+    if not _sec("svc:deepseek_search"):
+        raise RuntimeError("未配置 DeepSeek key（vault svc:deepseek_search）")
+    resp = await _post(
+        f"{(_res().deepseek_search_base or DEEPSEEK_API_BASE).rstrip('/')}"
+        "/v1/tools/fetch",
+        headers={"Authorization": f"Bearer {_sec('svc:deepseek_search')}"},
+        json={"url": url}, timeout=30.0)
+    d = resp.json()
+    if resp.status_code != 200:
+        err = (d.get("error") or {}).get("message") or str(d)[:150]
+        raise RuntimeError(f"DeepSeek fetch 失败 ({resp.status_code}): {err}")
+    return {"title": d.get("title") or "", "content": d.get("content") or ""}
 
 
 # ---------------------------------------------------------------- 短信
@@ -1127,6 +1184,11 @@ async def _ping_one(name: str) -> dict:
                 return {"ok": False, "msg": "未配置"}
             hits = await zhipu_search("connectivity", n=1, engine="search_std")
             msg, ok = f"ok（{r.zhipu_engine}，探测 std {len(hits)} 条）", True
+        elif name == "deepseek_search":
+            if not _sec("svc:deepseek_search"):
+                return {"ok": False, "msg": "未配置"}
+            hits = await deepseek_search("connectivity", n=1)
+            msg, ok = f"ok（探测 {len(hits)} 条）", True
         elif name == "adb":
             import subprocess
             addr = r.adb_addr

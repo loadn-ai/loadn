@@ -179,16 +179,19 @@ def _build_r_parser(sub) -> None:
     p.add_argument("--model", default=None)
     p.add_argument("--max-tokens", type=int, default=512)
 
-    p = rsub.add_parser("search", help="网页搜索（默认 auto：智谱优先，博查兜底）")
+    p = rsub.add_parser("search", help="网页搜索（默认 auto：智谱→博查→DeepSeek 兜底）")
     p.add_argument("query")
     p.add_argument("--n", type=int, default=10)
-    p.add_argument("--via", default="auto", choices=["auto", "zhipu", "bocha"],
-                   help="auto=有智谱 key 走智谱否则博查")
+    p.add_argument("--via", default="auto",
+                   choices=["auto", "zhipu", "bocha", "deepseek"],
+                   help="auto=智谱优先，博查→DeepSeek 依次兜底")
     p.add_argument("--se", default="", choices=["", "search_std", "search_pro",
                                                 "search_pro_sogou", "search_pro_quark"],
                    help="智谱引擎（默认配置 resources.zhipu_engine）")
     p.add_argument("--fresh", default="", help="时间范围，如 oneDay/oneWeek/oneYear")
     p.add_argument("--domain", default="", help="限定域名（智谱，如 www.sohu.com）")
+    p.add_argument("--content", action="store_true",
+                   help="DeepSeek：附带网页正文（need_content）")
     p.add_argument("--json", action="store_true")
 
     p = rsub.add_parser("fetch", help="抓网页正文（主内容提取+关键图 OCR，CDP 兜底）")
@@ -432,14 +435,26 @@ async def _run_r(args) -> int:
         via = args.via
         if via == "auto":
             from .security.vault import get_res_secret as _grs
-            via = "zhipu" if _grs("zhipu_key") else "bocha"
+            via = ("zhipu" if _grs("zhipu_key")
+                   else "bocha" if _grs("bocha_key")
+                   else "deepseek" if _grs("svc:deepseek_search")
+                   else "zhipu")      # 全无 key：走智谱报「未配置」（含指引）
         if via == "zhipu":
+            if args.content:
+                print("注意: --content 仅 DeepSeek 生效，已忽略", file=sys.stderr)
             hits = await resources.zhipu_search(
                 args.query, n=args.n, engine=args.se or None,
                 recency=args.fresh or None, domain=args.domain or None)
+        elif via == "deepseek":
+            if args.se or args.domain:
+                print("注意: --se/--domain 仅智谱生效，已忽略", file=sys.stderr)
+            hits = await resources.deepseek_search(
+                args.query, n=args.n, need_content=args.content)
         else:
             if args.se or args.domain:
                 print("注意: --se/--domain 仅智谱生效，已忽略", file=sys.stderr)
+            if args.content:
+                print("注意: --content 仅 DeepSeek 生效，已忽略", file=sys.stderr)
             hits = await resources.bocha_search(args.query, n=args.n,
                                                 freshness=args.fresh or None)
         if args.json:
@@ -448,8 +463,12 @@ async def _run_r(args) -> int:
             for i, h in enumerate(hits, 1):
                 print(f"{i}. {h['name']}")
                 print(f"   {h['url']}")
+                if h.get("rerank_score") is not None:
+                    print(f"   [相关性 {h['rerank_score']}]")
                 if h["snippet"]:
                     print(f"   {h['snippet'][:160]}")
+                elif h.get("summary"):
+                    print(f"   {h['summary'][:160]}")
         return 0
 
     if args.rcmd == "fetch":

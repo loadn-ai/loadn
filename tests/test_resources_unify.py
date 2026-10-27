@@ -28,7 +28,7 @@ def _names(cfg):
     return [s.get("name") for s in (cfg.resources.custom_services or [])]
 
 
-N_PRESETS = 11      # ocr/sandbox/proxy/adb/sms/mail/textr/vlm/bocha/zhipu/captcha
+N_PRESETS = 12      # ocr/sandbox/proxy/adb/sms/mail/textr/vlm/bocha/zhipu/deepseek_search/captcha
 
 
 # ---------------- 补种 / 幂等 / 上抬 ----------------

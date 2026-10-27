@@ -151,7 +151,8 @@ _SVC_NAME_RE = _re.compile(r"[a-z0-9][a-z0-9_-]{0,31}")
 ANCHOR_SERVICE_KEYS = frozenset({
     "ocr_url", "sandbox_url", "cdp_url", "proxy", "adb_addr", "sms_url",
     "sms_phone", "mail_imap", "mail_smtp", "mail_user", "textr_email",
-    "vlm_api_base", "vlm_model", "zhipu_engine", "bocha_base", "zhipu_base"})
+    "vlm_api_base", "vlm_model", "zhipu_engine", "bocha_base", "zhipu_base",
+    "deepseek_search_base"})
 
 # 预置种子（与旧前端 GROUPS 等价；value 首次补种时从存量扁平字段上抬）
 PRESET_SERVICES: list[dict] = [
@@ -229,6 +230,23 @@ PRESET_SERVICES: list[dict] = [
                "- 支持 recency（oneHour/oneDay/oneWeek…）与 domain 过滤\n"
                "- 平台通道：`r search --via zhipu --engine <档位> \"查询词\"`"
                "（密钥平台代管，优先走这条）"},
+    {"name": "deepseek_search", "title": "DeepSeek 搜索", "icon": "search",
+     "category": "搜索",
+     "desc": "DeepSeek Search/Fetch API（rerank 分数+长摘要，5 元/千次）",
+     "ping": ["deepseek_search"],
+     "config": [{"key": "deepseek_search_base", "label": "API 地址",
+                 "env": "LOADN_DEEPSEEK_SEARCH_BASE"}],
+     "secrets": [{"label": "API Key", "env_key": "LOADN_DEEPSEEK_API_KEY",
+                  "vault_ref": "svc:deepseek_search"}],
+     "prompt": "## DeepSeek Search/Fetch\n\n第三方搜索+抓取通道（与 DeepSeek "
+               "API 同 key，api.deepseek.com）。\n\n- 端点：`$LOADN_DEEPSEEK_SEARCH_BASE"
+               "/v1/tools/search`（POST，Bearer；支持 site:/lang:/after:/before: "
+               "搜索语法，count≤50）与 `/v1/tools/fetch`（单页→Markdown 正文）\n"
+               "- 特色：rerank_score（0-3 相关性分，≥1.5 优质）+ summary（600-800 "
+               "字给模型读的长摘要）+ need_content 可带网页正文；失败/无结果不计费\n"
+               "- 按次计费 5 元/千次（Search 100 QPS / Fetch 25 QPS）\n"
+               "- 平台通道：`r search --via deepseek \"查询词\"`（密钥平台代管，"
+               "优先走这条）"},
     {"name": "captcha", "title": "过验证码", "icon": "shield", "category": "AI 能力",
      "desc": "2Captcha（图形码 / reCAPTCHA）", "ping": ["twocaptcha"],
      "config": [], "secrets": [{"label": "API Key", "env_key": "LOADN_CAPTCHA_API_KEY",
@@ -398,6 +416,7 @@ class ResourcesConfig:
     bocha_base: str = "https://api.bochaai.com"     # 博查 API 地址（资源卡可改）
     zhipu_base: str = "https://open.bigmodel.cn/api/paas/v4/web_search"
     zhipu_engine: str = "search_pro"                # std 0.01 / pro 0.03 / pro_sogou|quark 0.05 元/次
+    deepseek_search_base: str = "https://api.deepseek.com"   # DeepSeek Search/Fetch（密钥走 svc:deepseek_search）
     adb_addr: str = ""       # android 真机（如 192.168.x.x:5555）
     textr_email: str = ""                           # Textr Go 美国虚拟号码（收验证码）
     textr_password: str = ""

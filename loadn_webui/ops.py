@@ -143,13 +143,27 @@ def _current_version() -> str | None:
         return None
 
 
+def _ver_key(name: str) -> tuple:
+    """vX.Y.Z → (X, Y, Z) 数值键（语义排序）。非标准段按 0 处理兜后。
+
+    字典序陷阱实测（2026-10-27）：sorted() 下 "v0.7.9" > "v0.7.53"——
+    无版本参数 upgrade 误选 v0.7.9 而非 v0.7.53。此键修复该缺陷。
+    """
+    parts = name.lstrip("v").split(".")
+    out = []
+    for p in parts[:4]:
+        digits = "".join(ch for ch in p if ch.isdigit())
+        out.append(int(digits) if digits else 0)
+    return tuple(out) if out else (0,)
+
+
 def _list_releases() -> list[str]:
     if not RELEASES_DIR.exists():
         return []
-    return sorted(
-        d.name for d in RELEASES_DIR.iterdir()
-        if d.is_dir() and d.name.startswith("v")
-        and (d / "loadn_webui" / "ops.py").exists())
+    names = [d.name for d in RELEASES_DIR.iterdir()
+             if d.is_dir() and d.name.startswith("v")
+             and (d / "loadn_webui" / "ops.py").exists()]
+    return sorted(names, key=_ver_key)
 
 
 def _read_release_json(version: str) -> dict:

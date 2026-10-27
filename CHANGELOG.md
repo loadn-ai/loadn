@@ -3,6 +3,25 @@
 本项目的全部显著变更记录于此。格式遵循 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/)，
 版本遵循 [SemVer](https://semver.org/lang/zh-CN/)。
 
+## [Unreleased]
+
+- **新功能：DeepSeek Search/Fetch 搜索资源通道**（用户需求：接入 DeepSeek
+  网页搜索/抓取 API 作为平台搜索资源）：①资源 Hub 预置种子卡「DeepSeek
+  搜索」（搜索分类，密钥走 vault svc:deepseek_search 统一托管，端点
+  deepseek_search_base 锚字段可改免重启）；②通道实现 resources.
+  deepseek_search——与博查/智谱同构归一化 [{name,url,snippet,siteName,
+  date}]，附带 DeepSeek 特色键 summary（600-800 字模型阅读向长摘要）与
+  rerank_score（0-3 相关性分）；count 自动收敛 ≤50；失败/无结果不计费
+  （错误如实抛）；deepseek_fetch（单页→Markdown 正文）一并就位；③CLI
+  `r search --via deepseek "查询词"`（--content 附网页正文）；auto 兜底
+  链扩为智谱→博查→DeepSeek；④ping 专支（真调一单探测）。对赌 9 例
+  （归一化/鉴权面/count 上限/错误抛/无 key 指引/种子卡锚键/ping 两态/
+  CLI 参数面）。
+- **修复：upgrade 无版本参数误选旧版**（生产实证 2026-10-27 v0.7.53
+  发版：裸 `upgrade --wait-idle 0 --yes` 按**字典序**选「最新」——
+  "v0.7.9" > "v0.7.53" 误切 0.7.9）：_list_releases 排序改语义版本键
+  （X.Y.Z 数值 tuple），回归对赌锁定。
+
 ## [0.7.53] - 2026-10-27
 
 - **新功能：自动续跑（auto-continue）——复杂任务清单式推进不再手动「继续」**
