@@ -199,13 +199,14 @@ def test_protocol_steer_consumed_with_receipt(tmp_path):
 
 
 def test_protocol_steer_env_legacy_fallback(tmp_path):
-    """§5：旧名 HAHANESS_STEER_FILE 仍被引擎接受（fallback 一版）。"""
+    """§5：旧名 HAHANESS_STEER_FILE 已退役——仅设旧名 env 时插话不被消费
+    （rev19 品牌统一：fallback 移除，防将来无意回潮）。"""
     sid = str(uuid.uuid4())
     steer = tmp_path / f".steer.{sid}.jsonl"
     events = _run_engine_steering(tmp_path, sid, steer, cwd=tmp_path,
                                   env_key="HAHANESS_STEER_FILE")
     steers = [e for e in events if e["type"] == "steer"]
-    assert steers and steers[0]["text"] == "插话契约"
+    assert not steers
 
 
 # ------------------------------------------------------------ §6 transcript

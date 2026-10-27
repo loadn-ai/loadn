@@ -1,5 +1,5 @@
 """自动续跑（rev18）：turn 完成后 todo 未完自动投「继续」接力，直到清单完成
-/连续上限/用户手动接管。hahaness fake todos 旋钮=turn done 且 todos 全 pending
+/连续上限/用户手动接管。loadn fake todos 旋钮=turn done 且 todos 全 pending
 的完美道具（无限未完成——恰好逼出上限路径）。
 
 对赌：
@@ -20,13 +20,12 @@ from loadn_webui.config import CONFIG
 
 
 @pytest.fixture()
-def hahaness_engine(tmp_path, monkeypatch):
-    monkeypatch.setattr(CONFIG.engines, "default", "hahaness")
-    home = tmp_path / "hahaness_home"
+def loadn_engine(tmp_path, monkeypatch):
+    monkeypatch.setattr(CONFIG.engines, "default", "loadn")
+    home = tmp_path / "loadn_home"
     home.mkdir()
-    monkeypatch.setenv("HAHANESS_HOME", str(home))
     monkeypatch.setenv("LOADN_HOME", str(home))
-    monkeypatch.setenv("HAHANESS_PROVIDER", "fake")
+    monkeypatch.setenv("LOADN_PROVIDER", "fake")
     return home
 
 
@@ -53,7 +52,7 @@ def _wait_turns(sid: str, n: int, timeout_s: float = 30) -> list:
     return rows
 
 
-async def test_auto_continue_patch_roundtrip(client, hahaness_engine):
+async def test_auto_continue_patch_roundtrip(client, loadn_engine):
     r = await client.post("/api/sessions", json={"title": "ac 开关"})
     sid = r.json()["session"]["id"]
     r = await client.patch(f"/api/sessions/{sid}", json={"auto_continue": 1})
@@ -65,7 +64,7 @@ async def test_auto_continue_patch_roundtrip(client, hahaness_engine):
     assert not d["auto_continue"]
 
 
-async def test_auto_continue_chain(client, ws_root, hahaness_engine, monkeypatch):
+async def test_auto_continue_chain(client, ws_root, loadn_engine, monkeypatch):
     """>>> 开关开：todos 恒 pending → 连续续跑到上限 2 次停（1+2 turns）。"""
     from loadn_webui import engine as engine_mod
     monkeypatch.setattr(engine_mod, "AUTO_CONT_MAX", 2)
@@ -95,7 +94,7 @@ async def test_auto_continue_chain(client, ws_root, hahaness_engine, monkeypatch
     assert any("【自动续跑 2/2】" in t for t in texts), texts
 
 
-async def test_auto_continue_off_by_default(client, ws_root, hahaness_engine):
+async def test_auto_continue_off_by_default(client, ws_root, loadn_engine):
     """>>> 默认关：todo 同样未完，但只 1 个 turn，无续跑消息。"""
     r = await client.post("/api/sessions", json={"title": "ac 默认关"})
     sid = r.json()["session"]["id"]
@@ -109,7 +108,7 @@ async def test_auto_continue_off_by_default(client, ws_root, hahaness_engine):
     assert len(rows) == 1 and n == 1, "未开开关绝不能自动续"
 
 
-async def test_auto_continue_manual_reset(client, ws_root, hahaness_engine, monkeypatch):
+async def test_auto_continue_manual_reset(client, ws_root, loadn_engine, monkeypatch):
     """>>> 手动消息清零计数：续 1 次后用户接管 → 计数重开（再次出现 1/2 标记）。"""
     from loadn_webui import engine as engine_mod
     monkeypatch.setattr(engine_mod, "AUTO_CONT_MAX", 2)

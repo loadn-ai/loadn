@@ -89,9 +89,9 @@ async def test_subtask_engine_env_and_steer_no_crosstalk(
     """并发 loadn 子任务插话各归各（.steer.<sid>.jsonl 落各自任务目录）。"""
     from loadn_webui.config import CONFIG
     from loadn_webui.engine import ENGINE
-    monkeypatch.setattr(CONFIG.engines, "default", "hahaness")
-    monkeypatch.setenv("HAHANESS_HOME", str(tmp_path / "hh"))
-    monkeypatch.setenv("HAHANESS_PROVIDER", "fake")
+    monkeypatch.setattr(CONFIG.engines, "default", "loadn")
+    monkeypatch.setenv("LOADN_HOME", str(tmp_path / "hh"))
+    monkeypatch.setenv("LOADN_PROVIDER", "fake")
     pid, pws = await _mk_project(client)
     sids = [await _mk_subtask(client, pid, f"并发{i}") for i in range(2)]
     # fake 控制文件落各自任务目录（cwd=任务目录，.fake 就近读取）

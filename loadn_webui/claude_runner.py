@@ -316,7 +316,7 @@ class _Sink:
 _ENV_ALLOW_EXACT = {"PATH", "HOME", "LANG", "TERM", "TZ", "SHELL", "PWD",
                     "TMPDIR", "LC_ALL", "SSL_CERT_FILE", "REQUESTS_CA_BUNDLE",
                     "NODE_OPTIONS", "XDG_CONFIG_HOME", "XDG_CACHE_HOME"}
-_ENV_ALLOW_PREFIXES = ("LOADN_", "WORKDADDY_", "HAHANESS_", "ANTHROPIC_",
+_ENV_ALLOW_PREFIXES = ("LOADN_", "WORKDADDY_", "ANTHROPIC_",
                        "OPENCODE_", "LC_")
 
 
@@ -357,7 +357,7 @@ async def run_turn(call: TurnCall, stop: StopHandle | None = None) -> TurnProcRe
     # off 档也走网关——放开的是「去哪」，不是「凭证在哪」
     from .config import CONFIG as _CFG
     if _CFG.security.egress_proxy_port \
-            and spec.name in ("loadn", "hahaness", "claude"):  # hahaness=alias
+            and spec.name in ("loadn", "claude"):
         from .security.egress_proxy import GW_HOST
         env["ANTHROPIC_BASE_URL"] = f"http://{GW_HOST}"
         env.setdefault("ANTHROPIC_AUTH_TOKEN", "dummy-controlled-by-egress-gw")

@@ -185,7 +185,7 @@ def test_get_settings_engine_override_flag(sa):
     mod, _, tmp = sa
     s = mod.get_settings()
     assert all(s["engines"]["per"][n]["override"] is False
-               for n in ("claude", "loadn", "opencode", "hahaness"))  # 无段=假
+               for n in ("claude", "loadn", "opencode", "loadn"))  # 无段=假
     mod.put_engines({"engines": {"claude": {"model": "glm-5.3"}}})
     per = mod.get_settings()["engines"]["per"]
     assert per["claude"]["override"] is True          # 有段=真（CONFIG 值无法区分，靠 yaml）

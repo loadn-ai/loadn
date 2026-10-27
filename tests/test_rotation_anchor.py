@@ -314,14 +314,14 @@ async def test_r3_steer_during_finish_falls_back_to_queue(client, ws_root):
     from loadn_webui.config import CONFIG
     from loadn_webui.engine import ENGINE, ActiveTurn, StopHandle
     monkeypatch_default = CONFIG.engines.default
-    CONFIG.engines.default = "hahaness"
+    CONFIG.engines.default = "loadn"
     try:
         r = await client.post("/api/sessions", json={"title": "收尾竞态"})
         sid = r.json()["session"]["id"]
         from loadn_webui import db as db_mod
         with db_mod.conn() as c:
             tid = db_mod.create_turn(c, session_id=sid, status="running",
-                                     engine="hahaness")
+                                     engine="loadn")
         at = ActiveTurn(turn_id=tid, session_id=sid, stop=StopHandle(),
                         started_at=0.0)
         ENGINE.active[tid] = at

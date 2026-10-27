@@ -404,8 +404,6 @@ def _loadn_home() -> Path:
     import os
     if os.environ.get("LOADN_HOME"):
         return Path(os.environ["LOADN_HOME"])
-    if os.environ.get("HAHANESS_HOME"):          # 旧名兼容（与 loadn 同源）
-        return Path(os.environ["HAHANESS_HOME"])
     return Path.home() / ".loadn"
 
 

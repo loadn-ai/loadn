@@ -76,8 +76,7 @@ def stealth_mode() -> str:
     """
     import os
 
-    mode = (os.environ.get("LOADN_STEALTH")
-            or os.environ.get("HAHANESS_STEALTH", "")).strip().lower()
+    mode = os.environ.get("LOADN_STEALTH", "").strip().lower()
     if mode in ("", "off", "none", "0", "false"):
         return ""
     if mode not in ("cc", "cc-all"):

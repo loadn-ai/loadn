@@ -105,9 +105,8 @@ def provider_config() -> dict:
         cfg["api_key"] = os.environ["ANTHROPIC_API_KEY"]
     if os.environ.get("ANTHROPIC_MODEL"):
         cfg["model"] = os.environ["ANTHROPIC_MODEL"]
-    if os.environ.get("LOADN_PROVIDER") or os.environ.get("HAHANESS_PROVIDER"):
-        cfg["provider"] = (os.environ.get("LOADN_PROVIDER")
-                           or os.environ["HAHANESS_PROVIDER"]).strip().lower()
+    if os.environ.get("LOADN_PROVIDER"):
+        cfg["provider"] = os.environ["LOADN_PROVIDER"].strip().lower()
     if os.environ.get("LOADN_BASE_URL"):
         cfg["base_url"] = os.environ["LOADN_BASE_URL"]
     if os.environ.get("LOADN_API_KEY"):

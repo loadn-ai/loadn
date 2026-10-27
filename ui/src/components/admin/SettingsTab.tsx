@@ -483,7 +483,7 @@ export default function SettingsTab() {
           <thead><tr><th>引擎</th><th>启用</th><th>bin</th><th>模型</th><th>provider</th><th>追加参数（每行一个）</th><th>操作</th></tr></thead>
           <tbody>{Object.entries(eng.per).map(([name, p]) => (
             <tr key={name}>
-              <td>{name}{name === 'hahaness' && <span className="muted">（旧名）</span>}</td>
+              <td>{name}</td>
               <td><button className={`chip ${p.enabled ? 'on' : ''}`}
                 onClick={() => updEngine(name, { enabled: !p.enabled })}>{p.enabled ? '启用' : '停用'}</button></td>
               <td><input value={p.bin} placeholder="自动" style={{ minWidth: 140 }}

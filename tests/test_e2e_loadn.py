@@ -1,7 +1,7 @@
-"""workdaddy ↔ hahaness 灰度 e2e：engine=hahaness 走通 API→SSE→记账全链。
+"""workdaddy ↔ loadn 灰度 e2e：engine=loadn 走通 API→SSE→记账全链。
 
-hahaness 经 HAHANESS_PROVIDER=fake 驱动（零 token），.fake 控制文件落在
-workspace/<sid>/.fake/（fake provider 默认读 cwd/.fake）。HAHANESS_HOME
+loadn 经 LOADN_PROVIDER=fake 驱动（零 token），.fake 控制文件落在
+workspace/<sid>/.fake/（fake provider 默认读 cwd/.fake）。LOADN_HOME
 指向临时目录隔离 transcript。
 """
 from __future__ import annotations
@@ -17,14 +17,13 @@ from loadn_webui.config import CONFIG
 
 
 @pytest.fixture()
-def hahaness_engine(tmp_path, monkeypatch):
-    """默认引擎切 hahaness + HAHANESS_HOME 隔离（结束还原）。"""
-    monkeypatch.setattr(CONFIG.engines, "default", "hahaness")
-    home = tmp_path / "hahaness_home"
+def loadn_engine(tmp_path, monkeypatch):
+    """默认引擎切 loadn + LOADN_HOME 隔离（结束还原）。"""
+    monkeypatch.setattr(CONFIG.engines, "default", "loadn")
+    home = tmp_path / "loadn_home"
     home.mkdir()
-    monkeypatch.setenv("HAHANESS_HOME", str(home))
     monkeypatch.setenv("LOADN_HOME", str(home))
-    monkeypatch.setenv("HAHANESS_PROVIDER", "fake")
+    monkeypatch.setenv("LOADN_PROVIDER", "fake")
     return home
 
 
@@ -73,11 +72,11 @@ async def _wait_terminal(client, sid: str, tid: int, timeout_s: float = 30) -> d
     raise TimeoutError("turn 未到终态")
 
 
-async def test_hahaness_happy_path_resume(client, ws_root, hahaness_engine):
+async def test_loadn_happy_path_resume(client, ws_root, loadn_engine):
     """首条消息全链（SSE/记账/transcript）+ 第二条消息 resume 簿记。"""
     r = await client.post("/api/sessions", json={"title": "hh 灰度"})
     sid = r.json()["session"]["id"]
-    _fake_dir(ws_root, sid, reply="hahaness 首答")
+    _fake_dir(ws_root, sid, reply="loadn 首答")
 
     sse_task = asyncio.create_task(
         _collect_events(client, sid, {"text", "turn_done"}))
@@ -86,7 +85,7 @@ async def test_hahaness_happy_path_resume(client, ws_root, hahaness_engine):
     tid = r.json()["turn"]["id"]
     got = await asyncio.wait_for(sse_task, timeout=25)
     assert "turn_done" in got and "text" in got
-    assert "hahaness 首答" in got["text"]["text"]
+    assert "loadn 首答" in got["text"]["text"]
 
     with db_mod.conn() as c:
         turn = db_mod.get_turn(c, tid)
@@ -95,14 +94,14 @@ async def test_hahaness_happy_path_resume(client, ws_root, hahaness_engine):
     assert turn["usage_json"] and json.loads(turn["usage_json"])["input_tokens"] > 0
     assert turn["models_json"] and "fake" in turn["models_json"]
     assert turn["num_turns"] >= 1
-    assert sess["engine"] in ("hahaness", "loadn")
+    assert sess["engine"] in ("loadn", "loadn")
     hh_sid = sess["claude_session_id"]
     assert hh_sid
-    # transcript 落在隔离的 HAHANESS_HOME
-    assert (hahaness_engine / "sessions" / hh_sid / "transcript.jsonl").exists()
+    # transcript 落在隔离的 LOADN_HOME
+    assert (loadn_engine / "sessions" / hh_sid / "transcript.jsonl").exists()
 
-    # 第二条消息：resume 同一 hahaness 会话
-    _fake_dir(ws_root, sid, reply="hahaness 二答")
+    # 第二条消息：resume 同一 loadn 会话
+    _fake_dir(ws_root, sid, reply="loadn 二答")
     r = await client.post(f"/api/sessions/{sid}/messages", json={"text": "问二"})
     tid2 = r.json()["turn"]["id"]
     t2 = await _wait_terminal(client, sid, tid2)
@@ -112,7 +111,7 @@ async def test_hahaness_happy_path_resume(client, ws_root, hahaness_engine):
     assert turn2["claude_session_id"] == hh_sid and turn2["resume"] == 1
 
 
-async def test_hahaness_tools_and_todos_sse(client, ws_root, hahaness_engine):
+async def test_loadn_tools_and_todos_sse(client, ws_root, loadn_engine):
     """工具链路 + todos（TodoWrite 分支）经 SSE 可见。"""
     r = await client.post("/api/sessions", json={"title": "hh 工具"})
     sid = r.json()["session"]["id"]
@@ -129,7 +128,7 @@ async def test_hahaness_tools_and_todos_sse(client, ws_root, hahaness_engine):
     assert got["tool_use"]["name"] == "Bash"
 
 
-async def test_hahaness_todowrite_branch(client, ws_root, hahaness_engine):
+async def test_loadn_todowrite_branch(client, ws_root, loadn_engine):
     """fake 的 todos 旋钮（TodoWrite 工具）→ workdaddy todos 事件。"""
     r = await client.post("/api/sessions", json={"title": "hh todos"})
     sid = r.json()["session"]["id"]
@@ -142,7 +141,7 @@ async def test_hahaness_todowrite_branch(client, ws_root, hahaness_engine):
     assert "todos" in got and got["todos"]["todos"]
 
 
-async def test_hahaness_resume_reject_rotates(client, ws_root, hahaness_engine):
+async def test_loadn_resume_reject_rotates(client, ws_root, loadn_engine):
     """resume 秒拒（Session not found）×2 → 轮换 → fresh 也秒拒 → error（有界）。"""
     r = await client.post("/api/sessions", json={"title": "hh 秒拒"})
     sid = r.json()["session"]["id"]
@@ -164,7 +163,7 @@ async def test_hahaness_resume_reject_rotates(client, ws_root, hahaness_engine):
     assert sess["session_fresh"] == 1              # 轮换过：下次 fresh
 
 
-async def test_hahaness_inuse_flip_to_resume(client, ws_root, hahaness_engine):
+async def test_loadn_inuse_flip_to_resume(client, ws_root, loadn_engine):
     """fresh + transcript 已存在 → CLI 锁拒 already in use → 翻 resume 成功。
 
     模拟重启打断场景：手动把 session_fresh 翻回 1（transcript 仍在）。
@@ -188,7 +187,7 @@ async def test_hahaness_inuse_flip_to_resume(client, ws_root, hahaness_engine):
     assert sess["session_fresh"] == 0
 
 
-async def test_hahaness_bigusage_rotation(client, ws_root, hahaness_engine):
+async def test_loadn_bigusage_rotation(client, ws_root, loadn_engine):
     """input 600k > assistant.rotate 阈值 300k → 会话轮换（session_rotated）。"""
     r = await client.post("/api/sessions", json={"title": "hh 轮换",
                                                  "profile": "assistant"})
@@ -206,7 +205,7 @@ async def test_hahaness_bigusage_rotation(client, ws_root, hahaness_engine):
     assert sess["session_fresh"] == 1              # 已轮换：下次 fresh
 
 
-async def test_hahaness_stop(client, ws_root, hahaness_engine):
+async def test_loadn_stop(client, ws_root, loadn_engine):
     """hang 场景外部 stop → turn_stopped 终态。"""
     r = await client.post("/api/sessions", json={"title": "hh 停止"})
     sid = r.json()["session"]["id"]
@@ -244,7 +243,7 @@ async def _collect_ordered(client, sid: str, stop_at: str, timeout_s: float = 25
     return out
 
 
-async def test_hahaness_live_text_deltas(client, ws_root, hahaness_engine):
+async def test_loadn_live_text_deltas(client, ws_root, loadn_engine):
     """--verbose 的 stream_event → 实时 text delta 事件（delta:true），先于
     turn_done；整块不重复直播；持久化消息内容不翻倍。"""
     r = await client.post("/api/sessions", json={"title": "delta 流"})

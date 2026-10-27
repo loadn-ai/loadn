@@ -1,6 +1,7 @@
-"""引擎注册表：claude | loadn（默认候选）| opencode；hahaness=旧名 alias。
+"""引擎注册表：claude | loadn（默认候选）| opencode。
 
 选择序：profile.engine > CONFIG.engines.default；未知名 log 警告回落 claude。
+（旧引擎名 hahaness 已于 db rev19 全量数据迁移后退役。）
 """
 from __future__ import annotations
 
@@ -18,7 +19,6 @@ log = get_logger(__name__)
 ENGINES: dict[str, EngineSpec] = {
     "claude": ClaudeSpec(),
     "loadn": LoadnSpec(),
-    "hahaness": LoadnSpec(),   # 旧名 alias（一版）：同一 spec，配置键 fallback
     # opencode 能力位速览：supports_transcript=False（判死只剩 stdout 一路）｜
     # max_turns_flag=False（无 --max-turns，靠 timeout_s 收敛）｜
     # session_id_domain="any"（ses_… 非 UUID，轮换=空串 fresh）｜
@@ -26,10 +26,6 @@ ENGINES: dict[str, EngineSpec] = {
     "opencode": OpencodeSpec(),
 }
 
-
-# 旧名 alias 集合：resolve() 可用（旧会话 DB 里 engine=hahaness），但 API
-# 不吐给前端（用户不需要看到两个同款引擎）
-ALIASES = {"hahaness"}
 
 ENTRYPOINT_GROUP = "loadn.webui.engines"
 

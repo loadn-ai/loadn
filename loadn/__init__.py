@@ -18,13 +18,11 @@ __version__ = "0.7.52"
 def loadn_home() -> Path:
     """数据根（sessions/transcript/session.db/agents/skills 落点）。
 
-    env 优先级：LOADN_HOME > HAHANESS_HOME（旧名兼容一版）> 默认 ~/.loadn。
+    env 优先级：LOADN_HOME > 默认 ~/.loadn。
     首次调用若默认目录不存在而旧 ~/.agent 存在，整体搬迁（旧名留 .bak 不删）。
     """
     if os.environ.get("LOADN_HOME"):
         return Path(os.environ["LOADN_HOME"])
-    if os.environ.get("HAHANESS_HOME"):
-        return Path(os.environ["HAHANESS_HOME"])
     new = Path.home() / ".loadn"
     old = Path.home() / ".agent"
     if not new.exists() and old.exists():

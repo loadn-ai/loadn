@@ -213,13 +213,13 @@ async def test_new_session_recurring_new_each_fire(sched, client):
 
 # ---------------------------------------------------------------- 撞车插话
 async def test_fire_message_steers_running_turn(client, ws_root, tmp_path, monkeypatch):
-    """运行中的 hahaness turn 撞上定时唤醒 → 插话实时注入（.steer.jsonl 有
+    """运行中的 loadn turn 撞上定时唤醒 → 插话实时注入（.steer.jsonl 有
     条目、不排新 turn）；无运行 turn 时回落 submit（turns +1）。"""
     from loadn_webui.config import CONFIG
     from loadn_webui.engine import ENGINE
-    monkeypatch.setattr(CONFIG.engines, "default", "hahaness")
-    monkeypatch.setenv("HAHANESS_HOME", str(tmp_path / "hh_home"))
-    monkeypatch.setenv("HAHANESS_PROVIDER", "fake")
+    monkeypatch.setattr(CONFIG.engines, "default", "loadn")
+    monkeypatch.setenv("LOADN_HOME", str(tmp_path / "hh_home"))
+    monkeypatch.setenv("LOADN_PROVIDER", "fake")
     fake = ws_root / ".sched-steer-test" / ".fake"
     # 用未建会话路径直接占位不行——走真实会话
     r = await client.post("/api/sessions", json={"title": "撞车插话"})
@@ -238,7 +238,7 @@ async def test_fire_message_steers_running_turn(client, ws_root, tmp_path, monke
     else:
         pytest.fail("首轮工具未出现")
 
-    # 到点触发 message job（打在运行中的 hahaness turn 上）
+    # 到点触发 message job（打在运行中的 loadn turn 上）
     from loadn_webui.scheduler import Scheduler
     from loadn_webui.util import iso
     with db_mod.conn() as c:
@@ -299,7 +299,7 @@ async def test_api_global_endpoints(client):
     # cron new_session：字段落库 + due_at 是 cron 下次
     from loadn_webui.cron import next_run_iso
     r = await client.post("/api/schedules", json={
-        "kind": "new_session", "title": "每晚比赛", "engine": "hahaness",
+        "kind": "new_session", "title": "每晚比赛", "engine": "loadn",
         "label": "参赛", "prompt": "打今晚的比赛", "cron": "0 20 * * *"})
     assert r.status_code == 200
     job = r.json()["job"]

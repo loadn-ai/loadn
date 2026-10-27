@@ -275,7 +275,7 @@ class Engine:
             with db_mod.conn() as c:
                 row = db_mod.get_turn(c, tid)
                 eng = row["engine"] if row is not None else None
-            if eng in ("loadn", "hahaness"):  # hahaness=旧名 alias
+            if eng == "loadn":
                 sid8 = uuid.uuid4().hex[:8]   # 撤回凭据：注入前可按 id 撤（retract）
                 path = ws_mod.ws_of(sid) / f".steer.{sid}.jsonl"
                 path.parent.mkdir(parents=True, exist_ok=True)

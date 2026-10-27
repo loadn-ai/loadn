@@ -195,8 +195,7 @@ def wrap_loadn(cmd: list[str], env: dict, *, sid_session: str,
 
     ws = Path(cwd)
     # 档案根 env 感知（测试隔离/部署重定位走 LOADN_HOME；沙箱内同路径 bind）
-    engine_home = Path(os.environ.get("LOADN_HOME")
-                       or os.environ.get("HAHANESS_HOME") or home / ".loadn")
+    engine_home = Path(os.environ.get("LOADN_HOME") or home / ".loadn")
     archive = engine_home / "sessions" / sid_session
 
     argv = [exe,
@@ -354,7 +353,7 @@ def wrap_engine(cmd: list[str], env: dict, *, engine: str, sid: str,
         # 想要隔离但降档 → direct-fallback（复用既有 sandbox_violation 遥测
         # 口径）；显式 off 才是诚意的 direct
         return cmd, "direct-fallback" if reason else "direct"
-    if engine in ("loadn", "hahaness"):  # hahaness=alias（旧引擎名会话）
+    if engine == "loadn":
         pass                                     # 走 wrap_loadn（同路径 bind 矩阵）
     elif engine == "claude":
         home = Path.home()

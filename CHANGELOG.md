@@ -16,8 +16,26 @@
   stop/关开关；④上下文轮换（context_inflation）天然兼容——rotate 在
   收尾前已换引擎 session+暂存 anchor 摘要，续跑消息无缝落新 session；
   熔断态静默停。db rev18（sessions.auto_continue 列）。对赌 4 例
-  （hahaness fake todos 集成：开关 roundtrip/链式续跑到上限停+消息标记/
+  （fake todos 集成：开关 roundtrip/链式续跑到上限停+消息标记/
   默认关不续/手动接管计数重开）。
+
+- **品牌统一：引擎旧名 hahaness 彻底退役**（改名遗留的「一版兼容」alias
+  全量清除，loadn 与 hahaness 本为同一 spec，纯改名零行为差异）：
+  ①**db rev19 数据迁移**——sessions.engine / sessions.engine_override /
+  turns.engine / scheduled_jobs.engine 四处 `hahaness→loadn` +
+  engine_session_ids JSON 键重写（loadn 键已存在时保 loadn 值不覆盖），
+  幂等，非 JSON 坏数据容错跳过；存量会话（含 35 个 hahaness 会话、566
+  个 turn）升级重启即自动迁移，续跑/回放/统计无缝；②**代码面归零**——
+  引擎注册表删 hahaness alias 条目与 ALIASES 集合，CONFIG
+  engines.hahaness 旧键字段删除（yaml 残段静默忽略不炸启动），设置页
+  引擎表/写面枚举收窄，sandbox/engine/claude_runner/org 等 6 处
+  `("loadn","hahaness")` 双认判断收窄为单认；③**env fallback 退役**——
+  HAHANESS_HOME/HAHANESS_STEER_FILE/HAHANESS_PROVIDER/HAHANESS_STEALTH
+  四个旧名环境变量不再被读取（引擎包+webui+沙箱 bind 路径同步），引擎
+  spawn env 白名单移除 HAHANESS_ 前缀；④测试基建全面改名
+  （hahaness_engine/HAHANESS_HOME/test_e2e_hahaness → loadn 同名），
+  契约 §5 改退役对赌（仅设旧名 env 时插话不被消费，防回潮）。
+  迁移对赌 3 例 + 全家桶 123+55+8 passed。
 
 ## [0.7.52] - 2026-10-26
 

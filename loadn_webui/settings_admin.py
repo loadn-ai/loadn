@@ -45,13 +45,13 @@ def get_settings() -> dict:
     if not states.get("vlm_api_key") and CONFIG.titlegen.api_key:
         res["vlm_api_key_hint"] = "继承自动标题 key"
     nf = CONFIG.notify
-    from .engines import ALIASES, ENGINES
+    from .engines import ENGINES
     eng = CONFIG.engines
     # 覆盖真源=config.yaml 原始节（写路径同源）：CONFIG 值是「覆盖+默认」合并
     # 结果，分不出「用户配过」与「自动探测」，前端禁用态据此判断
     raw_eng = _load_yaml_conf(_conf_path()).get("engines") or {}
     per: dict = {}
-    for name in ("claude", "loadn", "opencode", "hahaness"):
+    for name in ("claude", "loadn", "opencode"):
         p = getattr(eng, name)
         per[name] = {"bin": p.bin or "", "model": p.model or "",
                      "provider": p.provider or "", "enabled": bool(p.enabled),
@@ -73,7 +73,7 @@ def get_settings() -> dict:
         },
         "engines": {
             "default": eng.default,
-            "available": [k for k in ENGINES if k not in ALIASES],
+            "available": list(ENGINES),
             "opencode_provider": eng.opencode_provider,
             "no_compact": eng.no_compact,
             "per": per,
@@ -241,8 +241,8 @@ def put_run(body: dict) -> dict:
 
 # ---------------- 引擎与模型（engines + claude 节） ----------------
 
-# engines 节下可写的子引擎段（含旧名 hahaness 一版兼容）
-_ENGINE_KEYS = ("claude", "loadn", "opencode", "hahaness")
+# engines 节下可写的子引擎段
+_ENGINE_KEYS = ("claude", "loadn", "opencode")
 _PER_ENGINE_FIELDS = ("bin", "model", "provider", "enabled", "extra_args")
 
 
@@ -271,7 +271,7 @@ def put_engines(body: dict) -> dict:
         updates["no_compact"] = v
     per = body.get("engines") or {}
     if not isinstance(per, dict):
-        raise ValueError("engines 需为对象 {claude|loadn|opencode|hahaness: {...}}")
+        raise ValueError("engines 需为对象 {claude|loadn|opencode: {...}}")
     eng_updates: dict[str, dict | None] = {}
     for name, spec in per.items():
         if name not in _ENGINE_KEYS:

@@ -299,8 +299,7 @@ class AgentCore:
         # 上下文消化过，不重放）；启动时文件尚不存在则从 0 起——之后写入
         # 的全是本 turn 插话。不能等首次成功 open 再定界：文件往往是宿主
         # 收到第一条插话才创建的，那样启动到创建之间写入的会被当历史跳过
-        self._steer_path = (os.environ.get("LOADN_STEER_FILE")
-                            or os.environ.get("HAHANESS_STEER_FILE", ""))
+        self._steer_path = os.environ.get("LOADN_STEER_FILE", "")
         try:
             self._steer_offset = os.path.getsize(self._steer_path)
         except OSError:

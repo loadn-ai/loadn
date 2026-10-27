@@ -38,7 +38,9 @@ from .config import PATHS
 #        next_wake 下推；旧库首连 executescript 的 IF NOT EXISTS 自愈补上）
 # rev18：sessions.auto_continue（自动续跑：turn 完成后 todo 未完则自动投递
 #        「继续」开新 turn，直到清单完成/连续上限/用户手动消息；默认关）
-SCHEMA_REV = 18
+# rev19：引擎旧名 hahaness→loadn 全量数据迁移（品牌统一退役 alias：三处
+#        engine 字段 + engine_session_ids JSON 键重写，见 _migrate）
+SCHEMA_REV = 19
 from .util import iso
 
 # PERF-1：已完成 executescript+_migrate 的库路径（进程内短路，见 conn()）
@@ -477,6 +479,28 @@ def _migrate(c: sqlite3.Connection) -> None:
     # rev18（自动续跑）：sessions.auto_continue 开关列（旧库补列；新表走 SCHEMA）
     if "auto_continue" not in scols:
         c.execute("ALTER TABLE sessions ADD COLUMN auto_continue INTEGER DEFAULT 0")
+
+    # rev19（品牌统一）：引擎旧名 hahaness → loadn 全量数据迁移（两名为同一
+    # spec，纯改名）。三处 engine 字段 + engine_session_ids JSON 键重写（loadn
+    # 键已存在时保 loadn 值不覆盖，hahaness 键清除）。幂等：二次跑零行。
+    c.execute("UPDATE sessions SET engine='loadn' WHERE engine='hahaness'")
+    c.execute("UPDATE sessions SET engine_override='loadn'"
+              " WHERE engine_override='hahaness'")
+    c.execute("UPDATE turns SET engine='loadn' WHERE engine='hahaness'")
+    c.execute("UPDATE scheduled_jobs SET engine='loadn' WHERE engine='hahaness'")
+    _hh_rows = c.execute(
+        "SELECT rowid, engine_session_ids FROM sessions "
+        "WHERE engine_session_ids LIKE '%hahaness%'").fetchall()
+    for _r in _hh_rows:
+        try:
+            _m = json.loads(_r["engine_session_ids"] or "{}")
+        except ValueError:
+            continue        # 非 JSON 容错：不动（与本迁移无关的坏数据）
+        if isinstance(_m, dict) and "hahaness" in _m:
+            _m.setdefault("loadn", _m["hahaness"])
+            del _m["hahaness"]
+            c.execute("UPDATE sessions SET engine_session_ids=? WHERE rowid=?",
+                      (json.dumps(_m, ensure_ascii=False), _r["rowid"]))
 
     # rev15（DW-6）：org_employees.duty 职责说明列（旧库补列；新表走 SCHEMA）
     ocols = {r["name"] for r in c.execute("PRAGMA table_info(org_employees)")}

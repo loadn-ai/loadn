@@ -392,7 +392,7 @@ def write_settings(ws: Path, sid: str, prof: profile_mod.Profile,
 
 
 def write_constitution(ws: Path, text: str) -> None:
-    """宪法单点双写：CLAUDE.md（claude/hahaness 读）+ AGENTS.md（opencode 读）。
+    """宪法单点双写：CLAUDE.md（claude/loadn 读）+ AGENTS.md（opencode 读）。
 
     内容同一份——引擎中途切换零重建；rerender 也只走这里，防两文件漂移。
     """

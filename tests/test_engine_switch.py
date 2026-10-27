@@ -1,7 +1,7 @@
 """聊天框内核切换：PATCH engine 会话级覆盖 + 跨引擎 e2e（零 token）。
 
-claude 引擎走 conftest 的假 CLI（LOADN_FAKE_LOG 记 argv），hahaness 走
-HAHANESS_PROVIDER=fake；两引擎各有独立会话 id 域，切换经 _align_engine
+claude 引擎走 conftest 的假 CLI（LOADN_FAKE_LOG 记 argv），loadn 走
+LOADN_PROVIDER=fake；两引擎各有独立会话 id 域，切换经 _align_engine
 存档/取回——切回应自动续接旧引擎会话。
 """
 from __future__ import annotations
@@ -15,13 +15,12 @@ from loadn_webui import db as db_mod
 
 
 @pytest.fixture()
-def hahaness_env(tmp_path, monkeypatch):
-    """hahaness 引擎可用环境（不动全局默认引擎——本文件测的是覆盖切换）。"""
-    home = tmp_path / "hahaness_home"
+def loadn_env(tmp_path, monkeypatch):
+    """loadn 引擎可用环境（不动全局默认引擎——本文件测的是覆盖切换）。"""
+    home = tmp_path / "loadn_home"
     home.mkdir()
-    monkeypatch.setenv("HAHANESS_HOME", str(home))
     monkeypatch.setenv("LOADN_HOME", str(home))
-    monkeypatch.setenv("HAHANESS_PROVIDER", "fake")
+    monkeypatch.setenv("LOADN_PROVIDER", "fake")
     return home
 
 
@@ -49,9 +48,9 @@ async def test_patch_engine_set_validate_clear(client):
     r = await client.post("/api/sessions", json={"title": "引擎切换"})
     sid = r.json()["session"]["id"]
 
-    r = await client.patch(f"/api/sessions/{sid}", json={"engine": "hahaness"})
+    r = await client.patch(f"/api/sessions/{sid}", json={"engine": "loadn"})
     assert r.status_code == 200
-    assert r.json()["session"]["engine_override"] == "hahaness"
+    assert r.json()["session"]["engine_override"] == "loadn"
 
     r = await client.patch(f"/api/sessions/{sid}", json={"engine": "no-such-engine"})
     assert r.status_code == 400
@@ -63,8 +62,8 @@ async def test_patch_engine_set_validate_clear(client):
 
 
 # ---------------------------------------------------------------- 跨引擎 e2e
-async def test_switch_engine_mid_session(client, ws_root, hahaness_env, fake_calls):
-    """claude 起步 → 切 hahaness（会话 id 迁移）→ 切回默认（claude 续接）。"""
+async def test_switch_engine_mid_session(client, ws_root, loadn_env, fake_calls):
+    """claude 起步 → 切 loadn（会话 id 迁移）→ 切回默认（claude 续接）。"""
     r = await client.post("/api/sessions", json={"title": "跨内核"})
     sid = r.json()["session"]["id"]
     _fake_dir(ws_root, sid, reply="claude 首答")
@@ -80,8 +79,8 @@ async def test_switch_engine_mid_session(client, ws_root, hahaness_env, fake_cal
         sess = db_mod.get_session(c, sid)
     assert sess["engine"] == "claude" and sess["claude_session_id"]
 
-    # 切 hahaness：下一 turn 走 hahaness，claude 完全不动
-    r = await client.patch(f"/api/sessions/{sid}", json={"engine": "hahaness"})
+    # 切 loadn：下一 turn 走 loadn，claude 完全不动
+    r = await client.patch(f"/api/sessions/{sid}", json={"engine": "loadn"})
     assert r.status_code == 200
     r = await client.post(f"/api/sessions/{sid}/messages", json={"text": "问二"})
     tid2 = r.json()["turn"]["id"]
@@ -89,10 +88,10 @@ async def test_switch_engine_mid_session(client, ws_root, hahaness_env, fake_cal
     assert t2["status"] == "done"
     with db_mod.conn() as c:
         sess = db_mod.get_session(c, sid)
-    assert sess["engine"] in ("hahaness", "loadn")
+    assert sess["engine"] in ("loadn", "loadn")
     hh_sid = sess["claude_session_id"]
     assert hh_sid and hh_sid != ""
-    assert (hahaness_env / "sessions" / hh_sid / "transcript.jsonl").exists()
+    assert (loadn_env / "sessions" / hh_sid / "transcript.jsonl").exists()
     assert len(fake_calls()) == claude_calls_after_1      # claude 一次都没多跑
     # 旧引擎 id 已存档（切回时可取回续接）
     archive = json.loads(sess["engine_session_ids"] or "{}")

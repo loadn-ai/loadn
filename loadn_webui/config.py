@@ -59,7 +59,6 @@ class ClaudeConfig:
 class PerEngineConfig:
     # 单引擎覆盖：bin=二进制路径（留空即自动探测 loadn console_script/venv）；
     # model/provider 为该引擎默认模型；extra_args 追加 CLI 参数。
-    # 旧配置 engines.hahaness 段一版兼容：loadn 段未显式配置时回落读旧段。
     bin: str | None = None
     model: str | None = None
     provider: str | None = None      # opencode -m <provider>/<model> 的 provider 前缀
@@ -84,7 +83,6 @@ class EnginesConfig:
     claude: PerEngineConfig = field(default_factory=PerEngineConfig)
     opencode: PerEngineConfig = field(default_factory=PerEngineConfig)
     loadn: PerEngineConfig = field(default_factory=PerEngineConfig)
-    hahaness: PerEngineConfig = field(default_factory=PerEngineConfig)   # 旧键 alias
 
 
 @dataclass

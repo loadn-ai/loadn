@@ -1,6 +1,6 @@
 """随时插话（steering）：运行中消息下一轮 LLM 调用前注入，不等排队。
 
-链路：API append .steer.<sid>.jsonl + at.steers 记账 → hahaness 主循环轮询注入
+链路：API append .steer.<sid>.jsonl + at.steers 记账 → loadn 主循环轮询注入
 （发 steer 消费回执事件）→ _consume 标记 consumed → turn 结束仍未消费的
 （插话落在最后一轮后）由 _finish 回队列为新 turn——不丢话。
 """
@@ -16,17 +16,17 @@ from loadn_webui.engine import ENGINE, ActiveTurn
 
 
 # ---------------------------------------------------------------- 单元层
-def test_hahaness_argv_carries_steer_file(tmp_path):
+def test_loadn_argv_carries_steer_file(tmp_path):
     """loadn 引擎 spawn env 恒带 LOADN_STEER_FILE（指向 workspace）。"""
     from loadn_webui.engines.loadn import LoadnSpec
     ws = tmp_path / "ws"
-    call = TurnCall(prompt="x", cwd=ws, session_id="", engine="hahaness", sid="s1")
+    call = TurnCall(prompt="x", cwd=ws, session_id="", engine="loadn", sid="s1")
     _, env = LoadnSpec().build_argv(call)
     assert env.get("LOADN_STEER_FILE") == str(ws / ".steer.s1.jsonl")
 
 
 async def test_consume_steer_receipt_marks_consumed():
-    """hahaness 的 steer 消费回执 → at.steers 对应条目标 consumed。"""
+    """loadn 的 steer 消费回执 → at.steers 对应条目标 consumed。"""
     sid, tid = "steer-unit", 99001
     at = ActiveTurn(turn_id=tid, session_id=sid, stop=StopHandle(), started_at=0.0)
     at.steers = [{"text": "改打 game jam", "consumed": False},
@@ -84,8 +84,8 @@ async def _wait_tool_round(at: ActiveTurn, timeout_s: float = 15) -> None:
     raise TimeoutError("首轮工具未出现（steer 注入窗口无法确定）")
 
 
-async def test_steer_injected_midrun(client, ws_root, hahaness_engine):
-    """运行中插话全链：API 写 .steer.jsonl → hahaness 下一轮注入（fake 回声
+async def test_steer_injected_midrun(client, ws_root, loadn_engine):
+    """运行中插话全链：API 写 .steer.jsonl → loadn 下一轮注入（fake 回声
     末条 user 文本，插话出现在最终回复里）→ SSE steer 事件 → 不产生新 turn。"""
     r = await client.post("/api/sessions", json={"title": "插话直达"})
     sid = r.json()["session"]["id"]
@@ -111,11 +111,11 @@ async def test_steer_injected_midrun(client, ws_root, hahaness_engine):
     assert got["steer"]["text"] == "别打 kaggle，改打 game jam"
     assert got["steer"]["turn_id"] == tid
     assert "turn_done" in got
-    # 注入证明：hahaness transcript 落了插话 user 事件（含转向指引文案）
+    # 注入证明：loadn transcript 落了插话 user 事件（含转向指引文案）
     from loadn_webui import db as db_mod
     with db_mod.conn() as c:
         hh_sid = db_mod.get_session(c, sid)["claude_session_id"]
-    ts = (hahaness_engine / "sessions" / hh_sid / "transcript.jsonl").read_text(
+    ts = (loadn_engine / "sessions" / hh_sid / "transcript.jsonl").read_text(
         encoding="utf-8")
     assert "用户插话" in ts and "game jam" in ts
     # 已消费 → 不回队列：仍只有一个用户消息、一个 turn
@@ -124,7 +124,7 @@ async def test_steer_injected_midrun(client, ws_root, hahaness_engine):
     assert len(r.json()["turns"]) == 1
 
 
-async def test_steer_missed_requeued_as_turn(client, ws_root, hahaness_engine):
+async def test_steer_missed_requeued_as_turn(client, ws_root, loadn_engine):
     """插话没赶上注入窗口（turn 最后一轮后才轮询）→ _finish 按原话回队列，
     新 turn 正常执行——插话不丢话。以删 steer 文件模拟「轮询前消失」。"""
     r = await client.post("/api/sessions", json={"title": "插话回队"})
@@ -140,7 +140,7 @@ async def test_steer_missed_requeued_as_turn(client, ws_root, hahaness_engine):
 
     r = await client.post(f"/api/sessions/{sid}/steer", json={"text": "转去写周报"})
     assert r.json()["steered"] is True
-    (ws_root / sid / f".steer.{sid}.jsonl").unlink()      # hahaness 永远读不到 → 未消费
+    (ws_root / sid / f".steer.{sid}.jsonl").unlink()      # loadn 永远读不到 → 未消费
     assert any(not s["consumed"] for s in at.steers)
 
     # 原 turn 完成 + 回队 turn 也完成（fake 回声插话原文）
@@ -159,7 +159,7 @@ async def test_steer_missed_requeued_as_turn(client, ws_root, hahaness_engine):
 
 
 async def test_steer_no_running_turn_falls_back(client, ws_root):
-    """无运行中 turn（或非 hahaness）→ steered=false，前端回落正常排队。"""
+    """无运行中 turn（或非 loadn）→ steered=false，前端回落正常排队。"""
     r = await client.post("/api/sessions", json={"title": "无运行"})
     sid = r.json()["session"]["id"]
     r = await client.post(f"/api/sessions/{sid}/steer", json={"text": "没人在跑"})
@@ -171,13 +171,12 @@ async def test_steer_no_running_turn_falls_back(client, ws_root):
 
 
 @pytest.fixture()
-def hahaness_engine(tmp_path, monkeypatch):
-    """默认引擎切 hahaness + HAHANESS_HOME 隔离（与 e2e_hahaness 同构）。"""
+def loadn_engine(tmp_path, monkeypatch):
+    """默认引擎切 loadn + LOADN_HOME 隔离（与 e2e_loadn 同构）。"""
     from loadn_webui.config import CONFIG
-    monkeypatch.setattr(CONFIG.engines, "default", "hahaness")
-    home = tmp_path / "hahaness_home"
+    monkeypatch.setattr(CONFIG.engines, "default", "loadn")
+    home = tmp_path / "loadn_home"
     home.mkdir()
-    monkeypatch.setenv("HAHANESS_HOME", str(home))
     monkeypatch.setenv("LOADN_HOME", str(home))
-    monkeypatch.setenv("HAHANESS_PROVIDER", "fake")
+    monkeypatch.setenv("LOADN_PROVIDER", "fake")
     return home

@@ -26,7 +26,7 @@ if TYPE_CHECKING:
 
 def loadn_home() -> Path:
     """loadn 引擎数据根（transcript/session.db 落点）；LOADN_HOME 覆盖（测试隔离）。"""
-    return Path(os.environ.get("LOADN_HOME") or os.environ.get("HAHANESS_HOME")
+    return Path(os.environ.get("LOADN_HOME")
                 or Path.home() / ".loadn")
 
 
@@ -99,7 +99,6 @@ class LoadnSpec(EngineSpec):
         # 随时插话（steering）：宿主把用户插话追加进 workspace 的
         # .steer.<sid>.jsonl（带 sid 段——共享工作区多任务并发时插话不串台），
         # loadn 主循环每轮 LLM 调用前轮询注入——运行中的消息不等排队。
-        # 引擎侧双读 LOADN_/HAHANESS_（R1 fallback），此处传新名。
         env["LOADN_STEER_FILE"] = str(Path(call.cwd) / f".steer.{call.sid}.jsonl")
         return cmd, env
 

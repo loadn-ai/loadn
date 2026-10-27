@@ -40,8 +40,7 @@ _REAL_TURN_OK = (Path(_engine_bin).resolve().parent.parent.parent
 
 def _engine_home() -> Path:
     import os
-    return Path(os.environ.get("LOADN_HOME")
-                or os.environ.get("HAHANESS_HOME") or Path.home() / ".loadn")
+    return Path(os.environ.get("LOADN_HOME") or Path.home() / ".loadn")
 
 
 def _run_in_sandbox(ws: Path, sid_session: str, script: str,

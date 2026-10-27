@@ -59,9 +59,9 @@ def test_claude_argv_snapshot():
     assert _flag_value(cmd3, "--max-turns") == "7"
 
 
-def test_hahaness_argv_snapshot():
+def test_loadn_argv_snapshot():
     from loadn_webui.engines import ENGINES
-    spec = ENGINES["hahaness"]
+    spec = ENGINES["loadn"]
     call = _call()
     cmd, env = spec.build_argv(call)
     assert cmd[0].endswith("/loadn") or cmd[:3] == [sys.executable, "-m", "loadn"]
@@ -375,7 +375,7 @@ def test_adapter_real_v118_flat_stream():
     assert tu["input"] == {"command": "cat note.txt"}
     tr = out[2]["message"]["content"][0]
     assert tr["tool_use_id"] == tu["id"] and not tr["is_error"]
-    assert "hahaness" in tr["content"]
+    assert "loadn" in tr["content"]
     assert "文件" in out[3]["message"]["content"][0]["text"]
     # 无 session.status idle：rc==0 即完成；usage 两步累加
     res = ad.finalize(0, 5.0)
