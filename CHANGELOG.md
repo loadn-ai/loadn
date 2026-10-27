@@ -3,7 +3,7 @@
 本项目的全部显著变更记录于此。格式遵循 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/)，
 版本遵循 [SemVer](https://semver.org/lang/zh-CN/)。
 
-## [Unreleased]
+## [0.7.53] - 2026-10-27
 
 - **新功能：自动续跑（auto-continue）——复杂任务清单式推进不再手动「继续」**
   （用户需求：构建了 todo 的复杂任务一步步完成后总要手动继续，期望持续
