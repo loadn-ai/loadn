@@ -953,23 +953,38 @@ class Engine:
                         todos = []
             pending = [t for t in todos
                        if str(t.get("status")) not in ("completed", "cancelled")]
+            contlike = int(db_mod.kv_get(c, f"contlike:{sid}") or 0)
             if not pending:
-                return
+                # v0.7.59：无清单证据但用户连发 ≥2 次裸「继续」——用户以行动
+                # 声明任务未完（todo 信号断供的常见形态：模型把清单全标
+                # completed 后不再汇报）。接管续跑并引导重建清单恢复信号。
+                if contlike < 2:
+                    return
             n = int(db_mod.kv_get(c, f"autocont:{sid}") or 0)
             if n >= AUTO_CONT_MAX:
                 log.info("自动续跑达上限 %s 次，停（sid=%s；手动发消息清零重新计）",
                          AUTO_CONT_MAX, sid)
                 return
             db_mod.kv_set(c, f"autocont:{sid}", str(n + 1))
-        names = "、".join(f"「{str(t.get('subject', '?'))[:30]}」" for t in pending[:5])
-        more = f" 等 {len(pending)} 项" if len(pending) > 5 else ""
-        log.info("自动续跑 %s/%s（sid=%s，剩 %s 项）", n + 1, AUTO_CONT_MAX,
-                 sid, len(pending))
-        await self.submit(
-            sid,
-            f"【自动续跑 {n + 1}/{AUTO_CONT_MAX}】继续执行任务清单——剩余 "
-            f"{len(pending)} 项未完成：{names}{more}。请继续按清单推进，"
-            f"完成一项更新一项状态，直到全部完成后收束输出。")
+        if pending:
+            names = "、".join(f"「{str(t.get('subject', '?'))[:30]}」" for t in pending[:5])
+            more = f" 等 {len(pending)} 项" if len(pending) > 5 else ""
+            log.info("自动续跑 %s/%s（sid=%s，剩 %s 项）", n + 1, AUTO_CONT_MAX,
+                     sid, len(pending))
+            await self.submit(
+                sid,
+                f"【自动续跑 {n + 1}/{AUTO_CONT_MAX}】继续执行任务清单——剩余 "
+                f"{len(pending)} 项未完成：{names}{more}。请继续按清单推进，"
+                f"完成一项更新一项状态，直到全部完成后收束输出。")
+        else:
+            log.info("自动续跑 %s/%s（sid=%s，无清单证据；用户连发「继续」x%s 接管）",
+                     n + 1, AUTO_CONT_MAX, sid, contlike)
+            await self.submit(
+                sid,
+                f"【自动续跑 {n + 1}/{AUTO_CONT_MAX}】继续推进当前任务（用户已连续 "
+                f"{contlike} 次确认继续）。请继续执行；若任务还有多个步骤，"
+                f"先用 TodoWrite 列出剩余步骤清单再逐项推进（此后每轮完成即"
+                f"自动续跑，无需用户催促），直到全部完成后收束输出。")
 
     async def _finish(self, sid: str, tid: int, at: ActiveTurn, sess, res, anchor: str) -> None:
         at.closing = True     # 三轮修：收尾中拒新 steer（见 steer_if_running）

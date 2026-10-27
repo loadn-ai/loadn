@@ -213,3 +213,56 @@ async def test_todos_persist_kv_lifecycle(client, ws_root, loadn_engine):
     engine_mod.ENGINE._todos_persist(at, sid, 1)
     with db_mod.conn() as c:
         assert db_mod.kv_get(c, f"todos:{sid}") is None, "全完成必须清 kv"
+
+
+async def test_contlike_takeover(client, loadn_engine, monkeypatch):
+    """>>> v0.7.59 无清单证据的接管：连发 ≥2 次裸「继续」→ 下轮 done 自动续；
+    单次/非继续类消息/复杂指令不算。生产实证 0253：清单被全标 completed
+    清掉后十几轮零 todo 汇报，用户被迫人工续跑。"""
+    from types import SimpleNamespace
+
+    from loadn_webui import engine as engine_mod
+    from loadn_webui.api.routes import turns as turns_mod
+
+    r = await client.post("/api/sessions", json={"title": "contlike"})
+    sid = r.json()["session"]["id"]
+    await client.patch(f"/api/sessions/{sid}", json={"auto_continue": 1})
+
+    # 正则边界：裸催促命中；复杂指令/普通消息不命中
+    assert turns_mod._CONTLIKE_RE.match("继续")
+    assert turns_mod._CONTLIKE_RE.match("继续！")
+    assert turns_mod._CONTLIKE_RE.match("  Continue ".strip())
+    assert not turns_mod._CONTLIKE_RE.match("继续优化 A 然后写报告")
+    assert not turns_mod._CONTLIKE_RE.match("帮我看下这个")
+
+    submitted: list[str] = []
+
+    async def fake_submit(s, text, *a, **kw):
+        submitted.append(text)
+        return None
+
+    monkeypatch.setattr(engine_mod.ENGINE, "submit", fake_submit)
+    at = SimpleNamespace(todos=[])
+
+    async def _msg(text):
+        await client.post(f"/api/sessions/{sid}/messages", json={"text": text})
+
+    # 单次「继续」：不够——不续（submitted 里用户消息本身在，只查续跑标记）
+    await _msg("继续")
+    await engine_mod.ENGINE._maybe_auto_continue(sid, at)
+    assert not [t for t in submitted if "自动续跑" in t], "单次继续不构成接管"
+
+    # 连续第二次「继续」：接管成立——续（无清单分支文案）
+    await _msg("继续")
+    await engine_mod.ENGINE._maybe_auto_continue(sid, at)
+    cont = [t for t in submitted if "自动续跑" in t]
+    assert len(cont) == 1 and "TodoWrite" in cont[0]
+    assert "【自动续跑 1/25】" in cont[0]
+
+    # 复杂指令（任务内容非催促）：意图断开——清零后不续
+    submitted.clear()
+    await _msg("继续优化回测脚本，重点看滑点")
+    with db_mod.conn() as c:
+        assert db_mod.kv_get(c, f"contlike:{sid}") is None
+    await engine_mod.ENGINE._maybe_auto_continue(sid, at)
+    assert not [t for t in submitted if "自动续跑" in t]

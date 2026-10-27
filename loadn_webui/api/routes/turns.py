@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import json
+import re
 
 from fastapi import APIRouter, HTTPException
 
@@ -11,6 +12,12 @@ from ... import workspace as ws_mod
 from ...engine import ENGINE
 
 router = APIRouter(prefix="/api")
+
+# 「继续」类裸催促（v0.7.59 contlike 计数）：全匹配短消息——含「继续」二
+# 字的复杂指令（如「继续优化 A 然后…」）不算，那是任务内容不是催促信号。
+_CONTLIKE_RE = re.compile(
+    r"^(继续|接着|接着干|继续干|继续执行|continue|go\s*on|keep\s*going)"
+    r"\s*[。！!～~]?\s*$", re.IGNORECASE)
 
 from ._common import _get_session_or_404, _validate_attachments
 
@@ -63,6 +70,17 @@ async def post_message(sid: str, body: dict):
                                       skills_json=json.dumps(list(prof.skills),
                                                              ensure_ascii=False))
                 ws_mod.rerender(sid, prof_name=prof.name, skills=list(prof.skills))
+    # 「继续」类短消息连发计数（v0.7.59）：todo 信号断供时的接管依据——
+    # 用户连续 ≥2 次发裸「继续」=以行动声明任务未完（生产实证 0253 会话：
+    # 清单被模型全标 completed 清掉后十几轮零 todo 汇报，用户被迫人工
+    # 续跑）。非「继续」类消息=意图断开清零。写入在 submit 前——submit
+    # 尾部炸（如 turn 落库异常）不致丢失意图计数。
+    with db_mod.conn() as c:
+        if _CONTLIKE_RE.match((text or "").strip()):
+            n = int(db_mod.kv_get(c, f"contlike:{sid}") or 0) + 1
+            db_mod.kv_set(c, f"contlike:{sid}", str(n))
+        else:
+            db_mod.kv_del(c, f"contlike:{sid}")
     try:
         tid = await ENGINE.submit(sid, text or "（见附件）", mode, attachments=atts)
     except PermissionError as e:      # W6.4 熔断（kill switch/canary 命中）
