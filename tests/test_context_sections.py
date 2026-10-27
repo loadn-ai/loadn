@@ -228,3 +228,24 @@ def test_agentskills_frontmatter_shapes_tolerated(tmp_path):
     # 按需加载正文不炸（Skill 工具路径）
     from loadn.core.skills import load_skill_body
     assert "正文" in load_skill_body(skills["shaped"])
+
+
+# ------------------------------------------------------- TOOL_NOTES 漂移守卫
+def test_tool_notes_skill_registered():
+    """Skill 工具进工具面时，工具使用要点必须同步列出（漂移=模型自判无工具）。
+
+    实证 2026-10-27：SkillTool 已注册（build_agent 20 工具含 Skill），但
+    TOOL_NOTES 漏登记 → 系统提示工具列表不含 Skill → 模型断言"没有 Skill
+    工具"绕道 sandbox MCP/Read 仓库。
+    """
+    _skill(tmp_path := __import__("pathlib").Path(
+        __import__("tempfile").mkdtemp()))
+    try:
+        out = ContextAssembler(tmp_path, tools=["Bash", "Skill"]).build()
+        assert "## 工具使用要点" in out
+        assert "Skill：" in out and "不要绕道 sandbox" in out
+        # 否定对赌：工具面无 Skill 时不得出现该条目（防硬编码混入）
+        out2 = ContextAssembler(tmp_path, tools=["Bash"]).build()
+        assert "Skill：" not in out2
+    finally:
+        __import__("shutil").rmtree(tmp_path, ignore_errors=True)

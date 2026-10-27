@@ -59,11 +59,12 @@ TOOL_NOTES = {
     "NotebookEdit": "编辑 Jupyter notebook 的 cell（replace/insert/delete，按 cell_id）。",
     "Grep": "内容搜索（默认 rg；命中超 200 条会截断，建议收窄）。",
     "Glob": "文件名模式匹配（按修改时间倒序，≤100 条）。",
-    "Task": "派子代理（独立上下文，只回传最终结果；搜索/调研优先用它防污染主上下文）。",
+    "Task": "派子代理（独立上下文，只回传最终结果；搜索/调研优先用它防污染主上下文）。注意：子代理没有 Skill 工具——skill 评估与加载是主 agent 的责任，派发前先自己 Skill 加载拿到方法论再编排。",
     "WebFetch": "抓网页正文（≤5 万字符）。",
     "WebSearch": "网页搜索（top10）。",
     "TodoWrite": "任务清单全量覆盖写（复杂任务先列清单，推进即更新）。",
     "InteractiveShell": "pty 会话跑交互程序（REPL/游戏/向导）：一次调用 steps 多轮 send/expect，别用 Bash 硬等交互程序。",
+    "Skill": "加载一个 skill 的完整指令正文（command 枚举=本会话可用 skill 名单，见「可用 Skills」索引段）。任务命中某 skill 场景（研究/背调→deep-research/deep-person-recon，附件解析→file-parse，导出→doc-export，真浏览器→web-hands-on 等）时，第一步先调本工具拿正文再按其指引干活；不要绕道 sandbox MCP 或自己去仓库 Read SKILL.md。",
 }
 
 MEMORY_NOTE = "以上记忆是长期偏好，适用时遵循；与用户当次指令冲突时以当次为准。"
