@@ -209,10 +209,10 @@ def _inject_toc(body: str) -> tuple[str, str]:
     return body, toc
 
 
-_MERMAID_BOOT = (
-    '<script src="/share/assets/mermaid.min.js"></script>\n'
-    '<script src="/share/assets/mmd-boot.js"></script>\n'
-)
+# v0.7.68：按需注入——文档含 ```mermaid 块才引 boot（mermaid 由 boot
+# 动态加载：npmmirror CDN 优先/站内 gzip 回退）；无图文档零 JS 纯静态。
+_MERMAID_RE = re.compile(r"^\s*(```|~~~)mermaid\b", re.M)
+_MERMAID_BOOT = '<script src="/share/assets/mmd-boot.js"></script>\n'
 
 
 def convert(md_text: str, title: str = "Document",
@@ -227,7 +227,7 @@ def convert(md_text: str, title: str = "Document",
     body_cls = ' class="has-toc"' if toc else ""
     inner = (f"{toc}\n<main>\n{body}\n</main>" if toc
              else body)
-    boot = _MERMAID_BOOT if mermaid else ""
+    boot = (_MERMAID_BOOT if mermaid and _MERMAID_RE.search(md2) else "")
     return (
         "<!DOCTYPE html>\n<html lang=\"zh-CN\">\n<head>\n"
         "<meta charset=\"utf-8\">\n"

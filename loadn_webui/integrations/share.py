@@ -74,7 +74,7 @@ def _serve(token: str) -> Response:
                                   mermaid=True)
         return Response(content=html, media_type="text/html; charset=utf-8",
                         headers={**headers, "Content-Security-Policy":
-                                 "sandbox allow-scripts; script-src 'self'"})
+                                 "sandbox allow-scripts; script-src 'self' https://registry.npmmirror.com"})
     if kind == "html":
         # sandbox：允许渲染样式，禁脚本/表单——防产物里的脚本跑在分享域源上
         return Response(content=p.read_bytes(), media_type="text/html; charset=utf-8",

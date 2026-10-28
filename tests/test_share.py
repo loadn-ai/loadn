@@ -45,8 +45,9 @@ async def test_mint_and_serve_md(share_env):
     assert "text/html" in resp.headers["content-type"]
     assert "分享链路测试正文" in resp.text
     assert resp.headers.get("content-security-policy") == (
-        "sandbox allow-scripts; script-src 'self'")   # v0.7.65 渲染放宽
-    assert "/share/assets/mermaid.min.js" in resp.text and "/share/assets/mmd-boot.js" in resp.text
+        "sandbox allow-scripts; script-src 'self' https://registry.npmmirror.com")  # v0.7.68 CDN 放行
+    # 按需注入（v0.7.68）：fixture 无 mermaid 块 → 零脚本引用
+    assert "mmd-boot.js" not in resp.text
     head = await client.head(f"/share/{token}")
     assert head.status_code == 200
 
