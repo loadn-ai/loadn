@@ -87,6 +87,32 @@ def _serve(token: str) -> Response:
     return FileResponse(p, filename=p.name, headers=COMMON_HEADERS)
 
 
+# 预览/分享渲染资源（v0.7.64/65，v0.7.66 挪此）：必须注册在下方两条
+# /share/{token} 之前——否则 /share/assets/mmd-boot.js 被动态段吞掉
+# （token=assets 实测 404）。/share 前缀在分享专域（workdaddy.cc）外层
+# nginx 只转发 /share/* 的现实下两端（预览主域/分享域）都可达。
+@share_router.api_route("/share/assets/{name}", methods=["GET", "HEAD"])
+def exporter_assets(name: str):
+    from pathlib import Path as _P
+
+    from fastapi.responses import FileResponse as _FR
+    from fastapi.responses import JSONResponse as _JR
+
+    from ..config import CODE_ROOT as _CR
+    if name not in ("mermaid.min.js", "mmd-boot.js"):
+        return _JR({"error": "not found"}, status_code=404,
+                   headers={"Cache-Control": "no-store"})
+    cands = [_P(__file__).resolve().parent.parent / "exporter" / "static" / name]
+    if name == "mermaid.min.js":
+        cands.insert(0, _CR / "ui" / "node_modules" / "mermaid" / "dist" / name)
+    for cand in cands:
+        if cand.is_file():
+            return _FR(cand, media_type="application/javascript",
+                       headers={"Cache-Control": "public, max-age=86400"})
+    return _JR({"error": f"{name} not deployed"}, status_code=404,
+               headers={"Cache-Control": "no-store"})
+
+
 # GET+HEAD 都要通：微信/Slack 等链接预览器先发 HEAD
 @share_router.api_route("/share/{token}", methods=["GET", "HEAD"])
 def share_by_token(token: str):

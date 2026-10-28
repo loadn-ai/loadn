@@ -210,8 +210,8 @@ def _inject_toc(body: str) -> tuple[str, str]:
 
 
 _MERMAID_BOOT = (
-    '<script src="/assets/mermaid.min.js"></script>\n'
-    '<script src="/assets/mmd-boot.js"></script>\n'
+    '<script src="/share/assets/mermaid.min.js"></script>\n'
+    '<script src="/share/assets/mmd-boot.js"></script>\n'
 )
 
 
