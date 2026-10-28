@@ -1,6 +1,7 @@
 // 主区文件预览 tab：md 渲染 / html 沙箱 iframe / pdf / 图片 / 文本
 import { useEffect, useState, type ReactNode } from 'react';
 import ReactMarkdown from 'react-markdown';
+import { mdComponents } from '../lib/mdCode';
 import remarkGfm from 'remark-gfm';
 import { api, withToken } from '../api/client';
 import { Globe, FileDoc, RotateCw, Link, ExternalLink, Download, Maximize2, Minimize2 } from './icons';
@@ -103,7 +104,7 @@ export default function FilePreview({ sid, path }: { sid: string; path: string }
     body = <iframe className="fp-frame" sandbox="" title={path}
       src={withToken(`/api/sessions/${encodeURIComponent(sid)}/file?path=${encodeURIComponent(path)}&raw=1`)} />;
   else if (MD_EXTS.includes(ext))
-    body = <div className="md fp-md"><ReactMarkdown remarkPlugins={[remarkGfm]}>{d.text}</ReactMarkdown></div>;
+    body = <div className="md fp-md"><ReactMarkdown remarkPlugins={[remarkGfm]} components={mdComponents}>{d.text}</ReactMarkdown></div>;
   else
     body = <pre className="fp-pre">{d.text}</pre>;
 

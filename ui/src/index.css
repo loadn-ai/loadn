@@ -2711,3 +2711,11 @@ textarea.admin-input { min-height: 60px; line-height: 1.6; resize: vertical; }
   width: 100%; min-height: 180px; resize: vertical; font-family: var(--mono, monospace);
   font-size: 12px; line-height: 1.5; padding: 8px; border: 1px solid var(--border);
   border-radius: var(--radius); background: var(--bg2); color: var(--fg); }
+
+/* mermaid 图表（v0.7.60）：md 内 flowchart 渲染容器 */
+.mmd-box { margin: 10px 0; padding: 12px; border: 1px solid var(--line, #e5e7eb);
+  border-radius: var(--radius, 8px); background: var(--bg2, #fafafa);
+  overflow-x: auto; text-align: center; }
+.mmd-box svg { max-width: 100%; height: auto; }
+.mmd-fallback { margin: 10px 0; }
+.mmd-err { color: var(--danger, #dc2626); font-size: 12px; margin-bottom: 6px; }

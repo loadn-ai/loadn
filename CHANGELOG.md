@@ -5,6 +5,17 @@
 
 ## [Unreleased]
 
+- **新功能：文档/消息中的 mermaid 流程图自动渲染**（用户需求：536e 会话
+  生成文档里的 flowchart 自动识别解析）：md 渲染面（FilePreview 文档预览/
+  ChatStream 消息/SubtaskTab/MemoryTab/SkillEditor）统一挂 code renderer——
+  ```mermaid 代码块 → <Mermaid/> 组件渲成 SVG 流程图。mermaid 12 懒加载
+  （动态 import，首个图表块出现才拉，~100 独立 chunk 不进主包）；语法错误
+  优雅降级（原文+错误行，不白屏）；主题跟随（dark/base）；securityLevel=
+  strict。playwright 实测 536e 真实 report.md：subgraph/中文/<br/> 全渲
+  （3/3 PASS：真实块 SVG/坏块降级/普通代码块无扰）。
+
+## [0.7.59] - 2026-10-27
+
 - **修复：自动续跑跨 turn 断链——todos 快照持久化**（生产实证 20261026_0253
   finhack 会话：开了自动续跑首续即断，kv autocont 零痕迹）：根因=清单往往
   是早前 turn 建的，续跑 turn 里模型不重发 TodoWrite——宿主侧 at.todos

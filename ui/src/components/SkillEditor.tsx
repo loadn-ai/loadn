@@ -1,6 +1,7 @@
 // skill 编辑器：左文件树 + 右编辑区（md 预览 toggle）
 import { useEffect, useState } from 'react';
 import Markdown from 'react-markdown';
+import { mdComponents } from '../lib/mdCode';
 import { api } from '../api/client';
 import { useAdminDirty } from '../stores/adminDirty';
 import { askConfirm } from '../stores/confirm';
@@ -103,7 +104,7 @@ export default function SkillEditor({ name, onBack }: { name: string; onBack: ()
           <button className="btn primary sm" disabled={!dirty} onClick={() => void save()}>保存</button>
         </div>
         {preview
-          ? <div className="md se-preview"><Markdown>{content}</Markdown></div>
+          ? <div className="md se-preview"><Markdown components={mdComponents}>{content}</Markdown></div>
           : <textarea className="se-text mono" value={content} spellCheck={false} disabled={!ready}
             onChange={e => { setContent(e.target.value); setDirty(true); }}  autoComplete="off"/>}
         {msg && <div className="se-msg">{msg}</div>}

@@ -3,6 +3,7 @@
 // 经 turn join 过滤——零新端点。主控 tab 是所有内容的合集，这里是筛选视图。
 import { memo, useState } from 'react';
 import ReactMarkdown from 'react-markdown';
+import { mdComponents } from '../lib/mdCode';
 import remarkGfm from 'remark-gfm';
 import { useStore } from '../stores/sessions';
 import type { ArtifactInfo, SubtaskInfo } from '../stores/sessions';
@@ -107,7 +108,7 @@ export default function SubtaskTab({ subtask, onOpenFile }: {
               : <ToolCard key={i} tool={it} />;
           if (it.kind === 'steer') return null;
           if (it.kind === 'todos') return null;   // 类型完备：live 流不产 todos 项
-          return <div key={i} className="md"><ReactMarkdown remarkPlugins={[remarkGfm]}>{it.text}</ReactMarkdown></div>;
+          return <div key={i} className="md"><ReactMarkdown remarkPlugins={[remarkGfm]} components={mdComponents}>{it.text}</ReactMarkdown></div>;
         })}
         {msgs.length === 0 && !liveHere && (
           <div className="panel-empty">这个子任务还没有落库内容</div>
@@ -142,7 +143,7 @@ function ReplayBlocks({ blocksJson, turnId }: {
             ? <DispatchCard key={i} tool={b} turnId={turnId} />
             : <ToolCard key={i} tool={b} done />;
         }
-        return <div key={i} className="md"><ReactMarkdown remarkPlugins={[remarkGfm]}>{b.text}</ReactMarkdown></div>;
+        return <div key={i} className="md"><ReactMarkdown remarkPlugins={[remarkGfm]} components={mdComponents}>{b.text}</ReactMarkdown></div>;
       })}
     </div>
   );

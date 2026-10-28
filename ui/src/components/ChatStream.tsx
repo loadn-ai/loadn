@@ -1,5 +1,6 @@
 import { memo, useEffect, useReducer, useState } from 'react';
 import ReactMarkdown from 'react-markdown';
+import { mdComponents } from '../lib/mdCode';
 import remarkGfm from 'remark-gfm';
 import { useStore } from '../stores/sessions';
 import type { StreamItem, TextItem, ThinkItem, TodosItem, ToolEvent, ToolItem } from '../stores/sessions';
@@ -330,7 +331,7 @@ const AssistantMsg = memo(function AssistantMsg({ text, blocks, ts, mid, hits, t
         : <>
             {shown && !interleaved && (
               <div className="md-row">
-                <div className="md"><ReactMarkdown remarkPlugins={[remarkGfm]}>{shown}</ReactMarkdown></div>
+                <div className="md"><ReactMarkdown remarkPlugins={[remarkGfm]} components={mdComponents}>{shown}</ReactMarkdown></div>
                 <BubbleActions text={shown} mid={mid}
                                editing={editing} onEdit={() => setEditing(true)} className="vertical" />
               </div>
@@ -426,7 +427,7 @@ function LiveTurn({ live }: { live: NonNullable<ReturnType<typeof useStore.getSt
 
 /** live 文本（markdown）：memo 让追加事件只渲染新增项，不重排整窗 */
 const MdText = memo(function MdText({ text }: { text: string }) {
-  return <div className="md"><ReactMarkdown remarkPlugins={[remarkGfm]}>{text}</ReactMarkdown></div>;
+  return <div className="md"><ReactMarkdown remarkPlugins={[remarkGfm]} components={mdComponents}>{text}</ReactMarkdown></div>;
 });
 
 /** 运行中插话（steering）：accent 边条卡片，与工具/文本流区分。
@@ -521,7 +522,7 @@ export const SubTextCard = memo(function SubTextCard({ text, tag, name, live }: 
           {name ? `${tag}·${name}` : tag}</span>}
       </div>
       <div className="sub-text-body">
-        <ReactMarkdown remarkPlugins={[remarkGfm]}>{text}</ReactMarkdown>
+        <ReactMarkdown remarkPlugins={[remarkGfm]} components={mdComponents}>{text}</ReactMarkdown>
       </div>
     </div>
   );

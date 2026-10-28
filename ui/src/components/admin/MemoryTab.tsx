@@ -5,6 +5,7 @@
 // 工作区·记忆子 tab，数字员工记忆去组织架构（数字员工）处查看。
 import { useEffect, useRef, useState } from 'react';
 import ReactMarkdown from 'react-markdown';
+import { mdComponents } from '../../lib/mdCode';
 import { api } from '../../api/client';
 import { toast } from '../../stores/toasts';
 import { useAdminDirty } from '../../stores/adminDirty';
@@ -177,7 +178,7 @@ export default function MemoryTab() {
                 {dirty && <span className="chip warn" title="有未保存的改动">● 未保存</span>}
               </div>
               {preview
-                ? <div className="md-preview"><ReactMarkdown>{text}</ReactMarkdown></div>
+                ? <div className="md-preview"><ReactMarkdown components={mdComponents}>{text}</ReactMarkdown></div>
                 : <textarea className="mono" rows={14} value={text}
                     onChange={e => setText(e.target.value)}  autoComplete="off"/>}
             </>
