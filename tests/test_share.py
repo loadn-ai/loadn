@@ -46,7 +46,7 @@ async def test_mint_and_serve_md(share_env):
     assert "分享链路测试正文" in resp.text
     assert resp.headers.get("content-security-policy") == (
         "sandbox allow-scripts; script-src 'self'")   # v0.7.65 渲染放宽
-    assert "/assets/mermaid.min.js" in resp.text and "mmd-boot.js" in resp.text
+    assert "/share/assets/mermaid.min.js" in resp.text and "/share/assets/mmd-boot.js" in resp.text
     head = await client.head(f"/share/{token}")
     assert head.status_code == 200
 
