@@ -2719,3 +2719,8 @@ textarea.admin-input { min-height: 60px; line-height: 1.6; resize: vertical; }
 .mmd-box svg { max-width: 100%; height: auto; }
 .mmd-fallback { margin: 10px 0; }
 .mmd-err { color: var(--danger, #dc2626); font-size: 12px; margin-bottom: 6px; }
+
+/* mermaid CJK 裁字补丁（v0.7.61）：foreignObject 对中文行高估值偏低，
+   overflow visible 允许内容溢出定高容器显示（配合组件内高度后处理） */
+.mmd-box foreignObject { overflow: visible; }
+.mmd-box foreignObject > div { overflow: visible; }
