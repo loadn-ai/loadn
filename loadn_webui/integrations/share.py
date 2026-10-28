@@ -15,7 +15,7 @@ from __future__ import annotations
 import secrets
 from urllib.parse import quote
 
-from fastapi import APIRouter
+from fastapi import APIRouter, Request
 from fastapi.responses import FileResponse, JSONResponse, Response
 
 from .. import artifacts as art
@@ -92,7 +92,7 @@ def _serve(token: str) -> Response:
 # （token=assets 实测 404）。/share 前缀在分享专域（workdaddy.cc）外层
 # nginx 只转发 /share/* 的现实下两端（预览主域/分享域）都可达。
 @share_router.api_route("/share/assets/{name}", methods=["GET", "HEAD"])
-def exporter_assets(name: str):
+def exporter_assets(name: str, _req: Request = None):
     from pathlib import Path as _P
 
     from fastapi.responses import FileResponse as _FR
@@ -107,6 +107,23 @@ def exporter_assets(name: str):
         cands.insert(0, _CR / "ui" / "node_modules" / "mermaid" / "dist" / name)
     for cand in cands:
         if cand.is_file():
+            # v0.7.67：大文件预压缩（惰性生成 .gz，mtime 失配重生成）——
+            # 5.5MB mermaid.min.js gzip 后 ~1.2MB，零运行时 CPU（不走通用
+            # 中间件：FileResponse 流式直挂 Content-Encoding）。
+            import gzip as _g
+            if (name == "mermaid.min.js"
+                    and "gzip" in _req.headers.get("accept-encoding", "")):
+                gz = cand.with_name(cand.name + ".gz")
+                try:
+                    if (not gz.is_file()
+                            or gz.stat().st_mtime < cand.stat().st_mtime):
+                        gz.write_bytes(_g.compress(cand.read_bytes(), 6))
+                    return _FR(gz, media_type="application/javascript",
+                               headers={"Cache-Control": "public, max-age=86400",
+                                        "Content-Encoding": "gzip",
+                                        "Vary": "Accept-Encoding"})
+                except OSError:
+                    pass        # 压缩失败回落裸文件
             return _FR(cand, media_type="application/javascript",
                        headers={"Cache-Control": "public, max-age=86400"})
     return _JR({"error": f"{name} not deployed"}, status_code=404,
