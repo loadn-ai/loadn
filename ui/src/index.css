@@ -2725,22 +2725,38 @@ textarea.admin-input { min-height: 60px; line-height: 1.6; resize: vertical; }
 .mmd-box foreignObject { overflow: visible; }
 .mmd-box foreignObject > div { overflow: visible; }
 
-/* md 预览目录 TOC（v0.7.62）：长文档结构导航 */
-.fp-toc { margin: 0 0 10px; border: 1px solid var(--line, #e5e7eb); border-radius: var(--radius, 8px);
-  background: var(--bg2, #fafafa); }
-.fp-toc-head { display: flex; align-items: center; gap: 8px; width: 100%;
-  padding: 7px 12px; background: none; border: 0; cursor: pointer;
-  font-size: 12px; color: var(--fg, inherit); }
-.fp-toc-title { font-weight: 600; letter-spacing: .04em; }
-.fp-toc-n { color: var(--muted, #888); }
-.fp-toc-arrow { margin-left: auto; color: var(--muted, #888); }
-.fp-toc-list { display: flex; flex-direction: column; gap: 1px;
-  padding: 2px 8px 8px; max-height: 260px; overflow-y: auto; }
+/* md 预览左侧悬浮目录（v0.7.63）：文档站两栏——左 sticky 目录+右正文。
+   wrap 必须显式 flex item 语义（fp-body 是 column flex，不约束会被内容
+   min-content 撑宽位移——实测侧栏跑到 -98px） */
+.fp-tocwrap { position: relative; flex: 1 1 auto; width: 100%; min-width: 0;
+  display: flex; gap: 14px; align-items: flex-start; }
+.fp-toc-side { position: sticky; top: 0; flex: 0 0 190px; align-self: flex-start;
+  max-height: calc(100vh - 90px); overflow-y: auto;
+  border: 1px solid var(--line, #e5e7eb); border-radius: var(--radius, 8px);
+  background: var(--bg2, #fafafa); padding: 10px 8px; }
+.fp-tocmain { flex: 1 1 0; width: auto; min-width: 0; max-width: 100%; }
+.fp-toc-sidehead { display: flex; align-items: center; gap: 6px; padding: 0 6px 6px;
+  font-size: 12px; font-weight: 600; letter-spacing: .04em; color: var(--fg, inherit); }
+.fp-toc-n { font-weight: 400; color: var(--muted, #888); }
+.fp-toc-list { display: flex; flex-direction: column; gap: 1px; }
 .fp-toc-item { display: block; padding: 3px 8px; border-radius: 6px;
   font-size: 12px; color: var(--fg, inherit); text-decoration: none;
   white-space: nowrap; overflow: hidden; text-overflow: ellipsis; cursor: pointer; }
-.fp-toc-item.lv2 { padding-left: 18px; } .fp-toc-item.lv3 { padding-left: 30px; }
-.fp-toc-item.lv4 { padding-left: 42px; color: var(--muted, #888); }
+.fp-toc-item.lv2 { padding-left: 16px; } .fp-toc-item.lv3 { padding-left: 26px; }
+.fp-toc-item.lv4 { padding-left: 36px; color: var(--muted, #888); }
 .fp-toc-item:hover { background: var(--hover, rgba(0,0,0,.05)); }
 .fp-toc-item.act { background: var(--sel, rgba(59,130,246,.12)); color: var(--accent, #2563eb); }
+/* 窄容器：左缘圆钮 + 浮层目录 */
+.fp-toc-fab { position: sticky; top: 8px; z-index: 30; margin: 0 0 -34px 0;
+  width: 30px; height: 30px; border-radius: 50%; border: 1px solid var(--line, #e5e7eb);
+  background: var(--panel, #fff); color: var(--fg, inherit); cursor: pointer;
+  font-size: 13px; box-shadow: 0 1px 6px rgba(0,0,0,.12); }
+.fp-toc-fab.on { background: var(--accent, #2563eb); color: #fff; border-color: transparent; }
+.fp-toc-float { position: fixed; z-index: 1200; left: 12px; top: 64px;
+  width: 230px; max-height: min(60vh, 460px); overflow-y: auto;
+  border: 1px solid var(--line, #e5e7eb); border-radius: 10px;
+  background: var(--panel, #fff); box-shadow: 0 8px 30px rgba(0,0,0,.18); padding: 10px 8px; }
+.fp-toc-x { margin-left: auto; background: none; border: 0; cursor: pointer;
+  color: var(--muted, #888); font-size: 12px; }
+.fp-toc-fab + .fp-toc-float .fp-toc-sidehead { padding-right: 2px; }
 .md h1, .md h2, .md h3, .md h4 { scroll-margin-top: 12px; }
