@@ -66,9 +66,15 @@ def _serve(token: str) -> Response:
     kind = art.kind_of(p)
     if kind == "md":
         from ..exporter import md_to_html
-        html = md_to_html.convert(p.read_text(errors="replace"), title=p.stem)
+        # v0.7.65：分享页也渲染 mermaid/TOC（与预览同一输出）。CSP 三层
+        # 加固：sandbox（opaque origin，触达不了任何同源资源）+ allow-scripts
+        # （渲染需要）+ script-src 'self'（只放行站内 /assets 两个 JS——
+        # 产物内容即使消毒遗漏也无法内联执行；exporter 消毒为第一层）。
+        html = md_to_html.convert(p.read_text(errors="replace"), title=p.stem,
+                                  mermaid=True)
         return Response(content=html, media_type="text/html; charset=utf-8",
-                        headers={**headers, "Content-Security-Policy": "sandbox"})
+                        headers={**headers, "Content-Security-Policy":
+                                 "sandbox allow-scripts; script-src 'self'"})
     if kind == "html":
         # sandbox：允许渲染样式，禁脚本/表单——防产物里的脚本跑在分享域源上
         return Response(content=p.read_bytes(), media_type="text/html; charset=utf-8",

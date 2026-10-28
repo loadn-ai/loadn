@@ -367,15 +367,23 @@ app.include_router(routes.router)
 # node_modules（开发态）→ 包内 exporter/static（release build 时拷入）。
 # 注册须早于下方 spa_fallback（显式路径优先通配）；内容随版本更新，
 # 缓存一天。
-@app.get("/assets/mermaid.min.js")
-async def mermaid_asset():
+@app.get("/assets/{name}")
+async def exporter_assets(name: str):
+    """预览/分享渲染资源（v0.7.64/65）：mermaid.min.js（UMD 全量，源码树
+    node_modules 优先/包内 static 回落）与 mmd-boot.js（渲染引导，随包走）。
+    name 白名单防目录穿越；注册早于 spa_fallback。"""
+    if name not in ("mermaid.min.js", "mmd-boot.js"):
+        return JSONResponse({"error": "not found"}, status_code=404,
+                            headers={"Cache-Control": "no-store"})
     from ..config import CODE_ROOT
-    for cand in (CODE_ROOT / "ui" / "node_modules" / "mermaid" / "dist" / "mermaid.min.js",
-                 Path(__file__).resolve().parent.parent / "exporter" / "static" / "mermaid.min.js"):
+    cands = [Path(__file__).resolve().parent.parent / "exporter" / "static" / name]
+    if name == "mermaid.min.js":
+        cands.insert(0, CODE_ROOT / "ui" / "node_modules" / "mermaid" / "dist" / name)
+    for cand in cands:
         if cand.is_file():
             return FileResponse(cand, media_type="application/javascript",
                                 headers={"Cache-Control": "public, max-age=86400"})
-    return JSONResponse({"error": "mermaid.min.js not deployed"},
+    return JSONResponse({"error": f"{name} not deployed"},
                         status_code=404, headers={"Cache-Control": "no-store"})
 
 

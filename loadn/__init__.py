@@ -12,7 +12,7 @@ import os
 import shutil
 from pathlib import Path
 
-__version__ = "0.7.64"
+__version__ = "0.7.65"
 
 
 def loadn_home() -> Path:
