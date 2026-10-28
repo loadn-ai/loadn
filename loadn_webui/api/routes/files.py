@@ -24,8 +24,21 @@ from ._common import (
 
 
 @router.get("/sessions/{sid}/file")
-def get_file(sid: str, path: str, raw: bool = False):
+def get_file(sid: str, path: str, raw: bool = False, render: str = ""):
     _get_session_or_404(sid)
+    if render == "html":
+        # 预览统一渲染（v0.7.64）：md → exporter 自包含 HTML（静态 TOC+
+        # 自适应宽度+mermaid 渲染脚本）——与分享页同一 convert，预览所见
+        # 即分享所得（差异仅 mermaid：预览 iframe allow-scripts，分享 CSP
+        # sandbox 禁脚本保持代码块形态）。
+        p = art.safe_resolve(ws_mod.ws_of(sid), path)
+        if p is None or p.suffix.lower() not in (".md", ".markdown"):
+            raise HTTPException(404, "file not found（render=html 仅支持 md）")
+        from ...exporter.md_to_html import convert
+        html = convert(p.read_text(errors="replace"), title=p.stem,
+                       base_dir=p.parent, mermaid=True)
+        return Response(content=html, media_type="text/html; charset=utf-8",
+                        headers={"Cache-Control": "no-store"})
     if raw:
         # 供 iframe src 直载（html/pdf 预览）：html 的 CSP sandbox 与 srcDoc 方案同级
         # 防护（禁脚本），但 iframe 拥有自身 URL → 文档内 fragment 锚点可原生滚动

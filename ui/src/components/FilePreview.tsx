@@ -1,6 +1,5 @@
 // 主区文件预览 tab：md 渲染（含目录 TOC）/ html 沙箱 iframe / pdf / 图片 / 文本
 import { useEffect, useState, type ReactNode } from 'react';
-import MdToc from './MdToc';
 import { api, withToken } from '../api/client';
 import { Globe, FileDoc, RotateCw, Link, ExternalLink, Download, Maximize2, Minimize2 } from './icons';
 import { toast } from '../stores/toasts';
@@ -102,7 +101,12 @@ export default function FilePreview({ sid, path }: { sid: string; path: string }
     body = <iframe className="fp-frame" sandbox="" title={path}
       src={withToken(`/api/sessions/${encodeURIComponent(sid)}/file?path=${encodeURIComponent(path)}&raw=1`)} />;
   else if (MD_EXTS.includes(ext))
-    body = <MdToc text={d.text} />;
+    // v0.7.64：md 预览统一走后端静态渲染（与分享页同一 exporter——
+    // TOC/宽度/mermaid 一处改两处生效）。iframe 自身 URL：TOC 锚点原生
+    // 滚动；sandbox allow-scripts（mermaid 渲染需要）但不给 same-origin
+    // ——文档无法触达父页/同源 API。
+    body = <iframe className="fp-frame" sandbox="allow-scripts" title={path}
+      src={withToken(`/api/sessions/${encodeURIComponent(sid)}/file?path=${encodeURIComponent(path)}&render=html`)} />;
   else
     body = <pre className="fp-pre">{d.text}</pre>;
 

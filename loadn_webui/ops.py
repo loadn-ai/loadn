@@ -311,6 +311,13 @@ def cmd_release_build(tag: str, *, skip_ui: bool = False,
         if dist_dst.exists():
             shutil.rmtree(dist_dst)
         shutil.copytree(dist_src, dist_dst)
+        # v0.7.64：mermaid UMD 单文件进包（/assets/mermaid.min.js 托管的
+        # 回落位——md?render=html 预览文档引用；源码树走 node_modules）
+        mmd = ui_src / "node_modules" / "mermaid" / "dist" / "mermaid.min.js"
+        if mmd.is_file():
+            static_dst = (build_dir / "loadn_webui" / "exporter" / "static")
+            static_dst.mkdir(parents=True, exist_ok=True)
+            shutil.copy2(mmd, static_dst / "mermaid.min.js")
     else:
         print("[2/5] 跳过前端构建（--skip-ui）")
 

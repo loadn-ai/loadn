@@ -360,6 +360,25 @@ from .routes import auth as auth_routes  # noqa: E402
 
 app.include_router(auth_routes.router)
 app.include_router(routes.router)
+
+
+# 预览渲染资源（v0.7.64）：md?render=html 的自包含文档引用站内 mermaid
+# UMD 单文件（IIFE 全量，无懒加载 chunk 依赖）。双路径：源码树
+# node_modules（开发态）→ 包内 exporter/static（release build 时拷入）。
+# 注册须早于下方 spa_fallback（显式路径优先通配）；内容随版本更新，
+# 缓存一天。
+@app.get("/assets/mermaid.min.js")
+async def mermaid_asset():
+    from ..config import CODE_ROOT
+    for cand in (CODE_ROOT / "ui" / "node_modules" / "mermaid" / "dist" / "mermaid.min.js",
+                 Path(__file__).resolve().parent.parent / "exporter" / "static" / "mermaid.min.js"):
+        if cand.is_file():
+            return FileResponse(cand, media_type="application/javascript",
+                                headers={"Cache-Control": "public, max-age=86400"})
+    return JSONResponse({"error": "mermaid.min.js not deployed"},
+                        status_code=404, headers={"Cache-Control": "no-store"})
+
+
 # /share 公开只读路由（auth 中间件只护 /api）：注册须早于下方 spa_fallback
 app.include_router(share_router)
 # P3：webhook 公开触发面（/hooks/{token}，token 即凭证——在 /api 外，
