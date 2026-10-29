@@ -5,6 +5,58 @@
 
 ## [Unreleased]
 
+## [0.7.69] - 2026-10-30
+
+- **新功能：分类图标选择器全量化**（用户反馈：cat-editor-grid 图标太少且
+  混杂 emoji）：icons.tsx 新增 53 枚 feather 同源线性图标（几何契约 24
+  viewBox / stroke 1.9 / round cap），选择器从 19+16emoji 扩到 **101 枚分
+  10 组**（工作事务/研发技术/AI 智能/研究分析/文档写作/媒体影音/通信社交/
+  商业金融/环境出行/标识其他），彻底去 emoji（存量 emoji 值渲染兼容保留，
+  手输不炸）；组标签跨全列+网格限高 272px 滚动+全量中文悬停标签；
+  NAME_HINTS 空间名智能兜底增补 9 类关键词（日程/媒体/财务/安全/邮件/购物/
+  天气/音乐/奖项）。验证：tsc/oxlint/build 三绿+playwright mock 9 断言
+  ALL-PASS（101 按钮/零 emoji/10 组标题/SVG 几何全在场/选中取消/
+  POST icon=coffee/存量 🚀 兼容/限高滚动）。
+
+## [0.7.68] - 2026-10-28
+
+- mermaid 按需引用+npmmirror CDN 优先/站内回退——无图文档零 JS。
+
+## [0.7.67] - 2026-10-28
+
+- 分享域 mermaid 资产预压缩 gzip——5.5MB→1.2MB 零运行时 CPU（路由层惰性
+  预压缩 .gz，FileResponse 直挂 Content-Encoding）。
+
+## [0.7.66] - 2026-10-28
+
+- 分享域 mermaid 资产可达——/share/assets 路由前置（动态段吞静态前缀修复）
+  + 分享专域外层 nginx 仅转发 /share 适配。
+
+## [0.7.65] - 2026-10-28
+
+- 分享页 mermaid 渲染统一——mmd-boot.js 外置化+CSP sandbox allow-scripts /
+  script-src 'self' 三层加固。
+
+## [0.7.64] - 2026-10-28
+
+- 预览与分享统一静态渲染——静态 TOC 零 JS+宽度自适应（860→1180/1480 两栏）
+  + 预览 iframe 化（file?render=html 同 convert）+ mermaid 预览变体。
+
+## [0.7.63] - 2026-10-28
+
+- md 预览 TOC 左侧悬浮侧栏化——sticky 跟随+scrollspy+窄屏圆钮收起。
+
+## [0.7.62] - 2026-10-28
+
+- md 预览目录导航 TOC——可折叠目录卡+点击跳转+scrollspy 高亮。
+
+## [0.7.61] - 2026-10-28
+
+- mermaid 中文节点文字下半截被裁修复——foreignObject overflow visible+
+  渲染后测量。
+
+## [0.7.60] - 2026-10-28
+
 - **新功能：文档/消息中的 mermaid 流程图自动渲染**（用户需求：536e 会话
   生成文档里的 flowchart 自动识别解析）：md 渲染面（FilePreview 文档预览/
   ChatStream 消息/SubtaskTab/MemoryTab/SkillEditor）统一挂 code renderer——
