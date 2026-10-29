@@ -2013,7 +2013,11 @@ button.attach-chip:hover { border-color: color-mix(in srgb, var(--accent) 40%, v
 .cat-editor-name { width: 100%; background: var(--bg); border: 1px solid var(--border);
   border-radius: var(--radius-sm); padding: 8px 10px; font-size: var(--fs-lg); color: var(--text); }
 .cat-editor-name:focus { outline: none; border-color: var(--accent); }
-.cat-editor-grid { display: grid; grid-template-columns: repeat(7, 1fr); gap: 4px; }
+.cat-editor-grid { display: grid; grid-template-columns: repeat(7, 1fr); gap: 4px;
+  max-height: 272px; overflow-y: auto; padding-right: 2px; }
+.cat-group-label { grid-column: 1 / -1; font-size: 11px; color: var(--muted);
+  padding: 7px 2px 1px; letter-spacing: .04em; }
+.cat-group-label:first-child { padding-top: 1px; }
 .cat-pick { height: 32px; border-radius: var(--radius-sm); border: 1px solid transparent; background: none;
   color: var(--text-dim); display: flex; align-items: center; justify-content: center;
   cursor: pointer; }
