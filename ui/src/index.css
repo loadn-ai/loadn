@@ -389,9 +389,68 @@ button:focus-visible, .tab:focus-visible, .chip:focus-visible {
   font-size: var(--fs-md); max-width: 100%; overflow: hidden; box-shadow: var(--shadow-sm); }
 .sub-text-head { display: flex; align-items: center; gap: 8px; padding: 7px 14px 0;
   color: var(--text-dim); }
-.sub-text-body { padding: 6px 14px 10px; line-height: 1.6; }
+.sub-text-body { padding: 6px 14px 12px; line-height: 1.6; }
 .sub-text-body :first-child { margin-top: 0; }
 .sub-text-body :last-child { margin-bottom: 0; }
+
+/* 子代理文字卡正文排版（2026-10-30 用户反馈「边距都没有特别丑」）——
+   数值与 .md 聊天气泡同款观感（悬挂缩进列表/mono 序号徽标/代码胶囊），
+   但不带走 .md 的气泡底色边框。两个面保持同构，.md 改动时此处跟随。 */
+.sub-text-body h1, .sub-text-body h2, .sub-text-body h3, .sub-text-body h4 {
+  color: var(--text); font-weight: 700; letter-spacing: -.015em;
+  line-height: 1.35; margin: .8em 0 .4em; }
+.sub-text-body h1 { font-size: 1.15em; margin: .3em 0 .7em;
+  padding-bottom: .5em; border-bottom: 1px solid var(--border); }
+.sub-text-body h2 { font-size: 1.05em; margin: 1.05em 0 .55em;
+  position: relative; padding-left: .68em; }
+.sub-text-body h2::before { content: ''; position: absolute; left: 0; top: .2em;
+  width: 3.5px; height: .88em; border-radius: 99px; flex: none;
+  background: linear-gradient(180deg, var(--accent2), #8b5cf6); }
+.sub-text-body h3 { font-size: .95em; margin: .9em 0 .4em; }
+.sub-text-body h4 { font-size: .9em; }
+.sub-text-body h1:first-child, .sub-text-body h2:first-child,
+.sub-text-body h3:first-child { margin-top: 0; }
+.sub-text-body p { margin: 0 0 .72em; line-height: 1.75; }
+.sub-text-body li > p { margin: 0 0 .3em; }  /* 嵌套列表（md 紧凑 li>p）不撑多余空隙 */
+.sub-text-body strong { color: var(--text); font-weight: 600; }
+.sub-text-body ul { list-style: none; padding-left: 1.35em; margin: .4em 0 .85em; }
+.sub-text-body ol { list-style: none; counter-reset: mdli; padding-left: 0; margin: .4em 0 .85em; }
+.sub-text-body ul > li { position: relative; padding-left: .2em;
+  margin-bottom: .4em; line-height: 1.7; }
+.sub-text-body ul > li:last-child { margin-bottom: 0; }
+.sub-text-body ul > li::before { content: ''; position: absolute;
+  left: -1em; top: .64em; width: 5px; height: 5px; border-radius: 50%;
+  background: var(--accent2); opacity: .75; }
+.sub-text-body ol > li { position: relative; counter-increment: mdli;
+  padding-left: 1.8em; margin-bottom: .45em; line-height: 1.7; }
+.sub-text-body ol > li:last-child { margin-bottom: 0; }
+.sub-text-body ol > li::before { content: counter(mdli);
+  position: absolute; left: 0; top: .28em; width: 20px; height: 20px;
+  border-radius: 5px; background: color-mix(in srgb, var(--accent2) 12%, transparent);
+  border: 1px solid color-mix(in srgb, var(--accent2) 28%, transparent);
+  color: var(--accent2); font-family: var(--mono); font-size: 10px; font-weight: 600;
+  display: flex; align-items: center; justify-content: center; line-height: 1; }
+.sub-text-body pre { background: #0f172a; color: #e2e8f0;
+  border: 1px solid #1e293b; border-radius: 10px; padding: 13px 16px;
+  overflow-x: auto; margin: .75em 0; font-family: var(--mono);
+  font-size: .84em; line-height: 1.65; }
+.sub-text-body pre code { background: none; padding: 0; margin: 0; border: none;
+  color: inherit; font-size: inherit; font-weight: inherit; }
+.sub-text-body table { border-collapse: collapse; margin: .7em 0; font-size: .92em; }
+.sub-text-body th, .sub-text-body td { border: 1px solid var(--border); padding: 6px 12px; }
+.sub-text-body th { background: color-mix(in srgb, var(--text) 6%, transparent); font-weight: 600; }
+.sub-text-body a { color: var(--accent2); text-decoration: none; }
+.sub-text-body a:hover { text-decoration: underline; }
+.sub-text-body blockquote { margin: .75em 0; padding: .65em .9em;
+  background: var(--bg2); border-left: 3px solid var(--accent2);
+  border-radius: 0 8px 8px 0; color: var(--text-dim); font-size: .95em; }
+.sub-text-body blockquote > :last-child { margin-bottom: 0; }
+.sub-text-body :not(pre) > code {
+  font-family: var(--mono); font-size: .84em; font-weight: 500;
+  color: var(--accent2); background: var(--bg2);
+  border: 1px solid var(--border); border-radius: 5px;
+  padding: .1em .4em; margin: 0 .18em; white-space: normal; word-break: break-all;
+  -webkit-box-decoration-break: clone; box-decoration-break: clone; }
 
 /* 工具卡（可展开详情） */
 .tool-card { background: var(--bg2); border: 1px solid var(--border); border-radius: var(--radius);

@@ -7,10 +7,12 @@ import Mermaid from '../components/Mermaid';
  * 五个 md 渲染面（FilePreview/ChatStream/MemoryTab/SkillEditor/SubtaskTab）
  * 统一挂 components={{ code: mdCode }} 保持一致。
  */
-type CodeProps = ComponentPropsWithoutRef<'code'> & { className?: string };
+type CodeProps = ComponentPropsWithoutRef<'code'> & { className?: string; node?: unknown };
 
 export function mdCode(props: CodeProps) {
-  const { className, children, ...rest } = props;
+  // node：react-markdown 注入的 hast 节点对象——绝不能透传到 DOM
+  // （此前 ...rest 把它吐成 node="[object Object]" 脏属性）
+  const { className, children, node: _node, ...rest } = props;
   const lang = /language-(\w+)/.exec(className ?? '')?.[1] ?? '';
   if (lang === 'mermaid' || lang === 'flowchart') {
     const text = String(children ?? '').replace(/\n$/, '');
