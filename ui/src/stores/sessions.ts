@@ -15,6 +15,7 @@ export interface SessionInfo {
   project_id?: string | null; project_title?: string | null;
   starred?: number; pinned?: number; category_id?: number | null;
   auto_continue?: number;   // rev18 自动续跑：1=turn 完成后 todo 未完自动续
+  verify_cmd?: string | null;   // AV：平台验收命令（JSON 数组，turn done 后独立执行）
   session_fresh: number; claude_session_id: string | null;
   skills_json?: string; mcp_json?: string | null;
   params_json?: string | null; workspace?: string;
@@ -48,6 +49,7 @@ export interface TurnInfo {
   duration_s?: number | null; cost_usd?: number | null;
   usage_json?: string | null; error?: string | null;
   started_at?: string | null;
+  verify_json?: string | null;   // AV：平台验收结果（verdict/items 或 claim_noop）
   /** 子任务标签（rev10 分类器打标；NULL=应答形态，留在主控合集） */
   subtask_id?: number | null;
 }

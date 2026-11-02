@@ -12,6 +12,7 @@ import asyncio
 import json
 import os
 import re
+import signal
 import time
 import uuid
 from dataclasses import dataclass, field
@@ -895,6 +896,103 @@ class Engine:
             self._emit(at, sid, "files", {"turn_id": tid, "files": files})
 
     # ------------------------------------------------------------ 收尾
+    # ------------------------------------------------------------ AV 验收 gate
+    # 来源：虚假完成汇报架构调研（2026-11-02 会话 7ce3）——「Agent 自述完成
+    # 不可信」是可量化事实（生产案例自报 95% vs 外部验证 60%）；业界共识=
+    # 确定性 gate 优先于模型判断、验收 channel 在 agent 权限边界外。
+    # loadn 落地：verify_cmd 真源在 DB（agent 工作区不可写），平台在 turn
+    # done 后独立执行，退出码即裁决——「Done = 验收绿，不是 agent 停止」。
+    VERIFY_CMD_TIMEOUT_S = 120      # 单条命令超时（秒）
+    VERIFY_TOTAL_TIMEOUT_S = 300    # 整轮验收总预算
+    VERIFY_MAX_CMDS = 5
+
+    async def _run_verify(self, sid: str, sess) -> dict | None:
+        """AV-1 平台验收：turn done 后在工作区以独立进程组逐条执行用户配置
+        的 verify_cmd，退出码即客观裁决。无配置返回 None（零开销）。产出
+        {"verdict": "pass"|"fail", "items": [{cmd, rc, dur_s, tail}], "ran_at"}；
+        失败 notify 通知 + 审计（type=verify）——降级通知而非静默。"""
+        try:
+            cmds = json.loads(sess["verify_cmd"] or "[]")
+        except (TypeError, ValueError):
+            cmds = []
+        if not isinstance(cmds, list) or not cmds:
+            return None
+        cmds = [str(x).strip() for x in cmds
+                if str(x).strip()][:self.VERIFY_MAX_CMDS]
+        if not cmds:
+            return None
+        ws = ws_mod.ws_of(sid)
+        deadline = time.monotonic() + self.VERIFY_TOTAL_TIMEOUT_S
+        items: list[dict] = []
+        verdict = "pass"
+        for cmd in cmds:
+            t0 = time.monotonic()
+            try:
+                proc = await asyncio.create_subprocess_shell(
+                    cmd, cwd=str(ws), stdout=asyncio.subprocess.PIPE,
+                    stderr=asyncio.subprocess.STDOUT,
+                    start_new_session=True)          # 独立进程组：超时杀整组
+            except OSError as e:
+                items.append({"cmd": cmd, "rc": None, "dur_s": 0.0,
+                              "tail": f"spawn 失败：{e}"[:200]})
+                verdict = "fail"
+                continue
+            left = min(self.VERIFY_CMD_TIMEOUT_S,
+                       max(1.0, deadline - time.monotonic()))
+            try:
+                out, _ = await asyncio.wait_for(proc.communicate(), timeout=left)
+                rc: int | None = proc.returncode
+                tail = (out or b"").decode("utf-8", "replace")[-400:].strip()
+            except (asyncio.TimeoutError, TimeoutError):   # 3.10 双类坑（a4927b3）
+                try:
+                    os.killpg(os.getpgid(proc.pid), signal.SIGKILL)
+                except OSError:
+                    pass
+                rc, tail = None, f"超时（>{left:.0f}s）整组被杀"
+            if rc != 0:
+                verdict = "fail"
+            items.append({"cmd": cmd, "rc": rc,
+                          "dur_s": round(time.monotonic() - t0, 1),
+                          "tail": tail[:400]})
+        result = {"verdict": verdict, "items": items, "ran_at": iso()}
+        try:
+            from .security.audit import audit
+            audit("verify", {"sid": sid, "verdict": verdict,
+                             "cmds": len(items)}, sid=sid)
+        except Exception:                                      # noqa: BLE001
+            pass
+        if verdict == "fail":
+            failed = [i["cmd"] for i in items if i["rc"] != 0]
+            try:
+                from .integrations import notify
+                notify.fire(f"❌ 验收未通过 · {sess['title'][:40]}",
+                            f"{len(failed)}/{len(items)} 条命令失败："
+                            + "; ".join(failed[:3]), event="on_error")
+            except Exception:                                  # noqa: BLE001
+                pass
+            log.warning("turn 验收失败 sid=%s：%s", sid, failed)
+        return result
+
+    _CLAIM_DONE_RE = re.compile(
+        r"任务完成|全部完成|已完成全部|所有步骤已完成|已全部交付|全部落地|收官")
+    _WRITE_TOOLS = frozenset({"Write", "Edit", "MultiEdit", "NotebookEdit",
+                              "Bash"})
+
+    def _claim_noop_check(self, at: ActiveTurn, content: str) -> dict | None:
+        """AV-2 完成声明预检（G1 式零 LLM 确定性预检）：自述「完成」但本轮
+        零写工具/零产物变更 → claim_noop 标记（T1 幻觉自报/T2 静默失败的
+        廉价信号）。只标记不阻塞——呈现徽标与续跑联动消化；宁可漏检不误标
+        （高置信短语+无写工具双条件）。"""
+        if not content or len(content) < 10:
+            return None
+        if not self._CLAIM_DONE_RE.search(content[-500:]):
+            return None
+        tools = {b.get("name") for b in at.blocks if isinstance(b, dict)}
+        if tools & self._WRITE_TOOLS:
+            return None
+        return {"claim_noop": True,
+                "note": "自述完成但本轮无任何写操作/产物变更（claim_noop 预检）"}
+
     @staticmethod
     def _rotation_anchor(spec, sid: str, old_session_id: str, reason: str) -> str:
         """会话轮换的交接 anchor：目标契约置顶（GC-4）+ 磁盘台账指引 +
@@ -944,7 +1042,8 @@ class Engine:
                      "规划，已证伪的路线（state.json falsified_routes）不再重走。")
         return "\n\n".join(parts)
 
-    async def _maybe_auto_continue(self, sid: str, at: ActiveTurn) -> None:
+    async def _maybe_auto_continue(self, sid: str, at: ActiveTurn,
+                                   verify: dict | None = None) -> None:
         """自动续跑（rev18）：turn done 且 todos 未完成 → 自动投「继续」开新 turn。
 
         只对显式开启的会话生效（sessions.auto_continue=1，默认关）。判定口径=
@@ -985,6 +1084,18 @@ class Engine:
                          AUTO_CONT_MAX, sid)
                 return
             db_mod.kv_set(c, f"autocont:{sid}", str(n + 1))
+        # AV 联动：上轮验收失败/空转完成声明 → 续跑指令先带修复要求
+        # （防「验收失败但续跑照旧推进清单」的虚假完成循环）
+        prefix = ""
+        if verify and verify.get("verdict") == "fail":
+            fails = [i["cmd"] for i in verify.get("items", [])
+                     if i.get("rc") != 0]
+            total = len(verify.get("items", [])) or 1
+            prefix = (f"⚠️ 上一轮平台验收未通过（{len(fails)}/{total} 条命令失败："
+                      + "; ".join(fails[:2]) + "）。先修复验收再推进清单。\n")
+        elif verify and verify.get("claim_noop"):
+            prefix = ("⚠️ 上一轮自述完成但预检未发现任何产物变更（claim_noop）。"
+                      "先核实交付物真实存在与内容质量，再继续推进。\n")
         if pending:
             names = "、".join(f"「{str(t.get('subject', '?'))[:30]}」" for t in pending[:5])
             more = f" 等 {len(pending)} 项" if len(pending) > 5 else ""
@@ -992,7 +1103,7 @@ class Engine:
                      sid, len(pending))
             await self.submit(
                 sid,
-                f"【自动续跑 {n + 1}/{AUTO_CONT_MAX}】继续执行任务清单——剩余 "
+                f"{prefix}【自动续跑 {n + 1}/{AUTO_CONT_MAX}】继续执行任务清单——剩余 "
                 f"{len(pending)} 项未完成：{names}{more}。请继续按清单推进，"
                 f"完成一项更新一项状态，直到全部完成后收束输出。")
         else:
@@ -1000,7 +1111,7 @@ class Engine:
                      n + 1, AUTO_CONT_MAX, sid, contlike)
             await self.submit(
                 sid,
-                f"【自动续跑 {n + 1}/{AUTO_CONT_MAX}】继续推进当前任务（用户已连续 "
+                f"{prefix}【自动续跑 {n + 1}/{AUTO_CONT_MAX}】继续推进当前任务（用户已连续 "
                 f"{contlike} 次确认继续）。请继续执行；若任务还有多个步骤，"
                 f"先用 TodoWrite 列出剩余步骤清单再逐项推进（此后每轮完成即"
                 f"自动续跑，无需用户催促），直到全部完成后收束输出。")
@@ -1059,6 +1170,20 @@ class Engine:
         # fast-fail（秒拒）时引擎会话从未真正建立：fresh 保持原值，不刷成 0
         fast_failed = _is_fast_fail(res)
 
+        # ---- AV 验收 gate（先于终态落库——「turn 终态=验收完成」硬语义：
+        # 轮询/UI/续跑看到 done 时验收结果必已就位，无竞态窗口）：done 且
+        # 非 fast-fail——有 verify_cmd 跑平台验收（客观裁决），无配置时做
+        # 完成声明预检（零成本 claim_noop 标记）。结果随终态一起落库+SSE。
+        verify_result: dict | None = None
+        if status == "done" and not fast_failed:
+            try:
+                verify_result = await self._run_verify(sid, sess)
+                if verify_result is None:
+                    _txt = "\n\n".join(t for t in at.texts if t.strip())
+                    verify_result = self._claim_noop_check(at, _txt)
+            except Exception:                              # noqa: BLE001 — 不炸收尾
+                log.exception("验收 gate 异常 sid=%s", sid)
+
         # ---- assistant 消息落库（幂等护栏：_finish 中途死 + 收养重放会双跑，
         # 已有该 turn 的 assistant 消息则跳过——重放路径 at 已重建全部内容）
         with db_mod.conn() as c:
@@ -1082,7 +1207,8 @@ class Engine:
                                        at.memory_hits, ensure_ascii=False)}
                                       if at.memory_hits else {}))
 
-        # ---- turn / session 记账
+        # ---- turn / session 记账（verify_json 随终态同一 UPDATE 落库——
+        # 「turn 终态=验收完成」原子语义）
         usage = res.usage or {}
         with db_mod.conn() as c:
             db_mod.update_turn(
@@ -1091,7 +1217,9 @@ class Engine:
                 usage_json=json.dumps(usage, ensure_ascii=False) if usage else None,
                 models_json=json.dumps(res.model_usage, ensure_ascii=False) if res.model_usage else None,
                 num_turns=res.num_turns, error=res.error,
-                log_out=res.log_out, log_err=res.log_err, finished_at=iso())
+                log_out=res.log_out, log_err=res.log_err, finished_at=iso(),
+                **({"verify_json": json.dumps(verify_result, ensure_ascii=False)}
+                   if verify_result is not None else {}))
             # session 累计（四类数值 token 键；非数值键不 merge）
             try:
                 prev = json.loads(sess["usage_json"]) if sess["usage_json"] else {}
@@ -1142,6 +1270,8 @@ class Engine:
                    "duration_s": round(res.duration_s, 1),
                    "cost_usd": res.cost_usd, "usage": usage,
                    "num_turns": res.num_turns}
+        if verify_result is not None:
+            payload["verify"] = verify_result
         if status == "stopped":
             self._emit(at, sid, "turn_stopped", payload)
         elif status == "error":
@@ -1179,7 +1309,7 @@ class Engine:
             # autocont:{sid}）达上限即停——用户手动发消息清零（post_message）。
             # 熔断态 submit 抛 PermissionError 静默停（kill switch 语义优先）。
             try:
-                await self._maybe_auto_continue(sid, at)
+                await self._maybe_auto_continue(sid, at, verify=verify_result)
             except Exception:                              # noqa: BLE001
                 log.exception("自动续跑判定失败（无碍收尾）sid=%s", sid)
 

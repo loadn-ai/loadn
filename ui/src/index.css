@@ -227,6 +227,23 @@ button:focus-visible, .tab:focus-visible, .chip:focus-visible {
   font-size: var(--fs-xl); line-height: 1.65; box-shadow: var(--shadow-sm); overflow-wrap: break-word; }
 .msg-meta { font-size: var(--fs-sm); color: var(--text-dim); margin-top: 4px; }
 
+/* ---- AV 平台验收徽标（turn 级三态：通过绿/失败红可展开/空转黄）---- */
+.verify-badge { font-size: var(--fs-sm); margin-top: 6px; padding: 3px 10px;
+  border-radius: 999px; width: fit-content; border: 1px solid transparent; }
+.verify-badge.ok { color: var(--ok, #2e9e5b); border-color: color-mix(in srgb, var(--ok, #2e9e5b) 35%, transparent);
+  background: color-mix(in srgb, var(--ok, #2e9e5b) 8%, transparent); }
+.verify-badge.fail { color: var(--danger); border-color: color-mix(in srgb, var(--danger) 35%, transparent);
+  background: color-mix(in srgb, var(--danger) 8%, transparent); }
+.verify-badge.warn { color: var(--warn, #b8860b); border-color: color-mix(in srgb, var(--warn, #b8860b) 35%, transparent);
+  background: color-mix(in srgb, var(--warn, #b8860b) 8%, transparent); }
+.verify-detail { margin-top: 6px; font-size: var(--fs-sm); display: flex;
+  flex-direction: column; gap: 6px; }
+.verify-detail .bad code { color: var(--danger); }
+.verify-detail pre { margin: 2px 0 0; padding: 6px 8px; border-radius: 6px;
+  background: var(--panel-2, rgba(127,127,127,.12)); overflow-x: auto;
+  font-family: var(--mono); font-size: var(--fs-xs); white-space: pre-wrap; }
+.props-verify-ta { width: 100%; min-height: 60px; resize: vertical; }
+
 /* ---- 气泡操作条（复制/编辑/删除）：hover 浮现，不占常驻空间 ---- */
 .bubble-actions { display: flex; gap: 4px; opacity: 0; transition: opacity .15s ease;
   flex: none; align-self: center; }

@@ -340,10 +340,57 @@ const AssistantMsg = memo(function AssistantMsg({ text, blocks, ts, mid, hits, t
       {interleaved && !editing && shown && (
         <BubbleActions text={shown} mid={mid} onEdit={() => setEditing(true)} />
       )}
+      <VerifyBadge turnId={turnId ?? null} />
       <div className="msg-meta">{fmtTime(ts)}</div>
     </div>
   );
 });
+
+/** AV 平台验收徽标（回放侧）：turn 关联的验收结果三态呈现。
+ *  selector 精确到 verify_json 字符串（值不变不重渲染，不破坏 memo 化）。 */
+function VerifyBadge({ turnId }: { turnId: number | null }) {
+  const vjson = useStore(s => (turnId != null
+    ? s.turns.find(t => t.id === turnId)?.verify_json ?? null : null));
+  const [open, setOpen] = useState(false);
+  if (!vjson) return null;
+  let v: { verdict?: string; items?: { cmd: string; rc: number | null;
+                                       dur_s?: number; tail?: string }[];
+           claim_noop?: boolean; note?: string };
+  try { v = JSON.parse(vjson); } catch { return null; }
+  if (v.claim_noop) {
+    return (
+      <div className="verify-badge warn"
+           title={v.note || ''}>⚠ 自述完成 · 预检未发现产物变更</div>
+    );
+  }
+  if (!v.verdict) return null;
+  const items = v.items ?? [];
+  const failed = items.filter(i => i.rc !== 0);
+  if (v.verdict === 'pass') {
+    return <div className="verify-badge ok"
+                title={items.map(i => `✓ ${i.cmd} (${i.dur_s ?? '?'}s)`).join('\n')}>
+      ✓ 平台验收通过（{items.length} 条）</div>;
+  }
+  return (
+    <div className="verify-badge fail">
+      <span onClick={() => setOpen(o => !o)} role="button" tabIndex={0}
+            style={{ cursor: 'pointer' }}>
+        ✗ 平台验收未通过（{failed.length}/{items.length} 条失败）{open ? '▾' : '▸'}
+      </span>
+      {open && (
+        <div className="verify-detail">
+          {items.map((i, k) => (
+            <div key={k} className={i.rc === 0 ? 'ok' : 'bad'}>
+              <code>{i.cmd}</code>
+              <span> rc={i.rc ?? '超时'} · {i.dur_s ?? '?'}s</span>
+              {i.tail && <pre>{i.tail.slice(-300)}</pre>}
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
 
 /** live 过程只渲染尾部窗口：长任务（深度研究动辄数百节点）全量渲染 +
  *  每 SSE 事件整列表重渲染会打满主线程（真机直接冻结），结束后完整过程在消息历史里 */

@@ -41,7 +41,9 @@ from .config import PATHS
 # rev19：引擎旧名 hahaness→loadn 全量数据迁移（品牌统一退役 alias：三处
 #        engine 字段 + engine_session_ids JSON 键重写，见 _migrate）
 # rev20：scheduled_jobs.goal——目标契约列（任务目标+成功判据，唤醒对账置顶）
-SCHEMA_REV = 20
+# rev21：验收 gate（AV）：sessions.verify_cmd（用户持有的平台验收命令）+
+#        turns.verify_json（每 turn 验收结果/完成声明预检标记）
+SCHEMA_REV = 21
 from .util import iso
 
 # PERF-1：已完成 executescript+_migrate 的库路径（进程内短路，见 conn()）
@@ -52,6 +54,7 @@ CREATE TABLE IF NOT EXISTS sessions (
   size_bytes INTEGER,                    -- BD-3：workspace 占用缓存（后台/惰性重算）
   size_checked_at TEXT,                  -- BD-3：最近一次占用统计时刻（iso）
   auto_continue INTEGER DEFAULT 0,       -- 自动续跑（rev18：1=todo 未完自动续 turn）
+  verify_cmd TEXT,                       -- 平台验收命令（AV：JSON 数组 ≤5 条，用户持有 agent 不可写）
   id TEXT PRIMARY KEY,              -- 形如 20260902_1430-a1b2
   title TEXT,
   profile TEXT,                     -- researcher|coder|assistant|...
@@ -104,6 +107,7 @@ CREATE TABLE IF NOT EXISTS turns (
   num_turns INTEGER,
   error TEXT,
   log_out TEXT, log_err TEXT,
+  verify_json TEXT,                   -- 平台验收结果（AV：verdict/items 或 claim_noop）
   started_at TEXT, finished_at TEXT, updated_at TEXT
 );
 
@@ -484,6 +488,15 @@ def _migrate(c: sqlite3.Connection) -> None:
     # rev18（自动续跑）：sessions.auto_continue 开关列（旧库补列；新表走 SCHEMA）
     if "auto_continue" not in scols:
         c.execute("ALTER TABLE sessions ADD COLUMN auto_continue INTEGER DEFAULT 0")
+
+    # rev21（验收 gate）：sessions.verify_cmd + turns.verify_json——真源在 DB、
+    # agent 工作区不可写（验收 channel 在 agent 权限边界外，防自检）
+    scols = {r["name"] for r in c.execute("PRAGMA table_info(sessions)")}
+    if "verify_cmd" not in scols:
+        c.execute("ALTER TABLE sessions ADD COLUMN verify_cmd TEXT")
+    tcols = {r["name"] for r in c.execute("PRAGMA table_info(turns)")}
+    if "verify_json" not in tcols:
+        c.execute("ALTER TABLE turns ADD COLUMN verify_json TEXT")
 
     # rev19（品牌统一）：引擎旧名 hahaness → loadn 全量数据迁移（两名为同一
     # spec，纯改名）。三处 engine 字段 + engine_session_ids JSON 键重写（loadn

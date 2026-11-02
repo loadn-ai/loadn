@@ -102,12 +102,72 @@ export default function PropertiesPanel() {
     <div className="props-tab">
       <BasicSection />
       <ParamsSection />
+      <VerifySection />
       <SandboxSection />
       <EgressSection />
       <SkillsSection />
       <McpSection />
       <LegacyDetails />
     </div>
+  );
+}
+
+
+/** ---------------------------------------------------------------- 平台验收（AV） */
+/** turn 完成后的确定性验收 gate：用户在工作区外（DB）配置命令，平台独立
+ *  执行、退出码即裁决——「Done = 验收绿，不是 agent 停止」。防 agent 自述
+ *  完成不可信（T1 幻觉自报/T2 静默失败）的客观锚。 */
+function VerifySection() {
+  const sid = useStore(s => s.currentSid)!;
+  const s = useStore(st => st.sessions.find(x => x.id === st.currentSid))!;
+  const loadSessions = useStore(st => st.loadSessions);
+  const cur = (() => {
+    try {
+      const v = s.verify_cmd ? JSON.parse(s.verify_cmd) as string[] : [];
+      return Array.isArray(v) ? v : [];
+    } catch { return []; }
+  })();
+  const [draft, setDraft] = useState(cur.join('\n'));
+  const [base, setBase] = useState(cur.join('\n'));
+  const [busy, setBusy] = useState(false);
+  useEffect(() => { setDraft(cur.join('\n')); setBase(cur.join('\n')); }, [sid, s.verify_cmd]);
+  const dirty = draft !== base;
+  const commit = async () => {
+    const lines = draft.split('\n').map(x => x.trim()).filter(Boolean);
+    if (lines.length > 5) { toast('验收命令最多 5 条', false); return; }
+    if (lines.some(x => x.length > 300)) { toast('单条验收命令 ≤300 字', false); return; }
+    setBusy(true);
+    try {
+      await api(`/api/sessions/${encodeURIComponent(sid)}`, {
+        method: 'PATCH', body: JSON.stringify({ verify_cmd: lines }) });
+      await loadSessions();
+      toast(lines.length ? `验收已配置（${lines.length} 条）· 本会话每轮完成后执行`
+                         : '验收已关闭');
+    } catch (e) {
+      toast(`保存失败：${e instanceof Error ? e.message : e}`, false);
+    } finally { setBusy(false); }
+  };
+  return (
+    <PropSection secKey="verify" title="平台验收"
+      sub={<span className="muted" style={{ fontWeight: 400 }}>（完成=验收绿，非 agent 停止）</span>}>
+      <div className="props-param" style={{ flexDirection: 'column', gap: 6 }}>
+        <textarea className="props-verify-ta" rows={3} value={draft}
+          onChange={e => setDraft(e.target.value)} autoComplete="off"
+          placeholder={'每行一条，在工作区根目录执行，退出码即裁决。如：\ntest -f artifacts/report.md\n.venv/bin/pytest tests/ -q'} />
+        <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+          <button className="btn sm" disabled={!dirty || busy} onClick={() => void commit()}>
+            {busy ? '保存中…' : '保存'}
+          </button>
+          <span className="muted" style={{ fontSize: 11 }}>
+            {cur.length ? `已配置 ${cur.length} 条` : '未配置（不验收）'}
+          </span>
+        </div>
+        <span className="muted" style={{ fontSize: 11 }}>
+          命令由平台在每轮完成后独立执行（agent 不可见不可改）；失败会推送通知，
+          自动续跑将先要求修复验收再推进。
+        </span>
+      </div>
+    </PropSection>
   );
 }
 

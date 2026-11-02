@@ -50,6 +50,7 @@ TYPES = (
     "system",                     # 系统运维动作：管理面备份触发/验证（AC-4.1）
     "org",                        # 数字员工：组织架构 init/编辑/召集（DW-1）
     "archive",                    # 冷归档：messages 折叠/audit 月表导出（PERF-2/5）
+    "verify",                     # AV 验收 gate：turn 完成后的平台命令验收裁决
 )
 
 GENESIS = "0" * 64
