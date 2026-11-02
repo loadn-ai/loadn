@@ -406,3 +406,26 @@ async def test_misjudge_clears_without_negative(client):
     assert not (ws / ".loadn" / "skill-suggest.json").exists()
     assert not cs.is_rejected(fp)                            # 未记负样本
     assert "misjudged" in _audit_actions()
+
+
+def test_injected_head_and_negation_not_correction():
+    """2026-11-02 生产实证回填：系统注入话语+否定前缀不触发纠错卡。"""
+    # 巡检线「截断续作」原文（含「不要重做」）——不是用户纠错
+    assert cs.detect_correction(
+        "【巡检线·截断续作】你上一轮（t4836，01:28 UTC）回复用户「继续」时在输出"
+        "中途被截断：不要重做已完成步骤，从 PROGRESS.md 续作。") is None
+    # 其他系统标签头
+    assert cs.detect_correction("【定时唤醒】例行检查：昨天的任务不对劲，继续盯") is None
+    assert cs.detect_correction("【附件】这份文档说接口写错了，参考一下") is None
+    # 否定前缀：词被整体否定
+    assert cs.detect_correction("不要重做已完成步骤，另外把接口补上") is None
+    assert cs.detect_correction("不用重来，直接改那一行就行") is None
+    # 真纠正不受影响
+    assert cs.detect_correction("不对，应该先建 venv 再装") == "correct"
+    assert cs.detect_correction("重来，这次用 Python 脚本") == "correct"
+    # 长文深处的纠正词（>200 字）不触发
+    deep = ("先说背景：" + "这批数据要清洗去重排序聚合再校验。" * 12
+            + "中间有个地方错了。")
+    assert cs.detect_correction(deep) is None
+    # 教学不受影响
+    assert cs.detect_correction("以后都先跑测试再提交") == "teach"

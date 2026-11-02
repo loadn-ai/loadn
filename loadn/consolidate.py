@@ -38,6 +38,15 @@ TEACH_RE = re.compile(
 # 否定纠错（对上轮行为的明确否定/要求重做——须是明确否定词，拿不准不触发）
 CORRECT_RE = re.compile(
     r"不对|错了|搞错|弄错|不是这样|不是我要的|重来|重做|撤销.{0,6}重|别这样")
+# 平台/系统注入话语的标签头（巡检线续作/定时唤醒/自动续跑/反思检查点/
+# 附件块/阶段任务……）——不是用户真实话语，纠正检测整条跳过。
+# 2026-11-02 生产实证：巡检「截断续作」上下文自带「不要重做」被误判成
+# 用户纠错，卡片规则体=系统日志复读（用户反馈「没有一条有用的」）。
+_INJECTED_HEAD_RE = re.compile(
+    r"^\s*[【\[]\s*(?:巡检|定时唤醒|自动续跑|反思检查点|附件|阶段任务|用户纠正|教导原话)")
+# 纠正词被整体否定（不要重做/不用重来/别重做…）——词在句中是「别做某事」
+# 的指令或协议套话，不是「你错了」的否定。命中词前缀匹配。
+_NEGATED_RE = re.compile(r"(?:不要|不用|别|勿|莫|无需|用不着|没必要)$")
 
 
 def detect_correction(text: str) -> str | None:
@@ -45,9 +54,15 @@ def detect_correction(text: str) -> str | None:
     t = (text or "").strip()
     if not t or len(t) > 2000:
         return None
+    if _INJECTED_HEAD_RE.search(t):
+        return None                       # 系统注入话语不参与判定
     if TEACH_RE.search(t):
         return "teach"
-    if CORRECT_RE.search(t):
+    # 纠正词只看前 200 字：真纠正几乎都开门见山（「不对，应该…」）；长文
+    # 深处的「错了/重做」多为问题描述或转贴日志，不是对 agent 的否定
+    head = t[:200]
+    m = CORRECT_RE.search(head)
+    if m and not _NEGATED_RE.search(head[:m.start()][-3:]):
         return "correct"
     return None
 
