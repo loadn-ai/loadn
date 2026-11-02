@@ -81,6 +81,11 @@ async def post_message(sid: str, body: dict):
             db_mod.kv_set(c, f"contlike:{sid}", str(n))
         else:
             db_mod.kv_del(c, f"contlike:{sid}")
+    # 反问闭环（GC-3）：用户答复到达 → 恢复因【等待用户裁决】暂停的定时
+    # 唤醒（只动 kv 记账那批，用户手动暂停的不动）。用户的这条消息就是
+    # 裁决本身，恢复后下一轮唤醒带着新指示继续。
+    from ...scheduler import resume_await_jobs
+    await_resumed = resume_await_jobs(sid)
     try:
         tid = await ENGINE.submit(sid, text or "（见附件）", mode, attachments=atts)
     except PermissionError as e:      # W6.4 熔断（kill switch/canary 命中）
@@ -89,7 +94,7 @@ async def post_message(sid: str, body: dict):
         # 自动续跑计数清零（rev18）：手动消息=用户重新接管，连续续跑链断开
         db_mod.kv_del(c, f"autocont:{sid}")
         turn = db_mod.to_dict(db_mod.get_turn(c, tid))
-    return {"turn": turn}
+    return {"turn": turn, "await_resumed": await_resumed}
 @router.post("/turns/{tid}/stop")
 async def stop_turn(tid: int):
     ok = await ENGINE.stop_turn(tid)

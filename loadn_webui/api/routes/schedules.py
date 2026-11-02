@@ -84,6 +84,12 @@ def patch_schedule(jid: int, body: dict):
             if not prompt:
                 raise HTTPException(400, "prompt 不能为空")
             updates["prompt"] = prompt
+        # 目标契约（GC-1）：任务目标+成功判据，唤醒对账置顶注入
+        if "goal" in body:
+            goal = str(body["goal"] or "").strip()
+            if goal and len(goal) > 2000:
+                raise HTTPException(400, "goal 需 ≤2000 字")
+            updates["goal"] = goal or None
         if "max_fires" in body:
             mf = int(body["max_fires"])
             if not 1 <= mf <= 100000:

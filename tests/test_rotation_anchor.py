@@ -122,11 +122,11 @@ def test_rotation_anchor_exec_domain_signpost_tiers(monkeypatch):
     from loadn_webui.engine import Engine
     from loadn_webui.security import sandbox as sbx
     monkeypatch.setattr(sbx, "resolve_tier", lambda req=None: ("off", ""))
-    a = Engine._rotation_anchor(LoadnSpec(), "", "context_inflation")
+    a = Engine._rotation_anchor(LoadnSpec(), "", "", "context_inflation")
     assert "直跑档位" in a and "内建 Bash" in a
     assert "mcp__sandbox__" in a and "PROGRESS.md" in a
     monkeypatch.setattr(sbx, "resolve_tier", lambda req=None: ("bwrap", ""))
-    b = Engine._rotation_anchor(LoadnSpec(), "", "context_inflation")
+    b = Engine._rotation_anchor(LoadnSpec(), "", "", "context_inflation")
     assert "隔离档位（bwrap）" in b and "mcp__sandbox__" in b
     assert "直跑档位" not in b          # 档位文案不得串台
 

@@ -896,11 +896,14 @@ class Engine:
 
     # ------------------------------------------------------------ 收尾
     @staticmethod
-    def _rotation_anchor(spec, old_session_id: str, reason: str) -> str:
-        """会话轮换的交接 anchor：磁盘台账指引 + 旧会话 transcript 尾部摘要
-        （用户最后指令/todos 终态/最后输出）——新会话冷启动也能无损接力，
-        不再是纯「去读盘」的一句话。transcript 不可得（resume 被拒的本就
-        没有）→ 摘要段留空，仅剩磁盘指引。
+    def _rotation_anchor(spec, sid: str, old_session_id: str, reason: str) -> str:
+        """会话轮换的交接 anchor：目标契约置顶（GC-4）+ 磁盘台账指引 +
+        旧会话 transcript 尾部摘要（用户最后指令/todos 终态/最后输出）。
+
+        生产教训（虚拟币对冲会话 483 轮实证）：轮换冷启动若只有尾部叙事，
+        新会话忠实继承旧会话最后几轮的行为惯性（盯盘叙事原样注入）——目标
+        契约（state.json 三字段，agent 按宪法 §2.8 维护）必须先于一切过程
+        叙事注入，让「我是谁/为什么在这」先于「我刚才在做什么」。
 
         执行域路标（2026-10-08 实证）：轮换冷启动恰是模型最没有历史惯性的
         时刻——anchor 只说「去读盘」不说「在哪个域读」，任务第一步物化了
@@ -914,15 +917,31 @@ class Engine:
             except Exception:  # noqa: BLE001 — anchor 组装永不抛
                 log.exception("session_tail 提取失败 engine=%s", spec.name)
         parts = [f"（上一 {spec.name} 会话已轮换（{reason}）。"]
+        try:
+            from .scheduler import read_goal_state
+            gc = read_goal_state(sid)
+        except Exception:  # noqa: BLE001 — 契约读取永不抛
+            gc = {}
+        if gc.get("goal"):
+            lines = ["【任务目标（对账基准，先于一切过程叙事）】",
+                     f"目标：{gc['goal']}"]
+            if gc.get("success_criteria"):
+                lines.append(f"成功判据：{gc['success_criteria']}")
+            if gc.get("falsified_routes"):
+                lines.append("已证伪路线（禁止重走）：")
+                lines += [f"- {x}" for x in gc["falsified_routes"]]
+            parts.append("\n".join(lines))
         if tail:
-            parts.append(f"旧会话收尾时的状态：\n{tail}")
+            parts.append(f"旧会话收尾时的状态（过程叙事，仅为背景）：\n{tail}")
         try:
             parts.append("执行域路标（操作本会话文件前必读）：\n"
                          + ws_mod._exec_env_block())
         except Exception:  # noqa: BLE001 — anchor 组装永不抛
             log.exception("执行域路标渲染失败（anchor 降级为纯台账指引）")
-        parts.append("请先读工作区 PROGRESS.md、state.json 与 notes/，结合以上信息"
-                     "无损续作当前请求，不要重做已完成步骤。）")
+        parts.append("请先读工作区 PROGRESS.md、state.json 与 notes/ 续作当前"
+                     "请求，不要重做已完成步骤；但续作前先对账：PROGRESS.md 是"
+                     "过程记录不是目标本身——过程与目标脱节时以目标为准重新"
+                     "规划，已证伪的路线（state.json falsified_routes）不再重走。")
         return "\n\n".join(parts)
 
     async def _maybe_auto_continue(self, sid: str, at: ActiveTurn) -> None:
@@ -1021,7 +1040,8 @@ class Engine:
                 await asyncio.sleep(1)
                 await self._run_turn(
                     sid, tid,
-                    _anchor=self._rotation_anchor(spec, old_sid, "resume_rejected"))
+                    _anchor=self._rotation_anchor(spec, sid, old_sid,
+                                                  "resume_rejected"))
                 return
             # fresh（--session-id）也秒拒。特例「already in use」：transcript 已存在
             # （上轮 interrupted/被杀，未及翻 resume 位）→ 原 id 转 resume 重试，上下文
@@ -1089,6 +1109,16 @@ class Engine:
             if sess["project_id"]:
                 db_mod.update_project(c, sess["project_id"])
 
+        # ---- 反问闭环（GC-3）：【等待用户裁决】行首标记 → 暂停本会话定时
+        # 唤醒+推送，用户回话自动恢复（resume_await_jobs）。只在正常完成轮
+        # 检测（error 轮的 content 是错误占位，无裁决语义）。
+        if status == "done" and content:
+            try:
+                from .scheduler import check_await_gate
+                check_await_gate(sid, content)
+            except Exception:                          # noqa: BLE001 — 不炸收尾
+                log.exception("await 门检测异常")
+
         # ---- 轮换启发式（token 基；订阅计量可能为 0）
         rotate_reason = ""
         if status == "done":
@@ -1103,7 +1133,7 @@ class Engine:
                     db_mod.update_session(
                         c, sid, claude_session_id=spec.new_session_id(),
                         session_fresh=1,
-                        pending_anchor=self._rotation_anchor(spec, old_sid,
+                        pending_anchor=self._rotation_anchor(spec, sid, old_sid,
                                                             "context_inflation"))
                 rotate_reason = "context_inflation"
 

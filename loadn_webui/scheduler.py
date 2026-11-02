@@ -23,6 +23,7 @@ cron.next_run_iso 重算）。
 from __future__ import annotations
 
 import asyncio
+import json
 from datetime import datetime, timezone
 
 from . import db as db_mod
@@ -32,12 +33,130 @@ log = get_logger(__name__)
 
 CHECK_INTERVAL = 20.0          # 扫描周期：分钟级唤醒场景足够，误差可忽略
 
-# 投递 prompt 的包装：标明来源，重申确认纪律（防自动化绕过宪法）
-_WRAP = ("【定时唤醒】{label}\n\n{prompt}\n\n"
-         "（本消息由平台调度器于 {now} 自动投递"
-         "{note}。凭 PROGRESS.md / state.json 无损续作；"
-         "若本步涉及对外发送/支付/删除等操作，宪法确认纪律照常生效——"
-         "内容或对象不明确就停下来把问题写进回复，等用户下一条消息。）")
+# ---- GC（Goal Contract）目标契约：对账式唤醒 + 反问闭环 ----
+# 背景（生产实证 2026-10 虚拟币对冲/worldquant 两例）：几百轮历史叙事压倒
+# 1KB 唤醒词，模型活在「历史即指令」里——盯盘叙事每 15 分钟自我强化一次，
+# 目标沉底、路线偏执。修复思路：唤醒不再是「重复同一句话+读盘续作」,
+# 而是每次唤醒先注入结构化目标对账（目标/成功判据/已证伪路线，真源=
+# job.goal 或会话 state.json），并给 agent 一个平台级反问出口：
+AWAIT_MARK = "【等待用户裁决】"   # 回复行首出现 → 暂停本会话定时唤醒，用户回话即恢复
+
+
+def read_goal_state(sid: str) -> dict:
+    """读会话工作区 state.json 的目标契约三字段（宪法 §2.8 约定 agent 维护）：
+    goal（目标一句话）/ success_criteria（可判定成功判据）/ falsified_routes
+    （已证伪路线列表，此后不许重走）。无文件/坏 JSON/无字段 → {}。"""
+    if not sid:
+        return {}
+    try:
+        from . import workspace as ws_mod
+        p = ws_mod.ws_of(sid) / "state.json"
+        if not p.exists():
+            return {}
+        data = json.loads(p.read_text("utf-8"))
+        if not isinstance(data, dict):
+            return {}
+        out: dict = {}
+        for k in ("goal", "success_criteria"):
+            v = data.get(k)
+            if isinstance(v, str) and v.strip():
+                out[k] = v.strip()
+        fr = data.get("falsified_routes")
+        if isinstance(fr, list) and fr:
+            out["falsified_routes"] = [str(x)[:200] for x in fr if str(x).strip()][:8]
+        return out
+    except Exception:                                # noqa: BLE001 — 契约读取永不炸
+        return {}
+
+
+def goal_ctx_for(job: dict) -> dict:
+    """唤醒时的目标对账上下文：job.goal（定时任务定义，最稳定）优先，
+    回落目标会话 state.json（message 类 job 的会话 agent 可自维护）。"""
+    goal = str(job.get("goal") or "").strip()
+    if goal:
+        return {"goal": goal[:2000], "source": "定时任务定义"}
+    if (job.get("kind") or "message") == "message" and job.get("session_id"):
+        return read_goal_state(job["session_id"])
+    return {}
+
+
+def _await_hit(content: str) -> bool:
+    """行首严格匹配 AWAIT_MARK（防正文引用/讨论标记文本时误触发）。"""
+    return any(ln.strip().startswith(AWAIT_MARK)
+               for ln in (content or "").splitlines())
+
+
+def check_await_gate(sid: str, content: str) -> int:
+    """turn 收尾检测【等待用户裁决】（engine._finish 调）：命中 → 暂停该
+    会话全部 active 的非系统 job（kv awaitjobs:{sid} 记账 job id 列表——
+    用户手动暂停的不在账上不会被误恢复）+ 审计 + 推送通知。返回暂停数。
+
+    这是「反问」的平台化牙齿：无头环境里 agent 的反问若只是聊天气泡，
+    15 分钟后下一次唤醒又把它拽回循环——现在反问自动挂起调度，直到
+    用户答复（resume_await_jobs）。"""
+    if not _await_hit(content):
+        return 0
+    with db_mod.conn() as c:
+        jobs = [j for j in db_mod.list_jobs(c, sid, active_only=True)
+                if not j["is_system"]]
+        jids = [j["id"] for j in jobs]
+        if not jids:
+            return 0
+        for jid in jids:
+            db_mod.update_job(c, jid, status="paused")
+        db_mod.kv_set(c, f"awaitjobs:{sid}", json.dumps(jids))
+    try:
+        from .security.audit import audit
+        audit("policy_change", {"action": "await_user_gate",
+                                "sid": sid, "paused_jobs": jids}, sid=sid)
+    except Exception:                                    # noqa: BLE001
+        pass
+    try:
+        from .integrations import notify
+        notify.fire("⏸️ 任务暂停等待你的裁决",
+                    f"agent 已提出需要用户拍板的问题（会话 {sid}），"
+                    f"已暂停 {len(jids)} 个定时唤醒；去会话答复后自动恢复。",
+                    event="on_scheduled")
+    except Exception:                                    # noqa: BLE001
+        log.exception("await 通知异常")
+    log.info("await 门命中：%d 个 job 暂停（sid=%s）", len(jids), sid)
+    return len(jids)
+
+
+def resume_await_jobs(sid: str) -> int:
+    """用户回了话（post_message 调）：恢复因「等待裁决」暂停的 job——只动
+    kv 记账的那批，用户手动暂停的不动；过期 cron 重算 due_at。返回恢复数。"""
+    with db_mod.conn() as c:
+        raw = db_mod.kv_get(c, f"awaitjobs:{sid}")
+        if not raw:
+            return 0
+        db_mod.kv_del(c, f"awaitjobs:{sid}")
+        try:
+            jids = [int(x) for x in json.loads(raw)]
+        except (TypeError, ValueError, json.JSONDecodeError):
+            return 0
+        now = datetime.now(timezone.utc)
+        n = 0
+        for jid in jids:
+            job = db_mod.get_job(c, jid)
+            if job is None or job["status"] != "paused" or job["is_system"]:
+                continue
+            updates: dict = {"status": "active"}
+            if job["cron"]:
+                from .cron import next_run_iso
+                if (job["due_at"] or "") <= iso():
+                    updates["due_at"] = next_run_iso(job["cron"], now)
+            db_mod.update_job(c, jid, **updates)
+            n += 1
+    if n:
+        try:
+            from .security.audit import audit
+            audit("policy_change", {"action": "await_user_resumed",
+                                    "sid": sid, "resumed_jobs": n}, sid=sid)
+        except Exception:                                # noqa: BLE001
+            pass
+        log.info("用户已答复，恢复 %d 个 await 暂停的 job（sid=%s）", n, sid)
+    return n
 
 
 def parse_when(at: str = "", in_: str = "", base: datetime | None = None) -> str:
@@ -242,11 +361,51 @@ class Scheduler:
             return False
 
     def _wrap(self, job, now: datetime) -> str:
-        label = job["label"] or "定时任务"
-        return _WRAP.format(label=label, prompt=job["prompt"],
-                            now=now.strftime("%Y-%m-%d %H:%M UTC"),
-                            note=f"，第 {job['fires'] + 1}/{job['max_fires']} 次触发"
-                                 if job["max_fires"] > 1 else "")
+        """对账式唤醒包装（GC-2）：目标契约置顶 → 唤醒词 → 偏执自检（高频
+        轮）→ 尾注（过程≠目标 + 反问出口 + 确认纪律）。is_system（心跳巡检）
+        无战略目标语义，跳过目标块。"""
+        fires = job["fires"] + 1
+        parts = [f"【定时唤醒 {fires}/{job['max_fires']}】{job['label'] or '定时任务'}"]
+        if not job.get("is_system"):
+            gc = goal_ctx_for(job)
+            if gc.get("goal"):
+                lines = ["【目标对账——先于一切事务动作】", f"目标：{gc['goal']}"]
+                if gc.get("success_criteria"):
+                    lines.append(f"成功判据：{gc['success_criteria']}")
+                if gc.get("falsified_routes"):
+                    lines.append("已证伪路线（禁止重走）：")
+                    lines += [f"- {x}" for x in gc["falsified_routes"]]
+                lines.append("→ 本轮第一段先输出对账：① 目标现状（拿数字说话）"
+                             "② 上一轮动作对目标的真实贡献 ③ 本轮做什么才能产生"
+                             "增量。对账拿不出具体事实（空话/复读）= 本轮失败。")
+                parts.append("\n".join(lines))
+            else:
+                parts.append(
+                    "【目标未记录】本任务还没有目标契约。若这不是纯巡检/通知类"
+                    "任务，本轮第一件事：提炼「目标一句话 + 可判定的成功判据 +"
+                    "用户已确认的约束」写入 state.json（goal/success_criteria/"
+                    "falsified_routes 字段，见宪法 §2.8），并在回复中向用户复述"
+                    "请他确认；纯巡检类回复本轮结果即可。")
+        parts.append(f"【唤醒词】\n{job['prompt']}")
+        if (fires >= 5 and (job["cron"] or job["every_s"])
+                and not job.get("is_system")):
+            parts.append(
+                f"【偏执自检】这已是第 {fires} 次唤醒：若前几轮都在做同类动作"
+                "而目标指标没有实质变化，这本身就是路线失效的证据。本轮二选一："
+                "① 换一条与已做动作本质不同的路线并迈出第一步；② 用"
+                f"{AWAIT_MARK}标记另起一行列出需要用户拍板的问题与选项，结束"
+                "本轮等用户答复。禁止再一次重复同质动作。")
+        note = f"，第 {fires}/{job['max_fires']} 次触发" \
+            if job["max_fires"] > 1 else ""
+        parts.append(
+            f"（本消息由平台调度器于 {now.strftime('%Y-%m-%d %H:%M UTC')} 自动投递{note}。"
+            "PROGRESS.md / state.json 是过程记录，不是目标本身——续作先对账，"
+            "过程与目标脱节时以目标为准重新规划，已证伪的路线不再重走。若你"
+            "判断任务目标本身有问题（不可达/自相矛盾/风险失控），在回复末尾"
+            f"另起一行以{AWAIT_MARK}开头列出问题与选项——平台会自动暂停本会话"
+            "的定时唤醒并通知用户，用户答复后自动恢复。对外发送/支付/删除等"
+            "操作的确认纪律照常生效——内容或对象不明确就停下来把问题写进回复。）")
+        return "\n\n".join(parts)
 
     async def _fire_message(self, job, now: datetime) -> bool:
         """投递到现有会话。撞上运行中的 loadn turn → 插话实时注入

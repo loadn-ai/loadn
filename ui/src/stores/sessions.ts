@@ -751,9 +751,13 @@ export const useStore = create<Store>((set, get) => ({
     registerInflight(sid, optMsg);
     set(s => ({ messages: [...s.messages, optMsg] }));
     try {
-      const d = await api<{ turn: TurnInfo }>(
+      const d = await api<{ turn: TurnInfo; await_resumed?: number }>(
         `/api/sessions/${encodeURIComponent(sid)}/messages`, {
           method: 'POST', body: JSON.stringify({ text, mode, attachments }) });
+      // 反问闭环：这条消息同时是裁决——恢复 agent 之前用【等待用户裁决】
+      // 挂起的定时唤醒，告知用户调度已继续
+      if (d?.await_resumed)
+        toast(`已恢复 ${d.await_resumed} 个因「等待裁决」暂停的定时唤醒`);
       const tid = d?.turn?.id;
       // 回填 turn_id + turns 行：排队消息凭 turns.status==='queued' 被
       // ChatStream 识别进「输入框上方排队区」（不再插在聊天历史中间）

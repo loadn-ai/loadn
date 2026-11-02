@@ -40,7 +40,8 @@ from .config import PATHS
 #        「继续」开新 turn，直到清单完成/连续上限/用户手动消息；默认关）
 # rev19：引擎旧名 hahaness→loadn 全量数据迁移（品牌统一退役 alias：三处
 #        engine 字段 + engine_session_ids JSON 键重写，见 _migrate）
-SCHEMA_REV = 19
+# rev20：scheduled_jobs.goal——目标契约列（任务目标+成功判据，唤醒对账置顶）
+SCHEMA_REV = 20
 from .util import iso
 
 # PERF-1：已完成 executescript+_migrate 的库路径（进程内短路，见 conn()）
@@ -209,6 +210,7 @@ CREATE TABLE IF NOT EXISTS scheduled_jobs (
   engine TEXT,                              -- new_session：写新会话 engine_override（空 = 跟随默认）
   destination TEXT DEFAULT 'dashboard',    -- P11: dashboard|notify|notify+artifact
   is_system INTEGER DEFAULT 0,             -- P11: 内置 heartbeat 标记（面板区分）
+  goal TEXT,                               -- 目标契约：目标+成功判据（对账式唤醒置顶注入）
   created_at TEXT, updated_at TEXT
 );
 
@@ -423,6 +425,9 @@ def _migrate(c: sqlite3.Connection) -> None:
         c.execute("ALTER TABLE scheduled_jobs ADD COLUMN profile TEXT")
     if "engine" not in jcols:
         c.execute("ALTER TABLE scheduled_jobs ADD COLUMN engine TEXT")
+    if "goal" not in jcols:
+        # 目标契约（GC-1）：任务目标+成功判据——唤醒时置顶注入，对抗目标漂移
+        c.execute("ALTER TABLE scheduled_jobs ADD COLUMN goal TEXT")
     scols = {r["name"] for r in c.execute("PRAGMA table_info(sessions)")}
     if "project_id" not in scols:
         # 项目子任务（独立任务目录）：NULL = 独立会话（存量全部如此，零迁移）

@@ -55,11 +55,12 @@ async def test_fire_once(sched, client):
     jid = _make_job(sid, iso())          # 已到期
     assert await sched.tick() == 1
     rows = await _wait_jobs_done(sched, sid, n_turns=2)   # 首条消息 + 调度投递
-    # 投递的 user 消息带【定时唤醒】包装与确认纪律提示
+    # 投递的 user 消息带【定时唤醒】包装与确认纪律提示（GC-2 对账式：
+    # 首行带 N/max 计数，目标对账块先于唤醒词——格式断言见 test_goal_contract）
     with db_mod.conn() as c:
         msgs = [m["content"] for m in db_mod.list_messages(c, sid) if m["role"] == "user"]
         job = db_mod.get_job(c, jid)
-    assert any("【定时唤醒】测试唤醒" in m and "确认纪律" in m for m in msgs)
+    assert any("【定时唤醒" in m and "测试唤醒" in m and "确认纪律" in m for m in msgs)
     assert job["status"] == "done" and job["fires"] == 1
 
 
@@ -191,7 +192,7 @@ async def test_new_session_job(sched, client):
     # 三轮修：回填最新实例 sid（heartbeat 空转判定的数据源；递归仍每次
     # 建全新会话——见 recurring 测试）
     assert job["session_id"] == sid
-    assert any("【定时唤醒】" in m for m in msgs)
+    assert any("【定时唤醒" in m for m in msgs)
     await _wait_jobs_done(sched, sid, n_turns=1)
 
 

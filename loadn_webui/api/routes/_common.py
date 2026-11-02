@@ -143,6 +143,13 @@ def _job_fields(body: dict, sid: str | None) -> dict:
     if not prompt:
         raise HTTPException(400, "prompt 不能为空")
     fields["prompt"] = prompt
+    # 目标契约（GC-1）：任务目标+成功判据——唤醒对账的置顶真源；可空
+    # （纯巡检类不需要；message 类回落会话 state.json 自维护契约）
+    goal = str(body.get("goal") or "").strip()
+    if goal:
+        if len(goal) > 2000:
+            raise HTTPException(400, "goal 需 ≤2000 字")
+        fields["goal"] = goal
 
     # 触发三选一：cron（挂钟对齐，如每天 20:00）> at/in（一次或 every 递归）
     cron = str(body.get("cron") or "").strip()

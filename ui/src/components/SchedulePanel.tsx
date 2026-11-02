@@ -16,6 +16,7 @@ export interface ScheduleInfo {
   max_fires: number; fires: number;
   status: 'active' | 'paused' | 'done';
   title: string | null; profile: string | null; engine: string | null;
+  goal?: string | null;        // 目标契约：目标+成功判据（唤醒对账置顶注入）
   last_fired_at: string | null;
   is_system?: boolean;      // 内置 job（🫀心跳）：不可编辑档位，可暂停/永久关
 }
@@ -404,6 +405,7 @@ function JobForm({ job, presetSid, onDone }: {
   const [cronText, setCronText] = useState(pc.text);
   const [label, setLabel] = useState(job?.label || '');
   const [prompt, setPrompt] = useState(job?.prompt || '');
+  const [goal, setGoal] = useState(job?.goal || '');
   const [maxFires, setMaxFires] = useState(String(job?.max_fires ?? 20));
   const [msg, setMsg] = useState<{ t: string; err?: boolean } | null>(null);
   const [busy, setBusy] = useState(false);
@@ -439,7 +441,8 @@ function JobForm({ job, presetSid, onDone }: {
     setBusy(true);
     setMsg(null);
     try {
-      const body: Record<string, unknown> = { label: label || null, prompt };
+      const body: Record<string, unknown> = { label: label || null, prompt,
+        goal: goal.trim() || null };
       if (kind === 'message') {
         if (!sid) throw new Error('选一个目标会话');
         body.session_id = sid;
@@ -619,6 +622,11 @@ function JobForm({ job, presetSid, onDone }: {
                hint="撞上运行中的 loadn 任务会作为插话实时注入（不等排队）">
           <textarea rows={3} value={prompt} onChange={e => setPrompt(e.target.value)}
                     placeholder="到点交给 agent 做什么"  autoComplete="off"/>
+        </Field>
+        <Field label="任务目标（目标契约，可选）"
+               hint="目标+可判定的成功判据——每次唤醒置顶注入对账，防止长任务陷入过程循环而忘了目标；留空则用会话 state.json 里 agent 自维护的契约">
+          <textarea rows={3} value={goal} onChange={e => setGoal(e.target.value)}
+                    placeholder="如：日化 1% 目标收益；成功判据=连续 5 日滚动收益 ≥5%；约束=单日回撤 ≤3%"  autoComplete="off"/>
         </Field>
       </div>
 
