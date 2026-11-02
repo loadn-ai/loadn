@@ -32,8 +32,18 @@ export default function ApprovalBanner() {
 
   useEffect(() => { void loadApprovals(); }, [loadApprovals]);
 
+  /** 批准后确认码卡手动关闭（码已发给 agent） */
+  const closeCode = (aid: number) =>
+    setCodes(c => { const n = { ...c }; delete n[aid]; return n; });
+
   const pending = approvals.filter(a => a.status === 'pending');
-  if (!pending.length) return null;
+  // 修复（2026-11-02 生产实证 #133/#134）：批准后卡片立即从 pending 过滤器
+  // 消失，decide 响应里的一次性明文码永远没机会渲染——用户只能靠明示授权
+  // 兜底。改为：批准且本地持有码的卡降级为「已批准+确认码」卡，用户抄完手动关。
+  // （服务端只存 hash，码不可回显——刷新页面后码不可见，只能重新发起审批。）
+  const approvedWithCode = approvals.filter(
+    a => a.status === 'approved' && codes[a.id]);
+  if (!pending.length && !approvedWithCode.length) return null;
   return (
     <div className="approval-banner">
       {pending.map(a => (
@@ -93,6 +103,24 @@ export default function ApprovalBanner() {
               10 分钟内有效
             </div>
           ) : null}
+        </div>
+      ))}
+      {/* 已批准降级卡：只显示确认码（批准动作已完成，无需重复操作） */}
+      {approvedWithCode.map(a => (
+        <div key={`ac${a.id}`} className="approval-card approved">
+          <div className="approval-head">
+            <span className="approval-badge ok">已批准 · {a.action_type}</span>
+            <span className="approval-summary">{a.summary}</span>
+          </div>
+          <div className="approval-code">
+            确认码 <b>{codes[a.id]}</b>（一次性）——请把此码发给 agent 执行；
+            10 分钟内有效，刷新页面后不可回显
+          </div>
+          <div className="approval-actions">
+            <button className="btn ghost sm" onClick={() => closeCode(a.id)}>
+              已发给 agent，关闭
+            </button>
+          </div>
         </div>
       ))}
     </div>

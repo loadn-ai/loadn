@@ -1416,6 +1416,12 @@ button.attach-chip:hover { border-color: color-mix(in srgb, var(--accent) 40%, v
 .approval-actions { display: flex; gap: 8px; margin-top: 8px; }
 .approval-code { margin-top: 8px; font-size: var(--fs-lg); }
 .approval-code b { font-size: 17px; letter-spacing: 2px; color: var(--accent); }
+/* 已批准降级卡（确认码展示态）：危险红转成功绿——批完了，只剩抄码 */
+.approval-card.approved { border-color: color-mix(in srgb, var(--green) 40%, transparent);
+  background: color-mix(in srgb, var(--green) 6%, var(--panel)); }
+.approval-card.approved .approval-code b { color: var(--green); }
+.approval-badge.ok { color: var(--green);
+  border-color: color-mix(in srgb, var(--green) 50%, transparent); }
 .btn.sm { padding: 4px 14px; font-size: var(--fs-lg); }
 
 /* ---- P3-7 审批三要素：what（diff/文件清单）与 why（justification） ---- */
