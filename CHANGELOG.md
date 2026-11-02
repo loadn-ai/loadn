@@ -5,6 +5,20 @@
 
 ## [Unreleased]
 
+- **修复：egress 会话通道端口泄漏（EG-R1）**（生产实证 2026-11-02：进程
+  存活半天积累 5-7 个会话级回环端口，监控面板逐个 HTTP 探测飘 502——
+  会话归档/长期不用后端口常驻到进程重启）：三路回收——①会话归档/删除
+  即关（sessions 路由钩子 close_session）；②空闲 2h 惰性回收（每次
+  ensure 新通道时顺带扫，活动时间在每次连接到达时刷新）；③close_session
+  幂等可重开（活跃隧道连接不受影响自然收尾）。对赌
+  test_egress_session_reap 4 例+egress 面 60 passed。
+- **工具：dev server 泄漏治理**（同一事件里扫出 22 个存活达 7 天的
+  泄漏 vite dev——playwright verify/截图脚本起 `--strictPort` dev
+  server 异常退出后无人收尸）：①`scripts/reap_dev_servers.py` 按
+  cwd+dev 特征指纹扫描清理（默认干跑，--kill 执行；本次实战 22/22 全清
+  复验归零）；②`scripts/verify_lib.py` 一次性 dev server 骨架（空闲
+  端口自动分配+进程组管理+finally 必杀，esbuild 子进程不漏），后续
+  verify 脚本统一改用。
 - **新功能：目标契约（Goal Contract）——对抗定时唤醒 agent 的路径循环与
   目标漂移**（生产实证两例：虚拟币对冲会话 483 轮盯盘叙事每 15 分钟自我
   强化、worldquant 修完配置从不回头验证顶层指标。根因=几百轮历史叙事

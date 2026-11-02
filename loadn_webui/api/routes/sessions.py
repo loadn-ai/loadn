@@ -342,10 +342,28 @@ async def patch_session(sid: str, body: dict):
             db_mod.update_session(c, sid, touch=not set(updates) <= pure_partition, **updates)
             if "title" in updates:            # 手动改名优先，停用自动标题
                 db_mod.kv_del(c, f"title_auto:{sid}")
+        if updates.get("status") == "archived":
+            # EG-R1：归档即关会话 egress 通道（端口只增不减的泄漏修复；
+            # 失败不影响归档本身）
+            try:
+                from ...security.egress_proxy import get_proxy
+                proxy = get_proxy()
+                if proxy:
+                    proxy.close_session(sid)
+            except Exception:                              # noqa: BLE001
+                pass
     return {"ok": True, "session": _get_session_or_404(sid)}
 @router.delete("/sessions/{sid}")
 def delete_session(sid: str, purge: bool = False):
     _get_session_or_404(sid)
+    # EG-R1：删除/归档即关会话 egress 通道（purge 前置——后面可能 return）
+    try:
+        from ...security.egress_proxy import get_proxy
+        proxy = get_proxy()
+        if proxy:
+            proxy.close_session(sid)
+    except Exception:                                      # noqa: BLE001
+        pass
     if not purge:
         with db_mod.conn() as c:
             db_mod.update_session(c, sid, status="archived")

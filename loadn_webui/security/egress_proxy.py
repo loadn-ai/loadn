@@ -15,6 +15,7 @@ LLM 凭证（M1 known-gap）仍在引擎侧 env，MITM 注入随 M2 完整化评
 from __future__ import annotations
 
 import asyncio
+import time
 
 from ..config import CONFIG
 from ..util import get_logger
@@ -189,6 +190,9 @@ class EgressProxy:
         self._uds_server: asyncio.AbstractServer | None = None
         self._session_servers: dict[str, asyncio.AbstractServer] = {}
         self._session_ports: dict[str, int] = {}
+        # 会话通道最近活动（monotonic；ensure 即记创建时间，连接时刷新）。
+        # 会话归档/长期不用时凭此惰性回收（EG-R1：端口只增不减的泄漏修复）
+        self._session_last: dict[str, float] = {}
 
     def _session_path(self, sid: str):
         """会话级 socket 路径（短哈希防 unix 路径 108 字节上限）。"""
@@ -203,6 +207,7 @@ class EgressProxy:
             return None
         if sid in self._session_servers:
             return str(self._session_path(sid))
+        self._reap_idle(keep=sid)
         p = self._session_path(sid)
         try:
             import os as _os
@@ -215,6 +220,7 @@ class EgressProxy:
                 lambda r, w: self._handle(r, w, sid), path=str(p), limit=1 << 20)
             _os.chmod(p, 0o660)
             self._session_servers[sid] = srv
+            self._session_last.setdefault(sid, time.monotonic())
             return str(p)
         except OSError:
             log.exception("会话级 egress socket 创建失败（%s）", sid)
@@ -230,17 +236,61 @@ class EgressProxy:
         """
         if sid in self._session_ports:
             return self._session_ports[sid]
+        self._reap_idle(keep=sid)
         try:
             srv = await asyncio.start_server(
                 lambda r, w: self._handle(r, w, sid),
                 "127.0.0.1", 0, limit=1 << 20)
             port = srv.sockets[0].getsockname()[1]
             self._session_ports[sid] = port
+            self._session_last.setdefault(sid, time.monotonic())
             self._session_servers[f"tcp:{sid}"] = srv    # stop() 统一收口
             return port
         except OSError:
             log.exception("会话级 egress TCP 监听失败（%s）", sid)
             return None
+
+    def close_session(self, sid: str) -> None:
+        """关闭会话的 egress 通道（UDS+TCP，归档/删除/空闲回收调）。幂等。
+        同步：close() 只停监听 socket（端口/fd 立即释放），活跃隧道连接
+        不受影响自然收尾——不阻塞调用方路由。"""
+        closed = False
+        for key in (sid, f"tcp:{sid}"):
+            srv = self._session_servers.pop(key, None)
+            if srv:
+                closed = True
+                try:
+                    srv.close()
+                except Exception:                          # noqa: BLE001
+                    pass
+        self._session_ports.pop(sid, None)
+        self._session_last.pop(sid, None)
+        if closed and self.uds_path:
+            import os as _os
+            try:
+                _os.unlink(self._session_path(sid))
+            except OSError:
+                pass
+        if closed:
+            log.info("egress 会话通道已关闭（sid=%s）", sid)
+
+    _REAP_IDLE_S = 2 * 3600       # 空闲回收阈值：2h 无连接的会话通道
+
+    def _reap_idle(self, *, keep: str = "") -> None:
+        """空闲会话通道惰性回收（每次 ensure 新通道时顺带扫）：泄漏形态=
+        会话归档/长期不用但端口常驻到进程重启（生产实证 2026-11-02：进程
+        存活半天即积累 5-7 个孤儿端口，监控面板逐个探测飘红）。keep=正在
+        ensure 的 sid 永不回收。"""
+        if not self._session_last:
+            return
+        now = time.monotonic()
+        idle = [s for s, t in self._session_last.items()
+                if s != keep and now - t > self._REAP_IDLE_S]
+        for s in idle:
+            self.close_session(s)
+        if idle:
+            log.info("egress 空闲回收 %d 个会话通道（阈值 %ds）",
+                     len(idle), self._REAP_IDLE_S)
 
     async def start(self) -> int:
         global _INSTANCE
@@ -287,6 +337,8 @@ class EgressProxy:
     async def _handle(self, reader: asyncio.StreamReader,
                       writer: asyncio.StreamWriter,
                       sid: str | None = None) -> None:
+        if sid:
+            self._session_last[sid] = time.monotonic()   # 活动刷新（回收依据）
         try:
             line = await asyncio.wait_for(reader.readline(), timeout=30)
             parts = line.decode("latin1").split()
