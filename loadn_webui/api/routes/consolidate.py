@@ -38,14 +38,101 @@ def _pending(ws) -> dict | None:
 
 
 @router.get("/sessions/{sid}/skill-suggest")
-def get_suggest(sid: str):
+async def get_suggest(sid: str):
     """当前待决策建议卡（无 pending → {pending: null}）。
 
     ws_root 一并返回（2026-10-12 卡片透明化）：卡片展示「将写入的文件
     完整路径」——相对路径用户无从对照，绝对路径才可核查/事后编辑。
+
+    LLM 精判（2026-11-02 用户定调「字符串判定多不靠谱，找低成本模型」）：
+    引擎正则只是粗筛（零成本拦掉绝大多数无关轮），出卡前用火山方舟
+    doubao-mini（titlegen 同通道）判定真伪——判 reject / 调用失败 →
+    卡不出现（fail-closed，用户诉求「不准就别出」）；判真 → 回写
+    adjudicated + LLM 提炼规则（替换 body 规则节）。titlegen 未配置的
+    部署自动回落正则行为（不自建依赖）。
     """
     ws = _ws_of(sid)
-    return {"pending": _pending(ws), "ws_root": str(ws)}
+    card = _pending(ws)
+    if card and not card.get("adjudicated"):
+        verdict = await _llm_adjudicate(card)
+        if verdict is None:                    # 未配置 ark：维持正则行为
+            return {"pending": card, "ws_root": str(ws)}
+        if verdict.get("verdict") not in ("teach", "correct"):
+            consolidate.clear_pending(ws)      # reject 或调用失败：fail-closed
+            return {"pending": None, "ws_root": str(ws)}
+        card["kind"] = verdict["verdict"]
+        rule = (verdict.get("rule") or "").strip()
+        if rule:
+            old = card.get("body") or ""
+            head = "## 应遵循的规则"
+            if head in old:
+                pre = old.split(head, 1)[0].rstrip() + "\n\n"
+                card["body"] = f"{pre}{head}\n\n{rule[:200]}"
+            else:
+                card["body"] = f"{old.rstrip()}\n\n{head}\n\n{rule[:200]}"
+        card["adjudicated"] = True
+        # 竞态保护：判定耗时期间用户可能已决策（decide 清了 pending）——
+        # 文件已不在就不再回写（防复活已拒绝的卡）
+        pp = ws / ".loadn" / "skill-suggest.json"
+        if not pp.exists():
+            return {"pending": None, "ws_root": str(ws)}
+        (ws / ".loadn").mkdir(parents=True, exist_ok=True)
+        pp.write_text(
+            json.dumps(card, ensure_ascii=False, indent=1), encoding="utf-8")
+    return {"pending": card, "ws_root": str(ws)}
+
+
+_ADJUDICATE_SYSTEM = (
+    "你判断「用户发给 AI 助手的一条消息」是否是对助手行为的纠正、或希望助手"
+    "今后持续遵循的规则教导。只输出 JSON（不要解释）："
+    '{"verdict":"teach|correct|reject","rule":"提炼成一句 ≤40 字的规则，reject 时为空"}\n'
+    "- teach=明确教导持续规则（以后都/记住/今后一律…）\n"
+    "- correct=对助手上一轮行为的明确否定并要求改正（不对/错了/重做…）\n"
+    "- reject=以下任一：转贴的日志/代码/报错文本、巡检或定时任务等系统注入、"
+    "对外部事物的问题描述（错的是别的东西不是助手）、与助手行为无关的闲聊、"
+    "含纠正字样但无纠正意图的叙述。拿不准判 reject。"
+)
+
+
+async def _llm_adjudicate(card: dict) -> dict | None:
+    """ark/doubao-mini 精判（titlegen 同配置）。未配置返回 None（回落正则）；
+    配置了但调用失败返回 {"verdict": "reject"}（fail-closed：不出卡）。"""
+    from ...config import CONFIG
+    cfg = CONFIG.titlegen
+    if not (cfg.enabled and cfg.api_key):
+        return None
+    trig = str(card.get("trigger") or "")[:600]
+    if not trig.strip():
+        return {"verdict": "reject"}
+    body = str(card.get("body") or "")
+    prev = ""
+    if "## 上一轮行为" in body:
+        prev = body.split("## 上一轮行为", 1)[1].split("##", 1)[0].strip()[:300]
+    user = f"用户消息：\n{trig}\n\n助手上一轮输出（尾部）：\n{prev or '(无)'}"
+    import httpx
+    base = cfg.api_base.rstrip("/").removesuffix("/chat/completions")
+    try:
+        async with httpx.AsyncClient(timeout=8) as cl:
+            r = await cl.post(
+                f"{base}/chat/completions",
+                headers={"Authorization": f"Bearer {cfg.api_key}"},
+                json={"model": cfg.model, "max_tokens": 120, "temperature": 0,
+                      "messages": [
+                          {"role": "system", "content": _ADJUDICATE_SYSTEM},
+                          {"role": "user", "content": user}]})
+            r.raise_for_status()
+            raw = str((r.json().get("choices") or [{}])[0]
+                      .get("message", {}).get("content") or "")
+        import re as _re
+        m = _re.search(r"\{[^{}]*\}", raw, _re.S)
+        if not m:
+            return {"verdict": "reject"}
+        d = json.loads(m.group(0))
+        if d.get("verdict") in ("teach", "correct"):
+            return {"verdict": d["verdict"], "rule": str(d.get("rule") or "")}
+        return {"verdict": "reject"}
+    except Exception:                            # 判定失败 fail-closed（不出卡）
+        return {"verdict": "reject"}
 
 
 @router.post("/sessions/{sid}/skill-suggest/decide")

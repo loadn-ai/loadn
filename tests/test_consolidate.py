@@ -429,3 +429,83 @@ def test_injected_head_and_negation_not_correction():
     assert cs.detect_correction(deep) is None
     # 教学不受影响
     assert cs.detect_correction("以后都先跑测试再提交") == "teach"
+
+
+# ---------------- LLM 精判（2026-11-02 用户定调：低成本模型替代字符串判定） ----------------
+
+async def test_llm_adjudicate_reject_kills_card(client, monkeypatch):
+    """判 reject → 卡不出现且 pending 清除（fail-closed）。"""
+    from loadn_webui.api.routes import consolidate as croute
+    from loadn_webui.config import PATHS
+    r = await client.post("/api/sessions", json={"title": "精判R"})
+    sid = r.json()["session"]["id"]
+    ws = PATHS["workspace"] / sid
+    card = {"kind": "correct", "fingerprint": "fpx1", "name": "avoid-x",
+            "description": "x", "trigger": "【巡检线·截断续作】…不要重做…",
+            "body": "# 用户教导（correct）\n\n> 【巡检线…\n\n## 上一轮行为（被纠正的上下文）\n\n某输出\n\n## 应遵循的规则\n\n【巡检线·截断续作】你上一轮",
+            "origin_session": sid, "created_at": "now"}
+    (ws / ".loadn").mkdir(parents=True, exist_ok=True)
+    (ws / ".loadn" / "skill-suggest.json").write_text(json.dumps(card, ensure_ascii=False))
+    async def fake_adj(c):
+        return {"verdict": "reject", "rule": ""}
+    monkeypatch.setattr(croute, "_llm_adjudicate", fake_adj)
+    r = await client.get(f"/api/sessions/{sid}/skill-suggest")
+    assert r.json()["pending"] is None
+    assert not (ws / ".loadn" / "skill-suggest.json").exists()   # pending 清
+
+
+async def test_llm_adjudicate_pass_rewrites_rule(client, monkeypatch):
+    """判真 → kind 修正+规则节替换+adjudicated 幂等回写（二次 GET 不再判）。"""
+    from loadn_webui.api.routes import consolidate as croute
+    from loadn_webui.config import PATHS
+    r = await client.post("/api/sessions", json={"title": "精判P"})
+    sid = r.json()["session"]["id"]
+    ws = PATHS["workspace"] / sid
+    card = {"kind": "correct", "fingerprint": "fpx2", "name": "venv-first",
+            "description": "x", "trigger": "不对，应该先建 venv 再装依赖",
+            "body": "# 用户教导（correct）\n\n> 不对，应该先建 venv\n\n## 上一轮行为（被纠正的上下文）\n\npip install 输出\n\n## 应遵循的规则\n\n不对，应该先建 venv",
+            "origin_session": sid, "created_at": "now"}
+    (ws / ".loadn").mkdir(parents=True, exist_ok=True)
+    (ws / ".loadn" / "skill-suggest.json").write_text(json.dumps(card, ensure_ascii=False))
+    calls = {"n": 0}
+    async def fake_adj(c):
+        calls["n"] += 1
+        return {"verdict": "correct", "rule": "Python 安装先建 venv 再 pip"}
+    monkeypatch.setattr(croute, "_llm_adjudicate", fake_adj)
+    r = await client.get(f"/api/sessions/{sid}/skill-suggest")
+    p = r.json()["pending"]
+    assert p and p["kind"] == "correct" and p["adjudicated"] is True
+    assert "Python 安装先建 venv 再 pip" in p["body"]
+    assert "## 应遵循的规则\n\nPython 安装先建 venv" in p["body"]   # 规则节替换
+    r2 = await client.get(f"/api/sessions/{sid}/skill-suggest")
+    assert calls["n"] == 1                                        # 幂等：不再判
+
+
+async def test_llm_adjudicate_unconfigured_falls_back(client, monkeypatch):
+    """titlegen 未配置 → 精判跳过（返回 None），正则行为保留卡原样。"""
+    from loadn_webui.api.routes import consolidate as croute
+    from loadn_webui.config import CONFIG, PATHS
+    r = await client.post("/api/sessions", json={"title": "精判F"})
+    sid = r.json()["session"]["id"]
+    ws = PATHS["workspace"] / sid
+    card = {"kind": "teach", "fingerprint": "fpx3", "name": "always-test",
+            "description": "x", "trigger": "以后都先跑测试",
+            "body": "# 用户教导（teach）\n\n> 以后都先跑测试",
+            "origin_session": sid, "created_at": "now"}
+    (ws / ".loadn").mkdir(parents=True, exist_ok=True)
+    (ws / ".loadn" / "skill-suggest.json").write_text(json.dumps(card, ensure_ascii=False))
+    # 禁用 titlegen 配置：patch 实例属性（类属性会被实例值遮蔽——首跑实证）。
+    # 保留真实 _llm_adjudicate（未配置短路在它内部）——计数 wrapper 验证
+    # 它被调但内部读 CONFIG 返回 None（未配置语义），端点回落正则行为
+    monkeypatch.setattr(CONFIG.titlegen, "enabled", False)
+    monkeypatch.setattr(CONFIG.titlegen, "api_key", "")
+    calls = {"n": 0}
+    real_adj = croute._llm_adjudicate
+    async def counting_adj(c):
+        calls["n"] += 1
+        return await real_adj(c)
+    monkeypatch.setattr(croute, "_llm_adjudicate", counting_adj)
+    r = await client.get(f"/api/sessions/{sid}/skill-suggest")
+    p = r.json()["pending"]
+    assert calls["n"] == 1                              # 被调且内部短路
+    assert p is not None and p["kind"] == "teach"      # 原样返回未删
