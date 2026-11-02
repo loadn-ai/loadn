@@ -16,12 +16,17 @@ from __future__ import annotations
 
 import asyncio
 import logging
-from collections.abc import AsyncIterator, Callable
-from typing import TYPE_CHECKING
+from collections.abc import AsyncIterator, Callable, Coroutine
+from typing import TYPE_CHECKING, Any
 
 import httpx
 
-from loadn.constants import API_BACKOFF_MAX_S, API_BACKOFF_MIN_S, API_RETRY_MAX
+from loadn.constants import (
+    API_BACKOFF_MAX_S,
+    API_BACKOFF_MIN_S,
+    API_RETRY_MAX,
+    FIRST_TOKEN_TIMEOUT_S,
+)
 
 if TYPE_CHECKING:
     from loadn.providers import Chunk
@@ -86,29 +91,82 @@ def classify_error(text: str) -> dict:
     return {"reason": "unknown", "retry": False, "compress": False}
 
 
+async def _first_or_timeout(anext_coro: Coroutine[Any, Any, Chunk],
+                           timeout: float) -> Chunk:
+    """取首 chunk，超时抛干净的 TimeoutError。
+
+    不用 asyncio.wait_for：3.10 下超时取消 async generator 的 __anext__
+    时，CancelledError（BaseException，非 Exception 子类）会穿透调用方
+    的 except Exception（单测实证）。asyncio.wait + 手动清理保证：
+    - 超时 → 我们主动 cancel 任务并吞掉其取消痕迹，抛 TimeoutError；
+    - 外部取消（用户 stop）→ asyncio.wait 自身被取消，CancelledError
+      正常向外传播（不会被误判成超时）。
+    """
+    task = asyncio.ensure_future(anext_coro)
+    done, pending = await asyncio.wait({task}, timeout=timeout)
+    if pending:
+        task.cancel()
+        try:
+            await task
+        except (asyncio.CancelledError, Exception):  # 清理痕迹（吞取消/异常，保主异常语义）
+            pass
+        # 内建 TimeoutError（OSError 系）而非 asyncio.TimeoutError：3.10 里
+        # 两者是不同类，重试白名单 is_retriable_exc 认的是内建——抛错了类
+        # 会被判不可重试直接上抛（首测实证：断开重试日志打了却没重试）
+        raise TimeoutError(f"首响超时（>{timeout:.0f}s，网关挂死兜底）")
+    return task.result()
+
+
 async def retry_call(
     fn: Callable[[], AsyncIterator[Chunk]],
     *,
     max_tries: int = API_RETRY_MAX,
     base: float = API_BACKOFF_MIN_S,
     cap: float = API_BACKOFF_MAX_S,
+    first_token_timeout: float = FIRST_TOKEN_TIMEOUT_S,
 ) -> AsyncIterator[Chunk]:
     """包裹一次 provider 调用：首 chunk 前的可重试失败按指数退避重试。
 
     fn() 每次调用返回全新的 AsyncIterator（重新建连）；一旦本尝试已对外
     yield 过任何 chunk，后续异常直接上抛（重试会造成重复消费）。
+
+    首响限时（2026-11-02 生产实证：GLM 网关偶发挂死 500-1230s，httpx
+    read=None 无限等）：首个 chunk 前等待超过 first_token_timeout 判挂死，
+    抛 TimeoutError（在可重试白名单内）走既有退避重试；首个 chunk 之后
+    不再限时——GLM 思考型流中段长时间无下行属正常，误杀会造成重复消费。
+    first_token_timeout<=0 关闭该兜底。
     """
     tries = max(1, int(max_tries))
     for attempt in range(1, tries + 1):
         produced = False
+        it: AsyncIterator[Chunk] | None = None
         try:
-            async for chunk in fn():
+            it = fn().__aiter__()
+            while True:
+                if not produced and first_token_timeout and first_token_timeout > 0:
+                    nxt = await _first_or_timeout(
+                        it.__anext__(), first_token_timeout)
+                else:
+                    nxt = await it.__anext__()
                 produced = True
-                yield chunk
+                yield nxt
+        except StopAsyncIteration:
             return
         except Exception as exc:
+            # 挂死超时/失败尝试：释放底层连接后再走重试判定
+            if it is not None:
+                aclose = getattr(it, "aclose", None)
+                if aclose is not None:
+                    try:
+                        await aclose()
+                    except Exception:  # 清理失败不掩盖主异常
+                        pass
             if produced:
                 raise
+            if isinstance(exc, (TimeoutError, asyncio.TimeoutError)):
+                logger.warning(
+                    "首响超时（>%.0fs，网关挂死兜底，第 %d/%d 次尝试）——断开重试",
+                    first_token_timeout, attempt, tries)
             if not is_retriable_exc(exc) or attempt == tries:
                 raise  # 不可重试，或已耗尽——抛最后一个异常
             delay = backoff_delay(attempt, base=base, cap=cap)

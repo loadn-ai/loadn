@@ -86,6 +86,9 @@ AGENT_DEF_MAX_CHARS = 20_000      # 自定义 agent 定义正文 clip
 API_RETRY_MAX = 5                 # 429/529/5xx 重试次数
 API_BACKOFF_MIN_S = 1.0
 API_BACKOFF_MAX_S = 60.0
+FIRST_TOKEN_TIMEOUT_S = 240.0     # 首响限时（首 chunk 前挂死兜底）：生产统计
+                                  # 常态首响 p90≈100s / 最慢正常 122s，网关偶发
+                                  # 挂死 500-1230s——240s 判挂死走退避重试，不无限等
 STREAM_RETRY_MAX = 2              # loop 层流中断/retriable error chunk 重试次数
 STREAM_LINE_MAX = 64 * 1024 * 1024   # 读缓冲单行上限（base64 图片免疫）
 # 单响应输出上限：16384 会被长 thinking 吃满（Terminal-Bench 实测：竞赛数学题

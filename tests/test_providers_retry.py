@@ -101,6 +101,78 @@ async def test_no_retry_after_chunk_produced(sleeps):
     assert sleeps == []
 
 
+# ---------------- 首响限时（2026-11-02 生产实证 GLM 网关挂死兜底） ----------------
+
+# fixture sleeps 把 asyncio.sleep 打成即时——挂死场景需要真 sleep（由
+# wait_for/cancel 砍掉，不会真等满），module 级保存原函数
+REAL_SLEEP = asyncio.sleep
+
+
+async def test_first_token_timeout_retries(sleeps):
+    """首 chunk 前挂死超 first_token_timeout → 判挂死重试，第二次成功。"""
+    calls = {"n": 0}
+
+    async def fn():
+        calls["n"] += 1
+        if calls["n"] == 1:
+            await REAL_SLEEP(3600)          # 挂死：永不出首片（被限时砍掉）
+        yield Chunk(kind="text_delta", text="ok")
+
+    out = [c async for c in retry_call(
+        fn, first_token_timeout=0.05, base=0.01, cap=0.01)]
+    assert [c.text for c in out] == ["ok"]
+    assert calls["n"] == 2                  # 第一次被限时砍掉，重试成功
+    # 退避次数不作硬断言：sleeps patch 在全量组合下会被外部活动任务
+    # 污染（len 可达数万，engine 面遗留任务共用事件循环）——重试语义
+    # 已由 calls==2 锁死
+
+
+async def test_first_token_timeout_not_applied_midstream(sleeps):
+    """首片后长时间无下行（思考型常态）不受限时——不误杀、不重复消费。"""
+    calls = {"n": 0}
+    received: list[str] = []
+
+    async def fn():
+        calls["n"] += 1
+        yield Chunk(kind="text_delta", text="first")
+        await REAL_SLEEP(3600)              # 中段长静默：远超 timeout
+        yield Chunk(kind="text_delta", text="second")
+
+    async def collect():
+        async for chunk in retry_call(fn, first_token_timeout=0.05):
+            received.append(chunk.text)
+
+    # 限时整卡 0.5s：若限时误杀中段会提前抛 TimeoutError 且 fn 重开；
+    # 正常行为=首片到达后卡在中段静默（无限时），由外层砍出
+    task = asyncio.ensure_future(collect())
+    # 3.10：wait_for 抛 asyncio.TimeoutError（与内建 TimeoutError 不同类）
+    with pytest.raises((asyncio.TimeoutError, TimeoutError)):
+        await asyncio.wait_for(asyncio.shield(task), timeout=0.5)
+    task.cancel()
+    try:
+        await task              # 回收取消痕迹，防 teardown 逃逸 CancelledError
+    except BaseException:
+        pass
+    assert calls["n"] == 1                  # 未重试（中段未被限时砍）
+    assert received == ["first"]            # 首片已产出且只此一片
+
+
+async def test_first_token_timeout_exhausted(sleeps):
+    """永久挂死：耗尽尝试后抛 TimeoutError（由 provider 转 error chunk）。"""
+    calls = {"n": 0}
+
+    async def fn():
+        calls["n"] += 1
+        await REAL_SLEEP(3600)
+        yield Chunk(kind="text_delta", text="never")
+
+    with pytest.raises(TimeoutError):
+        async for _ in retry_call(fn, max_tries=2, first_token_timeout=0.05,
+                                  base=0.01, cap=0.01):
+            pass
+    assert calls["n"] == 2
+
+
 def test_is_retriable_status():
     assert is_retriable_status(429)
     for code in (500, 502, 503, 504, 529):
