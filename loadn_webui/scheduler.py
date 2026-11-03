@@ -40,6 +40,8 @@ CHECK_INTERVAL = 20.0          # 扫描周期：分钟级唤醒场景足够，�
 # 而是每次唤醒先注入结构化目标对账（目标/成功判据/已证伪路线，真源=
 # job.goal 或会话 state.json），并给 agent 一个平台级反问出口：
 AWAIT_MARK = "【等待用户裁决】"   # 回复行首出现 → 暂停本会话定时唤醒，用户回话即恢复
+DORMANT_MAX = 5                  # 连续值守轮达限 → 平台自动暂停+通知（软指令的平台兜底）
+DORMANT_TEXT_MAX = 240           # 唤醒轮回复超短判定：说不出「做了什么」=值守形态
 
 
 def read_goal_state(sid: str) -> dict:
@@ -121,6 +123,87 @@ def check_await_gate(sid: str, content: str) -> int:
         log.exception("await 通知异常")
     log.info("await 门命中：%d 个 job 暂停（sid=%s）", len(jids), sid)
     return len(jids)
+
+
+def dormant_streak(sid: str) -> int:
+    """当前值守连击数（_wrap 预警注入用，只读）。"""
+    if not sid:
+        return 0
+    with db_mod.conn() as c:
+        raw = db_mod.kv_get(c, f"dormant:{sid}")
+    try:
+        return max(0, int(raw or 0))
+    except (TypeError, ValueError):
+        return 0
+
+
+def check_dormant_gate(sid: str, tid: int, content: str) -> int:
+    """值守轮平台兜底（engine._finish 调，done 轮专属）：定时唤醒轮回复
+    极短（< DORMANT_TEXT_MAX 字）→ 连击 +1；实质回复 → 清零；非唤醒轮
+    不参与。连击达 DORMANT_MAX → 暂停本会话全部 active 非系统 job + 推送
+    + 审计，复用 await 暂停/恢复通道（kv awaitjobs 记账，用户回话自动
+    恢复，见 resume_await_jobs）。返回本次更新后的连击数（触发暂停时清零）。
+
+    背景（生产实证 c5cb 2026-11-03）：GC-2 偏执自检注入后 agent 仍连续
+    值守（「## 唤醒 405 · 值守轮 / 零交易」共 25 字 + python3 -c 更新
+    state.json round 字段式假动作）——400 轮行为先例压倒 2KB 指令，软
+    约束对深惯性无效；agent 早年列的 A/B/C 裁定菜单沉在值守海洋里用户
+    从未被通知。平台必须确定性兜底：宁可误暂停（用户回一句即恢复），
+    不让僵尸循环按 15 分钟一轮烧到 max_fires。
+
+    检测主轴是回复长度而非工具调用数：值守轮常带自我记账假动作（工具
+    轴可被绕过）；「回复说不出做了什么」（无对账/无数字/无决策）才是
+    值守的本质可观测特征——与 GC-2 的对账要求同源。"""
+    if not sid or tid is None:
+        return 0
+    with db_mod.conn() as c:
+        row = c.execute(
+            "SELECT content FROM messages WHERE turn_id=? AND role='user' "
+            "ORDER BY id LIMIT 1", (tid,)).fetchone()
+        if row is None or not str(row["content"] or "").startswith("【定时唤醒"):
+            return dormant_streak(sid)          # 非唤醒轮：不动计数
+        raw = db_mod.kv_get(c, f"dormant:{sid}")
+        try:
+            streak = max(0, int(raw or 0))
+        except (TypeError, ValueError):
+            streak = 0
+        if len(content or "") >= DORMANT_TEXT_MAX:
+            if streak:
+                db_mod.kv_set(c, f"dormant:{sid}", "0")
+            return 0                            # 实质回复：清零
+        streak += 1
+        if streak < DORMANT_MAX:
+            db_mod.kv_set(c, f"dormant:{sid}", str(streak))
+            return streak
+        # ---- 达限：暂停 + 通知（复用 await 通道，用户回话自动恢复）
+        db_mod.kv_set(c, f"dormant:{sid}", "0")
+        jobs = [j for j in db_mod.list_jobs(c, sid, active_only=True)
+                if not j["is_system"]]
+        jids = [j["id"] for j in jobs]
+        for jid in jids:
+            db_mod.update_job(c, jid, status="paused")
+        if jids:
+            db_mod.kv_set(c, f"awaitjobs:{sid}", json.dumps(jids))
+    if jids:
+        try:
+            from .security.audit import audit
+            audit("policy_change", {"action": "dormant_auto_pause",
+                                    "sid": sid, "paused_jobs": jids,
+                                    "streak": DORMANT_MAX}, sid=sid)
+        except Exception:                                # noqa: BLE001
+            pass
+        try:
+            from .integrations import notify
+            notify.fire("⏸️ 定时任务自动暂停：连续值守无动作",
+                        f"会话 {sid} 的定时任务连续 {DORMANT_MAX} 轮唤醒均无"
+                        f"实质动作（回复极短、无对账无决策），已自动暂停 "
+                        f"{len(jids)} 个定时唤醒——多半是在等一个你没看到的"
+                        "问题或市场事件。去会话答复或给个方向后自动恢复。",
+                        event="on_scheduled")
+        except Exception:                                # noqa: BLE001
+            log.exception("dormant 通知异常")
+        log.info("dormant 门达限：%d 个 job 暂停（sid=%s）", len(jids), sid)
+    return 0
 
 
 def resume_await_jobs(sid: str) -> int:
@@ -395,6 +478,14 @@ class Scheduler:
                 "① 换一条与已做动作本质不同的路线并迈出第一步；② 用"
                 f"{AWAIT_MARK}标记另起一行列出需要用户拍板的问题与选项，结束"
                 "本轮等用户答复。禁止再一次重复同质动作。")
+        ds = 0 if job.get("is_system") else dormant_streak(job.get("session_id") or "")
+        if ds > 0:
+            parts.append(
+                f"【值守预警】此前已连续 {ds} 轮唤醒回复极短零实质动作（平台"
+                f"已计数）。再值守 {DORMANT_MAX - ds} 轮将自动暂停本任务并通知"
+                f"用户。若确无可做：用{AWAIT_MARK}另起一行列出需要用户拍板的"
+                "问题与选项等答复；若有可做：本轮必须产出实质动作（对账拿数字/"
+                "验证/交易/代码任一），并写清做了什么。")
         note = f"，第 {fires}/{job['max_fires']} 次触发" \
             if job["max_fires"] > 1 else ""
         parts.append(

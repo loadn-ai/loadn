@@ -1247,6 +1247,16 @@ class Engine:
             except Exception:                          # noqa: BLE001 — 不炸收尾
                 log.exception("await 门检测异常")
 
+        # ---- 值守轮平台兜底（DORMANT）：定时唤醒轮连续极短回复 → 达限自动
+        # 暂停+推送（GC-2 是软指令，深惯性下 agent 会无视——平台确定性兜底；
+        # content 为空的纯零输出轮按值守计，不适用上面的 and content 门）
+        if status == "done":
+            try:
+                from .scheduler import check_dormant_gate
+                check_dormant_gate(sid, tid, content or "")
+            except Exception:                          # noqa: BLE001 — 不炸收尾
+                log.exception("dormant 门检测异常")
+
         # ---- 轮换启发式（token 基；订阅计量可能为 0）
         rotate_reason = ""
         if status == "done":
