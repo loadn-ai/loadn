@@ -215,3 +215,43 @@ def test_record_agent_file_last_writer_wins(aw):
                          " WHERE session_id='s1'").fetchall()
     assert len(rows) == 1
     assert tuple(rows[0]) == ("sub_2", "波洛")
+
+
+def test_tree_skips_venv_and_pycache(aw):
+    """>>> 对赌：venv 系（venv/-venv/_venv）与 __pycache__ 不进文件树——
+    生产实证 a302：work/lora-verify/venv 38884 文件+vllm-venv 82255 文件
+    吃光 4000 收集配额，排序截断 2000 后字母序在后的用户文件整批消失。"""
+    import pathlib
+
+    from loadn_webui import artifacts as art_mod
+
+    ws = pathlib.Path(aw) / "ws" / "s1"
+    # 环境产物：各形态 venv + pycache（大量文件）
+    for d, n in (("work/venv/lib/site-packages", 50), ("work/myproj-venv/lib", 50),
+                 ("work/scan_venv/lib", 50), ("work/__pycache__", 20),
+                 (".venv/lib", 30)):
+        p = ws / d
+        p.mkdir(parents=True, exist_ok=True)
+        for i in range(n):
+            (p / f"pkg_{i}.py").write_text("x")
+    # 用户文件（含排序上落在 -venv 之后的：zzz_last.md）
+    for f in ("work/aaa.md", "work/mmm.py", "work/zzz_last.md",
+              "artifacts/report.md"):
+        p = ws / f
+        p.parent.mkdir(parents=True, exist_ok=True)
+        p.write_text("内容")
+    art_mod._tree_cache.clear()
+    tree = art_mod.tree("s1")
+    paths = [n["path"] for n in tree]
+    # 环境产物整批不进（连目录壳都不进——零浏览价值）
+    assert not any(("venv" in p.split("/") and p.split("/")[-1] != "ztj_corpus")
+                   or "__pycache__" in p or "/venv/" in p or "-venv/" in p
+                   or "_venv/" in p for p in paths), paths[:8]
+    assert "work/myproj-venv" not in paths and "work/venv" not in paths
+    # 用户文件全可见（含排序最尾的 zzz_last.md——修复前它会被 venv 挤出）
+    for must in ("work/aaa.md", "work/mmm.py", "work/zzz_last.md",
+                 "artifacts/report.md"):
+        assert must in paths, must
+    # 缓存失效后重算稳定
+    art_mod.invalidate_tree("s1")
+    assert len(art_mod.tree("s1")) == len(tree)

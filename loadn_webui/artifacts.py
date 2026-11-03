@@ -309,8 +309,14 @@ def tree(sid: str) -> list[dict]:
             if walked > 200_000 or len(out) >= 4000:   # 病态工作区止损
                 break
             rel = p.relative_to(ws).parts
-            # 隐藏目录 + 重目录（node_modules / chrome*）不进树：既是噪音也是慢源
+            # 隐藏目录 + 重目录不进树：既是噪音也是慢源。venv 系（虚拟环境
+            # site-packages 可达数万文件）与 __pycache__（.pyc 缓存）同属
+            # 环境产物零浏览价值——生产实证 a302：work/lora-verify/venv
+            # 38884 文件吃光 4000 收集配额，排序截断 2000 后字母序在后的
+            # 用户文件（maoni_*/storainbow_*/zhuque_*）整批从树里消失
             if any(s.startswith(".") or s == "node_modules" or s.startswith("chrome")
+                   or s == "venv" or s.endswith("-venv") or s.endswith("_venv")
+                   or s == "__pycache__"
                    for s in rel):
                 continue
             try:
