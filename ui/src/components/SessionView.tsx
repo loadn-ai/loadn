@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 import ApprovalBanner from './ApprovalBanner';
+import PlanCard from './PlanCard';
 import SkillSuggestCard from './SkillSuggestCard';
 import CompactTimeline from './CompactTimeline';
 import { useStore } from '../stores/sessions';
@@ -88,6 +89,7 @@ export default function SessionView({ onMenu }: { onMenu: () => void }) {
   return (
     <div className="session-view">
       <ApprovalBanner />
+      <PlanCard />
       <SkillSuggestCard />
       <header className="session-head">
         <div className="head-left">
@@ -118,6 +120,15 @@ export default function SessionView({ onMenu }: { onMenu: () => void }) {
             onClick={() => void useStore.getState().patchSession(
               s.id, { auto_continue: s.auto_continue ? 0 : 1 })}>
             ⟳ 自动续跑{s.auto_continue ? '·开' : ''}
+          </button>
+          <button
+            className={`btn ghost ${s.plan_mode ? 'on' : ''}`}
+            title={s.plan_mode
+              ? '规划模式已开：新任务先进规划轮（agent 只读盘点、产出实施计划），你在计划卡上批准后才真正执行；对计划提意见=直接发消息'
+              : '开启规划模式：新任务先出实施计划待你批准，批准后按步骤执行（Claude Code plan mode 同款体验）'}
+            onClick={() => void useStore.getState().patchSession(
+              s.id, { plan_mode: s.plan_mode ? 0 : 1 })}>
+            📋 规划{s.plan_mode ? '·开' : ''}
           </button>
           <span className="usage" title="累计 tokens / 成本">
             {fmtTokens(s.usage?.total)} tok · ${(s.usage?.cost_usd ?? 0).toFixed(2)}

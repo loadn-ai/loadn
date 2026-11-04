@@ -42,8 +42,10 @@ from .config import PATHS
 #        engine 字段 + engine_session_ids JSON 键重写，见 _migrate）
 # rev20：scheduled_jobs.goal——目标契约列（任务目标+成功判据，唤醒对账置顶）
 # rev21：验收 gate（AV）：sessions.verify_cmd（用户持有的平台验收命令）+
+# rev22：规划模式：sessions.plan_mode（执行前规划确认——新任务先进 plan 轮产出
+# 结构化计划，用户批准后才投执行 turn；off=0/on=1，auto 启发式留字段位）
 #        turns.verify_json（每 turn 验收结果/完成声明预检标记）
-SCHEMA_REV = 21
+SCHEMA_REV = 22
 from .util import iso
 
 # PERF-1：已完成 executescript+_migrate 的库路径（进程内短路，见 conn()）
@@ -54,6 +56,7 @@ CREATE TABLE IF NOT EXISTS sessions (
   size_bytes INTEGER,                    -- BD-3：workspace 占用缓存（后台/惰性重算）
   size_checked_at TEXT,                  -- BD-3：最近一次占用统计时刻（iso）
   auto_continue INTEGER DEFAULT 0,       -- 自动续跑（rev18：1=todo 未完自动续 turn）
+  plan_mode INTEGER DEFAULT 0,           -- 执行前规划（rev22：1=新任务先出计划待批准）
   verify_cmd TEXT,                       -- 平台验收命令（AV：JSON 数组 ≤5 条，用户持有 agent 不可写）
   id TEXT PRIMARY KEY,              -- 形如 20260902_1430-a1b2
   title TEXT,
@@ -488,6 +491,11 @@ def _migrate(c: sqlite3.Connection) -> None:
     # rev18（自动续跑）：sessions.auto_continue 开关列（旧库补列；新表走 SCHEMA）
     if "auto_continue" not in scols:
         c.execute("ALTER TABLE sessions ADD COLUMN auto_continue INTEGER DEFAULT 0")
+
+    # rev22（规划模式）：sessions.plan_mode 开关列（旧库补列；新表走 SCHEMA）
+    scols = {r["name"] for r in c.execute("PRAGMA table_info(sessions)")}
+    if "plan_mode" not in scols:
+        c.execute("ALTER TABLE sessions ADD COLUMN plan_mode INTEGER DEFAULT 0")
 
     # rev21（验收 gate）：sessions.verify_cmd + turns.verify_json——真源在 DB、
     # agent 工作区不可写（验收 channel 在 agent 权限边界外，防自检）

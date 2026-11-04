@@ -15,6 +15,7 @@ export interface SessionInfo {
   project_id?: string | null; project_title?: string | null;
   starred?: number; pinned?: number; category_id?: number | null;
   auto_continue?: number;   // rev18 自动续跑：1=turn 完成后 todo 未完自动续
+  plan_mode?: number;       // rev22 规划模式：1=新任务先出计划待批准
   verify_cmd?: string | null;   // AV：平台验收命令（JSON 数组，turn done 后独立执行）
   session_fresh: number; claude_session_id: string | null;
   skills_json?: string; mcp_json?: string | null;
@@ -159,6 +160,20 @@ export interface ApprovalInfo {
   turn_changes?: { path: string; lines?: string; hash?: string }[] | null;
 }
 
+/** 规划模式计划卡（rev22）：plan 轮收割的结构化计划，待用户裁决 */
+export interface PlanCardInfo {
+  goal: string;
+  steps: string[];
+  files: string[];
+  risks: string[];
+  questions: string[];
+  /** 模型未守约时的散文摘要（fallback 卡） */
+  raw?: string;
+  task: string;
+  turn_id: number;
+  revision: number;
+}
+
 /** P3-7 压缩时间线：turn 刻度 + compact 标记（何时裁了多少 token） */
 export interface TimelineMarker {
   kind: 'turn' | 'compact';
@@ -199,6 +214,10 @@ interface Store {
    *  pollStopConfirmed 轮询兜底）后清除；POST 失败立即清除允许重试。 */
   stoppingTids: Record<number, number>;
   approvals: ApprovalInfo[];
+  /** 待裁决计划（rev22 规划模式：plan 轮收割的计划卡；null=无） */
+  plan: PlanCardInfo | null;
+  loadPlan: () => Promise<void>;
+  decidePlan: (action: 'approve' | 'abort') => Promise<void>;
   timeline: TimelineMarker[];
   es: EventSource | null;
   connected: boolean;
@@ -305,7 +324,7 @@ export const useStore = create<Store>((set, get) => ({
   agents: [], subtasks: [],
   live: null,
   stoppingTids: {},
-  approvals: [], timeline: [], es: null, connected: false,
+  approvals: [], plan: null, timeline: [], es: null, connected: false,
   theme: initialTheme(),
   sessionExtras: null,
   rightTab: 'artifacts',
@@ -339,6 +358,27 @@ export const useStore = create<Store>((set, get) => ({
         `/api/sessions/${encodeURIComponent(sid)}/approvals`);
       if (get().currentSid === sid) set({ approvals: d.approvals });
     } catch { /* 拉取失败不阻塞 */ }
+  },
+
+  async loadPlan() {
+    const sid = get().currentSid;
+    if (!sid) return;
+    try {
+      const d = await api<{ plan: PlanCardInfo | null }>(
+        `/api/sessions/${encodeURIComponent(sid)}/plan`);
+      if (get().currentSid === sid) set({ plan: d.plan });
+    } catch { /* 拉取失败不阻塞（无计划=null） */ }
+  },
+
+  async decidePlan(action: 'approve' | 'abort') {
+    const sid = get().currentSid;
+    if (!sid) return;
+    try {
+      await api(`/api/sessions/${encodeURIComponent(sid)}/plan/decide`,
+        { method: 'POST', body: JSON.stringify({ action }) });
+    } catch { /* 竞态（他端已裁决）照常按服务端状态刷新 */ }
+    set(() => ({ plan: null }));
+    if (action === 'approve') void get().resync();
   },
 
   async decideApproval(id: number, approve: boolean): Promise<string | null> {
@@ -401,7 +441,7 @@ export const useStore = create<Store>((set, get) => ({
           earlierCount: 0, loadingEarlier: false,
           turns: [], artifacts: [], live: null,
           sessionExtras: null, timeline: [], agents: [], subtasks: [],
-          mainTab: 'chat', agentFilter: null, artifactScope: null });
+          mainTab: 'chat', agentFilter: null, artifactScope: null, plan: null });
     localStorage.setItem('loadn_sid', sid);   // 刷新/重开恢复
     localStorage.removeItem('wd_sid');        // 旧键清理（迁移遗留）
     const d = await api<{ messages: MessageInfo[]; turns: TurnInfo[];
@@ -447,6 +487,7 @@ export const useStore = create<Store>((set, get) => ({
     }
     // SSE：实时事件（W0：一次性 ticket 连接 + 断流自动重新取票重连）
     set({ connected: false });
+    void get().loadPlan();          // rev22：进会话补拉待裁决计划（SSE 只推增量）
     void connectSse(
       sid,
       (type, data) => handleEvent(set, get, sid, type, data),
@@ -508,7 +549,7 @@ export const useStore = create<Store>((set, get) => ({
     localStorage.removeItem('loadn_sid'); localStorage.removeItem('wd_sid');
     set({ es: null, connected: false, currentSid: null, sessionExtras: null,
           timeline: [], agents: [], subtasks: [], live: null, mainTab: 'chat',
-          agentFilter: null, artifactScope: null });
+          agentFilter: null, artifactScope: null, plan: null });
   },
 
   /** 前台恢复拉新（visibilitychange/focus 调用）。iOS PWA 后台冻结定时器与
@@ -1207,6 +1248,16 @@ function handleEvent(
   if (type === 'approval') {
     // W1-2 审批卡片事件：request/decided → 拉最新列表
     void get().loadApprovals();
+    return;
+  }
+  if (type === 'plan') {
+    // 规划模式（rev22）：plan 轮收割 → 计划卡上屏（data.plan 即卡内容）
+    set(() => ({ plan: data?.plan ?? null }));
+    return;
+  }
+  if (type === 'plan_decided') {
+    // 裁决落定：卡片消失；approve 的执行 turn 由常规 turn_queued 流接管
+    set(() => ({ plan: null }));
     return;
   }
   switch (type) {

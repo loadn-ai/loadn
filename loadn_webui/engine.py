@@ -203,6 +203,73 @@ class ActiveTurn:
     agent_names: dict = field(default_factory=dict)
 
 
+# ---------------------------------------------------------------- 规划模式（rev22）
+# Claude Code plan mode 的平台化形态：新任务先进「只规划不执行」轮（只读
+# 探索+结构化计划），用户在计划卡上裁决——批准才投执行 turn（计划步骤转
+# todos 与自动续跑同源）；直接发新消息=对旧计划的修订（再进 plan 轮）。
+# 反面教训（业界）：过度确认让人沦为「批准机器」——默认关，用户显式开启。
+
+_PLAN_PROMPT_TMPL = """【规划模式——本轮只规划，禁止执行】
+
+用户任务：
+{task}
+
+本轮纪律：
+1. 只做只读探索（读文件/搜索/盘点现状），禁止一切写操作（不写/不改/不删/不提交/不发外部请求）
+2. 产出一份可执行的实施计划，覆盖：目标、步骤清单、涉及文件与资源、风险与对策、需要用户确认的开放问题
+3. 计划末尾必须以 ```plan 代码块输出结构化 JSON（平台解析渲染计划卡，供用户批准/修订）：
+
+```plan
+{{"goal": "一句话目标", "steps": ["步骤1", "步骤2"], "files": ["涉及的文件/资源"], "risks": ["风险与对策"], "questions": ["需要用户确认的问题"]}}
+```"""
+
+
+def _plan_should_trigger(c, sid: str) -> bool:
+    """plan 轮触发判定（submit 时调用，c=已开的 db 连接）：
+    ①未裁决计划在场 → True（新消息=修订，再进 plan 轮）；
+    ②todos 未清（任务进行中）→ False（续聊不是新任务）；
+    ③上一 turn 终态距今 <30 分钟 → False（连续对话）；
+    其余 → True（新任务）。"""
+    from datetime import datetime, timezone
+    if db_mod.kv_get(c, f"plan:{sid}"):
+        return True
+    if db_mod.kv_get(c, f"todos:{sid}"):
+        return False
+    row = c.execute(
+        "SELECT finished_at FROM turns WHERE session_id=? AND finished_at"
+        " IS NOT NULL ORDER BY id DESC LIMIT 1", (sid,)).fetchone()
+    if row is not None:
+        try:
+            last = datetime.fromisoformat(row["finished_at"])
+            if (datetime.now(timezone.utc) - last).total_seconds() < 1800:
+                return False
+        except (TypeError, ValueError):
+            pass
+    return True
+
+
+_PLAN_BLOCK_RE = re.compile(r"```plan\s*\n(.*?)\n```", re.DOTALL)
+
+
+def _parse_plan_block(content: str) -> dict | None:
+    """收割 plan JSON 块（容错：字段缺省补空；无块 → None）。"""
+    m = _PLAN_BLOCK_RE.search(content or "")
+    if not m:
+        return None
+    try:
+        data = json.loads(m.group(1))
+    except ValueError:
+        return None
+    if not isinstance(data, dict):
+        return None
+    plan = {"goal": str(data.get("goal") or "")[:2000]}
+    for k in ("steps", "files", "risks", "questions"):
+        v = data.get(k)
+        plan[k] = [str(x)[:500] for x in v][:20] if isinstance(v, list) else []
+    return plan
+
+
+
 class Engine:
     def __init__(self) -> None:
         self._queues: dict[str, asyncio.Queue[int]] = {}
@@ -248,6 +315,40 @@ class Engine:
         if at is not None and at.quiet:
             return
         self.publish(sid, type_, data, at.turn_id if at is not None else None)
+
+    def _maybe_harvest_plan(self, sid: str, tid: int, content: str) -> None:
+        """plan 轮收尾收割（rev22）：kv planq:{sid} 的 tid 匹配才处理（非
+        plan 轮零开销）。解析 ```plan 块 → kv plan:{sid}（含任务原文与轮次）
+        + SSE plan 事件；无块落 fallback（raw 摘要，用户可放弃）。"""
+        with db_mod.conn() as c:
+            raw = db_mod.kv_get(c, f"planq:{sid}")
+            if not raw:
+                return
+            try:
+                pq = json.loads(raw)
+            except (ValueError, TypeError):
+                db_mod.kv_del(c, f"planq:{sid}")
+                return
+            if pq.get("tid") != tid:
+                return                     # 旧标记（修订轮覆盖前的残留）
+            db_mod.kv_del(c, f"planq:{sid}")
+            plan = _parse_plan_block(content)
+            if plan is None:
+                plan = {"goal": "（规划轮未产出结构化计划——可放弃，或发新消息让 agent 重出计划）",
+                        "steps": [], "files": [], "risks": [],
+                        "questions": [], "raw": content[:1500]}
+            try:
+                prev = json.loads(db_mod.kv_get(c, f"plan:{sid}") or "{}")
+            except (ValueError, TypeError):
+                prev = {}
+            plan["task"] = pq.get("task") or ""
+            plan["turn_id"] = tid
+            plan["revision"] = int(prev.get("revision") or 0) + 1
+            db_mod.kv_set(c, f"plan:{sid}", json.dumps(plan, ensure_ascii=False))
+        try:
+            self.publish(sid, "plan", {"turn_id": tid, "plan": plan}, tid)
+        except Exception:                                  # noqa: BLE001
+            log.exception("plan SSE 发布失败（计划已落 kv）")
 
     def _todos_persist(self, at: ActiveTurn, sid: str, tid: int) -> None:
         """todos 变更落快照块进 blocks 时间线 + SSE todos（quiet 收口同 _emit）。
@@ -379,6 +480,13 @@ class Engine:
             mid = db_mod.add_message(c, session_id=sid, turn_id=tid, role="user",
                                      content=text, blocks_json=blocks_json)
             db_mod.update_turn(c, tid, message_id=mid)
+            # 规划模式（rev22）：开关开 + 新任务判定 → 本轮进 plan 阶段。
+            # kv planq 记 tid+任务原文（_run_turn 换 wrap prompt；消息流保持
+            # 用户原文）。未裁决计划在场时新消息=修订 → 覆盖再进 plan 轮。
+            if qsess["plan_mode"] and _plan_should_trigger(c, sid):
+                db_mod.kv_set(c, f"planq:{sid}",
+                              json.dumps({"tid": tid, "task": text},
+                                         ensure_ascii=False))
             db_mod.update_session(c, sid)
             # 任务列表批：子任务排队也顶起父项目组（左侧项目组按最近活动
             # 序——此前子任务排队/完成都不碰 projects.updated_at，组在执行
@@ -580,6 +688,21 @@ class Engine:
             _msg_attachments(msg["blocks_json"]), ws_mod.inputs_dir_of(sid))
         if anchor:
             prompt = f"{anchor}\n\n{prompt}"
+
+        # 规划模式（rev22）：plan 轮 → wrap prompt（只读规划+结构化计划约定）。
+        # 原始任务文本存 kv planq（submit 时判定落账），消息流保持用户原文。
+        try:
+            with db_mod.conn() as _c:
+                _pq_raw = db_mod.kv_get(_c, f"planq:{sid}")
+        except Exception:                                   # noqa: BLE001
+            _pq_raw = None
+        if _pq_raw:
+            try:
+                _pq = json.loads(_pq_raw)
+                if _pq.get("tid") == tid:
+                    prompt = _PLAN_PROMPT_TMPL.format(task=prompt)
+            except (ValueError, TypeError, KeyError):
+                pass
 
         resume = bool(sess["session_fresh"] == 0)
         claude_sid = sess["claude_session_id"]
@@ -1256,6 +1379,15 @@ class Engine:
                 check_dormant_gate(sid, tid, content or "")
             except Exception:                          # noqa: BLE001 — 不炸收尾
                 log.exception("dormant 门检测异常")
+
+        # ---- 规划模式收割（rev22）：plan 轮 done → 解析 ```plan JSON 块落
+        # kv plan:{sid} + SSE plan 事件（前端计划卡）。无块（模型未守约）也
+        # 落 fallback 卡（raw 摘要）——宁可见不可静默丢。
+        if status == "done":
+            try:
+                self._maybe_harvest_plan(sid, tid, content or "")
+            except Exception:                          # noqa: BLE001 — 不炸收尾
+                log.exception("plan 收割异常")
 
         # ---- 轮换启发式（token 基；订阅计量可能为 0）
         rotate_reason = ""

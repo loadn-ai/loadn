@@ -1421,6 +1421,31 @@ button.attach-chip:hover { border-color: color-mix(in srgb, var(--accent) 40%, v
 /* W1-2 审批卡片 */
 .approval-banner { display: flex; flex-direction: column; gap: 8px;
   padding: 8px 14px 0; }
+
+/* ---- 规划模式计划卡（rev22）：Claude Code plan mode 的平台化异步确认 */
+.plan-card { margin: 8px 14px 0; border: 1px solid
+  color-mix(in srgb, var(--accent) 40%, transparent); border-radius: var(--radius);
+  padding: 10px 14px; background:
+  color-mix(in srgb, var(--accent) 5%, var(--panel)); display: flex;
+  flex-direction: column; gap: 8px; }
+.plan-head { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+.plan-badge { font-size: var(--fs-md); font-weight: 700; color: var(--accent);
+  border: 1px solid color-mix(in srgb, var(--accent) 50%, transparent);
+  border-radius: 999px; padding: 1px 8px; white-space: nowrap; }
+.plan-note { font-size: var(--fs-md); opacity: 0.6; }
+.plan-goal { font-size: var(--fs-lg); font-weight: 600; }
+.plan-steps { margin: 0; padding-left: 20px; display: flex; flex-direction:
+  column; gap: 4px; font-size: var(--fs-md); line-height: 1.6; }
+.plan-steps li::marker { font-weight: 700; color: var(--accent); }
+.plan-row { font-size: var(--fs-md); opacity: 0.85; line-height: 1.55; }
+.plan-row b { font-weight: 700; margin-right: 6px; }
+.plan-row.plan-q { color: var(--accent, #e5484d); opacity: 1; }
+.plan-raw summary { cursor: pointer; font-size: var(--fs-md); opacity: 0.6; }
+.plan-raw pre { font-family: var(--mono); font-size: var(--fs-md); white-space:
+  pre-wrap; max-height: 220px; overflow: auto; opacity: 0.8; }
+.plan-ops { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; margin-top: 2px; }
+.plan-hint { font-size: var(--fs-md); opacity: 0.55; }
+
 .approval-card { border: 1px solid color-mix(in srgb, var(--accent) 45%, transparent);
   border-radius: var(--radius); padding: 10px 12px; background:
   color-mix(in srgb, var(--accent) 7%, var(--panel)); }

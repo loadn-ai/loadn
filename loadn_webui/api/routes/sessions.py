@@ -279,6 +279,10 @@ async def patch_session(sid: str, body: dict):
         # 自动续跑（rev18）：纯行为开关不扰动 updated_at——1=turn 完成后
         # todo 未完自动投「继续」开新 turn（上限/清零见 engine._maybe_auto_continue）
         updates["auto_continue"] = 1 if bool(body["auto_continue"]) else 0
+    if "plan_mode" in body:
+        # 规划模式（rev22）：纯行为开关——1=新任务先进 plan 轮（只读规划+
+        # 计划卡裁决），批准才投执行。默认关（业界教训：过度确认=批准机器）。
+        updates["plan_mode"] = 1 if bool(body["plan_mode"]) else 0
     if "verify_cmd" in body:
         # AV 验收命令：JSON 数组 ≤5 条×300 字，平台在 turn done 后独立执行
         # （退出码即裁决）。真源在 DB——agent 工作区不可写（验收 channel 在
@@ -575,3 +579,71 @@ def create_schedule(sid: str, body: dict):
 def get_tree(sid: str):
     _get_session_or_404(sid)
     return {"tree": art.tree(sid)}
+
+
+@router.get("/sessions/{sid}/plan")
+def get_plan(sid: str):
+    """当前待裁决计划（无=None——前端进会话时补拉渲染计划卡）。"""
+    _get_session_or_404(sid)
+    with db_mod.conn() as c:
+        raw = db_mod.kv_get(c, f"plan:{sid}")
+    if not raw:
+        return {"plan": None}
+    try:
+        return {"plan": json.loads(raw)}
+    except (ValueError, TypeError):
+        return {"plan": None}
+
+
+@router.post("/sessions/{sid}/plan/decide")
+async def decide_plan(sid: str, body: dict):
+    """计划卡裁决（rev22）：
+    approve → 计划步骤转 todos（与自动续跑同源）+ 投执行 turn（任务原文+
+    计划全文+「用户已批准」）；abort → 清计划不投。修订不走本端点——用户
+    直接发新消息即修订（有未裁决计划在场时自动再进 plan 轮，见
+    engine._plan_should_trigger）。"""
+    from ...engine import ENGINE as _ENG
+    _get_session_or_404(sid)
+    action = body.get("action")
+    if action not in ("approve", "abort"):
+        raise HTTPException(400, "action 需为 approve|abort")
+    with db_mod.conn() as c:
+        raw = db_mod.kv_get(c, f"plan:{sid}")
+    if not raw:
+        raise HTTPException(404, "无待裁决计划")
+    try:
+        plan = json.loads(raw)
+    except (ValueError, TypeError):
+        with db_mod.conn() as c:
+            db_mod.kv_del(c, f"plan:{sid}")
+        raise HTTPException(500, "计划数据损坏已清理，请重新规划")
+    with db_mod.conn() as c:
+        db_mod.kv_del(c, f"plan:{sid}")
+        db_mod.kv_del(c, f"planq:{sid}")
+    if action == "abort":
+        _ENG.publish(sid, "plan_decided", {"action": "abort"})
+        return {"ok": True, "action": "abort"}
+    # approve：步骤 → todos（TodoWrite 同构字段），执行指令投新 turn。
+    # todos 在场使 _plan_should_trigger 返回 False——执行轮不会被再拦进
+    # plan 阶段（天然防环）。
+    steps = [s for s in (plan.get("steps") or []) if str(s).strip()]
+    with db_mod.conn() as c:
+        db_mod.kv_set(c, f"todos:{sid}", json.dumps(
+            [{"subject": str(s)[:500], "status": "pending"} for s in steps]
+            or [{"subject": "执行已批准的计划", "status": "pending"}],
+            ensure_ascii=False))
+    lines = ["【计划已获用户批准——按以下计划执行，不要再规划，直接动手】",
+             f"用户任务：{plan.get('task') or ''}", "",
+             f"目标：{plan.get('goal') or ''}"]
+    if steps:
+        lines.append("步骤：")
+        lines += [f"{i+1}. {s}" for i, s in enumerate(steps)]
+    for k, head in (("files", "涉及文件/资源"), ("risks", "风险与对策"),
+                    ("questions", "计划中待确认问题的平台裁决（默认按计划执行）")):
+        v = plan.get(k) or []
+        if v:
+            lines.append(f"{head}：" + "；".join(str(x) for x in v))
+    lines.append("完成每步后更新 todo 状态；全部完成后收束交付。")
+    tid = await _ENG.submit(sid, "\n".join(lines))
+    _ENG.publish(sid, "plan_decided", {"action": "approve", "exec_turn": tid})
+    return {"ok": True, "action": "approve", "exec_turn": tid}
