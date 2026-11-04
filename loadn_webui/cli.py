@@ -255,6 +255,14 @@ def _build_r_parser(sub) -> None:
                    metavar="K=V", help="写入字段（可多次，如 --set password=x --set email=y@z）")
     p.add_argument("--del", dest="delete", action="store_true", help="删除该平台条目")
     p.add_argument("--reveal", action="store_true", help="全量视图（密码明文，慎在会话记录留痕）")
+    # 写入审批参数（W1-2 确认码门）——--set 走 _approval_gate(account_write)，
+    # 但 argparse 缺这对参数定义 = 死锁：门要求 --request-approval/--confirm，
+    # 用户加上又被 unrecognized arguments 拒（生产实证 14ad 会话 2026-11-04：
+    # tencent-zhuque-makers 写入路径完全堵死）。与 email 子命令同款接线。
+    p.add_argument("--request-approval", default="",
+                   help="写入审批：挂起等用户裁决（W1-2 确认码门）")
+    p.add_argument("--confirm", default="",
+                   help="审批确认码（卡片上的一次性 6 位码）")
 
     p = rsub.add_parser("browser", help="浏览器通道矩阵（channels.yaml 单一真源）")
     p.add_argument("bcmd", choices=["status", "up", "down", "restart", "snapshot",
@@ -290,6 +298,21 @@ def _session_sid() -> str:
             or os_mod.environ.get("LOADN_PROJECT_ID") or "")
 
 
+def _runtime_token() -> str:
+    """CLI 冷路径 token：serve 的 resolve_runtime_token 不经过本进程，
+    config.yaml 未配 server.token（纯机生 token 部署——var/server_token
+    0600 文件）时 CONFIG.server.token 恒空 → 审批门/kill-all/file 通道等
+    一切直连 API 的 CLI 子命令必 401（生产实证 14ad 会话 2026-11-04：
+    account_write 审批创建 unauthorized）。回落直读 var/server_token。"""
+    from .config import CONFIG, PATHS
+    if CONFIG.server.token:
+        return CONFIG.server.token
+    try:
+        return (PATHS["var"] / "server_token").read_text().strip()
+    except OSError:
+        return ""
+
+
 async def _approval_gate_http(method: str, path: str, body: dict | None = None,
                               timeout: float = 20.0) -> tuple[int, dict]:
     """直连本机 API（token 从 var/server_token）。"""
@@ -298,7 +321,7 @@ async def _approval_gate_http(method: str, path: str, body: dict | None = None,
     import httpx
 
     from .config import CONFIG
-    token = CONFIG.server.token
+    token = _runtime_token()
     headers = ({"X-Loadn-Token": token, "X-Workdaddy-Token": token}
                if token else {})
     base = (os_mod.environ.get("LOADN_API_BASE")
@@ -657,7 +680,7 @@ async def _run_r(args) -> int:
             return 1
         api = args.api or f"http://127.0.0.1:{CONFIG.server.port}"
         # 本机直连用配置 token；容器/远程场景经 LOADN_API_TOKEN 显式注入
-        tok = CONFIG.server.token or os_mod.environ.get("LOADN_API_TOKEN", "")
+        tok = _runtime_token() or os_mod.environ.get("LOADN_API_TOKEN", "")
         import httpx
         if args.fcmd == "push":
             p = PathMod(args.path)
@@ -889,7 +912,7 @@ def main(argv: list[str] | None = None) -> int:
         import httpx
 
         from .config import CONFIG, PATHS
-        token = CONFIG.server.token
+        token = _runtime_token()
         headers = ({"X-Loadn-Token": token, "X-Workdaddy-Token": token,
                     "X-Loadn-Admin": token, "X-Workdaddy-Admin": token}
                    if token else {})
@@ -909,7 +932,7 @@ def main(argv: list[str] | None = None) -> int:
         import httpx
 
         from .config import CONFIG
-        token = CONFIG.server.token
+        token = _runtime_token()
         headers = ({"X-Loadn-Token": token, "X-Workdaddy-Token": token,
                     "X-Loadn-Admin": token, "X-Workdaddy-Admin": token}
                    if token else {})
