@@ -1,8 +1,11 @@
 // 主区文件预览 tab：md 渲染（含目录 TOC）/ html 沙箱 iframe / pdf / 图片 / 文本
+// 预览内联编辑（任务1）：文本类（含 md）工具条「✎ 编辑」→ FileEditor（语法高亮
+// 叠层+PUT 保存），保存后 nonce 刷新回预览——预览与编辑同一 tab 无缝切换。
 import { useEffect, useState, type ReactNode } from 'react';
 import { api, withToken } from '../api/client';
-import { Globe, FileDoc, RotateCw, Link, ExternalLink, Download, Maximize2, Minimize2 } from './icons';
+import { Globe, FileDoc, RotateCw, Link, ExternalLink, Download, Maximize2, Minimize2, Pencil } from './icons';
 import { toast } from '../stores/toasts';
+import FileEditor from './FileEditor';
 
 const MD_EXTS = ['.md', '.markdown'];
 const HTML_EXTS = ['.html', '.htm'];
@@ -13,6 +16,9 @@ export default function FilePreview({ sid, path }: { sid: string; path: string }
   const [err, setErr] = useState('');
   const [nonce, setNonce] = useState(0);
   const [pdfUrl, setPdfUrl] = useState<string | null>(null);
+  // 预览内联编辑态（任务1）：文本类可编辑（md 走 d.text 原文）
+  const [editing, setEditing] = useState(false);
+  useEffect(() => { setEditing(false); }, [path]);
   // 小屏预览太小：一键全屏层（fixed 覆盖），ESC/再点退出；切文件自动退出
   const [max, setMax] = useState(false);
   useEffect(() => { setMax(false); }, [path]);
@@ -80,7 +86,13 @@ export default function FilePreview({ sid, path }: { sid: string; path: string }
 
   let body: ReactNode;
   const stale = d && typeof d.path === 'string' && d.path !== path;   // 切换瞬间的旧数据
-  if (err) body = <div className="fp-hint">⚠ {err}</div>;
+  const editable = !err && d && !stale && !d.error
+    && (d.cat === 'text' || MD_EXTS.includes(ext)) && typeof d.text === 'string';
+  if (editing && editable)
+    body = <FileEditor sid={sid} path={path} initial={d.text}
+      onSaved={() => { setEditing(false); setNonce(n => n + 1); }}
+      onCancel={() => setEditing(false)} />;
+  else if (err) body = <div className="fp-hint">⚠ {err}</div>;
   else if (isPdf)
     body = pdfUrl
       ? <iframe className="fp-frame" title={path} src={pdfUrl} />
@@ -138,6 +150,12 @@ export default function FilePreview({ sid, path }: { sid: string; path: string }
                 `/api/sessions/${encodeURIComponent(sid)}/file?path=${encodeURIComponent(path)}&raw=1`), '_blank');
             }}>
             <ExternalLink size={13} />
+          </button>
+        )}
+        {editable && !editing && (
+          <button className="btn ghost sm fp-reload" title="编辑此文件（语法高亮，Ctrl+S 保存）"
+                  onClick={() => setEditing(true)}>
+            <Pencil size={13} />
           </button>
         )}
         <button className="btn ghost sm fp-reload" title="重新加载" onClick={() => setNonce(n => n + 1)}>

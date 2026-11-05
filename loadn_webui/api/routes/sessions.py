@@ -280,9 +280,19 @@ async def patch_session(sid: str, body: dict):
         # todo 未完自动投「继续」开新 turn（上限/清零见 engine._maybe_auto_continue）
         updates["auto_continue"] = 1 if bool(body["auto_continue"]) else 0
     if "plan_mode" in body:
-        # 规划模式（rev22）：纯行为开关——1=新任务先进 plan 轮（只读规划+
-        # 计划卡裁决），批准才投执行。默认关（业界教训：过度确认=批准机器）。
-        updates["plan_mode"] = 1 if bool(body["plan_mode"]) else 0
+        # 规划模式（rev22/rev23）：纯行为开关——1=新任务一律先进 plan 轮（只读
+        # 规划+计划卡裁决），批准才投执行；2=自动（复杂任务先规划、轻量应答
+        # 直接执行，判定见 engine._plan_auto_needs）；0=关（默认——业界教训：
+        # 过度确认=批准机器）。bool 兼容旧前端（True→1/False→0）。
+        v = body["plan_mode"]
+        if isinstance(v, bool):
+            pm = 1 if v else 0
+        else:
+            try:
+                pm = int(v)
+            except (TypeError, ValueError):
+                pm = 1 if bool(v) else 0
+        updates["plan_mode"] = pm if pm in (0, 1, 2) else (1 if pm > 0 else 0)
     if "verify_cmd" in body:
         # AV 验收命令：JSON 数组 ≤5 条×300 字，平台在 turn done 后独立执行
         # （退出码即裁决）。真源在 DB——agent 工作区不可写（验收 channel 在
@@ -597,11 +607,14 @@ def get_plan(sid: str):
 
 @router.post("/sessions/{sid}/plan/decide")
 async def decide_plan(sid: str, body: dict):
-    """计划卡裁决（rev22）：
+    """计划卡裁决（rev22/rev23）：
     approve → 计划步骤转 todos（与自动续跑同源）+ 投执行 turn（任务原文+
     计划全文+「用户已批准」）；abort → 清计划不投。修订不走本端点——用户
     直接发新消息即修订（有未裁决计划在场时自动再进 plan 轮，见
-    engine._plan_should_trigger）。"""
+    engine._plan_should_trigger）。
+    rev23 卡上交互回传：steps=用户勾选/编辑后的步骤覆盖（空串剔除）；
+    answers=对计划 questions 的逐条答复（列表按序对齐 / dict 按问题原文
+    匹配；空/缺省回落「按计划执行」）——提问闭环在卡上完成，不用再发消息。"""
     from ...engine import ENGINE as _ENG
     _get_session_or_404(sid)
     action = body.get("action")
@@ -617,6 +630,12 @@ async def decide_plan(sid: str, body: dict):
         with db_mod.conn() as c:
             db_mod.kv_del(c, f"plan:{sid}")
         raise HTTPException(500, "计划数据损坏已清理，请重新规划")
+    # 卡上编辑态覆盖（rev23）：steps 只认非空字符串（≤500 字 ×20，同收割上限）
+    if isinstance(body.get("steps"), list):
+        edited = [str(s).strip()[:500] for s in body["steps"]
+                  if str(s).strip()][:20]
+        if edited:
+            plan["steps"] = edited
     with db_mod.conn() as c:
         db_mod.kv_del(c, f"plan:{sid}")
         db_mod.kv_del(c, f"planq:{sid}")
@@ -638,11 +657,33 @@ async def decide_plan(sid: str, body: dict):
     if steps:
         lines.append("步骤：")
         lines += [f"{i+1}. {s}" for i, s in enumerate(steps)]
-    for k, head in (("files", "涉及文件/资源"), ("risks", "风险与对策"),
-                    ("questions", "计划中待确认问题的平台裁决（默认按计划执行）")):
+    for k, head in (("files", "涉及文件/资源"), ("risks", "风险与对策")):
         v = plan.get(k) or []
         if v:
             lines.append(f"{head}：" + "；".join(str(x) for x in v))
+    # 提问答复（rev23 自动回复闭环）：优先用户逐条答复，缺省回落平台默认
+    questions = [str(q) for q in (plan.get("questions") or []) if str(q).strip()]
+    answered: list[tuple[str, str]] = []
+    answers = body.get("answers")
+    if questions and isinstance(answers, dict):
+        for q in questions:
+            a = answers.get(q)
+            if a is not None and str(a).strip():
+                answered.append((q, str(a).strip()[:500]))
+    elif questions and isinstance(answers, list):
+        for i, q in enumerate(questions):
+            if i < len(answers) and answers[i] is not None and str(answers[i]).strip():
+                answered.append((q, str(answers[i]).strip()[:500]))
+    if answered:
+        lines.append("计划中待确认问题的用户答复（按答复执行）：")
+        lines += [f"问：{q}\n答：{a}" for q, a in answered]
+        unanswered = [q for q in questions if q not in dict(answered)]
+        if unanswered:
+            lines.append("其余问题未特别答复（平台裁决：按计划执行）："
+                         + "；".join(unanswered))
+    elif questions:
+        lines.append("计划中待确认问题的平台裁决（默认按计划执行）："
+                     + "；".join(questions))
     lines.append("完成每步后更新 todo 状态；全部完成后收束交付。")
     tid = await _ENG.submit(sid, "\n".join(lines))
     _ENG.publish(sid, "plan_decided", {"action": "approve", "exec_turn": tid})

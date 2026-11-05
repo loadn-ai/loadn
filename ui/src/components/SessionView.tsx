@@ -121,14 +121,19 @@ export default function SessionView({ onMenu }: { onMenu: () => void }) {
               s.id, { auto_continue: s.auto_continue ? 0 : 1 })}>
             ⟳ 自动续跑{s.auto_continue ? '·开' : ''}
           </button>
+          {/* 规划模式三态（rev23）：0=关 → 2=自动（复杂任务先规划，轻量直接执行）
+              → 1=开（新任务一律先规划）循环；自动为推荐默认档 */}
           <button
             className={`btn ghost ${s.plan_mode ? 'on' : ''}`}
-            title={s.plan_mode
-              ? '规划模式已开：新任务先进规划轮（agent 只读盘点、产出实施计划），你在计划卡上批准后才真正执行；对计划提意见=直接发消息'
-              : '开启规划模式：新任务先出实施计划待你批准，批准后按步骤执行（Claude Code plan mode 同款体验）'}
+            title={s.plan_mode === 1
+              ? '规划模式·开：新任务一律先进规划轮（agent 只读盘点、产出实施计划），你在计划卡上批准后才真正执行；对计划提意见=直接发消息；再点关闭'
+              : s.plan_mode === 2
+                ? '规划模式·自动：平台自动判断——复杂任务（多步骤/多交付物/长描述）先进规划轮，寒暄与轻量指令直接执行；点击切到「开」（一律规划）'
+                : '开启规划模式（点击首选「自动」档：复杂任务先出计划待批准，批准后按步骤执行；再点切「开」=一律规划）'}
             onClick={() => void useStore.getState().patchSession(
-              s.id, { plan_mode: s.plan_mode ? 0 : 1 })}>
-            📋 规划{s.plan_mode ? '·开' : ''}
+              // 0 → 2(自动) → 1(开) → 0：自动档放在第一位（推荐路径）
+              s.id, { plan_mode: s.plan_mode === 0 ? 2 : s.plan_mode === 2 ? 1 : 0 })}>
+            📋 规划{s.plan_mode === 2 ? '·自动' : s.plan_mode === 1 ? '·开' : ''}
           </button>
           <span className="usage" title="累计 tokens / 成本">
             {fmtTokens(s.usage?.total)} tok · ${(s.usage?.cost_usd ?? 0).toFixed(2)}

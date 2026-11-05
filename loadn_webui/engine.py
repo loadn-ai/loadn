@@ -248,6 +248,44 @@ def _plan_should_trigger(c, sid: str) -> bool:
     return True
 
 
+_PLAN_AUTO_ACTIONS = ("实现", "开发", "写一", "做一个", "建一", "搭", "构建", "设计",
+                      "重构", "修复", "排查", "调研", "分析", "整理", "生成", "制作",
+                      "完成", "处理", "部署", "迁移", "对比", "评估", "审阅", "翻译",
+                      "总结", "规划", "导出")
+_PLAN_AUTO_STRUCT = ("然后", "接着", "其次", "最后", "先", "再", "并且", "并",
+                     "同时", "以及", "步骤", "流程", "第一步", "整体", "一套")
+_PLAN_AUTO_FEATURES = ("登录", "页面", "列表", "接口", "数据库", "文档", "报告",
+                       "图表", "搜索", "权限", "前端", "后端", "测试", "模块",
+                       "方案", "系统", "平台", "管线", "面板")
+
+
+def _plan_auto_needs(text: str) -> bool:
+    """plan_mode=2（自动）的任务形态判定（rev23）：任务文本是否值得先规划。
+
+    纯启发式（零 token、零依赖——submit 同步路径必须快）：
+    ①极短输入（≤16 字）＝寒暄/追问/轻指令，直接执行；
+    ②超长输入（≥160 字）自带上下文与多要求，先规划；
+    ③结构信号（编号列表/多段）+ 动作动词 → 规划；
+    ④多动作/多特性名词（做 A 且做 B、带登录和导出）→ 规划；
+    ⑤单个动作的常规短指令 → 直接执行（一步能做完的事先规划是打扰）。"""
+    t = (text or "").strip()
+    if len(t) <= 16:
+        return False
+    if len(t) >= 160:
+        return True
+    acts = sum(1 for k in _PLAN_AUTO_ACTIONS if k in t)
+    struct_kw = sum(1 for k in _PLAN_AUTO_STRUCT if k in t)
+    feats = sum(1 for k in _PLAN_AUTO_FEATURES if k in t)
+    numbered = bool(re.search(r"(^|\n)\s*\d+[.、)]", t)) or t.count("\n") >= 2
+    if numbered and acts:
+        return True
+    if acts >= 2:
+        return True
+    if acts >= 1 and (struct_kw >= 1 or feats >= 2 or len(t) >= 48):
+        return True
+    return False
+
+
 _PLAN_BLOCK_RE = re.compile(r"```plan\s*\n(.*?)\n```", re.DOTALL)
 
 
@@ -480,10 +518,13 @@ class Engine:
             mid = db_mod.add_message(c, session_id=sid, turn_id=tid, role="user",
                                      content=text, blocks_json=blocks_json)
             db_mod.update_turn(c, tid, message_id=mid)
-            # 规划模式（rev22）：开关开 + 新任务判定 → 本轮进 plan 阶段。
+            # 规划模式（rev22/rev23）：0=关；1=开（新任务判定过即进 plan 轮）；
+            # 2=自动（判定过 + _plan_auto_needs 任务形态值得规划才进）。
             # kv planq 记 tid+任务原文（_run_turn 换 wrap prompt；消息流保持
             # 用户原文）。未裁决计划在场时新消息=修订 → 覆盖再进 plan 轮。
-            if qsess["plan_mode"] and _plan_should_trigger(c, sid):
+            _pm = int(qsess["plan_mode"] or 0)
+            if _pm and _plan_should_trigger(c, sid) \
+                    and (_pm == 1 or _plan_auto_needs(text)):
                 db_mod.kv_set(c, f"planq:{sid}",
                               json.dumps({"tid": tid, "task": text},
                                          ensure_ascii=False))

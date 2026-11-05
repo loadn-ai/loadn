@@ -120,6 +120,10 @@ export async function connectSse(
     // 就看不到卡，冻结等裁决）与 job_fired/interrupted_salvaged（定时触发
     // /重启补记账的即时反馈）
     'approval', 'job_fired', 'interrupted_salvaged',
+    // rev22 规划模式：plan（plan 轮收割→计划卡即时上屏——原先漏订阅，
+    // 卡片只能等重进会话的 loadPlan 补拉，「弹出不及时」根因）+
+    // plan_decided（裁决落定即时撤卡）
+    'plan', 'plan_decided',
     // rev10：子任务分类打标（tab 弹出/计数 + turns 局部 patch）
     'subtask'];
   let backoff = 1000;

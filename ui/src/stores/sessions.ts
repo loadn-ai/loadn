@@ -15,7 +15,7 @@ export interface SessionInfo {
   project_id?: string | null; project_title?: string | null;
   starred?: number; pinned?: number; category_id?: number | null;
   auto_continue?: number;   // rev18 自动续跑：1=turn 完成后 todo 未完自动续
-  plan_mode?: number;       // rev22 规划模式：1=新任务先出计划待批准
+  plan_mode?: number;       // 规划模式（rev23 三态）：0=关 1=一律先规划 2=自动判定
   verify_cmd?: string | null;   // AV：平台验收命令（JSON 数组，turn done 后独立执行）
   session_fresh: number; claude_session_id: string | null;
   skills_json?: string; mcp_json?: string | null;
@@ -217,7 +217,10 @@ interface Store {
   /** 待裁决计划（rev22 规划模式：plan 轮收割的计划卡；null=无） */
   plan: PlanCardInfo | null;
   loadPlan: () => Promise<void>;
-  decidePlan: (action: 'approve' | 'abort') => Promise<void>;
+  /** 裁决（rev23 卡上交互）：opts.steps=勾选/编辑后的步骤覆盖；
+   *  opts.answers=对 plan.questions 的逐条答复（下标对齐，空串=按计划执行） */
+  decidePlan: (action: 'approve' | 'abort',
+               opts?: { steps?: string[]; answers?: string[] }) => Promise<void>;
   timeline: TimelineMarker[];
   es: EventSource | null;
   connected: boolean;
@@ -370,12 +373,18 @@ export const useStore = create<Store>((set, get) => ({
     } catch { /* 拉取失败不阻塞（无计划=null） */ }
   },
 
-  async decidePlan(action: 'approve' | 'abort') {
+  async decidePlan(action: 'approve' | 'abort',
+                   opts?: { steps?: string[]; answers?: string[] }) {
     const sid = get().currentSid;
     if (!sid) return;
     try {
+      const body: Record<string, unknown> = { action };
+      if (action === 'approve' && opts) {
+        if (opts.steps?.length) body.steps = opts.steps;
+        if (opts.answers?.length) body.answers = opts.answers;
+      }
       await api(`/api/sessions/${encodeURIComponent(sid)}/plan/decide`,
-        { method: 'POST', body: JSON.stringify({ action }) });
+        { method: 'POST', body: JSON.stringify(body) });
     } catch { /* 竞态（他端已裁决）照常按服务端状态刷新 */ }
     set(() => ({ plan: null }));
     if (action === 'approve') void get().resync();
@@ -1396,6 +1405,9 @@ function handleEvent(
                      live: cur && cur.turnId !== data.turn_id ? cur : null }));
         void get().loadSessions();
         void get().loadTimeline();   // P3-7：compact/turn 标记可能新增
+        // rev23 兜底：plan 事件与 turn 终态极近，SSE 抖动窗口丢 plan 帧时
+        // 计划卡会迟到（直到重进会话）——终态对账一次 kv 真源，迟到归零
+        void get().loadPlan();
       })();
       break;
     case 'files':

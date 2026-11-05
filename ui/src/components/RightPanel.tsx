@@ -7,6 +7,19 @@ import { Folder, FileDoc, ChevronDown, ChevronRight, Download } from './icons';
 import { toast } from '../stores/toasts';
 import { askConfirm } from '../stores/confirm';
 
+/** 产物时间（任务6 痛点「和对话框回复对应不上」）：今天 HH:MM / 昨天 /
+ * MM-DD HH:MM 三档相对时间——扫一眼即知哪轮生成的，tooltip 给绝对时间。 */
+function fmtArtTime(ms: number): string {
+  const d = new Date(ms), now = new Date();
+  const pad = (n: number) => String(n).padStart(2, '0');
+  const hm = `${pad(d.getHours())}:${pad(d.getMinutes())}`;
+  const day = (x: Date) => `${x.getFullYear()}-${x.getMonth()}-${x.getDate()}`;
+  if (day(d) === day(now)) return `今天 ${hm}`;
+  const y = new Date(now.getTime() - 86400000);
+  if (day(d) === day(y)) return `昨天 ${hm}`;
+  return `${pad(d.getMonth() + 1)}-${pad(d.getDate())} ${hm}`;
+}
+
 type Tab = 'properties' | 'artifacts' | 'files';
 
 /** 交付物/产出物联动筛选条件（store.artifactScope） */
@@ -227,6 +240,10 @@ function ArtifactsTab({ onOpenFile }: { onOpenFile: (path: string) => void }) {
             ? <span className="art-src" title="由用户在界面导出">导出</span>
             : <span className="art-src" title="任务运行中生成">任务</span>}
         <span className="art-size">{Math.max(1, Math.round(a.size / 1024))}KB</span>
+      </div>
+      <div className="art-meta" title={`文件：${a.path}${a.mtime ? `\n生成：${new Date(a.mtime * 1000).toLocaleString()}` : ''}`}>
+        <span className="art-file">{a.path.split('/').pop()}</span>
+        {!!a.mtime && <span className="art-time">{fmtArtTime(a.mtime * 1000)}</span>}
       </div>
       {a.summary && (
         <div className="art-summary" title={a.path}>{a.summary}</div>
