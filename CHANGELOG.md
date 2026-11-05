@@ -5,6 +5,18 @@
 
 ## [Unreleased]
 
+## [0.7.74] - 2026-11-04
+
+- **修复：CLI 保险库写入死锁（转派 14ad 会话实证）**——双层根因：①`r
+  account --set` 走审批门（account_write enforce）但子命令 argparse 未
+  定义 `--request-approval/--confirm`——门要求参数、参数 unrecognized，
+  写入路径完全堵死；②CLI 冷路径 `CONFIG.server.token` 恒空
+  （resolve_runtime_token 只在 serve 进程跑）→ 审批 HTTP 401。修复：
+  补参数定义（email 子命令同款）+新增 `_runtime_token()` 回落直读
+  var/server_token（审批门/file 通道/kill-all×2 四处统一）。roundtrip
+  实证：request-approval 建审批 → approve 得码 → confirm 写入 → 读回
+  全链 PASS。
+
 - **新功能：规划模式（Plan Mode）——复杂任务先出计划待批准，Claude Code
   plan mode 的平台化**（用户需求：补齐执行前规划+交互式确认能力）。调研
   3+ 来源交叉后落地：plan=只读探索+结构化方案+用户裁决后才执行；反面
