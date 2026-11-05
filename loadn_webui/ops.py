@@ -59,6 +59,19 @@ def _health_url() -> str:
     return f"http://{host}:{port}/api/health"
 SMOKE_PORT = 8799
 
+
+def _smoke_port() -> int:
+    """冒烟端口：优先 SMOKE_PORT，被占（残留实例/其他项目服务撞端口）则
+    向上找首个空闲——固定端口在共享主机上谁都能撞上（生产实证 2026-11-05：
+    decting 项目的 probe_server 占 8799，两次 build 冒烟 bind 失败超时，
+    手动起实例/health 全通——排障自舟）。"""
+    import socket
+    for port in range(SMOKE_PORT, SMOKE_PORT + 50):
+        with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
+            if s.connect_ex(("127.0.0.1", port)) != 0:
+                return port          # 连不通=空闲
+    return SMOKE_PORT                # 兜底（极端：连续 50 个全占）
+
 # release 目录内必须存在的顶层（布局契约=CODE_ROOT 派生前提）
 RELEASE_LAYOUT = ("loadn", "loadn_webui", "profiles", "prompts",
                   "pyproject.toml")
@@ -479,9 +492,10 @@ def _smoke_test(release_dir: Path) -> int:
             "LOADN_STEALTH": "off",       # 冒烟不走 GLM
         }
         venv_python = release_dir / ".venv" / "bin" / "python"
+        port = _smoke_port()
         proc = subprocess.Popen(
             [str(venv_python), "-m", "loadn_webui", "serve",
-             "--port", str(SMOKE_PORT)],
+             "--port", str(port)],
             cwd=str(release_dir), env=env,
             stdout=subprocess.PIPE, stderr=subprocess.PIPE)
         try:
@@ -489,7 +503,7 @@ def _smoke_test(release_dir: Path) -> int:
                 time.sleep(1)
                 try:
                     resp = urllib.request.urlopen(
-                        f"http://127.0.0.1:{SMOKE_PORT}/api/health", timeout=3)
+                        f"http://127.0.0.1:{port}/api/health", timeout=3)
                     if resp.status == 200:
                         data = json.loads(resp.read())
                         rel = data.get("release", {})
