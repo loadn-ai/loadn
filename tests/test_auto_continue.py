@@ -11,6 +11,7 @@
 """
 from __future__ import annotations
 
+import json as _json
 import time
 
 import pytest
@@ -216,9 +217,9 @@ async def test_todos_persist_kv_lifecycle(client, ws_root, loadn_engine):
 
 
 async def test_contlike_takeover(client, loadn_engine, monkeypatch):
-    """>>> v0.7.59 无清单证据的接管：连发 ≥2 次裸「继续」→ 下轮 done 自动续；
-    单次/非继续类消息/复杂指令不算。生产实证 0253：清单被全标 completed
-    清掉后十几轮零 todo 汇报，用户被迫人工续跑。"""
+    """>>> v0.7.59 无清单证据的接管（AC-2 放宽口径）：继续类短催促连发 ≥2 次
+    → 下轮 done 自动续；长复杂指令/普通消息不算。生产实证 0253：清单被
+    全标 completed 清掉后十几轮零 todo 汇报，用户被迫人工续跑。"""
     from types import SimpleNamespace
 
     from loadn_webui import engine as engine_mod
@@ -227,19 +228,28 @@ async def test_contlike_takeover(client, loadn_engine, monkeypatch):
     r = await client.post("/api/sessions", json={"title": "contlike"})
     sid = r.json()["session"]["id"]
     await client.patch(f"/api/sessions/{sid}", json={"auto_continue": 1})
+    # 场景预设：清单建立过且已全部完成（0253 形态）——todos 快照已被
+    # _todos_persist 清掉，todos_ever 永久标记在场（AC-3 维持 ≥2 阈值的对象）
+    with db_mod.conn() as c:
+        db_mod.kv_set(c, f"todos_ever:{sid}", "1")
 
-    # 正则边界：裸催促命中；复杂指令/普通消息不命中
-    assert turns_mod._CONTLIKE_RE.match("继续")
-    assert turns_mod._CONTLIKE_RE.match("继续！")
-    assert turns_mod._CONTLIKE_RE.match("  Continue ".strip())
-    assert not turns_mod._CONTLIKE_RE.match("继续优化 A 然后写报告")
-    assert not turns_mod._CONTLIKE_RE.match("帮我看下这个")
+    # 判定边界（_is_contlike：开头匹配/含「续跑」+≤24 字）：裸催促与带语气
+    # 催促命中（AC-2 生产实证：6bfa 用户「继续啊，自动续跑」v0.7.59 不计
+    # 入、contlike 恒 0、兜底够不着）；长复杂指令/普通消息不命中
+    assert turns_mod._is_contlike("继续")
+    assert turns_mod._is_contlike("继续！")
+    assert turns_mod._is_contlike("Continue")
+    assert turns_mod._is_contlike("继续啊，自动续跑")  # 6bfa 实证形态
+    assert turns_mod._is_contlike("自动续跑呢？")
+    assert not turns_mod._is_contlike(
+        "继续优化 A 然后写报告，重点是图表和结论部分都要再打磨")  # >24 字
+    assert not turns_mod._is_contlike("帮我看下这个")
 
     submitted: list[str] = []
 
     async def fake_submit(s, text, *a, **kw):
         submitted.append(text)
-        return None
+        return 1
 
     monkeypatch.setattr(engine_mod.ENGINE, "submit", fake_submit)
     at = SimpleNamespace(todos=[])
@@ -250,19 +260,78 @@ async def test_contlike_takeover(client, loadn_engine, monkeypatch):
     # 单次「继续」：不够——不续（submitted 里用户消息本身在，只查续跑标记）
     await _msg("继续")
     await engine_mod.ENGINE._maybe_auto_continue(sid, at)
-    assert not [t for t in submitted if "自动续跑" in t], "单次继续不构成接管"
+    assert not [t for t in submitted if "【自动续跑" in t], "单次继续不构成接管"
 
     # 连续第二次「继续」：接管成立——续（无清单分支文案）
     await _msg("继续")
     await engine_mod.ENGINE._maybe_auto_continue(sid, at)
-    cont = [t for t in submitted if "自动续跑" in t]
+    cont = [t for t in submitted if "【自动续跑" in t]
     assert len(cont) == 1 and "TodoWrite" in cont[0]
     assert "【自动续跑 1/25】" in cont[0]
 
-    # 复杂指令（任务内容非催促）：意图断开——清零后不续
+    # 长复杂指令（任务内容非催促，>24 字）：意图断开——清零后不续
     submitted.clear()
-    await _msg("继续优化回测脚本，重点看滑点")
+    await _msg("继续优化回测脚本，重点看滑点模型、手续费假设和成交率三处")
     with db_mod.conn() as c:
         assert db_mod.kv_get(c, f"contlike:{sid}") is None
     await engine_mod.ENGINE._maybe_auto_continue(sid, at)
-    assert not [t for t in submitted if "自动续跑" in t]
+    assert not [t for t in submitted if "【自动续跑" in t]
+
+
+async def test_contlike_first_urge_never_listed(client, loadn_engine, monkeypatch):
+    """>>> AC-3 降阈：清单信号从未建立（todos:{sid} 快照不存在——生产实证
+    6bfa：agent 三 turn 零 TodoWrite，auto_continue=1 形同虚设）时，用户
+    催 1 次即投「建清单引导」续跑轮，不必等第二次；清单建立过（快照在）
+    的会话维持 ≥2 阈值。"""
+    from types import SimpleNamespace
+
+    from loadn_webui import engine as engine_mod
+
+    r = await client.post("/api/sessions", json={"title": "ac3 降阈"})
+    sid = r.json()["session"]["id"]
+    await client.patch(f"/api/sessions/{sid}", json={"auto_continue": 1})
+
+    submitted: list[str] = []
+
+    async def fake_submit(s, text, *a, **kw):
+        submitted.append(text)
+        return 1
+
+    monkeypatch.setattr(engine_mod.ENGINE, "submit", fake_submit)
+    at = SimpleNamespace(todos=[])  # 本 turn 无清单；kv 也从未写过 → never_listed
+
+    # 用户催 1 次（6bfa 实证形态）：立即接管投引导轮
+    await client.post(f"/api/sessions/{sid}/messages",
+                      json={"text": "继续啊，自动续跑"})
+    await engine_mod.ENGINE._maybe_auto_continue(sid, at)
+    cont = [t for t in submitted if "【自动续跑" in t]
+    assert len(cont) == 1 and "TodoWrite" in cont[0], "从未建清单+催 1 次即接管"
+
+    # 对照：清单信号建立过的会话（todos_ever 标记在场，快照已全完成清
+    # 掉）——单次催促不够，维持 v0.7.59 的 ≥2 阈值；连催第二次接管
+    with db_mod.conn() as c:
+        db_mod.kv_del(c, f"todos:{sid}")
+        db_mod.kv_set(c, f"todos_ever:{sid}", "1")
+        db_mod.kv_del(c, f"contlike:{sid}")
+        db_mod.kv_del(c, f"autocont:{sid}")
+    submitted.clear()
+    await client.post(f"/api/sessions/{sid}/messages", json={"text": "继续"})
+    await engine_mod.ENGINE._maybe_auto_continue(sid, at)
+    assert not [t for t in submitted if "【自动续跑" in t], "建过清单：单次不接管"
+    await client.post(f"/api/sessions/{sid}/messages", json={"text": "接着干"})
+    await engine_mod.ENGINE._maybe_auto_continue(sid, at)
+    cont = [t for t in submitted if "【自动续跑" in t]
+    assert len(cont) == 1 and "TodoWrite" in cont[0], "建过清单：连催第二次接管"
+
+    # 主轴回归：todos 快照在场且有未完成项 → 单次催促即走清单续跑文案
+    with db_mod.conn() as c:
+        db_mod.kv_set(c, f"todos:{sid}",
+                      _json.dumps([{"subject": "任务一", "status": "in_progress"}],
+                                  ensure_ascii=False))
+        db_mod.kv_del(c, f"contlike:{sid}")
+        db_mod.kv_del(c, f"autocont:{sid}")
+    submitted.clear()
+    await client.post(f"/api/sessions/{sid}/messages", json={"text": "继续"})
+    await engine_mod.ENGINE._maybe_auto_continue(sid, at)
+    cont = [t for t in submitted if "【自动续跑" in t]
+    assert len(cont) == 1 and "继续执行任务清单" in cont[0]

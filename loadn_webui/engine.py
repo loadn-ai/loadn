@@ -404,6 +404,11 @@ class Engine:
             if done:
                 db_mod.kv_del(c, f"todos:{sid}")
             else:
+                # todos_ever（AC-3）：本会话清单信号曾经建立过的永久标记——
+                # 「从未建清单」（6bfa：agent 零 TodoWrite）与「建过但已全完成」
+                # （0253：生命周期自然结束）在 todos: 键上不可区分（全完成即
+                # 清），降阈接管只认前者。
+                db_mod.kv_set(c, f"todos_ever:{sid}", "1")
                 db_mod.kv_set(c, f"todos:{sid}",
                               json.dumps(at.todos, ensure_ascii=False))
         self._emit(at, sid, "todos", {"turn_id": tid, "todos": at.todos})
@@ -744,6 +749,17 @@ class Engine:
                     prompt = _PLAN_PROMPT_TMPL.format(task=prompt)
             except (ValueError, TypeError, KeyError):
                 pass
+
+        # 自动续跑信号源（AC-1）：续跑判据=清单未完成项，模型不建清单则链
+        # 断供（生产实证 6bfa 会话三 turn 零 TodoWrite，用户开续跑后仍被迫
+        # 逐轮手动催「继续」）。开启续跑的会话每 turn 尾部轻量提醒——建清单
+        # +随进度更新，平台方能接力。~90 字成本可忽略。
+        if sess["auto_continue"]:
+            prompt = (prompt + "\n\n---\n[平台提示·自动续跑已开启] 本任务将持续"
+                      "自动推进直到完成：请先用 TodoWrite 建立任务清单"
+                      "（多步骤任务必须建），每完成一项立即把对应项更新为 "
+                      "completed——平台以清单未完成项为自动续跑的接力依据，"
+                      "没有清单续跑无法接续；清单全 completed 即自然收束。")
 
         resume = bool(sess["session_fresh"] == 0)
         claude_sid = sess["claude_session_id"]
@@ -1240,7 +1256,12 @@ class Engine:
                 # v0.7.59：无清单证据但用户连发 ≥2 次裸「继续」——用户以行动
                 # 声明任务未完（todo 信号断供的常见形态：模型把清单全标
                 # completed 后不再汇报）。接管续跑并引导重建清单恢复信号。
-                if contlike < 2:
+                # AC-3 降阈：清单信号从未建立（todos_ever 标记不存在——生产
+                # 实证 6bfa 会话 agent 三 turn 零 TodoWrite，续跑开了等于没
+                # 开）时用户催 1 次即投建清单引导轮，不必等第二次；建过清单
+                # （含已全完成，todos_ever 在）维持 ≥2 阈值防误续。
+                never_listed = db_mod.kv_get(c, f"todos_ever:{sid}") is None
+                if contlike < 2 and not (never_listed and contlike >= 1):
                     return
             n = int(db_mod.kv_get(c, f"autocont:{sid}") or 0)
             if n >= AUTO_CONT_MAX:
@@ -1271,12 +1292,12 @@ class Engine:
                 f"{len(pending)} 项未完成：{names}{more}。请继续按清单推进，"
                 f"完成一项更新一项状态，直到全部完成后收束输出。")
         else:
-            log.info("自动续跑 %s/%s（sid=%s，无清单证据；用户连发「继续」x%s 接管）",
+            log.info("自动续跑 %s/%s（sid=%s，无清单证据；用户「继续」类催促 x%s 接管）",
                      n + 1, AUTO_CONT_MAX, sid, contlike)
             await self.submit(
                 sid,
-                f"{prefix}【自动续跑 {n + 1}/{AUTO_CONT_MAX}】继续推进当前任务（用户已连续 "
-                f"{contlike} 次确认继续）。请继续执行；若任务还有多个步骤，"
+                f"{prefix}【自动续跑 {n + 1}/{AUTO_CONT_MAX}】继续推进当前任务（用户已"
+                f"{contlike} 次催促继续）。请继续执行；若任务还有多个步骤，"
                 f"先用 TodoWrite 列出剩余步骤清单再逐项推进（此后每轮完成即"
                 f"自动续跑，无需用户催促），直到全部完成后收束输出。")
 

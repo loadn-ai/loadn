@@ -13,11 +13,23 @@ from ...engine import ENGINE
 
 router = APIRouter(prefix="/api")
 
-# 「继续」类裸催促（v0.7.59 contlike 计数）：全匹配短消息——含「继续」二
-# 字的复杂指令（如「继续优化 A 然后…」）不算，那是任务内容不是催促信号。
+# 「继续」类催促（v0.7.59 contlike 计数；AC-2 放宽）：开头匹配+短消息——
+# v0.7.59 全匹配光杆（继续|接着…）过窄，生产实证 6bfa 用户「继续啊，自动
+# 续跑」不计入、contlike 恒 0、v0.7.59 兜底（≥2 接管）够不着。现口径：以
+# 继续/接着类词开头或含「续跑」字样，且总长 ≤24 字（超长=任务内容非催促）。
+# 误计代价有限：仅未完成清单的续跑会话消费该计数（投一轮建清单引导）。
 _CONTLIKE_RE = re.compile(
-    r"^(继续|接着|接着干|继续干|继续执行|continue|go\s*on|keep\s*going)"
-    r"\s*[。！!～~]?\s*$", re.IGNORECASE)
+    r"^(继续|接着|请继续|继续吧|继续啊|继续干|接着干|继续执行|come on|continue|go\s*on|keep\s*going)",
+    re.IGNORECASE)
+_CONTLIKE_HINT_RE = re.compile(r"(自动)?续跑")
+_CONTLIKE_MAX = 24
+
+
+def _is_contlike(text: str) -> bool:
+    """短催促判定：续跑信号断供时用户「以行动声明任务未完」的依据。"""
+    t = (text or "").strip()
+    return len(t) <= _CONTLIKE_MAX and bool(
+        _CONTLIKE_RE.match(t) or _CONTLIKE_HINT_RE.search(t))
 
 from ._common import _get_session_or_404, _validate_attachments
 
@@ -76,7 +88,7 @@ async def post_message(sid: str, body: dict):
     # 续跑）。非「继续」类消息=意图断开清零。写入在 submit 前——submit
     # 尾部炸（如 turn 落库异常）不致丢失意图计数。
     with db_mod.conn() as c:
-        if _CONTLIKE_RE.match((text or "").strip()):
+        if _is_contlike(text):
             n = int(db_mod.kv_get(c, f"contlike:{sid}") or 0) + 1
             db_mod.kv_set(c, f"contlike:{sid}", str(n))
         else:
