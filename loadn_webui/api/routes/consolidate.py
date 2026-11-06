@@ -83,14 +83,25 @@ async def get_suggest(sid: str):
 
 
 _ADJUDICATE_SYSTEM = (
-    "你判断「用户发给 AI 助手的一条消息」是否是对助手行为的纠正、或希望助手"
-    "今后持续遵循的规则教导。只输出 JSON（不要解释）："
-    '{"verdict":"teach|correct|reject","rule":"提炼成一句 ≤40 字的规则，reject 时为空"}\n'
-    "- teach=明确教导持续规则（以后都/记住/今后一律…）\n"
-    "- correct=对助手上一轮行为的明确否定并要求改正（不对/错了/重做…）\n"
+    "你判断「用户发给 AI 助手的一条消息」是否是对助手行为的纠正/规则教导，"
+    "并评估可复用价值。只输出一行 JSON（不要解释），必须含全部三键：\\n"
+    '{"verdict":"teach|correct|reject","rule":"≤40字规则，reject为空","reusable":true|false}\\n'
+    "判定规则：\\n"
+    "- teach=明确教导持续规则（以后都/记住/今后一律…）\\n"
+    "- correct=对助手上一轮行为的明确否定并要求改正（不对/错了/重做…）\\n"
     "- reject=以下任一：转贴的日志/代码/报错文本、巡检或定时任务等系统注入、"
     "对外部事物的问题描述（错的是别的东西不是助手）、与助手行为无关的闲聊、"
-    "含纠正字样但无纠正意图的叙述。拿不准判 reject。"
+    "含纠正字样但无纠正意图的叙述。拿不准判 reject。\\n"
+    "- reusable（判 teach/correct 时必须给 false 或 true，不可省略）：该经验"
+    "能否泛化到未来其他任务。例：\\n"
+    '  用户说「不对，应该先建 venv 再装依赖」→ {"verdict":"correct",'
+    '"rule":"先建venv再pip","reusable":true}（通用纪律）\\n'
+    '  用户说「我是想让你排查X，不是让你去做Y」→ {"verdict":"correct",'
+    '"rule":"","reusable":false}（会话内意图澄清，歧义一次性，新会话'
+    "不会再遇同样场景）\\n"
+    "  以下均 reusable=false：①意图澄清（「我想让你做 X 不是 Y」）；"
+    "②仅本任务专属细节（「这个任务里不要动某文件」）；③未来遇不到的"
+    "一次性场景。reusable=false 与 reject 等效（不值得存为技能）。"
 )
 
 
@@ -129,6 +140,14 @@ async def _llm_adjudicate(card: dict) -> dict | None:
             return {"verdict": "reject"}
         d = json.loads(m.group(0))
         if d.get("verdict") in ("teach", "correct"):
+            # 价值门（VA）：判真还须可复用——意图澄清/一次性任务细节
+            # （reusable=false）视同 reject（生产实证：用户纠正「我是想让你
+            # 排查名字问题不是召唤子代理」被提炼成 avoid-lesson 存技能——
+            # 会话内歧义零跨会话价值，用户「教导完全没有价值」的直接来源）。
+            # 缺 reusable 字段亦 fail-closed（真机实测 doubao-mini 会漏键，
+            # 默认放行=价值门失效；误杀真教导的代价=少一张卡，可接受）。
+            if str(d.get("reusable", "")).lower() not in ("true", "1", "yes"):
+                return {"verdict": "reject"}
             return {"verdict": d["verdict"], "rule": str(d.get("rule") or "")}
         return {"verdict": "reject"}
     except Exception:                            # 判定失败 fail-closed（不出卡）

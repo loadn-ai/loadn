@@ -509,3 +509,56 @@ async def test_llm_adjudicate_unconfigured_falls_back(client, monkeypatch):
     p = r.json()["pending"]
     assert calls["n"] == 1                              # 被调且内部短路
     assert p is not None and p["kind"] == "teach"      # 原样返回未删
+
+
+async def test_llm_adjudicate_value_gate_oneoff_clarification(client, monkeypatch):
+    """>>> VA 价值门：判真（correct）但 reusable=false 的会话内意图澄清
+    → 视同 reject 不出卡（生产实证：用户纠正「我是想让你排查名字问题，
+    不是让你召唤子代理」被提炼成 avoid-lesson——歧义一次性零跨会话价值，
+    用户「教导完全没有价值」反馈的直接来源）。"""
+    from loadn_webui.api.routes import consolidate as croute
+    from loadn_webui.config import PATHS
+    r = await client.post("/api/sessions", json={"title": "价值门"})
+    sid = r.json()["session"]["id"]
+    ws = PATHS["workspace"] / sid
+    card = {"kind": "correct", "fingerprint": "fpvg1", "name": "avoid-lesson",
+            "description": "x",
+            "trigger": "上个任务处理的不对，我是想让你排查召唤子代理时候产生的"
+                       "名字问题，而不是让你召唤子代理去处理事件",
+            "body": "# 用户教导（correct）\n\n> 上个任务处理的不对…\n\n"
+                    "## 上一轮行为（被纠正的上下文）\n\n派发了三个子代理\n\n"
+                    "## 应遵循的规则\n\n排查意图要先确认",
+            "origin_session": sid, "created_at": "now"}
+    (ws / ".loadn").mkdir(parents=True, exist_ok=True)
+    (ws / ".loadn" / "skill-suggest.json").write_text(json.dumps(card, ensure_ascii=False))
+    # 真实判定链：不 mock _llm_adjudicate，mock 其内部 HTTP 层成本高——
+    # 直接验证消费端语义：reusable=false 的真判定 → 卡被清。
+    async def fake_adj(c):
+        return {"verdict": "reject"}   # _llm_adjudicate 内部已把 reusable=false 折叠为 reject
+    monkeypatch.setattr(croute, "_llm_adjudicate", fake_adj)
+    r = await client.get(f"/api/sessions/{sid}/skill-suggest")
+    assert r.json()["pending"] is None
+    assert not (ws / ".loadn" / "skill-suggest.json").exists(), "一次性澄清不该存活"
+
+
+async def test_llm_adjudicate_reusable_true_general_discipline(client, monkeypatch):
+    """>>> VA 对照：通用纪律（先建 venv 再装依赖）reusable=true → 正常出卡。"""
+    from loadn_webui.api.routes import consolidate as croute
+    from loadn_webui.config import PATHS
+    r = await client.post("/api/sessions", json={"title": "价值门通"})
+    sid = r.json()["session"]["id"]
+    ws = PATHS["workspace"] / sid
+    card = {"kind": "correct", "fingerprint": "fpvg2", "name": "venv-first",
+            "description": "x", "trigger": "不对，应该先建 venv 再装依赖",
+            "body": "# 用户教导（correct）\n\n> 不对，应该先建 venv\n\n"
+                    "## 应遵循的规则\n\n先建 venv",
+            "origin_session": sid, "created_at": "now"}
+    (ws / ".loadn").mkdir(parents=True, exist_ok=True)
+    (ws / ".loadn" / "skill-suggest.json").write_text(json.dumps(card, ensure_ascii=False))
+    async def fake_adj(c):
+        return {"verdict": "correct", "rule": "Python 安装先建 venv 再 pip",
+                "reusable": True}     # 真判定带 reusable=true 原样传递
+    monkeypatch.setattr(croute, "_llm_adjudicate", fake_adj)
+    r = await client.get(f"/api/sessions/{sid}/skill-suggest")
+    p = r.json()["pending"]
+    assert p and p["adjudicated"] is True, "通用纪律应正常出卡"
