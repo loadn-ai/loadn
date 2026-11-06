@@ -90,3 +90,33 @@ def test_pick_name_pool_first(tmp_path):
                            cwd=tmp_path, session_id="s", home=home)
     mgr3._n = 1
     assert mgr3._pick_name() == AGENT_NAME_POOL[0], "坏池文件=空池回落"
+
+
+def test_pick_name_forced_employee_identity(tmp_path):
+    """>>> 人卡合一（DW 点名派发修复）：subagent_type 命中自定义员工类型时
+    agent_name 用员工名（生产实证 9b71：点名郑明衡，卡片显示池工陈沐阳
+    ——persona 生效但名字人格分裂）；内建类型不 forced 仍走池；同名
+    防撞追加 ·N。"""
+    import json as _json
+    home = tmp_path / "h"
+    home.mkdir()
+    (home / "temp_pool.json").write_text(
+        _json.dumps({"names": ["陈沐阳", "林晓悦"]}, ensure_ascii=False),
+        encoding="utf-8")
+    mgr = SubagentManager(
+        registry=None, provider_factory=None, cwd=tmp_path, session_id="s",
+        home=home,
+        extra_types={"郑明衡": {"tools": None, "system_add": "产品分析师"},
+                     "林知夏": {"tools": None, "system_add": "产品经理"}})
+    mgr._n = 1
+    # 点名员工：名字=员工名（不吃池）
+    assert mgr._pick_name(forced="郑明衡") == "郑明衡"
+    assert mgr._pick_name(forced="林知夏") == "林知夏"
+    # 同名并发：防撞 ·N
+    mgr._n = 3
+    assert mgr._pick_name(forced="郑明衡") == "郑明衡·3"
+    # 未 forced：池取名不变（回归）
+    assert mgr._pick_name() in {"陈沐阳", "林晓悦"}
+    # task() 派发链：custom_types 判据——点名员工的 Task 卡 agent_name=员工名
+    assert mgr.custom_types == {"郑明衡", "林知夏"}
+    assert "郑明衡" in mgr.types and "general" in mgr.types

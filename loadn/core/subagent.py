@@ -80,16 +80,24 @@ class SubagentManager:
         self.session_id = session_id
         self.home = home
         self.types = {**SUBAGENT_TYPES, **(extra_types or {})}
+        # 自定义类型键集（org 数字员工 def 等）：点名派发时人卡合一的判据
+        self.custom_types = set(extra_types or {})
         self.model_provider_factory = model_provider_factory
         self._sem = asyncio.Semaphore(SUBAGENT_CONCURRENCY)
         self._n = 0
         self._used_names: set[str] = set()
 
-    def _pick_name(self) -> str:
-        """子代理取名：临时工池优先（temp_pool.json 随机取），池空回落
-        AGENT_NAME_POOL 确定性轮转；同回合撞名追加「·N」。
+    def _pick_name(self, forced: str | None = None) -> str:
+        """子代理取名：forced（点名员工名）优先直用；否则临时工池优先
+        （temp_pool.json 随机取），池空回落 AGENT_NAME_POOL 确定性轮转；
+        同回合撞名追加「·N」。
 
         池文件由 webui recruit/retire 全量重写（单写者），引擎侧只读零竞态。"""
+        if forced:
+            name = forced if forced not in self._used_names \
+                else f"{forced}·{self._n}"
+            self._used_names.add(name)
+            return name
         base = None
         pool = self._temp_pool_names()
         if pool:
@@ -175,7 +183,14 @@ class SubagentManager:
             self._n += 1
             sub_sid = f"{self.session_id}-sub{self._n}"
             card_id = f"sub_{self._n}"
-            agent_name = self._pick_name()
+            # 人卡合一（DW 点名派发修复）：subagent_type 命中自定义类型
+            # （org 数字员工 def）时 agent_name 用员工名——此前恒池取临时工
+            # 名（生产实证 9b71：点名郑明衡/林知夏，卡片显示陈沐阳——员工
+            # persona/system_add 已生效但名字是临时工的，人格分裂）；池取名
+            # 只服务内建类型/未点名 general 派发。
+            agent_name = self._pick_name(
+                forced=subagent_type if subagent_type in self.custom_types
+                else None)
             if emit is not None:
                 # 形状纪律：主 emit 是 StreamJsonEmitter——message 必须是
                 # Message 对象、块必须带 to_dict()（裸 dict 会 AttributeError
