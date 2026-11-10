@@ -67,7 +67,9 @@ def get_file(sid: str, path: str, raw: bool = False, render: str = ""):
         return Response(content=p.read_bytes(), media_type="text/plain; charset=utf-8",
                         headers={**headers, "Content-Security-Policy": "sandbox"})
     return art.read_file(ws_mod.ws_of(sid), path)
-MAX_UPLOAD_BYTES = 50 * 1024 * 1024
+# 上传上限（用户拍板「至少允许 1G」）：2GB 留余量——inputs/ 落共享盘
+# （实测余量 167G），分块流式写盘无内存压力；超限 413+清理半成品。
+MAX_UPLOAD_BYTES = 2 * 1024 * 1024 * 1024
 @router.get("/sessions/{sid}/archive")
 def download_archive(sid: str, path: str = ""):
     """工作区目录打包下载（zip）：?path=reports/ 打包子目录，空 = 整个工作区。

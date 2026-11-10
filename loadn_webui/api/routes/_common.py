@@ -245,6 +245,7 @@ def _collect_archive_files(root: Path) -> list[Path]:
         if total > _ARCHIVE_MAX_BYTES:
             raise HTTPException(400, "总大小超过 2GB，请分目录打包")
     return out
-MAX_INGEST_BYTES = 200 * 1024 * 1024
+# 直通道上限与页面上传对齐（用户拍板「至少允许 1G」→ 2GB；files.py 同步）
+MAX_INGEST_BYTES = 2 * 1024 * 1024 * 1024
 _INGEST_DIRS = ("artifacts/", "notes/", "work/", "inputs/")
 _INGEST_CORS = {"Access-Control-Allow-Origin": "*"}
