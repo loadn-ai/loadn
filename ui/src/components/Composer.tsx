@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from 'react';
 import type { ClipboardEvent, ComponentType, DragEvent, KeyboardEvent } from 'react';
 import { useStore } from '../stores/sessions';
 import type { Attachment } from '../stores/sessions';
+import { MAX_UPLOAD_BYTES, fmtBytes } from '../api/client';
 import { getDraft, setDraft } from '../stores/drafts';
 import {
   Paperclip, Sparkles, Flask, Code, Chat, MessageSquare, Bot, ChevronDown, Check,
@@ -101,12 +102,21 @@ export default function Composer() {
   function addFiles(files: FileList | File[]) {
     const items: Pending[] = [];
     for (const f of Array.from(files)) {
+      // 前端预检（与后端 files.py 上限对齐）：超限直接标错不发请求——
+      // 此前零预检，超限文件白传一路才 413/公网传一半断连只见「上传失败」
+      if (f.size > MAX_UPLOAD_BYTES) {
+        items.push({ key: `f${keySeq++}`, file: f, preview: '',
+                     status: 'error',
+                     err: `${f.name}（${fmtBytes(f.size)}）超过 ${fmtBytes(MAX_UPLOAD_BYTES)} 上传上限，未上传` });
+        continue;
+      }
       items.push({ key: `f${keySeq++}`, file: f, preview: URL.createObjectURL(f),
                    status: 'uploading' });
     }
     if (!items.length) return;
     setPending(ps => [...ps, ...items]);
     for (const it of items) {
+      if (it.status !== 'uploading') continue;   // 预检拒绝的不进上传
       uploadFile(it.file)
         .then(remote => setPending(ps => ps.map(p =>
           p.key === it.key ? { ...p, status: 'done', remote } : p)))
@@ -226,7 +236,8 @@ export default function Composer() {
                   <span className="attach-name">{p.file.name}</span>
                   <span className="attach-st">
                     {p.status === 'uploading' ? <><Spinner /> 上传中…</>
-                      : p.status === 'error' ? '上传失败'
+                      : p.status === 'error'
+                        ? (p.err && p.err.length > 18 ? `${p.err.slice(0, 18)}…` : (p.err || '上传失败'))
                       : `${p.remote?.kb}KB`}
                   </span>
                 </span>

@@ -83,6 +83,18 @@ export async function api<T = any>(path: string, init?: RequestInit): Promise<T>
 }
 
 /** 文件上传专用：multipart（field 名 file） */
+
+/** 上传上限（字节）：与服务端 files.py MAX_UPLOAD_BYTES 对齐——前端预检
+ * 拦截（此前零预检：超限文件白传一路才被 413，公网链路上更是传一半断掉
+ * 只见「上传失败」分不清原因）。改动须两处同步。 */
+export const MAX_UPLOAD_BYTES = 2 * 1024 * 1024 * 1024;
+
+export function fmtBytes(n: number): string {
+  return n >= 1024 ** 3 ? `${(n / 1024 ** 3).toFixed(1)}GB`
+    : n >= 1024 ** 2 ? `${(n / 1024 ** 2).toFixed(0)}MB`
+      : `${Math.max(1, Math.round(n / 1024))}KB`;
+}
+
 export async function apiUpload<T = any>(path: string, file: File): Promise<T> {
   const fd = new FormData();
   fd.append('file', file);

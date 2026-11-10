@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { useStore } from '../stores/sessions';
 import type { ArtifactInfo, TurnInfo } from '../stores/sessions';
-import { api, withToken } from '../api/client';
+import { api, withToken, MAX_UPLOAD_BYTES, fmtBytes } from '../api/client';
 import PropertiesPanel from './PropertiesPanel';
 import { Folder, FileDoc, ChevronDown, ChevronRight, Download } from './icons';
 import { toast } from '../stores/toasts';
@@ -481,6 +481,11 @@ function FilesTab({ tree, onOpenFile, refresh }: {
     setBusy(true);
     try {
       for (const f of Array.from(fl)) {
+        // 前端预检（与后端对齐）：超限不发请求直接提示
+        if (f.size > MAX_UPLOAD_BYTES) {
+          toast(`${f.name}（${fmtBytes(f.size)}）超过 ${fmtBytes(MAX_UPLOAD_BYTES)} 上传上限`, true);
+          continue;
+        }
         const fd = new FormData();
         fd.append('file', f);
         const r = await api<{ path: string }>(`/api/sessions/${S}/upload`,
