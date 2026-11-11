@@ -13,7 +13,7 @@ export interface ScheduleInfo {
   kind: 'message' | 'new_session';
   label: string | null; prompt: string;
   due_at: string; every_s: number | null; cron: string | null; cron_desc?: string | null;
-  max_fires: number; fires: number;
+  max_fires: number; fires: number; exempt_dormant?: number;
   status: 'active' | 'paused' | 'done';
   title: string | null; profile: string | null; engine: string | null;
   goal?: string | null;        // 目标契约：目标+成功判据（唤醒对账置顶注入）
@@ -407,6 +407,7 @@ function JobForm({ job, presetSid, onDone }: {
   const [prompt, setPrompt] = useState(job?.prompt || '');
   const [goal, setGoal] = useState(job?.goal || '');
   const [maxFires, setMaxFires] = useState(String(job?.max_fires ?? 20));
+  const [exempt, setExempt] = useState(!!job?.exempt_dormant);
   const [msg, setMsg] = useState<{ t: string; err?: boolean } | null>(null);
   const [busy, setBusy] = useState(false);
 
@@ -466,7 +467,7 @@ function JobForm({ job, presetSid, onDone }: {
       } else {
         body.cron = cron;
       }
-      if (recurring) body.max_fires = Number(maxFires) || 20;
+      if (recurring) { body.max_fires = Number(maxFires) || 20; body.exempt_dormant = exempt; }
       if (editing) {
         await api(`/api/schedules/${job!.id}`, { method: 'PATCH', body: JSON.stringify(body) });
       } else {
@@ -628,6 +629,12 @@ function JobForm({ job, presetSid, onDone }: {
           <textarea rows={3} value={goal} onChange={e => setGoal(e.target.value)}
                     placeholder="如：日化 1% 目标收益；成功判据=连续 5 日滚动收益 ≥5%；约束=单日回撤 ≤3%"  autoComplete="off"/>
         </Field>
+        {recurring && (
+          <label className="sched-exempt" title="短值守是这类任务的正常形态：agent 唤醒后无动作短回复，平台的值守检测（连续 5 轮短回复自动暂停）对它是误伤。勾选后不再自动暂停。">
+            <input type="checkbox" checked={exempt}
+                   onChange={e => setExempt(e.target.checked)}/> 值守豁免：预期值守任务，不参与「连续无动作自动暂停」（适合 7×24 监控/盯盘类）
+          </label>
+        )}
       </div>
 
       <div className="sched-form-foot">

@@ -1312,6 +1312,9 @@ button.attach-chip:hover { border-color: color-mix(in srgb, var(--accent) 40%, v
 .sched-form-sec:first-of-type { border-top: none; padding-top: 0; }
 .sched-form-sec-k { font-size: var(--fs-sm); color: var(--text-dim); font-weight: 600;
   letter-spacing: .05em; }
+.sched-exempt { display: flex; align-items: center; gap: 8px; margin-top: 10px;
+  font-size: var(--fs-sm); color: var(--text-dim); cursor: pointer; user-select: none; }
+.sched-exempt input { accent-color: var(--accent, #4f8cff); }
 .sched-seg { display: grid; grid-auto-flow: column; grid-auto-columns: 1fr; gap: 4px;
   background: var(--bg3); border: 1px solid var(--border); border-radius: var(--radius);
   padding: 3px; max-width: 420px; }

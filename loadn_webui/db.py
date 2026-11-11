@@ -45,7 +45,7 @@ from .config import PATHS
 # rev22：规划模式：sessions.plan_mode（执行前规划确认——新任务先进 plan 轮产出
 # 结构化计划，用户批准后才投执行 turn；off=0/on=1，auto 启发式留字段位）
 #        turns.verify_json（每 turn 验收结果/完成声明预检标记）
-SCHEMA_REV = 22
+SCHEMA_REV = 23
 from .util import iso
 
 # PERF-1：已完成 executescript+_migrate 的库路径（进程内短路，见 conn()）
@@ -218,6 +218,7 @@ CREATE TABLE IF NOT EXISTS scheduled_jobs (
   destination TEXT DEFAULT 'dashboard',    -- P11: dashboard|notify|notify+artifact
   is_system INTEGER DEFAULT 0,             -- P11: 内置 heartbeat 标记（面板区分）
   goal TEXT,                               -- 目标契约：目标+成功判据（对账式唤醒置顶注入）
+  exempt_dormant INTEGER DEFAULT 0,        -- rev23 值守豁免（用户显式声明：短值守是预期，不参与 dormant 自动暂停）
   created_at TEXT, updated_at TEXT
 );
 
@@ -537,6 +538,15 @@ def _migrate(c: sqlite3.Connection) -> None:
         c.execute("ALTER TABLE org_employees ADD COLUMN skills TEXT")
     if ocols and "resources" not in ocols:
         c.execute("ALTER TABLE org_employees ADD COLUMN resources TEXT")
+
+    # rev23（EX）：scheduled_jobs.exempt_dormant 值守豁免列（旧库补列；新表走
+    # SCHEMA）。生产实证 c5cb 虚拟币 7×24 轻值守：无行情短回复是正常形态，
+    # dormant 门（v0.7.72 宁可误暂停）对它就是误伤——每 5 轮停一次、用户手动
+    # 恢复 75 分钟后又被停。豁免=用户显式声明预期值守，达限不暂停不断。
+    jcols = {r["name"] for r in c.execute("PRAGMA table_info(scheduled_jobs)")}
+    if jcols and "exempt_dormant" not in jcols:
+        c.execute("ALTER TABLE scheduled_jobs ADD COLUMN "
+                  "exempt_dormant INTEGER DEFAULT 0")
 
     # 三轮修（backlog 清）：artifacts (session_id,path) 唯一索引——先清
     # 存量重复行（保最新），建索引后 upsert_artifact 的 ON CONFLICT 原子化。

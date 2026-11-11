@@ -121,3 +121,72 @@ async def test_wrap_injects_dormant_warning(client):
         db_mod.kv_del(c, f"dormant:{sid}")
     w2 = Scheduler(engine=None)._wrap(_job_dict(session_id=sid, fires=99), _NOW)
     assert "【值守预警】" not in w2
+
+
+async def test_dormant_exempt_job_not_paused(client, monkeypatch):
+    """>>> EX 豁免（rev23）：exempt_dormant=1 的 job 达限不暂停不推送——
+    生产实证 c5cb 虚拟币 7×24 轻值守：无行情短回复是正常形态，v0.7.72
+    「宁可误暂停」对它每 75 分钟复发一次误伤。全豁免 → 静默（无暂停无推送）。"""
+    fired = []
+    monkeypatch.setattr("loadn_webui.integrations.notify.fire",
+                        lambda *a, **k: fired.append(a))
+    r = await client.post("/api/sessions", json={"title": "豁免值守"})
+    sid = r.json()["session"]["id"]
+    with db_mod.conn() as c:
+        jid = db_mod.create_job(c, session_id=sid, label="虚拟币", prompt="盯盘",
+                                due_at=iso(), every_s=900, max_fires=2000,
+                                status="active")
+        c.execute("UPDATE scheduled_jobs SET exempt_dormant=1 WHERE id=?", (jid,))
+    # 连满 DORMANT_MAX 轮值守短回复
+    for i in range(DORMANT_MAX):
+        tid = await _mk_wake_turn(sid, n=i + 1)
+        check_dormant_gate(sid, tid, "零交易")
+    with db_mod.conn() as c:
+        assert db_mod.get_job(c, jid)["status"] == "active", "豁免 job 不被暂停"
+        assert db_mod.kv_get(c, f"awaitjobs:{sid}") is None       # 无 await 账
+        assert db_mod.kv_get(c, f"dormant:{sid}") is None or \
+            db_mod.kv_get(c, f"dormant:{sid}") == "0"             # 连击清零
+    assert not fired, "全豁免：不推送"
+
+
+async def test_dormant_mixed_jobs_partial_pause(client, monkeypatch):
+    """>>> EX 混合：豁免+非豁免并存 → 只暂停非豁免的（豁免的继续跑）。"""
+    fired = []
+    monkeypatch.setattr("loadn_webui.integrations.notify.fire",
+                        lambda *a, **k: fired.append(a))
+    r = await client.post("/api/sessions", json={"title": "混合豁免"})
+    sid = r.json()["session"]["id"]
+    with db_mod.conn() as c:
+        jid_a = db_mod.create_job(c, session_id=sid, label="盯盘豁免", prompt="x",
+                                  due_at=iso(), every_s=900, max_fires=2000,
+                                  status="active")
+        jid_b = db_mod.create_job(c, session_id=sid, label="普通任务", prompt="y",
+                                  due_at=iso(), every_s=900, max_fires=2000,
+                                  status="active")
+        c.execute("UPDATE scheduled_jobs SET exempt_dormant=1 WHERE id=?", (jid_a,))
+    for i in range(DORMANT_MAX):
+        tid = await _mk_wake_turn(sid, n=i + 1)
+        check_dormant_gate(sid, tid, "零交易")
+    with db_mod.conn() as c:
+        assert db_mod.get_job(c, jid_a)["status"] == "active", "豁免的继续跑"
+        assert db_mod.get_job(c, jid_b)["status"] == "paused", "非豁免照旧暂停"
+        assert json.loads(db_mod.kv_get(c, f"awaitjobs:{sid}")) == [jid_b]
+
+
+async def test_schedule_patch_exempt_roundtrip(client):
+    """>>> EX API：PATCH /api/schedules/{id} exempt_dormant 开关 roundtrip。"""
+    r = await client.post("/api/sessions", json={"title": "豁免API"})
+    sid = r.json()["session"]["id"]
+    with db_mod.conn() as c:
+        jid = db_mod.create_job(c, session_id=sid, label="开关", prompt="x",
+                                due_at=iso(), every_s=900, max_fires=100,
+                                status="active")
+    r = await client.patch(f"/api/schedules/{jid}",
+                           json={"exempt_dormant": True})
+    assert r.status_code == 200, r.text
+    with db_mod.conn() as c:
+        assert db_mod.get_job(c, jid)["exempt_dormant"] == 1
+    r = await client.patch(f"/api/schedules/{jid}",
+                           json={"exempt_dormant": False})
+    with db_mod.conn() as c:
+        assert db_mod.get_job(c, jid)["exempt_dormant"] == 0

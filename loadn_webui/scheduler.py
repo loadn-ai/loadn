@@ -176,9 +176,12 @@ def check_dormant_gate(sid: str, tid: int, content: str) -> int:
             db_mod.kv_set(c, f"dormant:{sid}", str(streak))
             return streak
         # ---- 达限：暂停 + 通知（复用 await 通道，用户回话自动恢复）
+        # EX 豁免过滤（rev23）：exempt_dormant 的 job 不暂停（用户显式声明
+        # 预期值守——生产实证 c5cb 虚拟币：无行情短回复是正常形态，误暂停
+        # 每 75 分钟复发一次）。全部豁免 → 连击清零静默返回（不暂停不推送）。
         db_mod.kv_set(c, f"dormant:{sid}", "0")
         jobs = [j for j in db_mod.list_jobs(c, sid, active_only=True)
-                if not j["is_system"]]
+                if not j["is_system"] and not j["exempt_dormant"]]
         jids = [j["id"] for j in jobs]
         for jid in jids:
             db_mod.update_job(c, jid, status="paused")

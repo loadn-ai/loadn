@@ -90,6 +90,10 @@ def patch_schedule(jid: int, body: dict):
             if goal and len(goal) > 2000:
                 raise HTTPException(400, "goal 需 ≤2000 字")
             updates["goal"] = goal or None
+        # 值守豁免（EX/rev23）：用户显式声明该任务预期值守——dormant 门
+        # 达限不暂停它（生产实证 c5cb 虚拟币 7×24 轻值守被误暂停循环）
+        if "exempt_dormant" in body:
+            updates["exempt_dormant"] = 1 if body["exempt_dormant"] else 0
         if "max_fires" in body:
             mf = int(body["max_fires"])
             if not 1 <= mf <= 100000:
