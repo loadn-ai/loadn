@@ -570,3 +570,94 @@ def test_r3_edit_lock_busy_fail_closed(tmp_path, monkeypatch):
     # 锁释放后正常可编辑
     out = ms.edit_entry(dir_, e["id"], content="正常写入")
     assert out["content"] == "正常写入"
+
+
+# ------------------------------------- 跨会话 boundary 回落（2026-11-16 生产实证修复）
+# 9b71 域实证：锚 uuid 属于子代理 transcript，同 workspace 主会话 15 天
+# 恒空段静默早退——抽取通道全死、连「记住/忘掉」直写都被吞。以下用例
+# 钉死回落语义与过滤纪律。
+
+async def test_boundary_cross_session_fallback(tmp_path):
+    """锚来自其他会话（不在当前 transcript）→ 回落全量抽取+推进+留痕。"""
+    from loadn.core.memory import extract_and_store
+    from loadn.core.session import SessionManager
+    from loadn.providers import Chunk
+    mem.advance_boundary(tmp_path, "uuid-from-other-session")
+    provider = H.ScriptedProvider([
+        [Chunk(kind="text_delta",
+               text='[{"summary": "偏好暗色", "content": "用户喜欢暗色主题"}]'),
+         Chunk(kind="stop", usage={"input_tokens": 20, "output_tokens": 10},
+               stop_reason="end_turn", model="fake")],
+    ])
+    session = SessionManager.create(tmp_path, home=tmp_path / "home")
+    session.append_user("闲聊背景：我喜欢暗色主题，看久了不累")
+    n = await extract_and_store(provider, tmp_path, session)
+    assert n == 1                                   # 不再恒空段早退
+    assert any("暗色" in e["summary"] for e in mem.load_entries(tmp_path))
+    assert mem.boundary_of(tmp_path) != "uuid-from-other-session"   # 已推进
+    assert any(ev.get("type") == "memory_boundary_reset"
+               for ev in session.transcript.read_events())
+
+
+async def test_direct_write_survives_stale_boundary(tmp_path):
+    """锚失效状态下「记住 X」直写不再被静默吞（分流提前到判空前）。"""
+    from loadn.core.memory import extract_and_store
+    from loadn.core.session import SessionManager
+    mem.advance_boundary(tmp_path, "uuid-from-other-session")
+    session = SessionManager.create(tmp_path, home=tmp_path / "home")
+    session.append_user("记住：这个仓库构建用 uv 而不是 pip")
+    n = await extract_and_store(H.ScriptedProvider([[]]), tmp_path, session)
+    assert n == 1
+    assert any("uv" in e["summary"] + e.get("content", "")
+               for e in mem.load_entries(tmp_path))
+    assert mem.boundary_of(tmp_path) != "uuid-from-other-session"
+
+
+async def test_forget_survives_stale_boundary(tmp_path):
+    """锚失效状态下「忘掉 X」可达（忘掉不受词数资格限制）。"""
+    from loadn.core.memory import extract_and_store
+    from loadn.core.session import SessionManager
+    mem.remember(tmp_path, "偏好 pytest", "测试框架 pytest", origin_session="s")
+    mem.advance_boundary(tmp_path, "uuid-from-other-session")
+    session = SessionManager.create(tmp_path, home=tmp_path / "home")
+    session.append_user("忘掉 pytest 偏好")
+    await extract_and_store(H.ScriptedProvider([[]]), tmp_path, session)
+    assert all("pytest" not in e["summary"] for e in mem.load_entries(tmp_path))
+
+
+async def test_injected_platform_noise_filtered(tmp_path):
+    """引擎注入/【定时唤醒】头不进抽取段：全噪声 → noop 留痕不推进（负路径）。"""
+    from loadn.core.memory import extract_and_store
+    from loadn.core.session import SessionManager
+    mem.advance_boundary(tmp_path, "uuid-x")
+    session = SessionManager.create(tmp_path, home=tmp_path / "home")
+    session.transcript.append("user", {"role": "user", "engine": "nudge",
+                                       "content": [{"type": "text",
+                                                    "text": "上下文偏大请收尾"}]})
+    session.append_user("【定时唤醒】继续推进任务队列")
+    n = await extract_and_store(H.ScriptedProvider([[]]), tmp_path, session)
+    assert n == 0
+    assert mem.boundary_of(tmp_path) == "uuid-x"    # 无真人话语不推进
+    assert any(ev.get("type") == "memory_extract_noop"
+               for ev in session.transcript.read_events())
+
+
+async def test_engine_injection_not_anchor_after_real_user(tmp_path):
+    """真人消息之后的引擎注入不成为新锚（锚=最后一条真人话语）。"""
+    from loadn.core.memory import extract_and_store
+    from loadn.core.session import SessionManager
+    from loadn.providers import Chunk
+    provider = H.ScriptedProvider([
+        [Chunk(kind="text_delta", text="[]"),
+         Chunk(kind="stop", usage={"input_tokens": 20, "output_tokens": 10},
+               stop_reason="end_turn", model="fake")],
+    ])
+    session = SessionManager.create(tmp_path, home=tmp_path / "home")
+    session.append_user("今天聊聊天气不错适合摸鱼")
+    session.transcript.append("user", {"role": "user", "engine": "nudge",
+                                       "content": [{"type": "text",
+                                                    "text": "注入尾巴"}]})
+    await extract_and_store(provider, tmp_path, session)
+    injected = [str(ev.get("uuid")) for ev in session.transcript.read_events()
+                if (ev.get("payload") or {}).get("engine")]
+    assert injected and mem.boundary_of(tmp_path) not in injected

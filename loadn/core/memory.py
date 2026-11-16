@@ -162,21 +162,41 @@ def direct_write_intent(user_text: str) -> str | None:
 
 
 def new_segment_since_boundary(cwd: Path, session) -> tuple[list[dict], str]:
-    """boundary 之后的新增消息段（role/content 扁平），末条消息 id 做新锚。"""
+    """boundary 之后的新增消息段（role/content 扁平），末条消息 id 做新锚。
+
+    跨会话回落（2026-11-16 生产实证 9b71 域：锚由子代理会话设置后，同
+    workspace 全部主会话 15 天零抽取、连直写指令都被静默吞）：boundary
+    锚是 transcript 事件 uuid、按项目域全局共享——换会话后锚不在当前
+    transcript，旧逻辑恒返空段且不推进（抽取通道永久死亡）。锚找不到
+    =按无锚全量处理（幂等 eid 保证重复抽取原位更新），并留
+    memory_boundary_reset 痕。
+
+    平台注入过滤（与 consolidate.maybe_suggest 同一纪律）：引擎注入
+    （payload.engine）/平台注入头（【定时唤醒】等）/轮换恢复协议段都
+    不是用户真实话语，不进抽取段。
+    """
+    from loadn.consolidate import _INJECTED_HEAD_RE, strip_handover
+
     msgs: list[dict] = []
     last_id = ""
     for ev in session.transcript.read_events():
         if ev.get("type") != "user":
             continue
-        mid = str(ev.get("uuid") or "")     # 事件 uuid=锚（transcript.append）
-        if mid:
-            last_id = mid
         payload = ev.get("payload") or {}
+        if payload.get("engine"):          # 引擎注入（截断 nudge/自检
+            continue                       # gate）不是用户话语
+        mid = str(ev.get("uuid") or "")     # 事件 uuid=锚（transcript.append）
         content = payload.get("content") or ""
         if isinstance(content, list):
             content = " ".join(str(c.get("text", "")) for c in content
                                if isinstance(c, dict))
-        msgs.append({"role": "user", "content": str(content),
+        content = strip_handover(str(content))
+        if not content or _INJECTED_HEAD_RE.search(content):
+            continue                       # 空内容/平台注入头（【定时
+                                          # 唤醒】/【附件】…）不是用户话语
+        if mid:
+            last_id = mid
+        msgs.append({"role": "user", "content": content,
                      "_id": mid})
     b = boundary_of(cwd)
     out: list[dict] = []
@@ -189,6 +209,11 @@ def new_segment_since_boundary(cwd: Path, session) -> tuple[list[dict], str]:
         out.append({"role": m["role"], "content": m["content"]})
         if m["_id"]:
             last_id = m["_id"]
+    if b and not seen_boundary:
+        # 锚不在当前 transcript（跨会话）→ 回落全量 + 留痕（此前此处
+        # 静默恒空 15 天无人知晓——观测面）
+        out = [{"role": m["role"], "content": m["content"]} for m in msgs]
+        _trace(session, "memory_boundary_reset", {"stale_anchor": b[:16]})
     return out, last_id
 
 
@@ -196,37 +221,42 @@ async def extract_and_store(provider, cwd: Path, session, *,
                             small_model: str | None = None) -> int:
     """turn 成功后的后台抽取（P1-4b 主入口）。返回写入条数（0=skip/无收获）。
 
-    流程：新增段 → 资格（no-user-prose skip）→ 直写指令轮 skip（显式表达
-    优先）→ small_model 抽取（JSON 数组）→ 蜜罐护栏逐条 → 入库 → 边界
-    推进。任何失败静默（后台任务不炸主循环）。
+    流程：新增段 → 直写/忘掉指令优先（显式表达先于资格与判空——此前
+    判空在前，boundary 失效段恒空时连「记住/忘掉」都被静默吞掉）→
+    资格（no-user-prose skip）→ small_model 抽取（JSON 数组）→ 蜜罐
+    护栏逐条 → 入库 → 边界推进。任何失败静默（后台任务不炸主循环）。
     """
     try:
         sink = _sink(session)
         segment, last_id = new_segment_since_boundary(cwd, session)
-        if not segment or not last_id:
-            return 0
-        ok, why = eligible(segment)
-        if not ok:
-            _trace(session, "memory_extract_skipped", {"reason": why})
-            return 0
-        user_tail = segment[-1].get("content") or ""
+        user_tail = segment[-1].get("content") if segment else ""
         intent = direct_write_intent(user_tail)
-        if intent == "write":
-            # 直写：把指令语句本身入库（去指令词），本轮不再自动抽取
-            content = re.sub(r"^(请)?记住[:：]?", "", user_tail).strip()
-            if content and not canary_hit(content):
-                dom = classify_domain(content)
-                remember(cwd, content[:20], content,
-                         origin_session=getattr(session, "session_id", "?"),
-                         event_sink=sink, domain=dom,
-                         reason="explicit")
-            _advance(session, cwd, last_id)
-            return 1
-        if intent == "forget":
+        if intent in ("write", "forget"):
+            if not last_id:
+                return 0                  # 无任何已处理消息（无锚可推进）
+            if intent == "write":
+                # 直写：把指令语句本身入库（去指令词），本轮不再自动抽取
+                content = re.sub(r"^(请)?记住[:：]?", "", user_tail).strip()
+                if content and not canary_hit(content):
+                    dom = classify_domain(content)
+                    remember(cwd, content[:20], content,
+                             origin_session=getattr(session, "session_id", "?"),
+                             event_sink=sink, domain=dom,
+                             reason="explicit")
+                _advance(session, cwd, last_id)
+                return 1
             kw = re.sub(r"忘掉|忘记[:：]?", "", user_tail).strip()
             if kw:
                 forget_all(cwd, kw, event_sink=sink)
             _advance(session, cwd, last_id)
+            return 0
+        if not segment or not last_id:
+            # 观测面：空段早退留痕（此前静默 return，通道死了无人知晓）
+            _trace(session, "memory_extract_noop", {"reason": "empty-segment"})
+            return 0
+        ok, why = eligible(segment)
+        if not ok:
+            _trace(session, "memory_extract_skipped", {"reason": why})
             return 0
         # 自动抽取：small_model JSON 数组
         from loadn.types import Message as _Msg
