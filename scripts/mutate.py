@@ -72,11 +72,13 @@ TARGET_TESTS: dict[str, list[str]] = {
         "tests/security/test_a6_policy_amend.py",
         "tests/security/test_guard_negatives.py",
         "tests/security/test_policy_hook_gates.py",
+        "tests/security/test_a3_cli_wiring.py",
         "tests/test_security_knobs.py",
         "tests/test_egress_align.py",
     ],
     "loadn_webui/security/approve.py": [
         "tests/security/test_a3_approvals.py",
+        "tests/security/test_a3_cli_wiring.py",
         "tests/security/test_guard_negatives.py",
         "tests/test_w0_security.py",
     ],
@@ -84,6 +86,11 @@ TARGET_TESTS: dict[str, list[str]] = {
         "tests/test_vault.py",
         "tests/security/test_e2_audit_chain.py",
         "tests/test_settings_admin.py",   # svc: 密钥白名单/清理用例在此
+    ],
+    "loadn_webui/cli.py": [
+        "tests/security/test_a3_cli_wiring.py",
+        "tests/security/test_a3_approvals.py",
+        "tests/test_vault.py",
     ],
     "loadn/truststore.py": [
         "tests/security/test_b5_trust_gate.py",

@@ -153,6 +153,21 @@ def _run_schedule(args) -> int:
 import sys
 
 
+def _add_approval_args(p, verb: str = "执行") -> None:
+    """gated 子命令审批 flag 注入（单一真源，S1/G1 修复 2026-11-16）。
+
+    注册表在 security.approve.R_GATED_COMMANDS——新增 gated 子命令只在
+    注册表登记 + 调本注入，禁止手工复制 add_argument（手工双写曾致
+    account 缺 flag 定义：enforce=死锁 / warn=静默绕过，11-04 生产实证）。
+    契约测试（tests/security/test_a3_cli_wiring.py）遍历注册表断言
+    flag 存在——漏接线对 CI 显形。
+    """
+    p.add_argument("--request-approval", default="",
+                   help=f"{verb}审批：挂起等用户裁决（W1-2 确认码门）")
+    p.add_argument("--confirm", default="",
+                   help="审批确认码（卡片上的一次性 6 位码）")
+
+
 def _build_r_parser(sub) -> None:
     p_r = sub.add_parser("r", aliases=["res"],
                          help="外部资源 CLI（ocr/vlm/search/fetch/sms/mail/captcha/ping）")
@@ -235,10 +250,7 @@ def _build_r_parser(sub) -> None:
     p.add_argument("--to", default="", help="收件地址（给定即发信模式）")
     p.add_argument("--subject", default="", help="发信主题")
     p.add_argument("--body", default="", help="发信正文")
-    p.add_argument("--request-approval", default="",
-                   help="发信审批：挂起等用户裁决（W1-2 确认码门）")
-    p.add_argument("--confirm", default="",
-                   help="审批确认码（卡片上的一次性 6 位码）")
+    _add_approval_args(p, "发信")
 
     p = rsub.add_parser("captcha", help="2captcha 过验证码 → token")
     p.add_argument("--img", default="", help="图形码图片路径")
@@ -255,14 +267,10 @@ def _build_r_parser(sub) -> None:
                    metavar="K=V", help="写入字段（可多次，如 --set password=x --set email=y@z）")
     p.add_argument("--del", dest="delete", action="store_true", help="删除该平台条目")
     p.add_argument("--reveal", action="store_true", help="全量视图（密码明文，慎在会话记录留痕）")
-    # 写入审批参数（W1-2 确认码门）——--set 走 _approval_gate(account_write)，
-    # 但 argparse 缺这对参数定义 = 死锁：门要求 --request-approval/--confirm，
-    # 用户加上又被 unrecognized arguments 拒（生产实证 14ad 会话 2026-11-04：
-    # tencent-zhuque-makers 写入路径完全堵死）。与 email 子命令同款接线。
-    p.add_argument("--request-approval", default="",
-                   help="写入审批：挂起等用户裁决（W1-2 确认码门）")
-    p.add_argument("--confirm", default="",
-                   help="审批确认码（卡片上的一次性 6 位码）")
+    # 审批 flag 经 _add_approval_args 注入（--set 走 account_write、
+    # --del 走 account_delete，两个门径共用本对 flag）——手工双写曾致
+    # 死锁（生产实证 14ad 会话 2026-11-04，v0.7.74 修），详见函数 docstring。
+    _add_approval_args(p, "写入/删除")
 
     p = rsub.add_parser("browser", help="浏览器通道矩阵（channels.yaml 单一真源）")
     p.add_argument("bcmd", choices=["status", "up", "down", "restart", "snapshot",
@@ -353,8 +361,24 @@ async def _approval_gate(args, action_type: str, params: dict,
     from .security.audit import audit as audit_mod
 
     sid = _session_sid()
-    confirm = getattr(args, "confirm", "")
-    note = getattr(args, "request_approval", "")
+    if not (hasattr(args, "confirm") and hasattr(args, "request_approval")):
+        # fail-fast（S2/G2 修复 2026-11-16）：子命令调门但 parser 未声明
+        # 审批参数 = 接线错误（enforce=死锁 / warn=静默绕过，11-04 生产
+        # 实证）——旧 getattr 默认空串把「未声明」混同「用户没传」，开发期
+        # 接线错误不可能在第一时间显形。两种部署下都即刻拒 + wiring_error
+        # 审计（区别于用户态拒绝）。
+        audit_mod("permission_decision",
+                  {"action": "wiring_error", "source": "approval-gate",
+                   "reason": "args 缺 confirm/request_approval 属性"
+                             "（子命令 parser 未声明审批参数）",
+                   "subject": f"{action_type}:{human_label}"[:500]},
+                  sid=sid or None)
+        print("✗ 审批门接线错误：调用方 parser 未声明 --request-approval/"
+              f"--confirm（{action_type}）——开发期缺陷请上报（wiring_error）",
+              file=sys.stderr)
+        return 2
+    confirm = args.confirm
+    note = args.request_approval
 
     if confirm:
         if not sid:
@@ -390,8 +414,8 @@ async def _approval_gate(args, action_type: str, params: dict,
             if code != 200:
                 continue
             if st["status"] == "approved":
-                print("✓ 已批准。用卡片上的 6 位确认码执行：")
-                print(f"   wd r {human_label} --confirm <code>")
+                print("✓ 已批准。在原命令末尾追加 --confirm <卡片上的6位码> 重跑：")
+                print(f"   （原命令 {human_label} --confirm <code>）")
                 return 0
             if st["status"] in ("denied", "expired"):
                 print(f"✗ {st['status']}（未执行）", file=sys.stderr)
@@ -710,10 +734,25 @@ async def _run_r(args) -> int:
 
     if args.rcmd == "account":
         from .security import vault
+        if args.delete:
+            # 删除凭证与写入同样不可逆（销毁存储凭证）——补门（S3-4，
+            # 2026-11-16：此前 --del 完全无门，比 --set 松）。分支须在
+            # list 判断之前：否则「--del 无 --platform」会静默落进列清单
+            # 分支，删除意图被吞。
+            if not args.platform:
+                print("✗ --del 需要 --platform", file=sys.stderr)
+                return 2
+            gate = await _approval_gate(
+                args, "account_delete", {"platform": args.platform},
+                f"account --platform {args.platform} --del")
+            if gate is not None:
+                return gate
+            print("已删除" if vault.delete(args.platform) else "条目不存在")
+            return 0 if vault.get(args.platform) is None else 1
         if args.list or not args.platform:
             rows = vault.list_platforms()
             if not rows:
-                print("（保险库为空。写入：wd r account --platform x --set password=…）")
+                print("（保险库为空。写入：loadn-ops r account --platform x --set password=…）")
                 return 0
             for r in rows:
                 pwd = "有密码" if r["has_password"] else "无密码"
@@ -721,9 +760,6 @@ async def _run_r(args) -> int:
                 print(f"{r['platform']:20s} {r['username'] or '(未记用户名)':30s} "
                       f"[{pwd}]{st}")
             return 0
-        if args.delete:
-            print("已删除" if vault.delete(args.platform) else "条目不存在")
-            return 0 if vault.get(args.platform) is None else 1
         if args.set:
             fields = {}
             for kv in args.set:
@@ -744,7 +780,7 @@ async def _run_r(args) -> int:
             if v is None:
                 print(f"错误: {args.platform}.{args.field} 不存在", file=sys.stderr)
                 return 1
-            print(v)   # 单值输出：脚本 $(wd r account --platform x --field password)
+            print(v)   # 单值输出：脚本 $(loadn-ops r account --platform x --field password)
             return 0
         d = vault.view(args.platform, reveal=args.reveal)
         if d is None:

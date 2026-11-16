@@ -480,7 +480,7 @@ def cli_gateway(argv_words: list[str], subcommand: str) -> Decision:
     - 直连（Bash curl/wget）由 check_command 的 L1 段守，语义不变。
     irreversible 子命令（mail/sms/pay/...）的确认码门在 W1-2（approvals）。
     """
-    from ..config import CONFIG
+    from .approve import R_GATED_COMMANDS
     sig = " ".join(argv_words)
     d = check_command(sig, source="cli-gateway")
     if not d.ok:
@@ -496,11 +496,16 @@ def cli_gateway(argv_words: list[str], subcommand: str) -> Decision:
                                  matched=u)
                     _audit_decision(d, sig, "cli-gateway")
                     return d
-    if subcommand in CONFIG.security.irreversible_tools:
-        # W1-2 approvals 落地前的占位告警（fail-closed 版随 approvals 上线）
+    if subcommand in R_GATED_COMMANDS:
+        # 不可逆子命令网关告警（W1-2 已上线：确认码门在 CLI _approval_gate，
+        # 此处=网关层旁证留痕）。G5 修复：旧比对 irreversible_tools
+        # （action_type 词汇）与 rcmd（"account"）不匹配，对 account 永不
+        # 命中；2026-11-16 起单一真源 approve.R_GATED_COMMANDS。
         audit("permission_decision",
               {"action": "warn", "source": "cli-gateway",
-               "reason": f"{subcommand}=不可逆工具，approvals(W1-2) 未上线暂放行",
+               "reason": f"{subcommand}=不可逆工具"
+                         f"（{R_GATED_COMMANDS[subcommand]}），"
+                         "确认码门在 _approval_gate（W1-2）",
                "subject": sig[:500]})
     return Decision(ACTION_ALLOW)
 

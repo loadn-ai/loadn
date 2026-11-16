@@ -41,6 +41,7 @@ def default_ttl_s() -> int:
 ACTION_TYPES = {
     "mail_send": "发邮件",
     "account_write": "写凭证",
+    "account_delete": "删凭证",
     "sms_send": "发短信",
     "wechat_send": "发微信",
     "pay": "支付",
@@ -54,6 +55,16 @@ ACTION_TYPES = {
     "browser_open": "浏览器打开外部域",
 }
 
+# r 子命令 → 动作类型单一真源（G5 修复，2026-11-16）：CLI flag 注入、
+# 门调用、网关告警三处共用——此前 irreversible_tools("account_write") 与
+# rcmd("account") 双词汇表无映射，网关告警对 account 永不命中（死代码）。
+# 新增 gated 子命令：在此登记 + cli 侧经 _add_approval_args 注入 flag。
+R_GATED_COMMANDS: dict[str, str] = {
+    "mail": "mail_send",
+    "account": "account_write",       # --set 走 account_write；
+    # --del 走 account_delete（同 rcmd 两种门径，cli 分支各自传 action_type）
+}
+
 
 def _render_summary(action_type: str, params: dict) -> str:
     """平台渲染（agent 不可控）。各动作类型的「用户必须看到什么」。"""
@@ -63,6 +74,8 @@ def _render_summary(action_type: str, params: dict) -> str:
     if action_type == "account_write":
         fields = ",".join(sorted(k for k in params if k != "platform")) or "?"
         return f"写凭证 {params.get('platform', '?')}（字段：{fields}）"
+    if action_type == "account_delete":
+        return f"删凭证 {params.get('platform', '?')}（不可逆，整条移除）"
     if action_type == "sms_send":
         return f"发短信 → {params.get('to', '?')}：{(params.get('text') or '')[:60]}"
     if action_type == "pay":
