@@ -117,6 +117,8 @@ EXPECTED = [
     ("/api/sessions/{sid}/messages/archived", "get"),
     ("/api/sessions/{sid}/messages/page", "get"),
     ("/api/sessions/{sid}/messages/{mid}/sources", "get"),
+    ("/api/sessions/{sid}/plan", "get"),
+    ("/api/sessions/{sid}/plan/decide", "post"),
     ("/api/sessions/{sid}/promote", "post"),
     ("/api/sessions/{sid}/rollback", "post"),
     ("/api/sessions/{sid}/schedules", "post"),
