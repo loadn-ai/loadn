@@ -5,6 +5,29 @@
 
 ## [Unreleased]
 
+## [0.7.82] - 2026-11-16
+
+- **修复：记忆抽取通道跨会话 boundary 死锁**（生产实证：会话轮换恢复
+  协议注入的【定时唤醒】头/handover 段被记忆抽取锚定后，锚在后续会话
+  永远失效——抽取通道每轮空转，记忆功能静默死锁）。修复四件：
+  锚失效回落全量+推进并留 `memory_boundary_reset` 审计痕；直写/忘掉
+  分流前置（不再依赖抽取通道）；引擎注入段/【定时唤醒】头/handover 段
+  过滤（平台协议文本不再进入候选）；空段 `memory_extract_noop` 观测。
+  +5 跨会话回归用例。
+- **修复：审批接线单一真源+fail-fast**（11-04 生产实证：`r account`
+  子命令审批 flag 手工双写漏声明——enforce 下死锁、warn 下静默绕过，
+  审批门被架空）。落地：`R_GATED_COMMANDS` 注册表单一真源 +
+  `_add_approval_args()` 统一注入；门函数 hasattr fail-fast（接线错误
+  即刻拒 + wiring_error 审计，区别于用户态拒绝）；`--del` 补
+  `account_delete` 门（此前删除比写入还松）+分支前移防意图吞掉；
+  网关死代码复活（G5）；`wd r` 品牌残留清理。新增
+  test_a3_cli_wiring 9 用例（注册表遍历/双部署 fail-fast/`--del` 门/
+  roundtrip e2e）。
+- **修复：webhook 触发文案对齐 GC-4 对账口径**——「无损续作」改为
+  目标对账（对账基准优先）+证伪路线不重走。
+- **测试：契约面快照补 v0.7.74 Plan Mode 两端点**（发版欠账 regen，
+  stash 对照证实为基线漂移，非功能变更）。
+
 ## [0.7.81] - 2026-11-12
 
 - **新功能：定时任务值守豁免（exempt_dormant）**（生产实证 c5cb 虚拟币
