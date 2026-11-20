@@ -40,7 +40,7 @@ repomap = [
 ]
 # 全屏 TUI（缺省回落基础 REPL——引擎核心仍 httpx 单依赖）
 tui = [
-  "textual>=1.0",
+  "textual>=8.2.8",
 ]
 dev = [
   "pytest>=8",
