@@ -273,3 +273,43 @@ async def test_subagent_activity_forwarded_with_tag(tmp_path):
     assert tr["block"].tool_use_id == "tu_x" and not tr["block"].is_error
     # 结束卡
     assert names[-1] == ("tool_result", "Task")   # 结束卡（emitter 支持形状）
+
+
+def test_tasktool_enum_hot_reloads_new_agent(tmp_path: Path):
+    """DW-11：manager 构建后落盘的员工 def，无需重建会话即可派。
+
+    复盘背景：存量会话的可派名单原在装配时快照，新增 org 员工（如设计部
+    李白）对旧会话不可见，用户只能新开会话。修复后 TaskTool.input_schema
+    按目录指纹脏检查热刷新，task() 入口再兜底一次。"""
+    mgr = _mk_mgr(tmp_path, extra={})
+    tool = TaskTool(mgr)
+    enum0 = tool.input_schema["properties"]["subagent_type"]["enum"]
+    assert "libai" not in enum0
+    # 落盘新员工 def（项目级 .loadn/agents——org CRUD 的同源目录）
+    _agent_md(tmp_path / ".loadn" / "agents" / "libai.md",
+              "你是李白，设计部 UI 重设计师。", name="libai",
+              description="设计部·UI/UX 重设计师｜职责：页面重设计")
+    enum1 = tool.input_schema["properties"]["subagent_type"]["enum"]
+    assert "libai" in enum1                      # 下一轮工具面即枚举可见
+    assert "设计部·UI/UX 重设计师" in \
+        tool.input_schema["properties"]["subagent_type"]["description"]
+    assert mgr.types["libai"]["system_add"] == "你是李白，设计部 UI 重设计师。"
+    assert "libai" in mgr.custom_types
+    # 指纹未变时零重载（脏检查短路）
+    assert mgr.refresh_types() is False
+    # 删除员工 def 后摘除（org 离职/禁用同步）
+    (tmp_path / ".loadn" / "agents" / "libai.md").unlink()
+    enum2 = tool.input_schema["properties"]["subagent_type"]["enum"]
+    assert "libai" not in enum2
+
+
+def test_manager_task_entry_refresh_accepts_new_agent(tmp_path: Path):
+    """DW-11 task() 入口兜底：enum 尚旧但点名新员工，入口脏检查后命中即派。"""
+    mgr = _mk_mgr(tmp_path, extra={})
+    assert "libai" not in mgr.types
+    _agent_md(tmp_path / ".loadn" / "agents" / "libai.md",
+              "你是李白。", name="libai", tools="Read")
+    # 不经 TaskTool.schema（模拟同轮内 def 刚写入、enum 未刷新），直接点名
+    assert mgr.refresh_types() is True
+    conf = mgr.types.get("libai")
+    assert conf and conf["tools"] == ["Read"]

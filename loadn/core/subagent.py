@@ -86,6 +86,51 @@ class SubagentManager:
         self._sem = asyncio.Semaphore(SUBAGENT_CONCURRENCY)
         self._n = 0
         self._used_names: set[str] = set()
+        # DW-11：agent defs 目录指纹（脏检查基准；extra_types 即装配时快照，
+        # 首次构造只记指纹不重载，之后仅目录真变化才 refresh_types）
+        self._defs_sig: tuple | None = self._defs_signature()
+
+    # ---------------- DW-11：员工名单热更新 ----------------
+    def _defs_signature(self) -> tuple:
+        """agent def 目录指纹（文件路径+mtime）：未变零重载。"""
+        from loadn import loadn_home
+        from loadn.core import trust
+        bases = [(self.home or loadn_home()) / "agents",
+                 Path.home() / ".claude" / "agents"]
+        try:
+            if trust.gate(self.cwd)[0]:
+                bases += [self.cwd / ".loadn" / "agents",
+                          self.cwd / ".agent" / "agents",
+                          self.cwd / ".claude" / "agents"]
+        except Exception:                       # noqa: BLE001 指纹失败=每次重载（安全侧）
+            pass
+        sig: list[tuple[str, int]] = []
+        for b in bases:
+            try:
+                for f in sorted(b.glob("*.md")):
+                    sig.append((str(f), f.stat().st_mtime_ns))
+            except OSError:
+                continue
+        return tuple(sig)
+
+    def refresh_types(self, *, force: bool = False) -> bool:
+        """数字员工热更新：agent defs 目录变化时重载类型表。
+
+        存量会话的可派名单原先在装配时快照（__init__ 的 extra_types），
+        之后新增的 org 员工对旧会话不可见（DW-11 复盘：@新员工 派不动，
+        只能新开会话）。本方法由 TaskTool.input_schema 访问与 task()
+        入口按指纹脏检查调用——员工 def 落盘后，下一轮工具面枚举/下一次
+        点名派发即可见，无需重启会话。"""
+        sig = self._defs_signature()
+        if not force and sig == self._defs_sig:
+            return False
+        from loadn import loadn_home
+        from loadn.core.agent_defs import load_agent_defs
+        defs = load_agent_defs(self.cwd, (self.home or loadn_home()) / "agents")
+        self.types = {**SUBAGENT_TYPES, **defs}
+        self.custom_types = set(defs)
+        self._defs_sig = sig
+        return True
 
     def _pick_name(self, forced: str | None = None) -> str:
         """子代理取名：forced（点名员工名）优先直用；否则临时工池优先
@@ -177,6 +222,10 @@ class SubagentManager:
         ——宿主 UI 渲染成工具卡，并行扇出期不再黑屏（2026-09-18：调研任务拆
         3 子代理跑 7 分钟零反馈的实况归因）。"""
         conf = self.types.get(subagent_type, self.types["general"])
+        # DW-11 兜底：enum 旧但点名了新落盘的员工（同轮内 def 刚写入）——
+        # task 入口再脏检查一次，命中即派，不回落 general 静默错人。
+        if subagent_type not in self.types and self.refresh_types():
+            conf = self.types.get(subagent_type, self.types["general"])
         from loadn.core.session import SessionManager
 
         async with self._sem:
@@ -371,9 +420,14 @@ class TaskTool(Tool):
 
     def __init__(self, manager: SubagentManager) -> None:
         self.manager = manager
-        types = manager.types
-        # 实例级 schema：enum 随自定义类型（.claude/agents）动态化
-        self.input_schema = {
+        # DW-11：schema 动态化——enum 不再装配时快照，每次访问按指纹
+        # 脏检查热刷新（新增 org 员工对存量会话下一轮即枚举可见）。
+
+    @property
+    def input_schema(self) -> dict:
+        self.manager.refresh_types()
+        types = self.manager.types
+        return {
             "type": "object",
             "properties": {
                 "prompt": {"type": "string",
