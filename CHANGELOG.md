@@ -5,6 +5,19 @@
 
 ## [Unreleased]
 
+- **修复：调度 label 机器 slug 防御 + done job GC + replace 防重**（生产
+  实证 storainbow 单步门控：label=pipeline-halt 的 kebab-case 机器标识直出
+  会话流「【定时唤醒 1/1】pipeline-halt」不雅；31 步管线堆 70+ done 尸体
+  行；上游重跑整批时旧 job 成对重复投递）。三件：
+  - `display_label()`：纯 kebab-case label 视为机器 slug 不直出用户面——
+    回退取 prompt【标题】短语，都无则「定时任务」；`_wrap` 消息头与
+    `_settle` 的 SSE/notify/destination 三面统一；
+  - tick 顺手 GC：done job 保留 7 天后清理（审计另有链，本表非审计真源）；
+  - `schedule add --replace-same-label`（CLI+双 API 端点）：同 label 且
+    active 的旧 job 先删（paused 不动——用户手动暂停的意图优先）。
+  新增 4 用例：slug 三态/投递集成（slug 不现于消息）/GC 保留窗/replace
+  防重与 paused 豁免。生产存量 71 行 pipeline-halt 尸体已清。
+
 ## [0.7.82] - 2026-11-16
 
 - **修复：记忆抽取通道跨会话 boundary 死锁**（生产实证：会话轮换恢复

@@ -24,6 +24,7 @@ from __future__ import annotations
 
 import asyncio
 import json
+import re
 from datetime import datetime, timezone
 
 from . import db as db_mod
@@ -32,6 +33,28 @@ from .util import get_logger, iso
 log = get_logger(__name__)
 
 CHECK_INTERVAL = 20.0          # 扫描周期：分钟级唤醒场景足够，误差可忽略
+
+# ---- A-2 机器 slug 防御（pipeline-halt 不雅复盘 2026-11-17）----
+# 调用方（storainbow 等）曾把内部标识符直接当 label 传入，调度器原样
+# 拼进用户可见面（「【定时唤醒 1/1】pipeline-halt」）。规则：纯
+# kebab-case（^[a-z0-9]+(-[a-z0-9]+)*$，无空格无大写无中文）视为机器
+# slug，不直出——回退取 prompt 的【标题】短语（中文消息惯例），都无则
+# 「定时任务」。含中文/空格/大写的人话 label 原样使用。
+_SLUG_RE = re.compile(r"^[a-z0-9]+(-[a-z0-9]+)*$")
+_TITLE_RE = re.compile(r"【([^】\n]{1,20})】")
+
+
+def display_label(label: str, prompt: str) -> str:
+    """job 的用户可见 label：机器 slug 回退【标题】，永不裸奀 slug。"""
+    if label and not _SLUG_RE.match(label):
+        return label
+    m = _TITLE_RE.match((prompt or "").lstrip())
+    return m.group(1) if m else "定时任务"
+
+
+# A-3b：done job 保留期（天）——单次 job 触发完置 done 后的清理窗口
+# （排查窗口足够；审计另有一条链，本表不是审计真源）
+DONE_JOB_RETAIN_DAYS = 7
 
 # ---- GC（Goal Contract）目标契约：对账式唤醒 + 反问闭环 ----
 # 背景（生产实证 2026-10 虚拟币对冲/worldquant 两例）：几百轮历史叙事压倒
@@ -375,6 +398,21 @@ class Scheduler:
                     log.info("每日维护已执行（详见 audit system 事件）")
         except Exception:                              # noqa: BLE001
             pass
+        # A-3b（2026-11-17）：done job 过期清理——单次 job 触发完置 done 后
+        # 永不回收（生产实证 storainbow 单步门控 31 步管线堆 70+ 尸体行，
+        # 任务列表长草）。保留 DONE_JOB_RETAIN_DAYS 天供排查，幂等 DELETE
+        # 全表扫（表行数百量级）每轮无感
+        try:
+            cutoff = (datetime.now(timezone.utc)
+                      - _timedelta_s(86400 * DONE_JOB_RETAIN_DAYS)
+                      ).isoformat(timespec="seconds")
+            with db_mod.conn() as c:
+                gone = db_mod.delete_done_jobs(c, cutoff)
+            if gone:
+                log.info("done job 清理：%d 行（>%d 天）", gone,
+                         DONE_JOB_RETAIN_DAYS)
+        except Exception:                              # noqa: BLE001
+            pass
         n = 0
         for job in jobs:
             try:
@@ -451,7 +489,8 @@ class Scheduler:
         轮）→ 尾注（过程≠目标 + 反问出口 + 确认纪律）。is_system（心跳巡检）
         无战略目标语义，跳过目标块。"""
         fires = job["fires"] + 1
-        parts = [f"【定时唤醒 {fires}/{job['max_fires']}】{job['label'] or '定时任务'}"]
+        parts = [f"【定时唤醒 {fires}/{job['max_fires']}】"
+                 f"{display_label(job['label'], job['prompt'])}"]
         if not job.get("is_system"):
             gc = goal_ctx_for(job)
             if gc.get("goal"):
@@ -558,7 +597,9 @@ class Scheduler:
             else:
                 db_mod.update_job(c, job["id"], fires=fires, due_at=next_due,
                                   last_fired_at=iso())
-        label = job["label"] or "定时任务"
+        # A-2：SSE/notify/destination 三面统一走 display_label（机器 slug
+        # 不直出用户可见面）
+        label = display_label(job["label"], job["prompt"])
         evt_sid = new_sid or sid
         if evt_sid:
             self.engine.publish(evt_sid, "job_fired",

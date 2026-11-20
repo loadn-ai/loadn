@@ -33,16 +33,21 @@ def list_schedules(sid: str = ""):
     return {"schedules": rows}
 @router.post("/schedules")
 def create_schedule_global(body: dict):
-    """全局建 job：body 带 kind（message 需 session_id；new_session 到点新建）。"""
+    """全局建 job：body 带 kind（message 需 session_id；new_session 到点新建）。
+    replace_same_label=True 时同 label 且 active 的旧 job 先删（A-3a）。"""
     fields = _job_fields(body, None)
     from ...security import userauth as _ua
     _u = _ua.current_user()
     if _u is not None:
         fields["owner_id"] = _u["id"]
+    replaced = 0
     with db_mod.conn() as c:
+        if body.get("replace_same_label") and fields.get("label"):
+            replaced = db_mod.delete_active_same_label(
+                c, fields["label"], fields.get("session_id"))
         jid = db_mod.create_job(c, **fields)
         job = db_mod.to_dict(db_mod.get_job(c, jid))
-    return {"ok": True, "job": job}
+    return {"ok": True, "job": job, "replaced": replaced}
 @router.patch("/schedules/{jid}")
 def patch_schedule(jid: int, body: dict):
     # 二轮修#13：内置 system job（🫀心跳）禁改——label/cron/max_fires

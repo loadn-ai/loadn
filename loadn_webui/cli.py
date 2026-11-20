@@ -21,7 +21,9 @@ def _build_schedule_parser(sub) -> None:
     p.add_argument("--every", default="", help="递归间隔（如 30m；默认单次触发）")
     p.add_argument("--max-fires", type=int, default=0,
                    help="递归触发次数上限（默认 20；单次任务恒为 1）")
-    p.add_argument("--label", default="", help="用途标签（如 FAO 冷却重考）")
+    p.add_argument("--label", default="", help="用途标签（如 FAO 冷却重考；人话，勿传内部 slug）")
+    p.add_argument("--replace-same-label", action="store_true",
+                   help="同 label 且 active 的既有 job 先删（防重复堆积：上游重跑整批时旧 job 不再成对残留）")
     p.add_argument("--prompt", required=True, help="到点投递给会话的指令")
     p.add_argument("--title", default="", help="new_session：新会话标题（默认用 label）")
     p.add_argument("--profile", default="", help="new_session：profile 名（默认 auto 匹配）")
@@ -123,10 +125,18 @@ def _run_schedule(args) -> int:
                     return 1
             fields = {"kind": "message", "session_id": args.sid}
         with db_mod.conn() as c:
+            replaced = 0
+            if args.replace_same_label and args.label:
+                # A-3a：同 label 且 active 的旧 job 先删（paused 不动——
+                # 用户手动暂停的意图优先于新建替换）
+                replaced = db_mod.delete_active_same_label(
+                    c, args.label, args.sid if kind == "message" else None)
             jid = db_mod.create_job(
                 c, label=args.label or None, prompt=args.prompt, due_at=due_at,
                 every_s=every_s, cron=cron, max_fires=max_fires or 1, **fields)
             job = db_mod.get_job(c, jid)
+        if replaced:
+            print(f"已替换 {replaced} 条同 label 的 active job")
         _print_jobs([job])
         return 0
 

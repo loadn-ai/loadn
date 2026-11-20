@@ -573,7 +573,8 @@ def create_approval(sid: str, body: dict):
     return out
 @router.post("/sessions/{sid}/schedules")
 def create_schedule(sid: str, body: dict):
-    """会话内建 job（恒 message 动作——到点向该会话投递/插话）。"""
+    """会话内建 job（恒 message 动作——到点向该会话投递/插话）。
+    replace_same_label=True 时同 label 且 active 的旧 job 先删（A-3a）。"""
     _get_session_or_404(sid)
     body = {**body, "kind": "message"}
     fields = _job_fields(body, sid)
@@ -581,10 +582,14 @@ def create_schedule(sid: str, body: dict):
     _u = _ua.current_user()
     if _u is not None:
         fields["owner_id"] = _u["id"]
+    replaced = 0
     with db_mod.conn() as c:
+        if body.get("replace_same_label") and fields.get("label"):
+            replaced = db_mod.delete_active_same_label(
+                c, fields["label"], sid)
         jid = db_mod.create_job(c, **fields)
         job = db_mod.to_dict(db_mod.get_job(c, jid))
-    return {"ok": True, "job": job}
+    return {"ok": True, "job": job, "replaced": replaced}
 @router.get("/sessions/{sid}/tree")
 def get_tree(sid: str):
     _get_session_or_404(sid)

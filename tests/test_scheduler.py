@@ -529,3 +529,103 @@ async def test_r6_one_shot_failure_pauses_visible(client, monkeypatch):
         job = db_mod.get_job(c, jid)
     assert job["status"] == "paused", "单次 job 失败须 paused（可见）"
     assert job["due_at"] > iso()                   # claim 已推走（不风暴）
+
+
+# ---- A 批（2026-11-17 pipeline-halt 复盘）：slug 防御 / done GC / replace ----
+
+def test_display_label_slug_fallback():
+    """A-2：机器 slug 不直出用户面——回退 prompt【标题】，都无→定时任务。"""
+    from loadn_webui.scheduler import display_label
+    # 人话 label（中文/空格/大写/混合）原样
+    assert display_label("FAO 冷却重考", "x") == "FAO 冷却重考"
+    assert display_label("长江杯巡检", "x") == "长江杯巡检"
+    # 机器 slug（kebab-case）→ 回退 prompt【标题】
+    assert display_label("pipeline-halt", "【管线自动唤醒】项目 94 步骤 27 拦停…") \
+        == "管线自动唤醒"
+    # slug + 无【】标题 → 定时任务（不做首行截断——半句话比通用词更丑）
+    assert display_label("some-slug", "自由文本无标题") == "定时任务"
+    # 空 label：有【标题】用标题，否则定时任务（缺省回退语义不变）
+    assert display_label("", "【每周巡检】内容") == "每周巡检"
+    assert display_label("", "") == "定时任务"
+    # 纯数字/单词（无连字符）也是机器形态
+    assert display_label("heartbeat", "【🫀心跳】x") == "🫀心跳"
+
+
+async def test_slug_label_not_in_delivery(sched, client):
+    """A-2 集成：slug label 的 job 触发后，投递消息头用回退标题而非 slug。"""
+    r = await client.post("/api/sessions", json={"title": "slug 防御"})
+    sid = r.json()["session"]["id"]
+    from loadn_webui.util import iso
+    with db_mod.conn() as c:      # _make_job 硬编码 label，这里直建 slug job
+        db_mod.create_job(c, kind="message", session_id=sid,
+                          label="pipeline-halt",
+                          prompt="【管线自动唤醒】项目 94 步骤 27 拦停：gate 23 项 HIGH",
+                          due_at=iso(), max_fires=1)
+    assert await sched.tick() == 1
+    await _wait_jobs_done(sched, sid, n_turns=1)   # 无 first_message，仅投递轮
+    with db_mod.conn() as c:
+        msgs = [m["content"] for m in db_mod.list_messages(c, sid)
+                if m["role"] == "user"]
+    assert any("【定时唤醒 1/1】管线自动唤醒" in m for m in msgs)
+    assert not any("pipeline-halt" in m for m in msgs), "slug 不得直出用户面"
+
+
+async def test_done_job_gc_on_tick(sched):
+    """A-3b：done 超保留期清理（7 天）；新 done 保留；active 不动。"""
+    from datetime import datetime, timedelta, timezone
+
+    from loadn_webui.scheduler import DONE_JOB_RETAIN_DAYS
+    old = (datetime.now(timezone.utc)
+           - timedelta(days=DONE_JOB_RETAIN_DAYS + 1)).isoformat()
+    fresh = datetime.now(timezone.utc).isoformat()
+    with db_mod.conn() as c:
+        j_old = db_mod.create_job(c, kind="message", session_id="s-gc",
+                                  label="旧尸体", prompt="x", due_at=old,
+                                  status="done")
+        c.execute("UPDATE scheduled_jobs SET updated_at=? WHERE id=?",
+                  (old, j_old))
+        db_mod.create_job(c, kind="message", session_id="s-gc",
+                          label="新 done", prompt="x", due_at=fresh,
+                          status="done")
+        db_mod.create_job(c, kind="message", session_id="s-gc",
+                          label="active 不动", prompt="x", due_at=fresh,
+                          status="active")
+    assert await sched.tick() == 0          # 无 due job，纯 GC 路径
+    with db_mod.conn() as c:
+        labels = [r["label"] for r in c.execute(
+            "SELECT label FROM scheduled_jobs WHERE session_id='s-gc'")]
+    assert "旧尸体" not in labels
+    assert "新 done" in labels and "active 不动" in labels
+
+
+async def test_replace_same_label(client):
+    """A-3a：replace_same_label=True 时同 label active 旧 job 先删；
+    paused 保留（用户手动暂停的意图优先）。"""
+    r = await client.post("/api/sessions", json={"title": "replace 防重"})
+    sid = r.json()["session"]["id"]
+    body = {"kind": "message", "session_id": sid, "prompt": "拦停唤醒",
+            "label": "管线拦停·项目94步骤27", "in": "1m"}
+    r1 = await client.post("/api/schedules", json=body)
+    assert r1.status_code == 200 and r1.json()["replaced"] == 0
+    # 同 label 重投（上游重跑整批形态）→ 旧行顶掉，不堆积
+    r2 = await client.post("/api/schedules", json={**body,
+                                                   "replace_same_label": True})
+    assert r2.status_code == 200 and r2.json()["replaced"] == 1
+    with db_mod.conn() as c:
+        rows = c.execute(
+            "SELECT id,status FROM scheduled_jobs WHERE session_id=?"
+            " AND label=?", (sid, body["label"])).fetchall()
+    assert len(rows) == 1 and rows[0]["status"] == "active"
+    # paused 同 label 不被替换
+    jid = rows[0]["id"]
+    with db_mod.conn() as c:
+        db_mod.update_job(c, jid, status="paused")
+    r3 = await client.post("/api/schedules", json={**body,
+                                                   "replace_same_label": True})
+    assert r3.json()["replaced"] == 0
+    with db_mod.conn() as c:
+        rows = c.execute(
+            "SELECT status FROM scheduled_jobs WHERE session_id=?"
+            " AND label=?", (sid, body["label"])).fetchall()
+    assert [r["status"] for r in rows].count("paused") == 1  # 暂停意图保留
+    assert len(rows) == 2                                    # 新行照建

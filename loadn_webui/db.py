@@ -1049,6 +1049,31 @@ def get_job(c: sqlite3.Connection, jid: int) -> sqlite3.Row | None:
     return c.execute("SELECT * FROM scheduled_jobs WHERE id=?", (jid,)).fetchone()
 
 
+def delete_done_jobs(c: sqlite3.Connection, before_iso: str) -> int:
+    """A-3b：清理 done 且 updated_at 早于 before_iso 的 job（返回行数）。
+
+    生产实证：单次 job 触发完置 done 后永不回收——storainbow 单步门控
+    31 步管线堆 70+ 尸体行。审计另有一条链，本表不是审计真源。"""
+    cur = c.execute("DELETE FROM scheduled_jobs WHERE status='done'"
+                    " AND updated_at < ?", (before_iso,))
+    return cur.rowcount
+
+
+def delete_active_same_label(c: sqlite3.Connection, label: str,
+                             session_id: str | None) -> int:
+    """A-3a：删同 label 且 active 的既有 job（--replace-same-label 用）。
+
+    匹配维度：label + session_id（message 类；new_session 类 session_id
+    均 NULL，COALESCE 归并后同 label 互替）。paused 不动——用户手动暂停
+    的意图优先于新建替换。返回删除行数。"""
+    if not label:
+        return 0
+    cur = c.execute(
+        "DELETE FROM scheduled_jobs WHERE label=? AND status='active'"
+        " AND COALESCE(session_id,'')=COALESCE(?,'')", (label, session_id))
+    return cur.rowcount
+
+
 def list_jobs(c: sqlite3.Connection, sid: str | None = None,
               active_only: bool = False) -> list[sqlite3.Row]:
     q, args = "SELECT * FROM scheduled_jobs", []
