@@ -312,6 +312,11 @@ CREATE TABLE IF NOT EXISTS org_employees (        -- DW-1：正式员工=一份 
   color TEXT DEFAULT '',              -- 归属色（Task 卡/思考卡色条）
   created_at TEXT, updated_at TEXT
 );
+CREATE TABLE IF NOT EXISTS org_mentions (        -- DW-12：员工 @ 提及统计
+  name TEXT PRIMARY KEY,             -- 员工名（org_employees.name 同键）
+  cnt INTEGER NOT NULL DEFAULT 1,    -- 累计选择次数
+  last_ts REAL NOT NULL              -- 最近一次选择（epoch 秒；时间衰减用）
+);
 CREATE TABLE IF NOT EXISTS temp_pool (           -- DW-1：临时工池（recruit 生成）
   id INTEGER PRIMARY KEY AUTOINCREMENT,
   name TEXT NOT NULL,                -- 生成的名字

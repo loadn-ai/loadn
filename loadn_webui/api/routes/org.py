@@ -151,3 +151,38 @@ def retire_temp(tid: int):
         except ValueError as e:
             raise _err(e) from None
         return {"ok": True}
+
+
+@router.get("/org/mention-list")
+def mention_list():
+    """DW-12：@ 提及浮层的员工平铺列表（预排序）。
+
+    排序 = 加权分（选择次数 × 时间衰减，见 org.mention_scores）降序，
+    无记录者按部门序殿后。前端本地按 @ 词过滤，不再二次请求。"""
+    with db_mod.conn() as c:
+        scores = org_mod.mention_scores(c)
+        rows = c.execute(
+            "SELECT e.name, e.title, e.duty, d.name AS dept, d.sort "
+            "FROM org_employees e LEFT JOIN org_departments d "
+            "ON e.dept_id = d.id WHERE e.status='active' "
+            "ORDER BY d.sort, e.id").fetchall()
+        emps = [{"name": r["name"], "dept": r["dept"] or "",
+                 "title": r["title"] or "", "duty": (r["duty"] or "")[:60],
+                 "score": round(scores.get(r["name"], 0.0), 2)}
+                for r in rows]
+        emps.sort(key=lambda x: -x["score"])
+        return {"employees": emps}
+
+
+@router.post("/org/mention")
+def bump_mention(body: dict):
+    """DW-12：@ 选择上报（upsert 计数+时间戳），返回该员工新加权分。"""
+    name = str((body or {}).get("name") or "").strip()
+    if not name:
+        raise HTTPException(400, "name 必填")
+    with db_mod.conn() as c:
+        try:
+            score = org_mod.bump_mention(c, name)
+        except ValueError as e:
+            raise _err(e) from None
+        return {"name": name, "score": round(score, 2)}

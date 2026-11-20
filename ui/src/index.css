@@ -502,7 +502,8 @@ button:focus-visible, .tab:focus-visible, .chip:focus-visible {
 
 /* ---------------- 输入区（圆角容器：chips/模式/发送都在框内） ---------------- */
 .composer-wrap { padding: 6px 24px 20px; }
-.cbox { background: var(--bg3); border: 1px solid var(--border); border-radius: var(--radius-lg);
+.cbox { position: relative; /* DW-12：@ 提及浮层锚定 */
+  background: var(--bg3); border: 1px solid var(--border); border-radius: var(--radius-lg);
   padding: 8px 10px; box-shadow: var(--shadow-sm);
   transition: border-color .15s, box-shadow .15s, background .15s; }
 .cbox:focus-within { border-color: var(--accent); background: var(--bg2);
@@ -2910,3 +2911,25 @@ textarea.admin-input { min-height: 60px; line-height: 1.6; resize: vertical; }
 .art-file { font-family: var(--mono); overflow: hidden; text-overflow: ellipsis;
   white-space: nowrap; max-width: 60%; }
 .art-time { flex-shrink: 0; margin-left: auto; opacity: 0.85; }
+
+
+/* DW-12：@ 员工提及浮层（cbox 顶部上方弹出，键鼠双通道选择） */
+.mention-pop { position: absolute; left: 6px; right: 6px; bottom: calc(100% + 8px);
+  z-index: 10; max-height: 320px; overflow-y: auto;
+  background: var(--bg2); border: 1px solid var(--border); border-radius: var(--radius);
+  box-shadow: var(--shadow-md); padding: 4px; }
+.mp-hint { font-size: var(--fs-xs); color: var(--text-dim); padding: 6px 8px 4px;
+  letter-spacing: .04em; }
+.mp-item { display: flex; align-items: center; gap: 9px; width: 100%; padding: 7px 8px;
+  border: none; background: none; border-radius: var(--radius-sm); cursor: pointer;
+  text-align: left; color: var(--text); }
+.mp-item:hover, .mp-item.sel { background: var(--accent-soft); }
+.mp-av { width: 24px; height: 24px; border-radius: var(--radius-sm); flex: none;
+  background: var(--grad-accent); color: var(--fg-on-accent); font-size: 12px; font-weight: 600;
+  display: inline-flex; align-items: center; justify-content: center; }
+.mp-main { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 1px; }
+.mp-name { font-size: var(--fs-lg); font-weight: 600; }
+.mp-sub { font-size: var(--fs-xs); color: var(--text-dim);
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.mp-score { font-family: var(--mono); font-variant-numeric: tabular-nums; font-size: var(--fs-xs);
+  color: var(--accent); flex: none; }

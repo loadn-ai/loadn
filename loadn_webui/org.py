@@ -396,6 +396,52 @@ def retire_temp(c: sqlite3.Connection, tid: int) -> None:
     _write_pool_file(c)
 
 
+# ------------------------------------------------------- @ 提及统计（DW-12）
+# Composer 输入 @ 弹员工选择器：选择上报 bump_mention，浮层按
+# 「选择次数 + 最近选择时间衰减」加权排序——常用的人排前面。
+# score = min(cnt, 50)                      频次项（50 封顶防垄断）
+#         + 8.0 * exp(-age_days / 14.0)     近期项（两周半衰：今天选过 +8，
+#                                           两周前 +3，一个月前 ≈ +1）
+# 常数取舍：频次是主信号（学习成本），近期性只做同量级内的先後微调；
+# 无记录的员工 score=0，按部门序排在有历史者之后（新员工不被淹没也不霸榜）。
+
+_MENTION_HALF_LIFE_DAYS = 14.0
+_MENTION_RECENT_WEIGHT = 8.0
+_MENTION_CNT_CAP = 50
+
+
+def bump_mention(c: sqlite3.Connection, name: str) -> float:
+    """记一次 @ 选择（upsert），返回该员工当前加权分。员工须在职。"""
+    row = c.execute(
+        "SELECT 1 FROM org_employees WHERE name=? AND status='active'",
+        (name,)).fetchone()
+    if row is None:
+        raise ValueError(f"在职员工不存在: {name}")
+    import time
+    now = time.time()
+    c.execute(
+        "INSERT INTO org_mentions(name, cnt, last_ts) VALUES(?, 1, ?) "
+        "ON CONFLICT(name) DO UPDATE SET cnt=cnt+1, last_ts=excluded.last_ts",
+        (name, now))
+    scores = mention_scores(c)
+    return scores.get(name, 0.0)
+
+
+def mention_scores(c: sqlite3.Connection) -> dict[str, float]:
+    """name → 加权分（选择次数 × 时间衰减）。无记录者不在返回里。"""
+    import math
+    import time
+    now = time.time()
+    out: dict[str, float] = {}
+    for name, cnt, last_ts in c.execute(
+            "SELECT name, cnt, last_ts FROM org_mentions"):
+        age_days = max(0.0, (now - last_ts) / 86400.0)
+        out[name] = (min(cnt, _MENTION_CNT_CAP)
+                     + _MENTION_RECENT_WEIGHT
+                     * math.exp(-age_days / _MENTION_HALF_LIFE_DAYS))
+    return out
+
+
 # ------------------------------------------------------- agent def 同步（引擎侧）
 # 员工 CRUD 同步落 $LOADN_HOME/agents/<名>.md：引擎 load_agent_defs 天然
 # 加载（build.py 装配 extra_types），Task subagent_type=员工名 即点名。

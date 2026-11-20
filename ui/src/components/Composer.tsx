@@ -3,6 +3,7 @@ import type { ClipboardEvent, ComponentType, DragEvent, KeyboardEvent } from 're
 import { useStore } from '../stores/sessions';
 import type { Attachment } from '../stores/sessions';
 import { MAX_UPLOAD_BYTES, fmtBytes } from '../api/client';
+import { fetchMentionList, reportMention, type MentionEmp } from '../api/mention';
 import { getDraft, setDraft } from '../stores/drafts';
 import {
   Paperclip, Sparkles, Flask, Code, Chat, MessageSquare, Bot, ChevronDown, Check,
@@ -70,6 +71,16 @@ export default function Composer() {
   };
   const fileInput = useRef<HTMLInputElement>(null);
   const taRef = useRef<HTMLTextAreaElement>(null);
+  // DW-12：@ 提及浮层——start=@ 字符位置，query=@ 后到光标的过滤词
+  const [mention, setMention] = useState<{ start: number; query: string } | null>(null);
+  const [mList, setMList] = useState<MentionEmp[]>([]);
+  const [mSel, setMSel] = useState(0);
+  useEffect(() => { if (mention) void fetchMentionList().then(setMList); }, [mention !== null]);
+  const mFiltered = mention
+    ? mList.filter(e => e.name.toLowerCase().includes(mention.query.toLowerCase())
+        || `${e.dept}${e.title}`.toLowerCase().includes(mention.query.toLowerCase()))
+    : [];
+  useEffect(() => { setMSel(0); }, [mention?.query, mention?.start]);
   const sess = sessions.find(x => x.id === currentSid);
   const mode = sess?.profile_auto ? 'auto' : (sess?.profile ?? 'auto');
 
@@ -158,9 +169,27 @@ export default function Composer() {
     ...profiles.map(p => ({ value: p.name, label: PROFILE_CN[p.name] ?? p.name, desc: PROFILE_DESC[p.name] })),
   ];
 
-  function changeText(v: string) {
+  function changeText(v: string, caret?: number) {
     setText(v);
     if (currentSid) setDraft(currentSid, v);
+    // DW-12：光标前检测 @提及词（@ 前须非词字符——避开邮箱/代码内 @）
+    const pos = caret ?? v.length;
+    const tail = v.slice(0, pos);
+    const m = tail.match(/(?:^|[^\p{L}\p{N}_@])@([\p{L}\p{N}·_]*)$/u);
+    if (m) setMention({ start: pos - 1 - m[1].length, query: m[1] });
+    else setMention(null);
+  }
+
+  function applyMention(emp: MentionEmp) {
+    if (!mention) return;
+    const ta = taRef.current;
+    const v = text || '';
+    const caret = ta ? ta.selectionStart : v.length;
+    const next = v.slice(0, mention.start) + `@${emp.name} ` + v.slice(caret);
+    changeText(next, mention.start + emp.name.length + 2);
+    setMention(null);
+    reportMention(emp.name);          // 上报后端计数（加权排序真源）
+    requestAnimationFrame(() => ta?.focus());
   }
 
   function submit() {
@@ -188,6 +217,20 @@ export default function Composer() {
   }
 
   function onKey(e: KeyboardEvent<HTMLTextAreaElement>) {
+    // DW-12：@ 浮层开时优先接管导航键（ ↑↓ 选择 · Enter/Tab 确认 · Esc 关闭）
+    if (mention && mFiltered.length > 0) {
+      if (e.key === 'ArrowDown' || e.key === 'ArrowUp') {
+        e.preventDefault();
+        setMSel(i => (i + (e.key === 'ArrowDown' ? 1 : -1) + mFiltered.length) % mFiltered.length);
+        return;
+      }
+      if ((e.key === 'Enter' || e.key === 'Tab') && !e.shiftKey && !e.nativeEvent.isComposing) {
+        e.preventDefault();
+        applyMention(mFiltered[mSel]);
+        return;
+      }
+      if (e.key === 'Escape') { e.preventDefault(); setMention(null); return; }
+    }
     if (e.key === 'Enter' && !e.shiftKey && !e.nativeEvent.isComposing) {
       e.preventDefault();
       submit();
@@ -224,6 +267,24 @@ export default function Composer() {
            onDragOver={e => { e.preventDefault(); setDragging(true); }}
            onDragLeave={e => { if (e.currentTarget === e.target) setDragging(false); }}
            onDrop={onDrop}>
+        {mention && mFiltered.length > 0 && (
+          <div className="mention-pop" role="listbox">
+            <div className="mp-hint">选择数字员工（↑↓ · Enter · Esc）</div>
+            {mFiltered.slice(0, 8).map((e, i) => (
+              <button key={e.name} className={`mp-item ${i === mSel ? 'sel' : ''}`}
+                role="option" aria-selected={i === mSel}
+                onMouseEnter={() => setMSel(i)}
+                onMouseDown={ev => { ev.preventDefault(); applyMention(e); }}>
+                <span className="mp-av">{e.name.slice(0, 1)}</span>
+                <span className="mp-main">
+                  <span className="mp-name">{e.name}</span>
+                  <span className="mp-sub">{[e.dept, e.title].filter(Boolean).join(' · ')}</span>
+                </span>
+                {e.score > 0 && <span className="mp-score">{e.score.toFixed(0)}</span>}
+              </button>
+            ))}
+          </div>
+        )}
         {pending.length > 0 && (
           <div className="attach-chips">
             {pending.map(p => (
@@ -248,7 +309,7 @@ export default function Composer() {
         )}
         <textarea ref={taRef} className="cinput"
           value={text}
-          onChange={e => changeText(e.target.value)}
+          onChange={e => changeText(e.target.value, e.target.selectionStart ?? undefined)}
           onKeyDown={onKey}
           onPaste={onPaste}
           placeholder={busy
