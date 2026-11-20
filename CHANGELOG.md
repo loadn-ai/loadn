@@ -5,6 +5,8 @@
 
 ## [Unreleased]
 
+## [0.7.83] - 2026-11-17
+
 - **修复：调度 label 机器 slug 防御 + done job GC + replace 防重**（生产
   实证 storainbow 单步门控：label=pipeline-halt 的 kebab-case 机器标识直出
   会话流「【定时唤醒 1/1】pipeline-halt」不雅；31 步管线堆 70+ done 尸体
@@ -16,7 +18,17 @@
   - `schedule add --replace-same-label`（CLI+双 API 端点）：同 label 且
     active 的旧 job 先删（paused 不动——用户手动暂停的意图优先）。
   新增 4 用例：slug 三态/投递集成（slug 不现于消息）/GC 保留窗/replace
-  防重与 paused 豁免。生产存量 71 行 pipeline-halt 尸体已清。
+  防重与 paused 豁免。生产存量 71 行 pipeline-halt 尸体已清。storainbow
+  侧 label 人话化（「管线拦停·项目N步骤M」）已同车落地。
+- **新功能：@ 提及数字员工**（DW-12）：Composer 输入 @ 弹选择器，按
+  「选择次数 × 时间衰减」加权排序（score = min(cnt,50)+8·e^(-age/14d)，
+  频次主导、两周半衰近期加成、无记录者部门序殿后）；org_mentions 表
+  SCHEMA 自愈；浮层键鼠双通道（↑↓/Enter/Tab/Esc/hover）；选中替换并
+  上报（5 分钟 TTL 缓存 fire-and-forget，失败静默降级）。
+- **修复：数字员工名单热更新**（DW-11 复盘：可派名单原在装配时快照，
+  存量会话看不到 org CRUD 新增员工，只能新开会话）：agent defs 目录
+  指纹脏检查（路径+mtime_ns，未变零开销）+ TaskTool schema enum 热刷新
+  + task() 入口点名兜底（enum 尚旧但点名新员工时再脏检查，命中即派）。
 
 ## [0.7.82] - 2026-11-16
 
